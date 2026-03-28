@@ -1,0 +1,28 @@
+[project]
+name = "yaml-engine"
+version = "0.1.0"
+description = "Generic YAML-driven engine: registry, conditions, compilation, and template substitution."
+requires-python = ">=3.13"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "types-pyyaml>=6.0.12.20250915",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yaml_engine"]
+
+[tool.mypy]
+strict = true
