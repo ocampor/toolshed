@@ -1,0 +1,42 @@
+[project]
+name = "llm-browser"
+version = "0.1.0"
+description = "Playwright browser automation with declarative YAML flows for LLM agents."
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2.0",
+    "playwright>=1.40",
+    "pyyaml>=6.0",
+    "yaml-engine",
+]
+
+[project.scripts]
+llm-browser = "llm_browser.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+yaml-engine = { path = "../yaml-engine" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.11",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_browser"]
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = "yaml_engine.*"
+ignore_missing_imports = true
