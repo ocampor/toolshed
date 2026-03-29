@@ -1,30 +1,38 @@
-"""Generic registry for named callables (conditions, actions, etc.)."""
+"""Generic registry for named items (conditions, actions, params, etc.)."""
 
 from typing import Callable, Generic, TypeVar
 
-F = TypeVar("F", bound=Callable[..., object])
+T = TypeVar("T")
 
 
-class Registry(Generic[F]):
-    """A named registry of callables with a decorator for registration."""
+class Registry(Generic[T]):
+    """A named registry of items with decorator and direct registration."""
 
     def __init__(self, label: str) -> None:
         self.label = label
-        self.store: dict[str, F] = {}
+        self.store: dict[str, T] = {}
 
-    def register(self, name: str) -> Callable[[F], F]:
-        """Decorator: register a callable under the given name."""
-        def decorator(fn: F) -> F:
+    def register(self, name: str, item: T | None = None) -> T | Callable[[T], T]:
+        """Register an item by name. Use as decorator or direct call.
+
+        As decorator: @registry.register("name")
+        Direct call:  registry.register("name", item)
+        """
+        if item is not None:
+            self.store[name] = item
+            return item
+
+        def decorator(fn: T) -> T:
             self.store[name] = fn
             return fn
         return decorator
 
-    def get(self, name: str) -> F:
-        """Return the callable for name, raising ValueError if not found."""
-        fn = self.store.get(name)
-        if fn is None:
+    def get(self, name: str) -> T:
+        """Return the item for name, raising ValueError if not found."""
+        item = self.store.get(name)
+        if item is None:
             raise ValueError(f"Unknown {self.label}: {name!r}")
-        return fn
+        return item
 
     def __contains__(self, name: str) -> bool:
         return name in self.store
