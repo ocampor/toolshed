@@ -27,7 +27,10 @@ Each package is independent. Always `cd` into the package before running command
 - Functions < 30 lines, single-purpose
 - Files < 300 lines; refactor when exceeding
 - `pathlib.Path` over `os.path`
-- `dataclasses` for data structures
+- Pydantic models over raw dicts for structured data (return types, state, params)
+- Constants centralized in `constants.py`, always public
+- External `.js` files in `js/` directory, loaded via `scripts.py` with `lru_cache`
+- No utility code in `__init__.py` — create dedicated modules
 - Prefer libraries over hand-rolled parsers
 
 ## Testing
@@ -51,4 +54,6 @@ Each package is independent. Always `cd` into the package before running command
 - Build backend: `hatchling` with `src/` layout
 - Each package has its own `pyproject.toml`, `uv.lock`, and dev dependencies
 - Cross-package deps use `[tool.uv.sources]` with relative paths
-- Registry pattern (`yaml_engine.registry.Registry`) for extensible condition/action operators
+- `yaml_engine.registry.Registry[T]` for all extensible dispatch (conditions, actions, fields, params)
+- `@lru_cache(maxsize=1)` singleton pattern for registry getters
+- If a function is tested or importable, make it public — no underscore prefix on reusable code
