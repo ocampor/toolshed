@@ -9,7 +9,9 @@ from llm_browser.session import BrowserSession
 
 def test_save_and_load_state(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path)
-    info = SessionInfo(pid=9999, cdp_url="ws://127.0.0.1:9222/devtools", user_data_dir="/tmp/ud")
+    info = SessionInfo(
+        pid=9999, cdp_url="ws://127.0.0.1:9222/devtools", user_data_dir="/tmp/ud"
+    )
     session._ensure_dirs()
     session._save_state(info)
 
@@ -59,6 +61,7 @@ def test_default_session_id(tmp_path: Path) -> None:
 
 def testis_process_alive_current_pid() -> None:
     import os
+
     assert is_process_alive(os.getpid()) is True
 
 

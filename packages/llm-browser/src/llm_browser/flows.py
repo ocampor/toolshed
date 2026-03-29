@@ -22,9 +22,7 @@ class FlowRunner:
         self._session = session
         self._state_file = session.session_dir / "flow_state.json"
 
-    def run(
-        self, flow_path: str | Path, data: dict[str, object]
-    ) -> FlowResult:
+    def run(self, flow_path: str | Path, data: dict[str, object]) -> FlowResult:
         """Run a flow from the beginning. Pauses at first checkpoint."""
         resolved_path = str(Path(flow_path).resolve())
         flow = load_flow(resolved_path)
@@ -41,9 +39,7 @@ class FlowRunner:
         flow_data = flow.validate_data(state.data)
         return self._execute(state, flow, flow_data)
 
-    def _execute(
-        self, state: FlowState, flow: Flow, flow_data: FlowData
-    ) -> FlowResult:
+    def _execute(self, state: FlowState, flow: Flow, flow_data: FlowData) -> FlowResult:
         """Execute steps from current index until checkpoint or end."""
         while state.current_index < len(flow.steps):
             step = flow.steps[state.current_index]

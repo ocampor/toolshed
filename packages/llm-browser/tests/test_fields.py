@@ -24,13 +24,13 @@ def page() -> MagicMock:
 def testfield_selector() -> None:
     el_id, selector = field_selector({"id": "myfield"})
     assert el_id == "myfield"
-    assert selector == "#myfield"
+    assert selector == '[id="myfield"]'
 
 
 def testfield_selector_numeric_id() -> None:
     el_id, selector = field_selector({"id": 123})
     assert el_id == "123"
-    assert selector == "#123"
+    assert selector == '[id="123"]'
 
 
 def testjs_clear_field(page: MagicMock) -> None:
@@ -51,14 +51,14 @@ def testjs_clear_field_with_focus(page: MagicMock) -> None:
 
 def test_fill_text_basic(page: MagicMock) -> None:
     fill_text(page, {"id": "f1", "value": "hello"})
-    page.click.assert_called_once_with("#f1")
-    page.fill.assert_called_once_with("#f1", "hello")
+    page.click.assert_called_once_with('[id="f1"]')
+    page.fill.assert_called_once_with('[id="f1"]', "hello")
 
 
 def test_fill_text_clear_first(page: MagicMock) -> None:
     fill_text(page, {"id": "f1", "value": "hello", "clear_first": True})
     page.evaluate.assert_called_once()  # JS clear
-    page.fill.assert_called_once_with("#f1", "hello")
+    page.fill.assert_called_once_with('[id="f1"]', "hello")
 
 
 # --- fill_select ---
@@ -66,7 +66,7 @@ def test_fill_text_clear_first(page: MagicMock) -> None:
 
 def test_fill_select(page: MagicMock) -> None:
     fill_select(page, {"id": "s1", "value": "02"})
-    page.select_option.assert_called_once_with("#s1", "02")
+    page.select_option.assert_called_once_with('[id="s1"]', "02")
 
 
 # --- fill_checkbox ---
@@ -75,7 +75,7 @@ def test_fill_select(page: MagicMock) -> None:
 def test_fill_checkbox_needs_click(page: MagicMock) -> None:
     page.evaluate.return_value = False
     fill_checkbox(page, {"id": "c1", "checked": True, "ui_click": True})
-    page.click.assert_called_once_with("#c1")
+    page.click.assert_called_once_with('[id="c1"]')
 
 
 def test_fill_checkbox_already_checked(page: MagicMock) -> None:
@@ -89,7 +89,7 @@ def test_fill_checkbox_already_checked(page: MagicMock) -> None:
 
 def test_execute_field_dispatches(page: MagicMock) -> None:
     execute_field(page, {"type": "text", "id": "f1", "value": "v"})
-    page.click.assert_called_once_with("#f1")
+    page.click.assert_called_once_with('[id="f1"]')
 
 
 def test_execute_field_unknown_type(page: MagicMock) -> None:

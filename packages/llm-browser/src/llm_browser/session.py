@@ -46,9 +46,7 @@ class BrowserSession:
         if self._state_file.exists():
             self._state_file.unlink()
 
-    def launch(
-        self, url: str | None = None, headed: bool = True
-    ) -> SessionResult:
+    def launch(self, url: str | None = None, headed: bool = True) -> SessionResult:
         """Launch Chrome as a background process and connect via CDP."""
         self._ensure_dirs()
         pid, cdp_url = launch_chrome(self._user_data_dir, url, headed)
@@ -63,17 +61,13 @@ class BrowserSession:
         page = self.connect()
         screenshot = str(self.take_screenshot()) if url else None
 
-        return SessionResult(
-            status="open", url=page.url, screenshot=screenshot
-        )
+        return SessionResult(status="open", url=page.url, screenshot=screenshot)
 
     def connect(self) -> Page:
         """Connect to a running Chrome via CDP and return the active page."""
         info = self._load_state()
         if info is None:
-            raise RuntimeError(
-                "No browser session. Run 'llm-browser open' first."
-            )
+            raise RuntimeError("No browser session. Run 'llm-browser open' first.")
         if not is_process_alive(info.pid):
             self._clear_state()
             raise RuntimeError(
@@ -85,7 +79,7 @@ class BrowserSession:
 
         contexts = self._browser.contexts
         if contexts and contexts[0].pages:
-            self._page = contexts[0].pages[0]
+            self._page = contexts[0].pages[-1]
         else:
             ctx = contexts[0] if contexts else self._browser.new_context()
             self._page = ctx.new_page()

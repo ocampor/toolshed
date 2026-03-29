@@ -22,7 +22,12 @@ def _output(data: object) -> None:
 
 
 @click.group()
-@click.option("--session", "session_id", default="default", help="Session ID for concurrent browsers.")
+@click.option(
+    "--session",
+    "session_id",
+    default="default",
+    help="Session ID for concurrent browsers.",
+)
 @click.pass_context
 def main(ctx: click.Context, session_id: str) -> None:
     """LLM-friendly browser automation with YAML flows."""
@@ -55,7 +60,9 @@ def run(ctx: click.Context, flow_path: str, data_json: str) -> None:
 
 
 @main.command()
-@click.option("--data", "data_json", default="{}", help="JSON data to merge before resuming.")
+@click.option(
+    "--data", "data_json", default="{}", help="JSON data to merge before resuming."
+)
 @click.pass_context
 def resume(ctx: click.Context, data_json: str) -> None:
     """Resume a paused flow from the last checkpoint."""
@@ -86,7 +93,9 @@ def eval_cmd(ctx: click.Context, js: str) -> None:
 
 
 @main.command("read-form")
-@click.option("--selector", default="input[type=text], input:not([type])", help="CSS selector.")
+@click.option(
+    "--selector", default="input[type=text], input:not([type])", help="CSS selector."
+)
 @click.pass_context
 def read_form(ctx: click.Context, selector: str) -> None:
     """Read all form field values matching a selector."""
@@ -97,7 +106,9 @@ def read_form(ctx: click.Context, selector: str) -> None:
 
 
 @main.command("dismiss-modal")
-@click.option("--selector", default=".modal.fade.in, .modal.show", help="Modal CSS selector.")
+@click.option(
+    "--selector", default=".modal.fade.in, .modal.show", help="Modal CSS selector."
+)
 @click.pass_context
 def dismiss_modal(ctx: click.Context, selector: str) -> None:
     """Dismiss a modal dialog if present."""

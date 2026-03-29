@@ -2,11 +2,13 @@
 
 import pytest
 
-from llm_browser.models import Flow, FlowData, FlowResult, FlowState, Param, SessionInfo, Step
+from llm_browser.models import Flow, FlowData, FlowResult, FlowState, SessionInfo, Step
 
 
 def test_session_info_round_trip() -> None:
-    info = SessionInfo(pid=1234, cdp_url="ws://127.0.0.1:9222/devtools", user_data_dir="/tmp/ud")
+    info = SessionInfo(
+        pid=1234, cdp_url="ws://127.0.0.1:9222/devtools", user_data_dir="/tmp/ud"
+    )
     json_str = info.model_dump_json()
     restored = SessionInfo.model_validate_json(json_str)
     assert restored == info
@@ -120,7 +122,7 @@ def test_flow_validate_data_extra_keys_passed_through() -> None:
     assert data.extra == "value"  # type: ignore[attr-defined]
 
 
-def test_flow_validate_data_unknown_registered_param() -> None:
+def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[Step(name="s1")])
-    with pytest.raises(ValueError, match="Unknown param"):
+    with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})

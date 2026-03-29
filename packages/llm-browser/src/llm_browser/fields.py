@@ -50,8 +50,28 @@ def fill_autocomplete(page: Page, field: dict[str, object]) -> None:
     page.click(selector)
     page.type(selector, str(field["search"]), delay=50)
     time.sleep(1)  # wait for dropdown
-    page.click(f"text={field['option']}")
+    option = str(field["option"])
+    selected = _select_autocomplete_option(page, option)
+    if not selected:
+        page.click(f"text={option}")
     time.sleep(0.5)
+
+
+def _select_autocomplete_option(page: Page, option: str) -> bool:
+    """Find and click a matching autocomplete menu item. Returns True if clicked."""
+    items = page.locator(".ui-menu-item:visible")
+    count = items.count()
+    if count == 0:
+        return False
+    if count == 1:
+        items.first.click()
+        return True
+    for i in range(count):
+        if items.nth(i).text_content() == option:
+            items.nth(i).click()
+            return True
+    items.first.click()
+    return True
 
 
 @register_field("select")

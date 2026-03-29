@@ -8,21 +8,17 @@ import yaml
 
 from llm_browser.flows import FlowRunner, load_flow
 from llm_browser.steps import (
-    apply_wait,
     dispatch_action,
     dispatch_eval,
-    dispatch_fields,
     execute_step,
     maybe_checkpoint,
     should_skip,
 )
-from llm_browser.models import FlowData, FlowResult, FlowState, Step
+from llm_browser.models import FlowData, FlowState, Step
 from llm_browser.session import BrowserSession
 
 
-def _write_flow(
-    tmp_path: Path, steps: list[dict], params: dict | None = None
-) -> Path:
+def _write_flow(tmp_path: Path, steps: list[dict], params: dict | None = None) -> Path:
     path = tmp_path / "flow.yaml"
     flow_dict: dict = {"steps": steps}
     if params:
@@ -128,9 +124,7 @@ def testdispatch_eval_no_eval() -> None:
 
 def testmaybe_checkpoint_returns_result(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    result = maybe_checkpoint(
-        session, Step(name="check", checkpoint=True), "eval_data"
-    )
+    result = maybe_checkpoint(session, Step(name="check", checkpoint=True), "eval_data")
     assert result is not None
     assert result.step == "check"
     assert result.data == "eval_data"

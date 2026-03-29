@@ -17,12 +17,20 @@ register_param = get_registry().register
 
 
 def resolve_params(raw_params: list[str | dict[str, Any]]) -> dict[str, Param]:
-    """Resolve a list of string refs and inline dicts into name->Param mapping."""
+    """Resolve a list of string refs and inline dicts into name->Param mapping.
+
+    Bare strings are looked up in the registry; if not registered, they
+    default to Param(required=True) so flows can declare params without
+    pre-registering every name.
+    """
     registry = get_registry()
     resolved: dict[str, Param] = {}
     for entry in raw_params:
         if isinstance(entry, str):
-            resolved[entry] = registry.get(entry)
+            try:
+                resolved[entry] = registry.get(entry)
+            except ValueError:
+                resolved[entry] = Param(required=True)
         else:
             for name, definition in entry.items():
                 resolved[name] = Param.model_validate(definition)

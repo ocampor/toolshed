@@ -8,7 +8,7 @@ from llm_browser.scripts import load_js
 def field_selector(field: dict[str, object]) -> tuple[str, str]:
     """Extract element ID and CSS selector from a field dict."""
     el_id = str(field["id"])
-    return el_id, f"#{el_id}"
+    return el_id, f'[id="{el_id}"]'
 
 
 def js_clear_field(page: Page, el_id: str, focus: bool = False) -> None:
