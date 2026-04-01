@@ -1,11 +1,27 @@
-"""Tests for the 11 minimal declarative actions."""
+"""Tests for the 12 minimal declarative actions."""
 
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from llm_browser.actions import execute_action
-from llm_browser.models import Step
+from llm_browser.models import (
+    CheckStep,
+    ClickStep,
+    DomStep,
+    DownloadStep,
+    EvalStep,
+    FillStep,
+    GotoStep,
+    PickStep,
+    ReadStep,
+    ScreenshotStep,
+    SelectStep,
+    TypeStep,
+    WaitStep,
+    validate_step,
+)
 from llm_browser.session import BrowserSession
 
 
@@ -28,7 +44,7 @@ def session(tmp_path: object) -> BrowserSession:
 
 
 def test_click(session: BrowserSession) -> None:
-    step = Step(name="s", action="click", selector="#btn")
+    step = ClickStep(name="s", action="click", selector="#btn")
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.click.assert_called_once()
@@ -38,7 +54,7 @@ def test_click(session: BrowserSession) -> None:
 
 
 def test_fill(session: BrowserSession) -> None:
-    step = Step(name="s", action="fill", selector="#input", value="hello")
+    step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.fill.assert_called_once_with("hello")
@@ -48,7 +64,9 @@ def test_fill(session: BrowserSession) -> None:
 
 
 def test_type(session: BrowserSession) -> None:
-    step = Step(name="s", action="type", selector="#search", value="query", delay=50)
+    step = TypeStep(
+        name="s", action="type", selector="#search", value="query", delay=50
+    )
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.type.assert_called_once_with("query", delay=50)
@@ -58,7 +76,7 @@ def test_type(session: BrowserSession) -> None:
 
 
 def test_select(session: BrowserSession) -> None:
-    step = Step(name="s", action="select", selector="#dropdown", value="opt2")
+    step = SelectStep(name="s", action="select", selector="#dropdown", value="opt2")
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.select_option.assert_called_once_with("opt2")
@@ -68,14 +86,14 @@ def test_select(session: BrowserSession) -> None:
 
 
 def test_check(session: BrowserSession) -> None:
-    step = Step(name="s", action="check", selector="#cb")
+    step = CheckStep(name="s", action="check", selector="#cb")
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.check.assert_called_once()
 
 
 def test_uncheck(session: BrowserSession) -> None:
-    step = Step(name="s", action="check", selector="#cb", checked=False)
+    step = CheckStep(name="s", action="check", selector="#cb", checked=False)
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.uncheck.assert_called_once()
@@ -95,7 +113,7 @@ def test_pick(session: BrowserSession) -> None:
     locator.nth.side_effect = lambda i: [item1, item2][i]
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
-    step = Step(name="s", action="pick", selector=".option", value="Banana")
+    step = PickStep(name="s", action="pick", selector=".option", value="Banana")
     execute_action(session, step)
     item2.click.assert_called_once()
 
@@ -104,7 +122,7 @@ def test_pick(session: BrowserSession) -> None:
 
 
 def test_goto(session: BrowserSession) -> None:
-    step = Step(name="s", action="goto", url="https://example.com")
+    step = GotoStep(name="s", action="goto", url="https://example.com")
     execute_action(session, step)
     session._page.goto.assert_called_once_with(  # type: ignore[union-attr]
         "https://example.com", wait_until="domcontentloaded"
@@ -115,7 +133,7 @@ def test_goto(session: BrowserSession) -> None:
 
 
 def test_wait(session: BrowserSession) -> None:
-    step = Step(name="s", action="wait", state="load", timeout=5000)
+    step = WaitStep(name="s", action="wait", state="load", timeout=5000)
     execute_action(session, step)
     session._page.wait_for_load_state.assert_called_once_with(  # type: ignore[union-attr]
         "load", timeout=5000
@@ -126,7 +144,7 @@ def test_wait(session: BrowserSession) -> None:
 
 
 def test_screenshot(session: BrowserSession) -> None:
-    step = Step(name="s", action="screenshot")
+    step = ScreenshotStep(name="s", action="screenshot")
     result = execute_action(session, step)
     assert result is not None
 
@@ -144,7 +162,7 @@ def test_read(session: BrowserSession) -> None:
     locator.all.return_value = [row]
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
-    step = Step(
+    step = ReadStep(
         name="s",
         action="read",
         selector="tr",
@@ -162,23 +180,52 @@ def test_dom(session: BrowserSession) -> None:
     locator.first.evaluate.return_value = "<div><p>Hello</p></div>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
-    step = Step(name="s", action="dom", selector="#content")
+    step = DomStep(name="s", action="dom", selector="#content")
     result = execute_action(session, step)
     assert "Hello" in result
+
+
+# --- download ---
+
+
+def test_download(session: BrowserSession, tmp_path: object) -> None:
+    from contextlib import contextmanager
+    from pathlib import Path
+
+    dest = Path(str(tmp_path)) / "downloads" / "file.pdf"
+    mock_download = MagicMock()
+
+    @contextmanager
+    def fake_expect_download():
+        yield MagicMock(value=mock_download)
+
+    session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
+
+    step = DownloadStep(
+        name="s", action="download", selector="#dl-link", path=str(dest)
+    )
+    result = execute_action(session, step)
+    assert result == str(dest)
+    mock_download.save_as.assert_called_once_with(str(dest))
+
+
+def test_download_requires_path(session: BrowserSession) -> None:
+    step = DownloadStep(name="s", action="download", selector="#dl-link")
+    with pytest.raises(ValueError, match="path"):
+        execute_action(session, step)
 
 
 # --- no action ---
 
 
 def test_no_action_returns_none(session: BrowserSession) -> None:
-    step = Step(name="s")
+    step = EvalStep(name="s")
     assert execute_action(session, step) is None
 
 
 # --- unknown action ---
 
 
-def test_unknown_action_raises(session: BrowserSession) -> None:
-    step = Step(name="s", action="nonexistent")
-    with pytest.raises(ValueError):
-        execute_action(session, step)
+def test_unknown_action_raises() -> None:
+    with pytest.raises(ValidationError):
+        validate_step({"name": "s", "action": "nonexistent"})

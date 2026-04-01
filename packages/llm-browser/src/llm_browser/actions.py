@@ -1,14 +1,29 @@
-"""Action registry: 11 minimal declarative actions for browser automation."""
+"""Action registry: 12 minimal declarative actions for browser automation."""
 
 from functools import lru_cache
 from typing import Any, Callable
 
 from yaml_engine.registry import Registry
 
-from llm_browser.models import Step
+from llm_browser.models import (
+    BaseStep,
+    CheckStep,
+    ClickStep,
+    DomStep,
+    DownloadStep,
+    FillStep,
+    GotoStep,
+    PickStep,
+    ReadStep,
+    ScreenshotStep,
+    SelectStep,
+    Step,
+    TypeStep,
+    WaitStep,
+)
 from llm_browser.session import BrowserSession
 
-ActionHandler = Callable[[BrowserSession, Step], Any]
+ActionHandler = Callable[[BrowserSession, BaseStep], Any]
 
 
 @lru_cache(maxsize=1)
@@ -30,72 +45,60 @@ def execute_action(session: BrowserSession, step: Step) -> Any:
 
 
 @register_action("click")
-def action_click(session: BrowserSession, step: Step) -> None:
+def action_click(session: BrowserSession, step: ClickStep) -> None:
     assert step.selector is not None
     session.find(step.selector).click()
 
 
 @register_action("fill")
-def action_fill(session: BrowserSession, step: Step) -> None:
+def action_fill(session: BrowserSession, step: FillStep) -> None:
     assert step.selector is not None
-    value: str = getattr(step, "value", "")
-    session.find(step.selector).fill(value)
+    session.find(step.selector).fill(step.value)
 
 
 @register_action("type")
-def action_type(session: BrowserSession, step: Step) -> None:
+def action_type(session: BrowserSession, step: TypeStep) -> None:
     assert step.selector is not None
-    value: str = getattr(step, "value", "")
-    delay: int = getattr(step, "delay", 0) or 0
-    session.find(step.selector).type(value, delay=delay)
+    session.find(step.selector).type(step.value, delay=step.delay)
 
 
 @register_action("select")
-def action_select(session: BrowserSession, step: Step) -> None:
+def action_select(session: BrowserSession, step: SelectStep) -> None:
     assert step.selector is not None
-    value: str = getattr(step, "value", "")
-    session.find(step.selector).select_option(value)
+    session.find(step.selector).select_option(step.value)
 
 
 @register_action("check")
-def action_check(session: BrowserSession, step: Step) -> None:
+def action_check(session: BrowserSession, step: CheckStep) -> None:
     assert step.selector is not None
-    checked: bool = getattr(step, "checked", True)
     element = session.find(step.selector)
-    if checked:
+    if step.checked:
         element.check()
     else:
         element.uncheck()
 
 
 @register_action("pick")
-def action_pick(session: BrowserSession, step: Step) -> None:
+def action_pick(session: BrowserSession, step: PickStep) -> None:
     assert step.selector is not None
-    value: str = getattr(step, "value", "")
-    session.pick(step.selector, value)
+    session.pick(step.selector, step.value)
 
 
 # --- Page actions ---
 
 
 @register_action("goto")
-def action_goto(session: BrowserSession, step: Step) -> None:
-    url: str = getattr(step, "url", "")
-    wait_until: str = (
-        getattr(step, "wait_until", "domcontentloaded") or "domcontentloaded"
-    )
-    session.goto(url, wait_until=wait_until)
+def action_goto(session: BrowserSession, step: GotoStep) -> None:
+    session.goto(step.url, wait_until=step.wait_until)
 
 
 @register_action("wait")
-def action_wait(session: BrowserSession, step: Step) -> None:
-    state: str = getattr(step, "state", "domcontentloaded") or "domcontentloaded"
-    timeout: int = getattr(step, "timeout", 10_000) or 10_000
-    session.wait_for_load_state(state, timeout=timeout)
+def action_wait(session: BrowserSession, step: WaitStep) -> None:
+    session.wait_for_load_state(step.state, timeout=step.timeout)
 
 
 @register_action("screenshot")
-def action_screenshot(session: BrowserSession, step: Step) -> str:
+def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> str:
     return str(session.take_screenshot())
 
 
@@ -103,14 +106,23 @@ def action_screenshot(session: BrowserSession, step: Step) -> str:
 
 
 @register_action("read")
-def action_read(session: BrowserSession, step: Step) -> list[dict[str, str | None]]:
+def action_read(session: BrowserSession, step: ReadStep) -> list[dict[str, str | None]]:
     assert step.selector is not None
-    extract: dict[str, dict[str, str]] = getattr(step, "extract", {})
-    return session.parse_elements(step.selector, extract)
+    return session.parse_elements(step.selector, step.extract)
 
 
 @register_action("dom")
-def action_dom(session: BrowserSession, step: Step) -> str:
+def action_dom(session: BrowserSession, step: DomStep) -> str:
     assert step.selector is not None
-    max_depth: int = getattr(step, "max_depth", 0) or 0
-    return session.dom(step.selector, max_depth=max_depth)
+    return session.dom(step.selector, max_depth=step.max_depth)
+
+
+# --- File actions ---
+
+
+@register_action("download")
+def action_download(session: BrowserSession, step: DownloadStep) -> str:
+    assert step.selector is not None
+    if not step.path:
+        raise ValueError("download action requires 'path' field")
+    return str(session.download_file(step.selector, step.path))

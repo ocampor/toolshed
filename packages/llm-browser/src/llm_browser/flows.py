@@ -5,7 +5,14 @@ from typing import Any
 
 import yaml
 
-from llm_browser.models import Flow, FlowData, FlowResult, FlowState, Step
+from llm_browser.models import (
+    Flow,
+    FlowData,
+    FlowResult,
+    FlowState,
+    Step,
+    validate_step,
+)
 from llm_browser.selector_map import load_selector_map, resolve_refs
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step
@@ -21,7 +28,7 @@ def resolve_step_refs(step: Step, selector_map: dict[str, dict[str, Any]]) -> St
     """Resolve selector-map references in a step, returning a new Step."""
     raw = step.model_dump(exclude_none=True)
     resolved = resolve_refs(raw, selector_map)
-    return Step.model_validate(resolved)
+    return validate_step(resolved)
 
 
 class FlowRunner:

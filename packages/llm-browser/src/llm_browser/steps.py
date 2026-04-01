@@ -7,7 +7,7 @@ from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
-from llm_browser.models import FlowData, FlowResult, Step
+from llm_browser.models import FlowData, FlowResult, Step, validate_step
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
 
@@ -38,9 +38,7 @@ def execute_step(
 ) -> FlowResult | None:
     """Execute a single flow step. Returns FlowResult at checkpoint, else None."""
     raw = step.model_dump(exclude_none=True)
-    resolved = Step.model_validate(
-        resolve_templates_in_dict(raw, data.to_template_dict())
-    )
+    resolved = validate_step(resolve_templates_in_dict(raw, data.to_template_dict()))
     if should_skip(session, resolved, data):
         return None
     action_result = execute_action(session, resolved)

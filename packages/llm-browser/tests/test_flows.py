@@ -8,7 +8,7 @@ import yaml
 
 from llm_browser.flows import FlowRunner, load_flow
 from llm_browser.steps import execute_step, should_skip
-from llm_browser.models import FlowData, FlowState, Step
+from llm_browser.models import EvalStep, FlowData, FlowState
 from llm_browser.session import BrowserSession
 
 
@@ -56,31 +56,31 @@ def test_load_flow_validates(tmp_path: Path) -> None:
 
 def test_should_skip_no_when(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    assert should_skip(session, Step(name="s"), FlowData()) is False
+    assert should_skip(session, EvalStep(name="s"), FlowData()) is False
 
 
 def test_should_skip_truthy_passes(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
+    step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
     assert should_skip(session, step, FlowData(enabled=True)) is False
 
 
 def test_should_skip_truthy_fails(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
+    step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
     assert should_skip(session, step, FlowData(enabled=False)) is True
 
 
 def test_should_skip_eq(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(name="s", when=[{"field": "mode", "op": "eq", "value": "fast"}])
+    step = EvalStep(name="s", when=[{"field": "mode", "op": "eq", "value": "fast"}])
     assert should_skip(session, step, FlowData(mode="fast")) is False
     assert should_skip(session, step, FlowData(mode="slow")) is True
 
 
 def test_should_skip_not_null(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(name="s", when=[{"field": "cp", "op": "not_null"}])
+    step = EvalStep(name="s", when=[{"field": "cp", "op": "not_null"}])
     assert should_skip(session, step, FlowData(cp="05330")) is False
     assert should_skip(session, step, FlowData(cp=None)) is True
     assert should_skip(session, step, FlowData()) is True
@@ -88,7 +88,7 @@ def test_should_skip_not_null(tmp_path: Path) -> None:
 
 def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(
+    step = EvalStep(
         name="s",
         when=[
             {"field": "enabled", "op": "is_truthy"},
@@ -101,7 +101,7 @@ def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
 
 def test_should_skip_element_exists(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(
+    step = EvalStep(
         name="s",
         when=[{"element_exists": {"selector": "#btn"}}],
     )
@@ -118,7 +118,7 @@ def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     session.get_page.return_value.evaluate.return_value = '{"cp": "05330"}'
 
-    step = Step(name="check", eval="someJs()", checkpoint=True)
+    step = EvalStep(name="check", eval="someJs()", checkpoint=True)
     result = execute_step(session, step, FlowData())
 
     assert result is not None
@@ -128,7 +128,7 @@ def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
 
 def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    step = Step(
+    step = EvalStep(
         name="optional",
         when=[{"field": "needed", "op": "is_truthy"}],
         eval="something()",
@@ -143,7 +143,7 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
     page = session.get_page.return_value
     page.evaluate.return_value = "ok"
 
-    step = Step(name="t", eval="document.getElementById('{{ fid }}').value")
+    step = EvalStep(name="t", eval="document.getElementById('{{ fid }}').value")
     execute_step(session, step, FlowData(fid="myfield"))
     page.evaluate.assert_called_once_with("document.getElementById('myfield').value")
 
