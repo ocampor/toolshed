@@ -1,10 +1,12 @@
 """Flow runner: load YAML flows and orchestrate execution with checkpoint/resume."""
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-from llm_browser.models import Flow, FlowData, FlowResult, FlowState
+from llm_browser.models import Flow, FlowData, FlowResult, FlowState, Step
+from llm_browser.selector_map import load_selector_map, resolve_refs
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step
 
@@ -15,12 +17,26 @@ def load_flow(flow_path: str | Path) -> Flow:
     return Flow.model_validate(raw)
 
 
+def resolve_step_refs(step: Step, selector_map: dict[str, dict[str, Any]]) -> Step:
+    """Resolve selector-map references in a step, returning a new Step."""
+    raw = step.model_dump(exclude_none=True)
+    resolved = resolve_refs(raw, selector_map)
+    return Step.model_validate(resolved)
+
+
 class FlowRunner:
     """Runs YAML flows with checkpoint/resume support via disk persistence."""
 
-    def __init__(self, session: BrowserSession) -> None:
+    def __init__(
+        self,
+        session: BrowserSession,
+        selector_map_path: Path | None = None,
+    ) -> None:
         self._session = session
         self._state_file = session.session_dir / "flow_state.json"
+        self._selector_map: dict[str, dict[str, Any]] | None = None
+        if selector_map_path and selector_map_path.exists():
+            self._selector_map = load_selector_map(selector_map_path)
 
     def run(self, flow_path: str | Path, data: dict[str, object]) -> FlowResult:
         """Run a flow from the beginning. Pauses at first checkpoint."""
@@ -42,7 +58,7 @@ class FlowRunner:
     def _execute(self, state: FlowState, flow: Flow, flow_data: FlowData) -> FlowResult:
         """Execute steps from current index until checkpoint or end."""
         while state.current_index < len(flow.steps):
-            step = flow.steps[state.current_index]
+            step = self._prepare_step(flow.steps[state.current_index])
             state.current_index += 1
 
             result = execute_step(self._session, step, flow_data)
@@ -53,6 +69,12 @@ class FlowRunner:
         self._clear_state()
         last_name = flow.steps[-1].name if flow.steps else "end"
         return FlowResult(step=last_name, completed=True)
+
+    def _prepare_step(self, step: Step) -> Step:
+        """Resolve selector-map references if a selector map is loaded."""
+        if self._selector_map:
+            return resolve_step_refs(step, self._selector_map)
+        return step
 
     def _save_state(self, state: FlowState) -> None:
         self._state_file.write_text(state.model_dump_json())

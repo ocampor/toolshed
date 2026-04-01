@@ -1,19 +1,20 @@
-"""Browser session: CDP connection, page management, state persistence."""
+"""BrowserSession: browser lifecycle + direct interaction API."""
 
 from pathlib import Path
 
-from playwright.sync_api import Browser, Page, Playwright, sync_playwright
+from playwright.sync_api import Browser, Locator, Page, Playwright, sync_playwright
 
 from llm_browser.chrome import is_process_alive, kill_chrome, launch_chrome
 from llm_browser.constants import DEFAULT_STATE_DIR
 from llm_browser.models import SessionInfo, SessionResult
+from llm_browser.selectors import PageLike, Selector, expect_single, resolve_selector
 
 
 class BrowserSession:
-    """Manages a persistent Chrome browser via CDP.
+    """Browser lifecycle management + page interaction API.
 
-    Each session has its own directory under state_dir/sessions/{session_id}/
-    containing the state file, screenshots, user data, and flow state.
+    Each instance manages a persistent Chrome session via CDP and
+    provides high-level methods for page interaction.
     """
 
     def __init__(
@@ -28,6 +29,8 @@ class BrowserSession:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._page: Page | None = None
+
+    # --- Lifecycle ---
 
     def _ensure_dirs(self) -> None:
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -50,18 +53,17 @@ class BrowserSession:
         """Launch Chrome as a background process and connect via CDP."""
         self._ensure_dirs()
         pid, cdp_url = launch_chrome(self._user_data_dir, url, headed)
-
         info = SessionInfo(
-            pid=pid,
-            cdp_url=cdp_url,
-            user_data_dir=str(self._user_data_dir),
+            pid=pid, cdp_url=cdp_url, user_data_dir=str(self._user_data_dir)
         )
         self._save_state(info)
-
-        page = self.connect()
+        self.connect()
         screenshot = str(self.take_screenshot()) if url else None
-
-        return SessionResult(status="open", url=page.url, screenshot=screenshot)
+        return SessionResult(
+            status="open",
+            url=self._page.url,
+            screenshot=screenshot,  # type: ignore[union-attr]
+        )
 
     def connect(self) -> Page:
         """Connect to a running Chrome via CDP and return the active page."""
@@ -73,36 +75,33 @@ class BrowserSession:
             raise RuntimeError(
                 "Browser process is no longer running. Run 'llm-browser open' again."
             )
-
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.connect_over_cdp(info.cdp_url)
-
         contexts = self._browser.contexts
         if contexts and contexts[0].pages:
             self._page = contexts[0].pages[-1]
         else:
             ctx = contexts[0] if contexts else self._browser.new_context()
             self._page = ctx.new_page()
-
         return self._page
 
     def get_page(self) -> Page:
-        """Get the current page, connecting via CDP if needed."""
+        """Get the current Playwright page, connecting if needed."""
         if self._page is None:
             self.connect()
         assert self._page is not None
         return self._page
 
-    def take_screenshot(self) -> Path:
-        """Take a screenshot and return the file path."""
-        self._ensure_dirs()
-        page = self.get_page()
-        page.screenshot(path=str(self._screenshot_path), full_page=False)
-        return self._screenshot_path
-
-    def evaluate_js(self, js: str) -> object:
-        """Evaluate JavaScript on the current page."""
-        return self.get_page().evaluate(js)
+    def latest_tab(self) -> Page:
+        """Switch to the most recently opened tab and return it."""
+        if self._browser is None:
+            self.connect()
+        assert self._browser is not None
+        contexts = self._browser.contexts
+        if not contexts or not contexts[0].pages:
+            raise RuntimeError("No tabs open.")
+        self._page = contexts[0].pages[-1]
+        return self._page
 
     def close(self) -> SessionResult:
         """Kill the Chrome process and clean up."""
@@ -113,11 +112,9 @@ class BrowserSession:
             self._pw.stop()
             self._pw = None
         self._page = None
-
         info = self._load_state()
         if info is not None:
             kill_chrome(info.pid)
-
         self._clear_state()
         return SessionResult(status="closed")
 
@@ -130,3 +127,99 @@ class BrowserSession:
             return SessionResult(status="open", cdp_url=info.cdp_url)
         self._clear_state()
         return SessionResult(status="closed")
+
+    def take_screenshot(self) -> Path:
+        """Take a screenshot and return the file path."""
+        self._ensure_dirs()
+        self.get_page().screenshot(path=str(self._screenshot_path), full_page=False)
+        return self._screenshot_path
+
+    # --- Interaction ---
+
+    def goto(self, url: str, wait_until: str = "domcontentloaded") -> None:
+        self.get_page().goto(url, wait_until=wait_until)  # type: ignore[arg-type]
+
+    def find(
+        self, selector: Selector, state: str = "visible", timeout: int = 10_000
+    ) -> Locator:
+        """Find exactly one element. Raises ValueError if multiple match."""
+        element = expect_single(resolve_selector(self.get_page(), selector), selector)
+        element.wait_for(state=state, timeout=timeout)  # type: ignore[arg-type]
+        return element
+
+    def find_all(
+        self, selector: Selector, state: str = "attached", timeout: int = 10_000
+    ) -> Locator:
+        """Find all matching elements, waiting for at least one."""
+        locator = resolve_selector(self.get_page(), selector)
+        locator.first.wait_for(state=state, timeout=timeout)  # type: ignore[arg-type]
+        return locator
+
+    def element_exists(self, selector: Selector, timeout: int = 3_000) -> bool:
+        """Check if element is present. Never raises."""
+        try:
+            locator = resolve_selector(self.get_page(), selector)
+            locator.first.wait_for(state="attached", timeout=timeout)
+            return True
+        except TimeoutError:
+            return False
+
+    def wait_for_load_state(
+        self, state: str = "domcontentloaded", timeout: int = 10_000
+    ) -> None:
+        """Wait for page load state (domcontentloaded, load, networkidle)."""
+        self.get_page().wait_for_load_state(state, timeout=timeout)  # type: ignore[arg-type]
+
+    def pick(self, selector: Selector, value: str) -> None:
+        """Click the element matching text from a list of elements."""
+        locator = self.find_all(selector)
+        count = locator.count()
+        if count == 1:
+            locator.first.click()
+            return
+        for i in range(count):
+            if locator.nth(i).text_content() == value:
+                locator.nth(i).click()
+                return
+        raise ValueError(f"No element with text '{value}' for selector {selector!r}")
+
+    def frame(self, selector: Selector, timeout: int = 10_000) -> PageLike:
+        """Enter an iframe, returning the Frame."""
+        element = expect_single(resolve_selector(self.get_page(), selector), selector)
+        element.wait_for(state="attached", timeout=timeout)
+        handle = element.element_handle()
+        if handle is None:
+            raise RuntimeError(f"Could not get handle for selector {selector}")
+        content_frame = handle.content_frame()
+        if content_frame is None:
+            raise RuntimeError(f"Could not find frame for selector {selector}")
+        return content_frame
+
+    def parse_elements(
+        self,
+        selector: Selector,
+        extract: dict[str, dict[str, str]],
+    ) -> list[dict[str, str | None]]:
+        """Extract structured data from matching elements."""
+        results: list[dict[str, str | None]] = []
+        for row in resolve_selector(self.get_page(), selector).all():
+            record: dict[str, str | None] = {}
+            for key, spec in extract.items():
+                child = row.locator(spec["child_selector"])
+                attr = spec.get("attribute", "textContent")
+                match attr:
+                    case "textContent":
+                        record[key] = child.text_content()
+                    case "value":
+                        record[key] = child.input_value()
+                    case _:
+                        record[key] = child.get_attribute(attr)
+            results.append(record)
+        return results
+
+    def dom(self, selector: Selector, max_depth: int = 0) -> str:
+        """Return cleaned HTML snippet of an element."""
+        from llm_browser.html import clean_html
+
+        raw: str = self.find(selector).evaluate("el => el.outerHTML")
+        return clean_html(raw, max_depth)

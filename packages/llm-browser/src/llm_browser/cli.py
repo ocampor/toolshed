@@ -4,10 +4,7 @@ import json
 
 import click
 
-from llm_browser.actions import execute_action
 from llm_browser.flows import FlowRunner
-from llm_browser.models import Step
-from llm_browser.scripts import load_js
 from llm_browser.session import BrowserSession
 
 
@@ -47,13 +44,34 @@ def open(ctx: click.Context, url: str, headed: bool) -> None:
 
 
 @main.command()
+@click.option("--url", required=True, help="URL to navigate to.")
+@click.pass_context
+def goto(ctx: click.Context, url: str) -> None:
+    """Navigate to a URL on the current session."""
+    session: BrowserSession = ctx.obj["session"]
+    session.goto(url)
+    _output({"url": session.get_page().url})
+
+
+@main.command()
 @click.option("--flow", "flow_path", required=True, help="Path to YAML flow file.")
 @click.option("--data", "data_json", default="{}", help="JSON data for template vars.")
+@click.option(
+    "--selector-map",
+    "selector_map_path",
+    default=None,
+    help="Path to selector_map.yaml for symbolic refs.",
+)
 @click.pass_context
-def run(ctx: click.Context, flow_path: str, data_json: str) -> None:
+def run(
+    ctx: click.Context, flow_path: str, data_json: str, selector_map_path: str | None
+) -> None:
     """Run a YAML flow. Pauses at first checkpoint."""
+    from pathlib import Path
+
     session: BrowserSession = ctx.obj["session"]
-    runner = FlowRunner(session)
+    map_path = Path(selector_map_path) if selector_map_path else None
+    runner = FlowRunner(session, selector_map_path=map_path)
     data = json.loads(data_json)
     result = runner.run(flow_path, data)
     _output(result)
@@ -63,11 +81,20 @@ def run(ctx: click.Context, flow_path: str, data_json: str) -> None:
 @click.option(
     "--data", "data_json", default="{}", help="JSON data to merge before resuming."
 )
+@click.option(
+    "--selector-map",
+    "selector_map_path",
+    default=None,
+    help="Path to selector_map.yaml for symbolic refs.",
+)
 @click.pass_context
-def resume(ctx: click.Context, data_json: str) -> None:
+def resume(ctx: click.Context, data_json: str, selector_map_path: str | None) -> None:
     """Resume a paused flow from the last checkpoint."""
+    from pathlib import Path
+
     session: BrowserSession = ctx.obj["session"]
-    runner = FlowRunner(session)
+    map_path = Path(selector_map_path) if selector_map_path else None
+    runner = FlowRunner(session, selector_map_path=map_path)
     data = json.loads(data_json) if data_json != "{}" else None
     result = runner.resume(data)
     _output(result)
@@ -82,41 +109,47 @@ def screenshot(ctx: click.Context) -> None:
     _output({"screenshot": str(path)})
 
 
-@main.command("eval")
-@click.option("--js", required=True, help="JavaScript to evaluate.")
+@main.command()
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
 @click.pass_context
-def eval_cmd(ctx: click.Context, js: str) -> None:
-    """Evaluate JavaScript on the current page."""
+def find(ctx: click.Context, selector: str) -> None:
+    """Find a single element and output its outer HTML."""
     session: BrowserSession = ctx.obj["session"]
-    result = session.evaluate_js(js)
-    _output({"result": result})
+    element = session.find(selector)
+    html: str = element.evaluate("el => el.outerHTML")
+    _output({"html": html})
 
 
-@main.command("read-form")
-@click.option(
-    "--selector", default="input[type=text], input:not([type])", help="CSS selector."
-)
+@main.command("find-all")
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
 @click.pass_context
-def read_form(ctx: click.Context, selector: str) -> None:
-    """Read all form field values matching a selector."""
+def find_all(ctx: click.Context, selector: str) -> None:
+    """Find all matching elements and output their outer HTML."""
     session: BrowserSession = ctx.obj["session"]
-    page = session.get_page()
-    result = page.evaluate(load_js("read_form"), selector)
-    _output({"fields": result})
+    locator = session.find_all(selector)
+    count = locator.count()
+    items = [locator.nth(i).evaluate("el => el.outerHTML") for i in range(count)]
+    _output({"count": count, "items": items})
 
 
-@main.command("dismiss-modal")
-@click.option(
-    "--selector", default=".modal.fade.in, .modal.show", help="Modal CSS selector."
-)
+@main.command("latest-tab")
 @click.pass_context
-def dismiss_modal(ctx: click.Context, selector: str) -> None:
-    """Dismiss a modal dialog if present."""
+def latest_tab(ctx: click.Context) -> None:
+    """Switch to the most recently opened tab."""
     session: BrowserSession = ctx.obj["session"]
-    page = session.get_page()
-    step = Step(action="dismiss_modal", selector=selector)
-    execute_action(page, step)
-    _output({"dismissed": True})
+    page = session.latest_tab()
+    _output({"url": page.url})
+
+
+@main.command()
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option("--max-depth", default=0, help="Max nesting depth (0 = no limit).")
+@click.pass_context
+def dom(ctx: click.Context, selector: str, max_depth: int) -> None:
+    """Output cleaned DOM snippet of an element."""
+    session: BrowserSession = ctx.obj["session"]
+    html = session.dom(selector, max_depth=max_depth)
+    _output({"html": html})
 
 
 @main.command()

@@ -9,6 +9,7 @@ dependencies = [
     "playwright>=1.40",
     "pyyaml>=6.0",
     "yaml-engine",
+    "lxml[html_clean]>=5.0",
 ]
 
 [project.scripts]

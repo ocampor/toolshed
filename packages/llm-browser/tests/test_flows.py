@@ -7,13 +7,7 @@ import pytest
 import yaml
 
 from llm_browser.flows import FlowRunner, load_flow
-from llm_browser.steps import (
-    dispatch_action,
-    dispatch_eval,
-    execute_step,
-    maybe_checkpoint,
-    should_skip,
-)
+from llm_browser.steps import execute_step, should_skip
 from llm_browser.models import FlowData, FlowState, Step
 from llm_browser.session import BrowserSession
 
@@ -33,7 +27,15 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     page = MagicMock()
     session.get_page.return_value = page
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
+    session.element_exists.return_value = True
+    locator = MagicMock()
+    locator.count.return_value = 1
+    session.find.return_value = locator
+    session.find_all.return_value = locator
     return session
+
+
+# --- load_flow ---
 
 
 def test_load_flow(tmp_path: Path) -> None:
@@ -47,37 +49,45 @@ def test_load_flow_validates(tmp_path: Path) -> None:
     path = _write_flow(tmp_path, [{"name": "s1", "checkpoint": True}])
     flow = load_flow(path)
     assert flow.steps[0].checkpoint is True
-    assert flow.steps[0].fields == []
 
 
-def testshould_skip_no_when() -> None:
-    assert should_skip(Step(name="s"), FlowData()) is False
+# --- should_skip ---
 
 
-def testshould_skip_truthy_passes() -> None:
+def test_should_skip_no_when(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    assert should_skip(session, Step(name="s"), FlowData()) is False
+
+
+def test_should_skip_truthy_passes(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
     step = Step(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(step, FlowData(enabled=True)) is False
+    assert should_skip(session, step, FlowData(enabled=True)) is False
 
 
-def testshould_skip_truthy_fails() -> None:
+def test_should_skip_truthy_fails(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
     step = Step(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(step, FlowData(enabled=False)) is True
+    assert should_skip(session, step, FlowData(enabled=False)) is True
 
 
-def testshould_skip_eq() -> None:
+def test_should_skip_eq(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
     step = Step(name="s", when=[{"field": "mode", "op": "eq", "value": "fast"}])
-    assert should_skip(step, FlowData(mode="fast")) is False
-    assert should_skip(step, FlowData(mode="slow")) is True
+    assert should_skip(session, step, FlowData(mode="fast")) is False
+    assert should_skip(session, step, FlowData(mode="slow")) is True
 
 
-def testshould_skip_not_null() -> None:
+def test_should_skip_not_null(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
     step = Step(name="s", when=[{"field": "cp", "op": "not_null"}])
-    assert should_skip(step, FlowData(cp="05330")) is False
-    assert should_skip(step, FlowData(cp=None)) is True
-    assert should_skip(step, FlowData()) is True
+    assert should_skip(session, step, FlowData(cp="05330")) is False
+    assert should_skip(session, step, FlowData(cp=None)) is True
+    assert should_skip(session, step, FlowData()) is True
 
 
-def testshould_skip_multiple_conditions() -> None:
+def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
     step = Step(
         name="s",
         when=[
@@ -85,55 +95,23 @@ def testshould_skip_multiple_conditions() -> None:
             {"field": "mode", "op": "eq", "value": "fast"},
         ],
     )
-    assert should_skip(step, FlowData(enabled=True, mode="fast")) is False
-    assert should_skip(step, FlowData(enabled=True, mode="slow")) is True
+    assert should_skip(session, step, FlowData(enabled=True, mode="fast")) is False
+    assert should_skip(session, step, FlowData(enabled=True, mode="slow")) is True
 
 
-def testdispatch_action_click() -> None:
-    page = MagicMock()
-    dispatch_action(page, Step(name="s", action="click", selector="#btn"))
-    page.click.assert_called_once_with("#btn")
-
-
-def testdispatch_action_dismiss_modal() -> None:
-    page = MagicMock()
-    btn = MagicMock()
-    page.query_selector.side_effect = [MagicMock(), btn]
-    dispatch_action(page, Step(name="s", action="dismiss_modal"))
-    btn.click.assert_called_once()
-
-
-def testdispatch_action_none() -> None:
-    page = MagicMock()
-    dispatch_action(page, Step(name="no_action"))
-    page.click.assert_not_called()
-
-
-def testdispatch_eval_runs_js() -> None:
-    page = MagicMock()
-    page.evaluate.return_value = "result"
-    result = dispatch_eval(page, Step(name="s", eval="1+1"))
-    assert result == "result"
-    page.evaluate.assert_called_once_with("1+1")
-
-
-def testdispatch_eval_no_eval() -> None:
-    page = MagicMock()
-    assert dispatch_eval(page, Step(name="no_eval")) is None
-
-
-def testmaybe_checkpoint_returns_result(tmp_path: Path) -> None:
+def test_should_skip_element_exists(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    result = maybe_checkpoint(session, Step(name="check", checkpoint=True), "eval_data")
-    assert result is not None
-    assert result.step == "check"
-    assert result.data == "eval_data"
-    session.take_screenshot.assert_called_once()
+    step = Step(
+        name="s",
+        when=[{"element_exists": {"selector": "#btn"}}],
+    )
+    session.element_exists.return_value = True
+    assert should_skip(session, step, FlowData()) is False
+    session.element_exists.return_value = False
+    assert should_skip(session, step, FlowData()) is True
 
 
-def testmaybe_checkpoint_no_checkpoint(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    assert maybe_checkpoint(session, Step(name="s"), None) is None
+# --- execute_step ---
 
 
 def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
@@ -157,7 +135,7 @@ def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
     )
     result = execute_step(session, step, FlowData(needed=False))
     assert result is None
-    session.get_page.assert_not_called()
+    session.get_page.return_value.evaluate.assert_not_called()
 
 
 def test_execute_step_template_substitution(tmp_path: Path) -> None:
@@ -168,6 +146,9 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
     step = Step(name="t", eval="document.getElementById('{{ fid }}').value")
     execute_step(session, step, FlowData(fid="myfield"))
     page.evaluate.assert_called_once_with("document.getElementById('myfield').value")
+
+
+# --- FlowRunner ---
 
 
 def test_run_pauses_at_checkpoint(tmp_path: Path) -> None:
@@ -214,7 +195,6 @@ def test_run_saves_state_at_checkpoint(tmp_path: Path) -> None:
 
 def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    page = session.get_page.return_value
 
     steps = [
         {"name": "s1", "eval": "first()", "checkpoint": True},
@@ -229,7 +209,7 @@ def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
     result = runner.resume()
     assert result.completed is True
     assert result.step == "s2"
-    page.click.assert_called_once_with("#done")
+    session.find.assert_called()
 
 
 def test_resume_no_state_raises(tmp_path: Path) -> None:

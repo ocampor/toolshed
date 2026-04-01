@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from llm_browser.selectors import Selector
+
 
 class Field(BaseModel, extra="allow"):
     """A single form field to fill."""
@@ -26,7 +28,7 @@ class Step(BaseModel, extra="allow"):
     fields: list[dict[str, Any]] = []
     when: list[dict[str, Any]] = []
     action: str | None = None
-    selector: str | None = None
+    selector: Selector | None = None
     eval: str | None = None
     wait_after: int | None = None
     checkpoint: bool = False
