@@ -1,5 +1,7 @@
 """Tests for param resolution and validation."""
 
+from typing import Any
+
 import pytest
 
 from llm_browser.params import resolve_params, validate_flow_params
@@ -25,7 +27,11 @@ def test_resolve_inline_param() -> None:
 
 
 def test_resolve_mixed_params() -> None:
-    raw = ["rfc", "moneda", {"tc": {"required": False, "default": "1.0"}}]
+    raw: list[str | dict[str, Any]] = [
+        "rfc",
+        "moneda",
+        {"tc": {"required": False, "default": "1.0"}},
+    ]
     params = resolve_params(raw)
     assert len(params) == 3
     assert params["rfc"].required is True
@@ -34,7 +40,10 @@ def test_resolve_mixed_params() -> None:
 
 
 def test_validate_flow_params_required_present() -> None:
-    raw = ["rfc", {"cp": {"required": False, "default": "00000"}}]
+    raw: list[str | dict[str, Any]] = [
+        "rfc",
+        {"cp": {"required": False, "default": "00000"}},
+    ]
     result = validate_flow_params(raw, {"rfc": "ABC010101000"})
     assert result.rfc == "ABC010101000"  # type: ignore[attr-defined]
 

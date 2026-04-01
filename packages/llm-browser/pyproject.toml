@@ -27,9 +27,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "lxml-stubs>=0.5.1",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
     "ruff>=0.11",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [tool.hatch.build.targets.wheel]

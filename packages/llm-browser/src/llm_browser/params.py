@@ -1,6 +1,7 @@
 """Param registry: define reusable flow parameters, resolve and validate."""
 
 from functools import lru_cache
+from collections.abc import Sequence
 from typing import Any
 
 from yaml_engine.registry import Registry
@@ -16,7 +17,7 @@ def get_registry() -> Registry[Param]:
 register_param = get_registry().register
 
 
-def resolve_params(raw_params: list[str | dict[str, Any]]) -> dict[str, Param]:
+def resolve_params(raw_params: Sequence[str | dict[str, Any]]) -> dict[str, Param]:
     """Resolve a list of string refs and inline dicts into name->Param mapping.
 
     Bare strings are looked up in the registry; if not registered, they
@@ -38,7 +39,7 @@ def resolve_params(raw_params: list[str | dict[str, Any]]) -> dict[str, Param]:
 
 
 def validate_flow_params(
-    raw_params: list[str | dict[str, Any]], data: dict[str, object]
+    raw_params: Sequence[str | dict[str, Any]], data: dict[str, object]
 ) -> FlowData:
     """Resolve params, validate data against them, apply defaults, return FlowData."""
     params = resolve_params(raw_params)

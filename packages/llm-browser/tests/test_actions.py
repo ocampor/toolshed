@@ -196,10 +196,10 @@ def test_download(session: BrowserSession, tmp_path: object) -> None:
     mock_download = MagicMock()
 
     @contextmanager
-    def fake_expect_download():
+    def fake_expect_download():  # type: ignore[no-untyped-def]
         yield MagicMock(value=mock_download)
 
-    session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
+    session._page.expect_download = fake_expect_download  # type: ignore[union-attr,method-assign]
 
     step = DownloadStep(
         name="s", action="download", selector="#dl-link", path=str(dest)

@@ -153,6 +153,17 @@ def dom(ctx: click.Context, selector: str, max_depth: int) -> None:
 
 
 @main.command()
+@click.option("--selector", required=True, help="Download link/button selector.")
+@click.option("--path", required=True, help="Destination file path.")
+@click.pass_context
+def download(ctx: click.Context, selector: str, path: str) -> None:
+    """Download a file by clicking a link/button."""
+    session: BrowserSession = ctx.obj["session"]
+    result = session.download_file(selector, path)
+    _output({"path": str(result)})
+
+
+@main.command()
 @click.pass_context
 def close(ctx: click.Context) -> None:
     """Close the browser."""

@@ -6,7 +6,6 @@ from typing import Any, Callable
 from yaml_engine.registry import Registry
 
 from llm_browser.models import (
-    BaseStep,
     CheckStep,
     ClickStep,
     DomStep,
@@ -23,7 +22,7 @@ from llm_browser.models import (
 )
 from llm_browser.session import BrowserSession
 
-ActionHandler = Callable[[BrowserSession, BaseStep], Any]
+ActionHandler = Callable[..., Any]
 
 
 @lru_cache(maxsize=1)
@@ -31,7 +30,7 @@ def get_registry() -> Registry[ActionHandler]:
     return Registry("action")
 
 
-register_action = get_registry().register
+_registry = get_registry()
 
 
 def execute_action(session: BrowserSession, step: Step) -> Any:
@@ -44,31 +43,31 @@ def execute_action(session: BrowserSession, step: Step) -> Any:
 # --- Element actions ---
 
 
-@register_action("click")
+@_registry.register("click")
 def action_click(session: BrowserSession, step: ClickStep) -> None:
     assert step.selector is not None
     session.find(step.selector).click()
 
 
-@register_action("fill")
+@_registry.register("fill")
 def action_fill(session: BrowserSession, step: FillStep) -> None:
     assert step.selector is not None
     session.find(step.selector).fill(step.value)
 
 
-@register_action("type")
+@_registry.register("type")
 def action_type(session: BrowserSession, step: TypeStep) -> None:
     assert step.selector is not None
     session.find(step.selector).type(step.value, delay=step.delay)
 
 
-@register_action("select")
+@_registry.register("select")
 def action_select(session: BrowserSession, step: SelectStep) -> None:
     assert step.selector is not None
     session.find(step.selector).select_option(step.value)
 
 
-@register_action("check")
+@_registry.register("check")
 def action_check(session: BrowserSession, step: CheckStep) -> None:
     assert step.selector is not None
     element = session.find(step.selector)
@@ -78,7 +77,7 @@ def action_check(session: BrowserSession, step: CheckStep) -> None:
         element.uncheck()
 
 
-@register_action("pick")
+@_registry.register("pick")
 def action_pick(session: BrowserSession, step: PickStep) -> None:
     assert step.selector is not None
     session.pick(step.selector, step.value)
@@ -87,17 +86,17 @@ def action_pick(session: BrowserSession, step: PickStep) -> None:
 # --- Page actions ---
 
 
-@register_action("goto")
+@_registry.register("goto")
 def action_goto(session: BrowserSession, step: GotoStep) -> None:
     session.goto(step.url, wait_until=step.wait_until)
 
 
-@register_action("wait")
+@_registry.register("wait")
 def action_wait(session: BrowserSession, step: WaitStep) -> None:
     session.wait_for_load_state(step.state, timeout=step.timeout)
 
 
-@register_action("screenshot")
+@_registry.register("screenshot")
 def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> str:
     return str(session.take_screenshot())
 
@@ -105,13 +104,13 @@ def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> str:
 # --- Data actions ---
 
 
-@register_action("read")
+@_registry.register("read")
 def action_read(session: BrowserSession, step: ReadStep) -> list[dict[str, str | None]]:
     assert step.selector is not None
     return session.parse_elements(step.selector, step.extract)
 
 
-@register_action("dom")
+@_registry.register("dom")
 def action_dom(session: BrowserSession, step: DomStep) -> str:
     assert step.selector is not None
     return session.dom(step.selector, max_depth=step.max_depth)
@@ -120,7 +119,7 @@ def action_dom(session: BrowserSession, step: DomStep) -> str:
 # --- File actions ---
 
 
-@register_action("download")
+@_registry.register("download")
 def action_download(session: BrowserSession, step: DownloadStep) -> str:
     assert step.selector is not None
     if not step.path:

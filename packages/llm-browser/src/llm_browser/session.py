@@ -61,8 +61,8 @@ class BrowserSession:
         screenshot = str(self.take_screenshot()) if url else None
         return SessionResult(
             status="open",
-            url=self._page.url,
-            screenshot=screenshot,  # type: ignore[union-attr]
+            url=self._page.url,  # type: ignore[union-attr]
+            screenshot=screenshot,
         )
 
     def connect(self) -> Page:
@@ -133,6 +133,15 @@ class BrowserSession:
         self._ensure_dirs()
         self.get_page().screenshot(path=str(self._screenshot_path), full_page=False)
         return self._screenshot_path
+
+    def download_file(self, selector: Selector, output_path: Path | str) -> Path:
+        """Click element to trigger download and save to output_path."""
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with self.get_page().expect_download() as download_info:
+            self.find(selector).click()
+        download_info.value.save_as(str(output))
+        return output
 
     # --- Interaction ---
 

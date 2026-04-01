@@ -1,6 +1,6 @@
 """Generic registry for named items (conditions, actions, params, etc.)."""
 
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, overload
 
 T = TypeVar("T")
 
@@ -11,6 +11,12 @@ class Registry(Generic[T]):
     def __init__(self, label: str) -> None:
         self.label = label
         self.store: dict[str, T] = {}
+
+    @overload
+    def register(self, name: str, item: T) -> T: ...
+
+    @overload
+    def register(self, name: str) -> Callable[[T], T]: ...
 
     def register(self, name: str, item: T | None = None) -> T | Callable[[T], T]:
         """Register an item by name. Use as decorator or direct call.

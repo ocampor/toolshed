@@ -1,20 +1,29 @@
 """Tests for flow loading, step execution, and FlowRunner."""
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import yaml
 
 from llm_browser.flows import FlowRunner, load_flow
-from llm_browser.steps import execute_step, should_skip
 from llm_browser.models import EvalStep, FlowData, FlowState
 from llm_browser.session import BrowserSession
+from llm_browser.steps import execute_step, should_skip
 
 
-def _write_flow(tmp_path: Path, steps: list[dict], params: dict | None = None) -> Path:
+def _flow_data(**kwargs: object) -> FlowData:
+    return FlowData.model_validate(kwargs)
+
+
+def _write_flow(
+    tmp_path: Path,
+    steps: list[dict[str, Any]],
+    params: list[str | dict[str, Any]] | None = None,
+) -> Path:
     path = tmp_path / "flow.yaml"
-    flow_dict: dict = {"steps": steps}
+    flow_dict: dict[str, Any] = {"steps": steps}
     if params:
         flow_dict["params"] = params
     path.write_text(yaml.dump(flow_dict))
@@ -56,34 +65,34 @@ def test_load_flow_validates(tmp_path: Path) -> None:
 
 def test_should_skip_no_when(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    assert should_skip(session, EvalStep(name="s"), FlowData()) is False
+    assert should_skip(session, EvalStep(name="s"), _flow_data()) is False
 
 
 def test_should_skip_truthy_passes(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(session, step, FlowData(enabled=True)) is False
+    assert should_skip(session, step, _flow_data(enabled=True)) is False
 
 
 def test_should_skip_truthy_fails(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(session, step, FlowData(enabled=False)) is True
+    assert should_skip(session, step, _flow_data(enabled=False)) is True
 
 
 def test_should_skip_eq(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     step = EvalStep(name="s", when=[{"field": "mode", "op": "eq", "value": "fast"}])
-    assert should_skip(session, step, FlowData(mode="fast")) is False
-    assert should_skip(session, step, FlowData(mode="slow")) is True
+    assert should_skip(session, step, _flow_data(mode="fast")) is False
+    assert should_skip(session, step, _flow_data(mode="slow")) is True
 
 
 def test_should_skip_not_null(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     step = EvalStep(name="s", when=[{"field": "cp", "op": "not_null"}])
-    assert should_skip(session, step, FlowData(cp="05330")) is False
-    assert should_skip(session, step, FlowData(cp=None)) is True
-    assert should_skip(session, step, FlowData()) is True
+    assert should_skip(session, step, _flow_data(cp="05330")) is False
+    assert should_skip(session, step, _flow_data(cp=None)) is True
+    assert should_skip(session, step, _flow_data()) is True
 
 
 def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
@@ -95,8 +104,8 @@ def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
             {"field": "mode", "op": "eq", "value": "fast"},
         ],
     )
-    assert should_skip(session, step, FlowData(enabled=True, mode="fast")) is False
-    assert should_skip(session, step, FlowData(enabled=True, mode="slow")) is True
+    assert should_skip(session, step, _flow_data(enabled=True, mode="fast")) is False
+    assert should_skip(session, step, _flow_data(enabled=True, mode="slow")) is True
 
 
 def test_should_skip_element_exists(tmp_path: Path) -> None:
@@ -106,9 +115,9 @@ def test_should_skip_element_exists(tmp_path: Path) -> None:
         when=[{"element_exists": {"selector": "#btn"}}],
     )
     session.element_exists.return_value = True
-    assert should_skip(session, step, FlowData()) is False
+    assert should_skip(session, step, _flow_data()) is False
     session.element_exists.return_value = False
-    assert should_skip(session, step, FlowData()) is True
+    assert should_skip(session, step, _flow_data()) is True
 
 
 # --- execute_step ---
@@ -119,7 +128,7 @@ def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
     session.get_page.return_value.evaluate.return_value = '{"cp": "05330"}'
 
     step = EvalStep(name="check", eval="someJs()", checkpoint=True)
-    result = execute_step(session, step, FlowData())
+    result = execute_step(session, step, _flow_data())
 
     assert result is not None
     assert result.step == "check"
@@ -133,7 +142,7 @@ def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
         when=[{"field": "needed", "op": "is_truthy"}],
         eval="something()",
     )
-    result = execute_step(session, step, FlowData(needed=False))
+    result = execute_step(session, step, _flow_data(needed=False))
     assert result is None
     session.get_page.return_value.evaluate.assert_not_called()
 
@@ -144,7 +153,7 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
     page.evaluate.return_value = "ok"
 
     step = EvalStep(name="t", eval="document.getElementById('{{ fid }}').value")
-    execute_step(session, step, FlowData(fid="myfield"))
+    execute_step(session, step, _flow_data(fid="myfield"))
     page.evaluate.assert_called_once_with("document.getElementById('myfield').value")
 
 
@@ -155,7 +164,7 @@ def test_run_pauses_at_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     session.get_page.return_value.evaluate.return_value = "result1"
 
-    steps = [
+    steps: list[dict[str, Any]] = [
         {"name": "s1", "eval": "1+1"},
         {"name": "s2", "eval": "getVal()", "checkpoint": True},
         {"name": "s3", "eval": "should_not_run()"},
@@ -196,7 +205,7 @@ def test_run_saves_state_at_checkpoint(tmp_path: Path) -> None:
 def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
 
-    steps = [
+    steps: list[dict[str, Any]] = [
         {"name": "s1", "eval": "first()", "checkpoint": True},
         {"name": "s2", "action": "click", "selector": "#done"},
     ]
@@ -222,7 +231,7 @@ def test_resume_no_state_raises(tmp_path: Path) -> None:
 def test_resume_merges_data(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
 
-    steps = [
+    steps: list[dict[str, Any]] = [
         {"name": "s1", "eval": "first()", "checkpoint": True},
         {"name": "s2", "eval": "second()"},
     ]
@@ -250,7 +259,10 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     session.get_page.return_value.evaluate.return_value = "ok"
 
-    params = ["rfc", {"region": {"required": False, "default": "MX"}}]
+    params: list[str | dict[str, Any]] = [
+        "rfc",
+        {"region": {"required": False, "default": "MX"}},
+    ]
     steps = [{"name": "s1", "eval": "fill('{{ rfc }}', '{{ region }}')"}]
     path = _write_flow(tmp_path, steps, params=params)
     runner = FlowRunner(session)

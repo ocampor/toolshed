@@ -8,6 +8,7 @@ from llm_browser.models import (
     FlowData,
     FlowResult,
     FlowState,
+    GotoStep,
     SessionInfo,
     validate_step,
 )
@@ -69,8 +70,9 @@ def test_step_defaults() -> None:
 
 def test_step_discriminated_union() -> None:
     step = validate_step({"name": "s1", "action": "goto", "url": "https://example.com"})
+    assert isinstance(step, GotoStep)
     assert step.action == "goto"
-    assert step.url == "https://example.com"  # type: ignore[union-attr]
+    assert step.url == "https://example.com"
 
 
 def test_flow_round_trip() -> None:
@@ -85,7 +87,7 @@ def test_flow_round_trip() -> None:
 
 
 def test_flow_data_to_template_dict() -> None:
-    data = FlowData(rfc="XEXX", cp=None)
+    data = FlowData.model_validate({"rfc": "XEXX", "cp": None})
     d = data.to_template_dict()
     assert d == {"rfc": "XEXX"}
 

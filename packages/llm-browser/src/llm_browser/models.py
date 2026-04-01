@@ -125,9 +125,7 @@ def _step_discriminator(v: Any) -> str:
     action = v.get("action") if isinstance(v, dict) else getattr(v, "action", None)
     if action is None:
         return "eval"
-    if action in KNOWN_ACTIONS:
-        return action
-    return action  # no matching tag — validation will fail
+    return str(action)
 
 
 Step = Annotated[
