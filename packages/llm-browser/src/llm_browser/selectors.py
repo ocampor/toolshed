@@ -3,7 +3,7 @@
 from typing import Any
 
 from pydantic import BaseModel
-from playwright.sync_api import Frame, Locator, Page
+from patchright.sync_api import Frame, Locator, Page
 
 type PageLike = Page | Frame
 

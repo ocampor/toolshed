@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from patchright.sync_api import sync_playwright
 
 from llm_browser.constants import CDP_STARTUP_TIMEOUT, CDP_URL_RE
 
@@ -33,7 +33,6 @@ def launch_chrome(
         chromium_executable(),
         "--remote-debugging-port=0",
         f"--user-data-dir={user_data_dir}",
-        "--disable-blink-features=AutomationControlled",
         "--no-first-run",
         "--no-default-browser-check",
     ]

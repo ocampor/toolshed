@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from playwright.sync_api import Browser, Locator, Page, Playwright, sync_playwright
+from patchright.sync_api import Browser, Locator, Page, Playwright, sync_playwright
 
 from llm_browser.chrome import is_process_alive, kill_chrome, launch_chrome
 from llm_browser.constants import DEFAULT_STATE_DIR
