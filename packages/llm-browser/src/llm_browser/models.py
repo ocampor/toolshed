@@ -38,6 +38,7 @@ class BaseStep(BaseModel):
 
 class ClickStep(BaseStep):
     action: Literal["click"]
+    dispatch: bool = False
 
 
 class FillStep(BaseStep):

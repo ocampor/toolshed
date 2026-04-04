@@ -50,6 +50,14 @@ def test_click(session: BrowserSession) -> None:
     locator.first.click.assert_called_once()
 
 
+def test_click_dispatch(session: BrowserSession) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", dispatch=True)
+    execute_action(session, step)
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    locator.first.dispatch_event.assert_called_once_with("click")
+    locator.first.click.assert_not_called()
+
+
 # --- fill ---
 
 

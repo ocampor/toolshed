@@ -46,7 +46,11 @@ def execute_action(session: BrowserSession, step: Step) -> Any:
 @_registry.register("click")
 def action_click(session: BrowserSession, step: ClickStep) -> None:
     assert step.selector is not None
-    session.find(step.selector).click()
+    element = session.find(step.selector)
+    if step.dispatch:
+        element.dispatch_event("click")
+    else:
+        element.click()
 
 
 @_registry.register("fill")
