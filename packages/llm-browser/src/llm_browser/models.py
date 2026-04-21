@@ -24,6 +24,9 @@ class Condition(BaseModel, extra="allow"):
 # --- Step types ---
 
 
+CaptureMode = Literal["screenshot", "dom", "both"]
+
+
 class BaseStep(BaseModel):
     """Common fields shared by all step types."""
 
@@ -225,4 +228,5 @@ class FlowResult(BaseModel):
     step: str
     data: object = None
     screenshot: str | None = None
+    dom: str | None = None
     completed: bool = False

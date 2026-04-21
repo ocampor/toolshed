@@ -7,7 +7,8 @@ from patchright.sync_api import Browser, Locator, Page, Playwright, sync_playwri
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import is_process_alive, kill_chrome, launch_chrome
 from llm_browser.constants import DEFAULT_STATE_DIR
-from llm_browser.models import SessionInfo, SessionResult
+from llm_browser.html import sanitize_page_html
+from llm_browser.models import CaptureMode, SessionInfo, SessionResult
 from llm_browser.selectors import PageLike, Selector, expect_single, resolve_selector
 
 
@@ -23,16 +24,19 @@ class BrowserSession:
         session_id: str = "default",
         state_dir: Path = DEFAULT_STATE_DIR,
         behavior: Behavior | None = None,
+        capture: CaptureMode = "screenshot",
     ) -> None:
         self.session_dir = state_dir / "sessions" / session_id
         self._state_file = self.session_dir / "state.json"
         self._user_data_dir = self.session_dir / "user-data"
         self._screenshot_path = self.session_dir / "screenshot.png"
+        self._dom_path = self.session_dir / "dom.html"
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._page: Page | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
         self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
+        self.capture: CaptureMode = capture
 
     # --- Lifecycle ---
 
@@ -138,6 +142,12 @@ class BrowserSession:
         self.get_page().screenshot(path=str(self._screenshot_path), full_page=False)
         return self._screenshot_path
 
+    def take_dom_snapshot(self) -> Path:
+        """Capture a sanitized HTML snapshot of the current page."""
+        self._ensure_dirs()
+        self._dom_path.write_text(sanitize_page_html(self.get_page().content()))
+        return self._dom_path
+
     def download_file(self, selector: Selector, output_path: Path | str) -> Path:
         """Click element to trigger download and save to output_path."""
         output = Path(output_path)
@@ -232,7 +242,7 @@ class BrowserSession:
 
     def dom(self, selector: Selector, max_depth: int = 0) -> str:
         """Return cleaned HTML snippet of an element."""
-        from llm_browser.html import clean_html
+        from llm_browser.html import sanitize_html_fragment
 
         raw: str = self.find(selector).evaluate("el => el.outerHTML")
-        return clean_html(raw, max_depth)
+        return sanitize_html_fragment(raw, max_depth)

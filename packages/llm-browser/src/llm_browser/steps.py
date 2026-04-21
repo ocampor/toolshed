@@ -51,9 +51,17 @@ def execute_step(
     if not resolved.checkpoint:
         return None
     result_data = eval_result if eval_result is not None else action_result
-    screenshot_path = session.take_screenshot()
+    screenshot_path = (
+        str(session.take_screenshot())
+        if session.capture in ("screenshot", "both")
+        else None
+    )
+    dom_path = (
+        str(session.take_dom_snapshot()) if session.capture in ("dom", "both") else None
+    )
     return FlowResult(
         step=resolved.name,
         data=result_data,
-        screenshot=str(screenshot_path),
+        screenshot=screenshot_path,
+        dom=dom_path,
     )
