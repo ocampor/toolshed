@@ -98,6 +98,12 @@ class DownloadStep(BaseStep):
     path: str = ""
 
 
+class ThinkStep(BaseStep):
+    action: Literal["think"]
+    min_ms: int = 500
+    max_ms: int = 2000
+
+
 class EvalStep(BaseStep):
     """Step with no browser action (eval-only, wait, checkpoint)."""
 
@@ -118,6 +124,7 @@ KNOWN_ACTIONS = frozenset(
         "read",
         "dom",
         "download",
+        "think",
     }
 )
 
@@ -142,6 +149,7 @@ Step = Annotated[
     | Annotated[ReadStep, Tag("read")]
     | Annotated[DomStep, Tag("dom")]
     | Annotated[DownloadStep, Tag("download")]
+    | Annotated[ThinkStep, Tag("think")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
 ]

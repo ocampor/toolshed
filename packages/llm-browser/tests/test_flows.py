@@ -31,8 +31,12 @@ def _write_flow(
 
 
 def _mock_session(tmp_path: Path) -> MagicMock:
+    from llm_browser.behavior import Behavior
+
     session = MagicMock(spec=BrowserSession)
     session.session_dir = tmp_path
+    session.behavior = Behavior.off()
+    session._behavior_runtime = session.behavior.runtime()
     page = MagicMock()
     session.get_page.return_value = page
     session.take_screenshot.return_value = tmp_path / "screenshot.png"

@@ -1,10 +1,19 @@
-"""Action registry: 12 minimal declarative actions for browser automation."""
+"""Action registry: minimal declarative actions for browser automation."""
 
+import time
 from functools import lru_cache
 from typing import Any, Callable
 
 from yaml_engine.registry import Registry
 
+from llm_browser.behavior import (
+    Jitter,
+    enforce_gap,
+    humanized_click,
+    humanized_type,
+    mark_action_done,
+    post_pause,
+)
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -17,6 +26,7 @@ from llm_browser.models import (
     ScreenshotStep,
     SelectStep,
     Step,
+    ThinkStep,
     TypeStep,
     WaitStep,
 )
@@ -34,10 +44,15 @@ _registry = get_registry()
 
 
 def execute_action(session: BrowserSession, step: Step) -> Any:
-    """Dispatch a step's action to the appropriate handler."""
     if step.action is None:
         return None
-    return get_registry().get(step.action)(session, step)
+    behavior = session.behavior
+    runtime = session._behavior_runtime
+    enforce_gap(behavior, runtime)
+    result = get_registry().get(step.action)(session, step)
+    post_pause(behavior, runtime)
+    mark_action_done(runtime)
+    return result
 
 
 # --- Element actions ---
@@ -49,6 +64,10 @@ def action_click(session: BrowserSession, step: ClickStep) -> None:
     element = session.find(step.selector)
     if step.dispatch:
         element.dispatch_event("click")
+    elif session.behavior.mouse_move:
+        humanized_click(
+            session.get_page(), element, session.behavior, session._behavior_runtime
+        )
     else:
         element.click()
 
@@ -56,13 +75,33 @@ def action_click(session: BrowserSession, step: ClickStep) -> None:
 @_registry.register("fill")
 def action_fill(session: BrowserSession, step: FillStep) -> None:
     assert step.selector is not None
-    session.find(step.selector).fill(step.value)
+    element = session.find(step.selector)
+    if session.behavior.fill_as_type:
+        humanized_type(
+            session.get_page(),
+            element,
+            step.value,
+            session.behavior,
+            session._behavior_runtime,
+        )
+    else:
+        element.fill(step.value)
 
 
 @_registry.register("type")
 def action_type(session: BrowserSession, step: TypeStep) -> None:
     assert step.selector is not None
-    session.find(step.selector).type(step.value, delay=step.delay)
+    element = session.find(step.selector)
+    if step.delay > 0 or session.behavior.type_char_delay.max_ms == 0:
+        element.type(step.value, delay=step.delay)
+    else:
+        humanized_type(
+            session.get_page(),
+            element,
+            step.value,
+            session.behavior,
+            session._behavior_runtime,
+        )
 
 
 @_registry.register("select")
@@ -129,3 +168,14 @@ def action_download(session: BrowserSession, step: DownloadStep) -> str:
     if not step.path:
         raise ValueError("download action requires 'path' field")
     return str(session.download_file(step.selector, step.path))
+
+
+# --- Pacing actions ---
+
+
+@_registry.register("think")
+def action_think(session: BrowserSession, step: ThinkStep) -> None:
+    jitter = Jitter(min_ms=step.min_ms, max_ms=step.max_ms)
+    delay = jitter.sample_seconds(session._behavior_runtime.rng)
+    if delay > 0:
+        time.sleep(delay)

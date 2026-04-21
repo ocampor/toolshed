@@ -4,6 +4,7 @@ from pathlib import Path
 
 from patchright.sync_api import Browser, Locator, Page, Playwright, sync_playwright
 
+from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import is_process_alive, kill_chrome, launch_chrome
 from llm_browser.constants import DEFAULT_STATE_DIR
 from llm_browser.models import SessionInfo, SessionResult
@@ -21,6 +22,7 @@ class BrowserSession:
         self,
         session_id: str = "default",
         state_dir: Path = DEFAULT_STATE_DIR,
+        behavior: Behavior | None = None,
     ) -> None:
         self.session_dir = state_dir / "sessions" / session_id
         self._state_file = self.session_dir / "state.json"
@@ -29,6 +31,8 @@ class BrowserSession:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._page: Page | None = None
+        self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
+        self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
 
     # --- Lifecycle ---
 
