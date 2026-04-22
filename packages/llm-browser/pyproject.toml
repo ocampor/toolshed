@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser"
-version = "0.1.0"
+version = "0.2.0"
 description = "Playwright browser automation with declarative YAML flows for LLM agents."
 requires-python = ">=3.13"
 dependencies = [
@@ -10,6 +10,12 @@ dependencies = [
     "pyyaml>=6.0",
     "yaml-engine",
     "lxml[html_clean]>=5.0",
+]
+
+[project.optional-dependencies]
+camoufox = ["camoufox>=0.4"]
+nodriver = [
+    "nodriver>=0.40",
 ]
 
 [project.scripts]
@@ -46,4 +52,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "patchright.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "camoufox.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nodriver.*"
 ignore_missing_imports = true

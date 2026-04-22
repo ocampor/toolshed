@@ -1,22 +1,29 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
+import logging
 from pathlib import Path
-
-from patchright.sync_api import Browser, Locator, Page, Playwright, sync_playwright
+from typing import Any
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
-from llm_browser.chrome import is_process_alive, kill_chrome, launch_chrome
+from llm_browser.chrome import (
+    is_process_alive,
+    kill_detached_chromium,
+    spawn_detached_chromium,
+)
 from llm_browser.constants import DEFAULT_STATE_DIR
+from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import sanitize_page_html
 from llm_browser.models import CaptureMode, SessionInfo, SessionResult
-from llm_browser.selectors import PageLike, Selector, expect_single, resolve_selector
+from llm_browser.selectors import Selector, expect_single, resolve_selector
+
+logger = logging.getLogger("llm_browser")
 
 
 class BrowserSession:
     """Browser lifecycle management + page interaction API.
 
-    Each instance manages a persistent Chrome session via CDP and
-    provides high-level methods for page interaction.
+    Each instance manages a persistent browser session through a pluggable
+    Driver and provides high-level methods for page interaction.
     """
 
     def __init__(
@@ -25,18 +32,22 @@ class BrowserSession:
         state_dir: Path = DEFAULT_STATE_DIR,
         behavior: Behavior | None = None,
         capture: CaptureMode = "screenshot",
+        driver: Driver | str | None = None,
+        executable_path: str | Path | None = None,
     ) -> None:
         self.session_dir = state_dir / "sessions" / session_id
         self._state_file = self.session_dir / "state.json"
         self._user_data_dir = self.session_dir / "user-data"
         self._screenshot_path = self.session_dir / "screenshot.png"
         self._dom_path = self.session_dir / "dom.html"
-        self._pw: Playwright | None = None
-        self._browser: Browser | None = None
-        self._page: Page | None = None
+        self.driver: Driver = resolve_driver(driver)
+        self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
         self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
+        self.executable_path: str | None = (
+            str(executable_path) if executable_path is not None else None
+        )
 
     # --- Lifecycle ---
 
@@ -57,73 +68,191 @@ class BrowserSession:
         if self._state_file.exists():
             self._state_file.unlink()
 
+    def _handle_from_state(self, info: SessionInfo) -> DriverHandle:
+        return DriverHandle(
+            driver=info.driver,
+            pid=info.pid,
+            endpoint=info.cdp_url or None,
+            user_data_dir=info.user_data_dir,
+            extra={"attached": "1"} if info.mode == "attached" else {},
+        )
+
     def launch(self, url: str | None = None, headed: bool = True) -> SessionResult:
-        """Launch Chrome as a background process and connect via CDP."""
+        """Launch the browser and connect."""
         self._ensure_dirs()
-        pid, cdp_url = launch_chrome(self._user_data_dir, url, headed)
+        logger.info("llm-browser session dir: %s", self.session_dir)
+        handle = self.driver.launch(
+            self._user_data_dir, url, headed, executable_path=self.executable_path
+        )
         info = SessionInfo(
-            pid=pid, cdp_url=cdp_url, user_data_dir=str(self._user_data_dir)
+            pid=handle.pid,
+            cdp_url=handle.endpoint or "",
+            user_data_dir=handle.user_data_dir,
+            driver=handle.driver,
+            mode="launched",
         )
         self._save_state(info)
-        self.connect()
+        self._page = self.driver.page(handle)
         screenshot = str(self.take_screenshot()) if url else None
         return SessionResult(
             status="open",
-            url=self._page.url,  # type: ignore[union-attr]
+            url=self.driver.page_url(self._page) if self._page else None,
             screenshot=screenshot,
         )
 
-    def connect(self) -> Page:
-        """Connect to a running Chrome via CDP and return the active page."""
+    def attach(self, cdp_url: str) -> SessionResult:
+        """Attach to an already-running Chromium exposing CDP at cdp_url.
+
+        The remote browser is NOT killed on close(); only our connection and
+        the tab we opened are cleaned up. Use this against a user-launched
+        Chromium with a warmed profile to pass fingerprint-grade bot
+        detection (Cloudflare, PerimeterX, DataDome).
+        """
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("llm-browser session dir: %s (attached)", self.session_dir)
+        handle = self.driver.attach(cdp_url)
+        info = SessionInfo(
+            pid=None,
+            cdp_url=handle.endpoint or cdp_url,
+            user_data_dir=handle.user_data_dir,
+            driver=handle.driver,
+            mode="attached",
+        )
+        self._save_state(info)
+        self._page = self.driver.page(handle)
+        return SessionResult(
+            status="open",
+            url=self.driver.page_url(self._page) if self._page else None,
+            cdp_url=cdp_url,
+        )
+
+    def launch_detached(
+        self,
+        url: str | None = None,
+        headed: bool = True,
+        executable_path: str | Path | None = None,
+        user_data_dir: str | Path | None = None,
+    ) -> SessionResult:
+        """Spawn Chromium as a detached process and attach to it over CDP.
+
+        Gives you a browser that outlives this Python process, so later CLI
+        calls can reconnect via the persisted CDP URL. Only ``patchright``
+        supports the attach half; other drivers raise ``NotImplementedError``.
+
+        Point ``executable_path`` at your real Chrome/Chromium and
+        ``user_data_dir`` at your real profile to reuse a warmed identity
+        (cookies, TLS state, stored Cloudflare tokens). Chromium refuses to
+        start a second instance against an already-open profile — close any
+        running Chrome first, or use a dedicated profile directory.
+
+        Call ``stop_detached()`` to kill the browser when you're done.
+        """
+        self._ensure_dirs()
+        resolved_profile = (
+            Path(user_data_dir) if user_data_dir is not None else self._user_data_dir
+        )
+        resolved_exe = (
+            str(executable_path)
+            if executable_path is not None
+            else self.executable_path
+        )
+        pid, cdp_url = spawn_detached_chromium(
+            resolved_profile, headed=headed, executable_path=resolved_exe
+        )
+        logger.info(
+            "llm-browser detached Chromium pid=%d cdp=%s profile=%s",
+            pid,
+            cdp_url,
+            resolved_profile,
+        )
+        handle = self.driver.attach(cdp_url)
+        info = SessionInfo(
+            pid=pid,
+            cdp_url=handle.endpoint or cdp_url,
+            user_data_dir=str(resolved_profile),
+            driver=handle.driver,
+            mode="attached",
+        )
+        self._save_state(info)
+        self._page = self.driver.page(handle)
+        if url is not None:
+            self.driver.goto(self._page, url, "domcontentloaded")
+        return SessionResult(
+            status="open",
+            url=self.driver.page_url(self._page) if self._page else None,
+            cdp_url=cdp_url,
+        )
+
+    def stop_detached(self) -> SessionResult:
+        """Release our CDP connection AND kill the detached Chromium.
+
+        Use this to shut down a browser previously started with
+        ``launch_detached()``. A plain ``close()`` only releases the
+        connection and leaves the browser running.
+        """
+        info = self._load_state()
+        if info is not None:
+            self.driver.close(self._handle_from_state(info))
+            if info.pid:
+                kill_detached_chromium(info.pid)
+        self._page = None
+        self._clear_state()
+        return SessionResult(status="closed")
+
+    def connect(self) -> Any:
+        """Connect to a running browser and return the active page."""
         info = self._load_state()
         if info is None:
             raise RuntimeError("No browser session. Run 'llm-browser open' first.")
-        if not is_process_alive(info.pid):
+        if info.pid and not is_process_alive(info.pid):
             self._clear_state()
             raise RuntimeError(
                 "Browser process is no longer running. Run 'llm-browser open' again."
             )
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.connect_over_cdp(info.cdp_url)
-        contexts = self._browser.contexts
-        if contexts and contexts[0].pages:
-            self._page = contexts[0].pages[-1]
-        else:
-            ctx = contexts[0] if contexts else self._browser.new_context()
-            self._page = ctx.new_page()
+        self._page = self.driver.page(self._handle_from_state(info))
         return self._page
 
-    def get_page(self) -> Page:
-        """Get the current Playwright page, connecting if needed."""
+    def get_page(self) -> Any:
+        """Get the current page, connecting if needed.
+
+        Calls on the raw page/locator returned here BYPASS humanization —
+        only actions routed through ``execute_action(...)`` honor
+        ``Behavior.human()`` timing and mouse-path jitter.
+        """
         if self._page is None:
             self.connect()
         assert self._page is not None
         return self._page
 
-    def latest_tab(self) -> Page:
+    def latest_tab(self) -> Any:
         """Switch to the most recently opened tab and return it."""
-        if self._browser is None:
-            self.connect()
-        assert self._browser is not None
-        contexts = self._browser.contexts
-        if not contexts or not contexts[0].pages:
-            raise RuntimeError("No tabs open.")
-        self._page = contexts[0].pages[-1]
+        info = self._load_state()
+        if info is None:
+            raise RuntimeError("No browser session.")
+        if self._page is None:
+            self._page = self.driver.page(self._handle_from_state(info))
+        self._page = self.driver.latest_tab(self._handle_from_state(info))
         return self._page
 
-    def close(self) -> SessionResult:
-        """Kill the Chrome process and clean up."""
-        if self._browser is not None:
-            self._browser.close()
-            self._browser = None
-        if self._pw is not None:
-            self._pw.stop()
-            self._pw = None
-        self._page = None
+    def close(self, cleanup: bool = False) -> SessionResult:
+        """Close the browser and clean up.
+
+        In attached mode, the remote Chromium process is NEVER killed —
+        only our tab and the CDP connection are released.
+
+        The user-data-dir is never auto-removed (profile reuse is intentional).
+        Set ``cleanup=True`` to also delete screenshot.png and dom.html
+        captured during this session.
+        """
         info = self._load_state()
         if info is not None:
-            kill_chrome(info.pid)
+            self.driver.close(self._handle_from_state(info))
+        self._page = None
         self._clear_state()
+        if cleanup:
+            for path in (self._screenshot_path, self._dom_path):
+                if path.exists():
+                    path.unlink()
         return SessionResult(status="closed")
 
     def status(self) -> SessionResult:
@@ -131,92 +260,116 @@ class BrowserSession:
         info = self._load_state()
         if info is None:
             return SessionResult(status="closed")
-        if is_process_alive(info.pid):
-            return SessionResult(status="open", cdp_url=info.cdp_url)
+        if self.driver.status(self._handle_from_state(info)):
+            return SessionResult(status="open", cdp_url=info.cdp_url or None)
         self._clear_state()
         return SessionResult(status="closed")
 
     def take_screenshot(self) -> Path:
         """Take a screenshot and return the file path."""
         self._ensure_dirs()
-        self.get_page().screenshot(path=str(self._screenshot_path), full_page=False)
+        self.driver.screenshot(self.get_page(), self._screenshot_path)
         return self._screenshot_path
 
     def take_dom_snapshot(self) -> Path:
         """Capture a sanitized HTML snapshot of the current page."""
         self._ensure_dirs()
-        self._dom_path.write_text(sanitize_page_html(self.get_page().content()))
+        self._dom_path.write_text(
+            sanitize_page_html(self.driver.content(self.get_page()))
+        )
         return self._dom_path
 
     def download_file(self, selector: Selector, output_path: Path | str) -> Path:
         """Click element to trigger download and save to output_path."""
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        with self.get_page().expect_download() as download_info:
-            self.find(selector).click()
-        download_info.value.save_as(str(output))
-        return output
+        element = self.find(selector)
+
+        def trigger() -> None:
+            self.driver.click(element)
+
+        return self.driver.expect_download(self.get_page(), trigger, output)
 
     # --- Interaction ---
 
     def goto(self, url: str, wait_until: str = "domcontentloaded") -> None:
-        self.get_page().goto(url, wait_until=wait_until)  # type: ignore[arg-type]
+        self.driver.goto(self.get_page(), url, wait_until)
 
     def find(
         self, selector: Selector, state: str = "visible", timeout: int = 10_000
-    ) -> Locator:
+    ) -> Any:
         """Find exactly one element. Raises ValueError if multiple match."""
-        element = expect_single(resolve_selector(self.get_page(), selector), selector)
-        element.wait_for(state=state, timeout=timeout)  # type: ignore[arg-type]
+        locator = resolve_selector(self.driver, self.get_page(), selector)
+        element = expect_single(self.driver, locator, selector)
+        self.driver.wait_for_state(element, state, timeout)
         return element
 
     def find_all(
         self, selector: Selector, state: str = "attached", timeout: int = 10_000
-    ) -> Locator:
+    ) -> Any:
         """Find all matching elements, waiting for at least one."""
-        locator = resolve_selector(self.get_page(), selector)
-        locator.first.wait_for(state=state, timeout=timeout)  # type: ignore[arg-type]
+        locator = resolve_selector(self.driver, self.get_page(), selector)
+        self.driver.wait_for_state(self.driver.first(locator), state, timeout)
         return locator
 
     def element_exists(self, selector: Selector, timeout: int = 3_000) -> bool:
         """Check if element is present. Never raises."""
         try:
-            locator = resolve_selector(self.get_page(), selector)
-            locator.first.wait_for(state="attached", timeout=timeout)
+            locator = resolve_selector(self.driver, self.get_page(), selector)
+            self.driver.wait_for_state(self.driver.first(locator), "attached", timeout)
             return True
         except TimeoutError:
             return False
+
+    def wait_until_stable(
+        self,
+        selector: Selector,
+        quiet_ms: int = 1500,
+        timeout_s: float = 180.0,
+    ) -> str:
+        """Wait until ``selector``'s textContent stops changing for ``quiet_ms``.
+
+        Returns the final text. Raises ``TimeoutError`` on timeout. Designed
+        for LLM chat UIs with token-streaming replies. On Playwright-family
+        drivers the stability loop runs in-page (single CDP call); other
+        drivers fall back to a Python poll.
+        """
+        element = self.find(selector)
+        text = self.driver.wait_for_stable_text(
+            element, quiet_ms=quiet_ms, timeout_ms=int(timeout_s * 1000)
+        )
+        if text is None:
+            raise TimeoutError(
+                f"wait_until_stable: {selector!r} did not stabilize within {timeout_s}s"
+            )
+        return text
 
     def wait_for_load_state(
         self, state: str = "domcontentloaded", timeout: int = 10_000
     ) -> None:
         """Wait for page load state (domcontentloaded, load, networkidle)."""
-        self.get_page().wait_for_load_state(state, timeout=timeout)  # type: ignore[arg-type]
+        self.driver.wait_for_load(self.get_page(), state, timeout)
 
     def pick(self, selector: Selector, value: str) -> None:
         """Click the element matching text from a list of elements."""
         locator = self.find_all(selector)
-        count = locator.count()
+        count = self.driver.count(locator)
         if count == 1:
-            locator.first.click()
+            self.driver.click(self.driver.first(locator))
             return
         for i in range(count):
-            if locator.nth(i).text_content() == value:
-                locator.nth(i).click()
+            item = self.driver.nth(locator, i)
+            if self.driver.text_content(item) == value:
+                self.driver.click(item)
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 
-    def frame(self, selector: Selector, timeout: int = 10_000) -> PageLike:
+    def frame(self, selector: Selector, timeout: int = 10_000) -> Any:
         """Enter an iframe, returning the Frame."""
-        element = expect_single(resolve_selector(self.get_page(), selector), selector)
-        element.wait_for(state="attached", timeout=timeout)
-        handle = element.element_handle()
-        if handle is None:
-            raise RuntimeError(f"Could not get handle for selector {selector}")
-        content_frame = handle.content_frame()
-        if content_frame is None:
-            raise RuntimeError(f"Could not find frame for selector {selector}")
-        return content_frame
+        locator = resolve_selector(self.driver, self.get_page(), selector)
+        element = expect_single(self.driver, locator, selector)
+        self.driver.wait_for_state(element, "attached", timeout)
+        return self.driver.enter_frame(element)
 
     def parse_elements(
         self,
@@ -225,18 +378,19 @@ class BrowserSession:
     ) -> list[dict[str, str | None]]:
         """Extract structured data from matching elements."""
         results: list[dict[str, str | None]] = []
-        for row in resolve_selector(self.get_page(), selector).all():
+        locator = resolve_selector(self.driver, self.get_page(), selector)
+        for row in self.driver.all(locator):
             record: dict[str, str | None] = {}
             for key, spec in extract.items():
-                child = row.locator(spec["child_selector"])
+                child = self.driver.child(row, spec["child_selector"])
                 attr = spec.get("attribute", "textContent")
                 match attr:
                     case "textContent":
-                        record[key] = child.text_content()
+                        record[key] = self.driver.text_content(child)
                     case "value":
-                        record[key] = child.input_value()
+                        record[key] = self.driver.input_value(child)
                     case _:
-                        record[key] = child.get_attribute(attr)
+                        record[key] = self.driver.get_attribute(child, attr)
             results.append(record)
         return results
 
@@ -244,5 +398,9 @@ class BrowserSession:
         """Return cleaned HTML snippet of an element."""
         from llm_browser.html import sanitize_html_fragment
 
-        raw: str = self.find(selector).evaluate("el => el.outerHTML")
+        raw: str = self.driver.evaluate(self.find(selector), "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth)
+
+    def evaluate(self, target: Any, script: str) -> Any:
+        """Run JS in the context of a page or locator."""
+        return self.driver.evaluate(target, script)

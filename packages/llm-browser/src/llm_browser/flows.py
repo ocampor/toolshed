@@ -49,6 +49,7 @@ class FlowRunner:
         """Run a flow from the beginning. Pauses at first checkpoint."""
         resolved_path = str(Path(flow_path).resolve())
         flow = load_flow(resolved_path)
+        self._require_resumable_if_checkpointed(flow, resolved_path)
         flow_data = flow.validate_data(data)
         state = FlowState(flow_path=resolved_path, data=data)
         return self._execute(state, flow, flow_data)
@@ -76,6 +77,29 @@ class FlowRunner:
         self._clear_state()
         last_name = flow.steps[-1].name if flow.steps else "end"
         return FlowResult(step=last_name, completed=True)
+
+    def _require_resumable_if_checkpointed(self, flow: Flow, flow_path: str) -> None:
+        """Refuse flows with checkpoints on sessions that can't survive Python exit.
+
+        Checkpoints persist flow state to disk and return control to the
+        caller, who later reinvokes ``resume`` — typically in a new process.
+        If the browser dies with this process, resume will have nothing to
+        reconnect to. Attach-mode patchright is the supported path.
+        """
+        if not any(s.checkpoint for s in flow.steps):
+            return
+        info = self._session._load_state()
+        if info is None:
+            return  # session not open yet; let execute_step raise the real error
+        handle = self._session._handle_from_state(info)
+        if self._session.driver.can_resume_across_processes(handle):
+            return
+        raise RuntimeError(
+            f"Flow {flow_path!r} contains a checkpoint but the current session "
+            f"(driver={info.driver}, mode={info.mode}) cannot be resumed across "
+            "Python processes. Use attach mode (session.attach(cdp_url)) or "
+            "remove the checkpoint to run the flow end-to-end in one process."
+        )
 
     def _prepare_step(self, step: Step) -> Step:
         """Resolve selector-map references if a selector map is loaded."""

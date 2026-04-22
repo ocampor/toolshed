@@ -21,30 +21,38 @@ def page() -> MagicMock:
     return mock
 
 
+@pytest.fixture
+def driver(page: MagicMock) -> MagicMock:
+    mock = MagicMock()
+    mock.resolve.side_effect = lambda p, sel: p.locator(sel)
+    mock.count.side_effect = lambda loc: loc.count()
+    return mock
+
+
 # --- resolve_selector with typed models ---
 
 
-def test_resolve_string_selector(page: MagicMock) -> None:
-    resolve_selector(page, "#btn")
+def test_resolve_string_selector(driver: MagicMock, page: MagicMock) -> None:
+    resolve_selector(driver, page, "#btn")
     page.locator.assert_called_once_with("#btn")
 
 
-def test_resolve_css_model(page: MagicMock) -> None:
-    resolve_selector(page, CssSelector(css=".my-class"))
+def test_resolve_css_model(driver: MagicMock, page: MagicMock) -> None:
+    resolve_selector(driver, page, CssSelector(css=".my-class"))
     page.locator.assert_called_once_with(".my-class")
 
 
-def test_resolve_xpath_model(page: MagicMock) -> None:
-    resolve_selector(page, XpathSelector(xpath="//button[@id='x']"))
+def test_resolve_xpath_model(driver: MagicMock, page: MagicMock) -> None:
+    resolve_selector(driver, page, XpathSelector(xpath="//button[@id='x']"))
     page.locator.assert_called_once_with("xpath=//button[@id='x']")
 
 
-def test_resolve_id_model(page: MagicMock) -> None:
-    resolve_selector(page, IdSelector(id="135textbox78"))
+def test_resolve_id_model(driver: MagicMock, page: MagicMock) -> None:
+    resolve_selector(driver, page, IdSelector(id="135textbox78"))
     page.locator.assert_called_once_with('[id="135textbox78"]')
 
 
-def test_resolve_fallback_uses_primary(page: MagicMock) -> None:
+def test_resolve_fallback_uses_primary(driver: MagicMock, page: MagicMock) -> None:
     primary_locator = MagicMock()
     primary_locator.count.return_value = 1
     fallback_locator = MagicMock()
@@ -60,11 +68,11 @@ def test_resolve_fallback_uses_primary(page: MagicMock) -> None:
         primary=CssSelector(css="#primary"),
         fallback=CssSelector(css="#fallback"),
     )
-    result = resolve_selector(page, selector)
+    result = resolve_selector(driver, page, selector)
     assert result is primary_locator
 
 
-def test_resolve_fallback_uses_fallback(page: MagicMock) -> None:
+def test_resolve_fallback_uses_fallback(driver: MagicMock, page: MagicMock) -> None:
     primary_locator = MagicMock()
     primary_locator.count.return_value = 0
     fallback_locator = MagicMock()
@@ -80,7 +88,7 @@ def test_resolve_fallback_uses_fallback(page: MagicMock) -> None:
         primary=CssSelector(css="#primary"),
         fallback=CssSelector(css="#fallback"),
     )
-    result = resolve_selector(page, selector)
+    result = resolve_selector(driver, page, selector)
     assert result is fallback_locator
 
 

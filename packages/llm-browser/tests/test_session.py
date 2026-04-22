@@ -1,6 +1,9 @@
 """Tests for BrowserSession state file lifecycle."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 from llm_browser.chrome import is_process_alive
 from llm_browser.models import SessionInfo
@@ -68,3 +71,59 @@ def testis_process_alive_current_pid() -> None:
 def testis_process_alive_nonexistent() -> None:
     # PID 2^30 is extremely unlikely to exist
     assert is_process_alive(1 << 30) is False
+
+
+# --- wait_until_stable ---
+
+
+def _session_with_evaluate(tmp_path: Path, result: object) -> BrowserSession:
+    s = BrowserSession(state_dir=tmp_path)
+    page = MagicMock()
+    locator = MagicMock()
+    locator.count.return_value = 1
+    locator.first.evaluate.return_value = result
+    page.locator.return_value = locator
+    s._page = page
+    return s
+
+
+def test_wait_until_stable_returns_text(tmp_path: Path) -> None:
+    session = _session_with_evaluate(tmp_path, "final reply")
+    assert session.wait_until_stable("#out") == "final reply"
+
+
+def test_wait_until_stable_times_out(tmp_path: Path) -> None:
+    # In-page script resolves to null on timeout; driver maps that to None.
+    session = _session_with_evaluate(tmp_path, None)
+    with pytest.raises(TimeoutError):
+        session.wait_until_stable("#out", timeout_s=0.01)
+
+
+# --- executable_path ---
+
+
+def test_executable_path_threaded_to_driver(tmp_path: Path) -> None:
+    from tests.test_attach import AttachStubDriver
+
+    from llm_browser.drivers.base import DriverHandle
+
+    driver = AttachStubDriver()
+    captured: dict[str, object] = {}
+
+    def capturing_launch(
+        user_data_dir: Path,
+        url: str | None,
+        headed: bool,
+        executable_path: str | None = None,
+    ) -> DriverHandle:
+        captured["executable_path"] = executable_path
+        return DriverHandle(driver=driver.name, user_data_dir=str(user_data_dir), pid=1)
+
+    driver.launch = capturing_launch  # type: ignore[method-assign]
+    session = BrowserSession(
+        state_dir=tmp_path,
+        driver=driver,
+        executable_path="/usr/bin/chromium",
+    )
+    session.launch(url=None, headed=False)
+    assert captured["executable_path"] == "/usr/bin/chromium"

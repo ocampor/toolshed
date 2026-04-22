@@ -107,6 +107,17 @@ class ThinkStep(BaseStep):
     max_ms: int = 2000
 
 
+class PressStep(BaseStep):
+    action: Literal["press"]
+    key: str = ""
+
+
+class WaitStableStep(BaseStep):
+    action: Literal["wait_stable"]
+    quiet_ms: int = 1500
+    timeout_s: float = 180.0
+
+
 class EvalStep(BaseStep):
     """Step with no browser action (eval-only, wait, checkpoint)."""
 
@@ -128,6 +139,8 @@ KNOWN_ACTIONS = frozenset(
         "dom",
         "download",
         "think",
+        "press",
+        "wait_stable",
     }
 )
 
@@ -153,6 +166,8 @@ Step = Annotated[
     | Annotated[DomStep, Tag("dom")]
     | Annotated[DownloadStep, Tag("download")]
     | Annotated[ThinkStep, Tag("think")]
+    | Annotated[PressStep, Tag("press")]
+    | Annotated[WaitStableStep, Tag("wait_stable")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
 ]
@@ -209,9 +224,11 @@ class SessionResult(BaseModel):
 class SessionInfo(BaseModel):
     """Persisted browser session info for CDP reconnection."""
 
-    pid: int
-    cdp_url: str
-    user_data_dir: str
+    pid: int | None = None
+    cdp_url: str = ""
+    user_data_dir: str = ""
+    driver: str = "patchright"
+    mode: Literal["launched", "attached"] = "launched"
 
 
 class FlowState(BaseModel):

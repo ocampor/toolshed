@@ -3,9 +3,8 @@
 from typing import Any
 
 from pydantic import BaseModel
-from patchright.sync_api import Frame, Locator, Page
 
-type PageLike = Page | Frame
+from llm_browser.drivers.base import Driver
 
 
 class CssSelector(BaseModel):
@@ -59,34 +58,43 @@ def parse_selector(raw: str | dict[str, Any]) -> Selector:
     raise ValueError(f"Unknown selector format: {raw!r}")
 
 
-def resolve_selector(page: PageLike, selector: Selector) -> Locator:
-    """Resolve a typed selector into a Playwright Locator."""
+def _selector_string(selector: Selector) -> str:
     match selector:
         case str():
-            return page.locator(selector)
+            return selector
         case CssSelector(css=css):
-            return page.locator(css)
+            return css
         case XpathSelector(xpath=xpath):
-            return page.locator(f"xpath={xpath}")
+            return f"xpath={xpath}"
         case IdSelector(id=el_id):
-            return page.locator(f'[id="{el_id}"]')
-        case FallbackSelector(primary=primary, fallback=fallback):
-            return _resolve_with_fallback(page, primary, fallback)
+            return f'[id="{el_id}"]'
+        case FallbackSelector():
+            raise ValueError("FallbackSelector must be resolved via resolve_selector")
     raise ValueError(f"Unknown selector: {selector!r}")
 
 
-def expect_single(locator: Locator, selector: Selector) -> Locator:
+def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
+    """Resolve a typed selector into a driver-native locator."""
+    if isinstance(selector, FallbackSelector):
+        return _resolve_with_fallback(driver, page, selector.primary, selector.fallback)
+    return driver.resolve(page, _selector_string(selector))
+
+
+def expect_single(driver: Driver, locator: Any, selector: Selector) -> Any:
     """Validate that a locator matches exactly one element, return it."""
-    count = locator.count()
+    count = driver.count(locator)
     if count > 1:
         raise ValueError(f"Expected 1 element for {selector!r}, found {count}")
-    return locator.first
+    return driver.first(locator)
 
 
 def _resolve_with_fallback(
-    page: PageLike, primary: SelectorSpec, fallback: SelectorSpec
-) -> Locator:
-    result = resolve_selector(page, primary)
-    if result.count() > 0:
+    driver: Driver,
+    page: Any,
+    primary: SelectorSpec,
+    fallback: SelectorSpec,
+) -> Any:
+    result = resolve_selector(driver, page, primary)
+    if driver.count(result) > 0:
         return result
-    return resolve_selector(page, fallback)
+    return resolve_selector(driver, page, fallback)

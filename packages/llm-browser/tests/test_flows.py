@@ -38,6 +38,7 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     session.behavior = Behavior.off()
     session._behavior_runtime = session.behavior.runtime()
     session.capture = "screenshot"
+    session.driver = MagicMock()
     page = MagicMock()
     session.get_page.return_value = page
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
@@ -130,7 +131,7 @@ def test_should_skip_element_exists(tmp_path: Path) -> None:
 
 def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    session.get_page.return_value.evaluate.return_value = '{"cp": "05330"}'
+    session.driver.evaluate.return_value = '{"cp": "05330"}'
 
     step = EvalStep(name="check", eval="someJs()", checkpoint=True)
     result = execute_step(session, step, _flow_data())
@@ -149,17 +150,19 @@ def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
     )
     result = execute_step(session, step, _flow_data(needed=False))
     assert result is None
-    session.get_page.return_value.evaluate.assert_not_called()
+    session.driver.evaluate.assert_not_called()
 
 
 def test_execute_step_template_substitution(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    page = session.get_page.return_value
-    page.evaluate.return_value = "ok"
+    session.driver.evaluate.return_value = "ok"
 
     step = EvalStep(name="t", eval="document.getElementById('{{ fid }}').value")
     execute_step(session, step, _flow_data(fid="myfield"))
-    page.evaluate.assert_called_once_with("document.getElementById('myfield').value")
+    session.driver.evaluate.assert_called_once_with(
+        session.get_page.return_value,
+        "document.getElementById('myfield').value",
+    )
 
 
 # --- FlowRunner ---
@@ -167,7 +170,7 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
 
 def test_run_pauses_at_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    session.get_page.return_value.evaluate.return_value = "result1"
+    session.driver.evaluate.return_value = "result1"
 
     steps: list[dict[str, Any]] = [
         {"name": "s1", "eval": "1+1"},
@@ -193,7 +196,7 @@ def test_run_completes_without_checkpoint(tmp_path: Path) -> None:
 
 def test_run_saves_state_at_checkpoint(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    session.get_page.return_value.evaluate.return_value = "v"
+    session.driver.evaluate.return_value = "v"
 
     steps = [{"name": "s1", "eval": "x()", "checkpoint": True}]
     path = _write_flow(tmp_path, steps)
@@ -260,9 +263,62 @@ def test_run_validates_params(tmp_path: Path) -> None:
         runner.run(path, {})
 
 
+def test_run_refuses_checkpoint_flow_when_session_cannot_resume(
+    tmp_path: Path,
+) -> None:
+    """Flows with checkpoints require a driver+handle that survives Python exit."""
+    session = _mock_session(tmp_path)
+    from llm_browser.models import SessionInfo
+
+    session._load_state.return_value = SessionInfo(
+        driver="patchright", user_data_dir=str(tmp_path), mode="launched"
+    )
+    session._handle_from_state.side_effect = BrowserSession._handle_from_state.__get__(
+        session
+    )
+    session.driver.can_resume_across_processes.return_value = False
+
+    steps: list[dict[str, Any]] = [
+        {"name": "s1", "eval": "noop()"},
+        {"name": "pause", "checkpoint": True},
+    ]
+    path = _write_flow(tmp_path, steps)
+    runner = FlowRunner(session)
+
+    with pytest.raises(RuntimeError, match="cannot be resumed across"):
+        runner.run(path, {})
+
+
+def test_run_allows_checkpoint_flow_when_session_can_resume(tmp_path: Path) -> None:
+    """Attach-mode patchright opts in to checkpoint flows via the driver hook."""
+    session = _mock_session(tmp_path)
+    from llm_browser.models import SessionInfo
+
+    session._load_state.return_value = SessionInfo(
+        driver="patchright",
+        cdp_url="http://localhost:9222",
+        user_data_dir="",
+        mode="attached",
+    )
+    session._handle_from_state.side_effect = BrowserSession._handle_from_state.__get__(
+        session
+    )
+    session.driver.can_resume_across_processes.return_value = True
+
+    steps: list[dict[str, Any]] = [
+        {"name": "s1", "eval": "noop()"},
+        {"name": "pause", "checkpoint": True},
+    ]
+    path = _write_flow(tmp_path, steps)
+    session.driver.evaluate.return_value = None
+    runner = FlowRunner(session)
+    result = runner.run(path, {})
+    assert result.step == "pause"
+
+
 def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    session.get_page.return_value.evaluate.return_value = "ok"
+    session.driver.evaluate.return_value = "ok"
 
     params: list[str | dict[str, Any]] = [
         "rfc",
@@ -274,5 +330,6 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     result = runner.run(path, {"rfc": "XEXX"})
 
     assert result.completed is True
-    page = session.get_page.return_value
-    page.evaluate.assert_called_once_with("fill('XEXX', 'MX')")
+    session.driver.evaluate.assert_called_once_with(
+        session.get_page.return_value, "fill('XEXX', 'MX')"
+    )

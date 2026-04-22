@@ -1,9 +1,11 @@
 """CLI entry point for llm-browser."""
 
 import json
+import os
 
 import click
 
+from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flows import FlowRunner
 from llm_browser.session import BrowserSession
 
@@ -25,11 +27,18 @@ def _output(data: object) -> None:
     default="default",
     help="Session ID for concurrent browsers.",
 )
+@click.option(
+    "--driver",
+    "driver_name",
+    default=None,
+    help="Driver name (patchright, camoufox, nodriver). Env: LLM_BROWSER_DRIVER.",
+)
 @click.pass_context
-def main(ctx: click.Context, session_id: str) -> None:
+def main(ctx: click.Context, session_id: str, driver_name: str | None) -> None:
     """LLM-friendly browser automation with YAML flows."""
     ctx.ensure_object(dict)
-    ctx.obj["session"] = BrowserSession(session_id=session_id)
+    driver = driver_name or os.environ.get(DRIVER_ENV_VAR)
+    ctx.obj["session"] = BrowserSession(session_id=session_id, driver=driver)
 
 
 @main.command()
@@ -44,13 +53,63 @@ def open(ctx: click.Context, url: str, headed: bool) -> None:
 
 
 @main.command()
+@click.option("--cdp-url", required=True, help="CDP URL of a running Chromium.")
+@click.pass_context
+def attach(ctx: click.Context, cdp_url: str) -> None:
+    """Attach to an already-running Chromium over CDP."""
+    session: BrowserSession = ctx.obj["session"]
+    result = session.attach(cdp_url)
+    _output(result)
+
+
+@main.command()
+@click.option("--url", default=None, help="Optional URL to navigate to on spawn.")
+@click.option("--headed/--headless", default=True, help="Run in headed mode.")
+@click.option(
+    "--executable",
+    "executable",
+    default=None,
+    help="Path to your real Chrome/Chromium binary (defaults to patchright's bundled copy).",
+)
+@click.option(
+    "--profile",
+    "profile",
+    default=None,
+    help="Path to your real user-data-dir (defaults to the session's fresh profile). Close any running Chrome against this dir first.",
+)
+@click.pass_context
+def daemon(
+    ctx: click.Context,
+    url: str | None,
+    headed: bool,
+    executable: str | None,
+    profile: str | None,
+) -> None:
+    """Spawn a detached Chromium that survives this CLI invocation."""
+    session: BrowserSession = ctx.obj["session"]
+    result = session.launch_detached(
+        url=url, headed=headed, executable_path=executable, user_data_dir=profile
+    )
+    _output(result)
+
+
+@main.command()
+@click.pass_context
+def stop(ctx: click.Context) -> None:
+    """Kill a detached Chromium started with `daemon`."""
+    session: BrowserSession = ctx.obj["session"]
+    result = session.stop_detached()
+    _output(result)
+
+
+@main.command()
 @click.option("--url", required=True, help="URL to navigate to.")
 @click.pass_context
 def goto(ctx: click.Context, url: str) -> None:
     """Navigate to a URL on the current session."""
     session: BrowserSession = ctx.obj["session"]
     session.goto(url)
-    _output({"url": session.get_page().url})
+    _output({"url": session.driver.page_url(session.get_page())})
 
 
 @main.command()
@@ -116,7 +175,7 @@ def find(ctx: click.Context, selector: str) -> None:
     """Find a single element and output its outer HTML."""
     session: BrowserSession = ctx.obj["session"]
     element = session.find(selector)
-    html: str = element.evaluate("el => el.outerHTML")
+    html: str = session.driver.evaluate(element, "el => el.outerHTML")
     _output({"html": html})
 
 
@@ -127,8 +186,12 @@ def find_all(ctx: click.Context, selector: str) -> None:
     """Find all matching elements and output their outer HTML."""
     session: BrowserSession = ctx.obj["session"]
     locator = session.find_all(selector)
-    count = locator.count()
-    items = [locator.nth(i).evaluate("el => el.outerHTML") for i in range(count)]
+    driver = session.driver
+    count = driver.count(locator)
+    items = [
+        driver.evaluate(driver.nth(locator, i), "el => el.outerHTML")
+        for i in range(count)
+    ]
     _output({"count": count, "items": items})
 
 
@@ -138,7 +201,7 @@ def latest_tab(ctx: click.Context) -> None:
     """Switch to the most recently opened tab."""
     session: BrowserSession = ctx.obj["session"]
     page = session.latest_tab()
-    _output({"url": page.url})
+    _output({"url": session.driver.page_url(page)})
 
 
 @main.command()

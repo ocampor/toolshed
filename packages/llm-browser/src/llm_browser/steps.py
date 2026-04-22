@@ -43,7 +43,7 @@ def execute_step(
         return None
     action_result = execute_action(session, resolved)
     if resolved.eval:
-        eval_result = session.get_page().evaluate(resolved.eval)
+        eval_result = session.driver.evaluate(session.get_page(), resolved.eval)
     else:
         eval_result = None
     if resolved.wait_after:

@@ -77,6 +77,8 @@ def _mock_capture_session(tmp_path: Path, capture: str) -> MagicMock:
     session.behavior = Behavior.off()
     session._behavior_runtime = session.behavior.runtime()
     session.capture = capture
+    session.driver = MagicMock()
+    session.driver.evaluate.return_value = "v"
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.take_dom_snapshot.return_value = tmp_path / "dom.html"
     session.get_page.return_value.evaluate.return_value = "v"

@@ -15,10 +15,12 @@ from llm_browser.models import (
     FillStep,
     GotoStep,
     PickStep,
+    PressStep,
     ReadStep,
     ScreenshotStep,
     SelectStep,
     TypeStep,
+    WaitStableStep,
     WaitStep,
     validate_step,
 )
@@ -207,7 +209,7 @@ def test_download(session: BrowserSession, tmp_path: object) -> None:
     def fake_expect_download():  # type: ignore[no-untyped-def]
         yield MagicMock(value=mock_download)
 
-    session._page.expect_download = fake_expect_download  # type: ignore[union-attr,method-assign]
+    session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
 
     step = DownloadStep(
         name="s", action="download", selector="#dl-link", path=str(dest)
@@ -221,6 +223,44 @@ def test_download_requires_path(session: BrowserSession) -> None:
     step = DownloadStep(name="s", action="download", selector="#dl-link")
     with pytest.raises(ValueError, match="path"):
         execute_action(session, step)
+
+
+# --- press ---
+
+
+def test_press_on_selector(session: BrowserSession) -> None:
+    step = PressStep(name="s", action="press", selector="#box", key="Enter")
+    execute_action(session, step)
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    locator.first.press.assert_called_once_with("Enter")
+
+
+def test_press_focused(session: BrowserSession) -> None:
+    step = PressStep(name="s", action="press", key="Enter")
+    execute_action(session, step)
+    session._page.keyboard.press.assert_called_once_with("Enter")  # type: ignore[union-attr]
+
+
+def test_press_requires_key(session: BrowserSession) -> None:
+    step = PressStep(name="s", action="press")
+    with pytest.raises(ValueError, match="key"):
+        execute_action(session, step)
+
+
+# --- wait_stable ---
+
+
+def test_wait_stable(session: BrowserSession) -> None:
+    # The Playwright-family driver resolves stability in-page via
+    # locator.evaluate(); mock its return.
+    locator = _single_locator()
+    locator.first.evaluate.return_value = "done"
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    step = WaitStableStep(
+        name="s", action="wait_stable", selector="#reply", quiet_ms=5, timeout_s=5
+    )
+    assert execute_action(session, step) == "done"
 
 
 # --- no action ---
