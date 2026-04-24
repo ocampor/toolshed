@@ -5,6 +5,7 @@ import os
 
 import click
 
+from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flows import FlowRunner
 from llm_browser.session import BrowserSession
@@ -33,12 +34,35 @@ def _output(data: object) -> None:
     default=None,
     help="Driver name (patchright, camoufox, nodriver). Env: LLM_BROWSER_DRIVER.",
 )
+@click.option(
+    "--behavior-config",
+    "behavior_config",
+    default=None,
+    help=(
+        "Path to a YAML humanization config. Empty file = human defaults "
+        "on patchright. See llm_browser.behavior_config for the schema. "
+        "When omitted, Behavior.off()."
+    ),
+)
 @click.pass_context
-def main(ctx: click.Context, session_id: str, driver_name: str | None) -> None:
+def main(
+    ctx: click.Context,
+    session_id: str,
+    driver_name: str | None,
+    behavior_config: str | None,
+) -> None:
     """LLM-friendly browser automation with YAML flows."""
     ctx.ensure_object(dict)
     driver = driver_name or os.environ.get(DRIVER_ENV_VAR)
-    ctx.obj["session"] = BrowserSession(session_id=session_id, driver=driver)
+    behavior = None
+    if behavior_config:
+        try:
+            behavior = load_behavior(behavior_config)
+        except BehaviorConfigError as e:
+            raise click.ClickException(str(e)) from e
+    ctx.obj["session"] = BrowserSession(
+        session_id=session_id, driver=driver, behavior=behavior
+    )
 
 
 @main.command()
