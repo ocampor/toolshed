@@ -2,24 +2,18 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Discriminator, Tag, TypeAdapter
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    TypeAdapter,
+    field_validator,
+)
 
+from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
-
-
-class Field(BaseModel, extra="allow"):
-    """A single form field to fill."""
-
-    type: str
-    id: str
-
-
-class Condition(BaseModel, extra="allow"):
-    """A when-clause condition."""
-
-    field: str
-    op: str
-
 
 # --- Step types ---
 
@@ -28,77 +22,120 @@ CaptureMode = Literal["screenshot", "dom", "both"]
 
 
 class BaseStep(BaseModel):
-    """Common fields shared by all step types."""
+    """Common fields shared by all step types.
+
+    No ``selector`` here — see ``SelectorStep`` for steps that target a DOM
+    element. Goto / wait / screenshot / think / eval-only steps inherit
+    ``BaseStep`` directly.
+    """
 
     name: str = "unnamed"
     fields: list[dict[str, Any]] = []
     when: list[dict[str, Any]] = []
-    selector: Selector | None = None
     eval: str | None = None
     wait_after: int | None = None
     checkpoint: bool = False
+    optional: bool = False
+    timeout: int = 10_000
 
 
-class ClickStep(BaseStep):
+class SelectorStep(BaseStep):
+    """Base for steps that operate on a DOM element. Selector is required."""
+
+    selector: Selector
+
+
+# Steps that target a DOM element inherit from ``SelectorStep`` (selector
+# required). Steps that don't (goto / wait / screenshot / think) inherit
+# ``BaseStep``. ``PressStep`` is special: it can target a selector or fall back
+# to the focused element via ``press_focused``, so it overrides the field with
+# an optional one.
+
+
+class ClickStep(SelectorStep):
     action: Literal["click"]
     dispatch: bool = False
 
 
-class FillStep(BaseStep):
+class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
 
 
-class TypeStep(BaseStep):
+class TypeStep(SelectorStep):
     action: Literal["type"]
     value: str = ""
     delay: int = 0
 
 
-class SelectStep(BaseStep):
+class SelectStep(SelectorStep):
     action: Literal["select"]
     value: str = ""
 
 
-class CheckStep(BaseStep):
+class CheckStep(SelectorStep):
     action: Literal["check"]
     checked: bool = True
 
 
-class PickStep(BaseStep):
+class PickStep(SelectorStep):
     action: Literal["pick"]
     value: str = ""
 
 
 class GotoStep(BaseStep):
     action: Literal["goto"]
-    url: str = ""
+    url: str = Field(..., min_length=1)
     wait_until: str = "domcontentloaded"
-
-
-class WaitStep(BaseStep):
-    action: Literal["wait"]
-    state: str = "domcontentloaded"
-    timeout: int = 10_000
 
 
 class ScreenshotStep(BaseStep):
     action: Literal["screenshot"]
 
 
-class ReadStep(BaseStep):
+class ReadStep(SelectorStep):
+    # ExtractField is a FieldInfo subclass (not a Pydantic model), so the
+    # default schema generator can't introspect it. ``arbitrary_types_allowed``
+    # tells Pydantic to skip schema generation and trust runtime-validated
+    # values (set by the ``_coerce_extract`` validator below).
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     action: Literal["read"]
-    extract: dict[str, dict[str, str]] = {}
+    extract: dict[str, ExtractField] = {}
+
+    @field_validator("extract", mode="before")
+    @classmethod
+    def _coerce_extract(cls, v: Any) -> Any:
+        # YAML loads `extract` as a plain dict; coerce nested dicts into
+        # ExtractField.
+        if not isinstance(v, dict):
+            return v
+        return {
+            k: spec if isinstance(spec, ExtractField) else ExtractField(**spec)
+            for k, spec in v.items()
+        }
 
 
-class DomStep(BaseStep):
+class ParseStep(SelectorStep):
+    """Parse rows into typed instances using a YAML schema.
+
+    Like ``read``, but every row is validated against the schema and
+    coerced to a Pydantic model. ``schema_path`` is CWD-relative or
+    absolute (same convention as ``download.path``).
+    """
+
+    action: Literal["parse"]
+    schema_path: str = Field(..., min_length=1)
+
+
+class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
 
 
-class DownloadStep(BaseStep):
+class DownloadStep(SelectorStep):
     action: Literal["download"]
-    path: str = ""
+    path: str = Field(..., min_length=1)
 
 
 class ThinkStep(BaseStep):
@@ -109,11 +146,19 @@ class ThinkStep(BaseStep):
 
 class PressStep(BaseStep):
     action: Literal["press"]
-    key: str = ""
+    # Optional: when None, press the focused element via ``press_focused``.
+    selector: Selector | None = None
+    key: str = Field(..., min_length=1)
 
 
-class WaitStableStep(BaseStep):
-    action: Literal["wait_stable"]
+class WaitStep(SelectorStep):
+    """Wait until ``selector``'s text stops changing for ``quiet_ms``.
+
+    Designed for streaming content (LLM chat replies, progressive lists);
+    page-level load events should use ``goto``'s ``wait_until`` arg instead.
+    """
+
+    action: Literal["wait"]
     quiet_ms: int = 1500
     timeout_s: float = 180.0
 
@@ -136,11 +181,11 @@ KNOWN_ACTIONS = frozenset(
         "wait",
         "screenshot",
         "read",
+        "parse",
         "dom",
         "download",
         "think",
         "press",
-        "wait_stable",
     }
 )
 
@@ -160,14 +205,14 @@ Step = Annotated[
     | Annotated[CheckStep, Tag("check")]
     | Annotated[PickStep, Tag("pick")]
     | Annotated[GotoStep, Tag("goto")]
-    | Annotated[WaitStep, Tag("wait")]
     | Annotated[ScreenshotStep, Tag("screenshot")]
     | Annotated[ReadStep, Tag("read")]
+    | Annotated[ParseStep, Tag("parse")]
     | Annotated[DomStep, Tag("dom")]
     | Annotated[DownloadStep, Tag("download")]
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[PressStep, Tag("press")]
-    | Annotated[WaitStableStep, Tag("wait_stable")]
+    | Annotated[WaitStep, Tag("wait")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
 ]

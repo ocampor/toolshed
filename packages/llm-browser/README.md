@@ -40,6 +40,87 @@ data = session.parse_elements("tr.row", {
 session.close()
 ```
 
+### Typed extraction
+
+For Python callers who'd rather get coerced typed instances than dicts of
+strings, declare a model with `ExtractField` defaults and use the classmethods
+on `ParseBase`:
+
+```python
+from llm_browser import BrowserSession
+from llm_browser.parse import ExtractField, ParseBase
+
+
+class Repo(ParseBase):
+    name:  str = ExtractField(child_selector="h3 a")
+    stars: int = ExtractField(child_selector=".stars")
+    href:  str = ExtractField(attribute="href")  # off the row itself
+
+
+session = BrowserSession()
+session.launch("https://github.com/trending")
+repos: list[Repo] = Repo.extract_all(session, "article.Box-row")
+top:   Repo | None = Repo.extract_one(session, "article.Box-row")
+
+assert isinstance(repos[0].stars, int)  # coerced from text
+```
+
+Pydantic handles validation and type coercion (`"42"` → `int 42`,
+`"true"` → `bool`, etc.). The YAML `read` action keeps using the dict shape
+shown above — pick whichever fits.
+
+#### From a YAML schema
+
+If you'd rather declare the schema in YAML than in Python, point `build_model`
+at a schema file. The returned class is indistinguishable from a hand-written
+`ParseBase` subclass — same `extract_all` / `extract_one` call site.
+
+```yaml
+# schemas/repo.yaml
+name: Repo
+fields:
+  name:
+    type: str
+    child_selector: "h3 a"
+  stars:
+    type: int
+    child_selector: ".stars"
+  description:
+    type: str | None              # required → omit `default`; optional → declare it
+    child_selector: ".desc"
+    default: null
+```
+
+```python
+from llm_browser.parse import build_model
+
+Repo = build_model("schemas/repo.yaml")
+repos = Repo.extract_all(session, "article.Box-row")
+assert isinstance(repos[0].stars, int)
+```
+
+`type` strings are evaluated against `typing` + Python builtins, so `str`,
+`int`, `int | None`, `Optional[int]`, `list[str]`, etc. all work. A given
+schema lives in *one* place — Python or YAML, not both.
+
+#### From a YAML flow
+
+A YAML flow can use the same schema via the `parse` action — same shape as
+`read`, but rows come back as typed schema instances instead of raw strings:
+
+```yaml
+- name: list_repos
+  action: parse
+  selector: "article.Box-row"
+  schema_path: "schemas/repo.yaml"   # CWD-relative or absolute
+  checkpoint: true
+```
+
+The resulting `ParsedResult.rows` are `Repo` instances (built from the
+schema), with values coerced by Pydantic — same outcome as calling
+`Repo.extract_all(session, ...)` from Python. Empty rows (every field
+None) come back as `None`, mirroring `read`'s behavior.
+
 ### CLI
 
 ```bash
@@ -239,6 +320,17 @@ Caveats:
 
 - `persistent_context=True` is always on (required for session reuse). If you rotate proxies between runs but reuse `user_data_dir`, cookies and storage link the sessions across IPs — rotate the user-data dir for fresh identities.
 - Pinning `locale` on an IP that doesn't match its region (e.g. `locale="fr-FR"` on a US IP) still misaligns — caller intent can't be inferred. Pin `timezone` and `geolocation` explicitly or use a matching proxy.
+
+## Known warnings
+
+Every browser launch prints one Node deprecation warning to stderr:
+
+```
+DeprecationWarning: `url.parse()` behavior is not standardized... (DEP0169)
+    at .../patchright/driver/package/lib/utilsBundleImpl/index.js:8:4476
+```
+
+The call originates from patchright's vendored HTTP bundle (during CDP connect), not llm-browser. It is harmless and upstream-tracked; do not suppress it with `NODE_NO_WARNINGS=1` — it is the kind of signal we want surfaced if a future Node version turns it into an error. Confirmed on patchright 1.58.2 (latest as of writing).
 
 ## Session methods
 

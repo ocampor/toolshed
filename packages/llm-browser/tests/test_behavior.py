@@ -276,6 +276,11 @@ def test_think_sleeps_within_bounds(session: BrowserSession) -> None:
 
 
 def test_think_rejects_inverted_bounds(session: BrowserSession) -> None:
+    """``min_ms > max_ms`` triggers Pydantic validation inside Jitter, which
+    bubbles to ``execute_action`` and is returned as ``ErrorResult``."""
+    from llm_browser.actions import ErrorResult
+
     step = ThinkStep(name="s", action="think", min_ms=100, max_ms=50)
-    with pytest.raises(ValueError, match="max_ms"):
-        execute_action(session, step)
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert "max_ms" in result.message

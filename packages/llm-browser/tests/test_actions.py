@@ -20,7 +20,6 @@ from llm_browser.models import (
     ScreenshotStep,
     SelectStep,
     TypeStep,
-    WaitStableStep,
     WaitStep,
     validate_step,
 )
@@ -139,17 +138,6 @@ def test_goto(session: BrowserSession) -> None:
     )
 
 
-# --- wait ---
-
-
-def test_wait(session: BrowserSession) -> None:
-    step = WaitStep(name="s", action="wait", state="load", timeout=5000)
-    execute_action(session, step)
-    session._page.wait_for_load_state.assert_called_once_with(  # type: ignore[union-attr]
-        "load", timeout=5000
-    )
-
-
 # --- screenshot ---
 
 
@@ -172,6 +160,8 @@ def test_read(session: BrowserSession) -> None:
     locator.all.return_value = [row]
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
+    from llm_browser.actions import ExtractedRow, ParsedResult
+
     step = ReadStep(
         name="s",
         action="read",
@@ -179,20 +169,85 @@ def test_read(session: BrowserSession) -> None:
         extract={"name": {"child_selector": "td", "attribute": "textContent"}},
     )
     result = execute_action(session, step)
-    assert result == [{"name": "Alice"}]
+    assert isinstance(result, ParsedResult)
+    assert len(result.rows) == 1
+    row = result.rows[0]
+    assert isinstance(row, ExtractedRow)
+    assert row.model_dump() == {"name": "Alice"}
+
+
+# --- parse (typed schema action) ---
+
+
+def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: object) -> None:
+    """The parse action loads a YAML schema and emits coerced typed rows."""
+    from pathlib import Path
+
+    import yaml
+
+    from llm_browser.actions import ParsedResult
+    from llm_browser.models import ParseStep
+
+    schema = Path(str(tmp_path)) / "repo.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Repo",
+                "fields": {
+                    "name": {"type": "str", "child_selector": "td.name"},
+                    "stars": {"type": "int", "child_selector": "td.stars"},
+                },
+            }
+        )
+    )
+
+    # Build a mock that yields one row whose children return string values
+    # for the fields the schema asks for.
+    def _make_row(fields: dict[str, str]) -> MagicMock:
+        row = MagicMock()
+
+        def _resolve(child_sel: str) -> MagicMock:
+            child = MagicMock()
+            key = child_sel.split(".", 1)[1]
+            child.text_content.return_value = fields.get(key)
+            return child
+
+        row.locator.side_effect = _resolve
+        return row
+
+    locator = MagicMock()
+    locator.all.return_value = [_make_row({"name": "foo", "stars": "42"})]
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    step = ParseStep(
+        name="s", action="parse", selector="tr.row", schema_path=str(schema)
+    )
+    result = execute_action(session, step)
+
+    assert isinstance(result, ParsedResult)
+    assert len(result.rows) == 1
+    row = result.rows[0]
+    assert row is not None
+    assert row.__class__.__name__ == "Repo"
+    assert row.name == "foo"
+    assert row.stars == 42
+    assert isinstance(row.stars, int)
 
 
 # --- dom ---
 
 
 def test_dom(session: BrowserSession) -> None:
+    from llm_browser.actions import TextResult
+
     locator = _single_locator()
     locator.first.evaluate.return_value = "<div><p>Hello</p></div>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
     step = DomStep(name="s", action="dom", selector="#content")
     result = execute_action(session, step)
-    assert "Hello" in result
+    assert isinstance(result, TextResult)
+    assert "Hello" in result.text
 
 
 # --- download ---
@@ -211,18 +266,22 @@ def test_download(session: BrowserSession, tmp_path: object) -> None:
 
     session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
 
+    from llm_browser.actions import PathResult
+
     step = DownloadStep(
         name="s", action="download", selector="#dl-link", path=str(dest)
     )
     result = execute_action(session, step)
-    assert result == str(dest)
+    assert isinstance(result, PathResult)
+    assert result.path == str(dest)
     mock_download.save_as.assert_called_once_with(str(dest))
 
 
-def test_download_requires_path(session: BrowserSession) -> None:
-    step = DownloadStep(name="s", action="download", selector="#dl-link")
-    with pytest.raises(ValueError, match="path"):
-        execute_action(session, step)
+def test_download_requires_path() -> None:
+    """``path`` is required at construction; bad steps fail before any browser
+    work, surfaced via Pydantic ValidationError."""
+    with pytest.raises(ValidationError):
+        DownloadStep(name="s", action="download", selector="#dl-link")
 
 
 # --- press ---
@@ -241,34 +300,90 @@ def test_press_focused(session: BrowserSession) -> None:
     session._page.keyboard.press.assert_called_once_with("Enter")  # type: ignore[union-attr]
 
 
-def test_press_requires_key(session: BrowserSession) -> None:
-    step = PressStep(name="s", action="press")
-    with pytest.raises(ValueError, match="key"):
-        execute_action(session, step)
+def test_press_requires_key() -> None:
+    """``key`` is required at construction; bad steps fail before any browser
+    work, surfaced via Pydantic ValidationError."""
+    with pytest.raises(ValidationError):
+        PressStep(name="s", action="press")
 
 
-# --- wait_stable ---
+# --- wait ---
 
 
-def test_wait_stable(session: BrowserSession) -> None:
+def test_wait(session: BrowserSession) -> None:
+    """``wait`` polls a selector until its text stops changing for ``quiet_ms``."""
+    from llm_browser.actions import TextResult
+
     # The Playwright-family driver resolves stability in-page via
     # locator.evaluate(); mock its return.
     locator = _single_locator()
     locator.first.evaluate.return_value = "done"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
-    step = WaitStableStep(
-        name="s", action="wait_stable", selector="#reply", quiet_ms=5, timeout_s=5
-    )
-    assert execute_action(session, step) == "done"
+    step = WaitStep(name="s", action="wait", selector="#reply", quiet_ms=5, timeout_s=5)
+    result = execute_action(session, step)
+    assert isinstance(result, TextResult)
+    assert result.text == "done"
 
 
 # --- no action ---
 
 
-def test_no_action_returns_none(session: BrowserSession) -> None:
+def test_no_action_returns_void(session: BrowserSession) -> None:
+    from llm_browser.actions import VoidResult
+
     step = EvalStep(name="s")
-    assert execute_action(session, step) is None
+    assert isinstance(execute_action(session, step), VoidResult)
+
+
+# --- optional flag ---
+
+
+def test_optional_swallows_timeout(session: BrowserSession) -> None:
+    from llm_browser.actions import SkippedResult
+
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    locator.first.click.side_effect = TimeoutError("element hidden")
+    step = ClickStep(name="s", action="click", selector="#missing", optional=True)
+    result = execute_action(session, step)
+    assert isinstance(result, SkippedResult)
+    assert result.skipped is True
+    assert result.reason == "TimeoutError: element hidden"
+
+
+def test_optional_swallows_value_error(session: BrowserSession) -> None:
+    from llm_browser.actions import SkippedResult
+
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    locator.count.return_value = 3  # triggers expect_single ValueError
+    step = ClickStep(name="s", action="click", selector=".ambiguous", optional=True)
+    result = execute_action(session, step)
+    assert isinstance(result, SkippedResult)
+    assert result.skipped is True
+
+
+def test_non_optional_returns_error(session: BrowserSession) -> None:
+    from llm_browser.actions import ErrorResult
+
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    locator.first.click.side_effect = TimeoutError("element hidden")
+    step = ClickStep(name="my_step", action="click", selector="#missing")
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.ok is False
+    assert result.error == "TimeoutError"
+    assert result.step_name == "my_step"
+    assert result.selector == "'#missing'"
+    assert result.hint == "element hidden, missing, or slow to render"
+    assert result.message == "element hidden"
+
+
+def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", timeout=30_000)
+    execute_action(session, step)
+    locator = session._page.locator.return_value  # type: ignore[union-attr]
+    # find() calls wait_for on the first locator with the given timeout
+    locator.first.wait_for.assert_called_with(state="visible", timeout=30_000)
 
 
 # --- unknown action ---

@@ -5,23 +5,61 @@ import os
 
 import click
 
+from llm_browser.actions import ErrorResult
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flows import FlowRunner
+from llm_browser.models import FlowResult
 from llm_browser.session import BrowserSession
 
 
 def _output(data: object) -> None:
-    """Print JSON to stdout. Supports Pydantic models and plain dicts."""
+    """Print JSON to stdout, then exit non-zero if the payload is a
+    flow-level error. Supports Pydantic models and plain dicts.
+
+    A FlowResult whose ``data`` is an ``ErrorResult`` represents an expected
+    runtime failure (selector hidden, ambiguous, etc.) — surface it as a
+    non-zero exit so callers can detect it without parsing JSON.
+    """
     from pydantic import BaseModel
 
     if isinstance(data, BaseModel):
         click.echo(data.model_dump_json(exclude_none=True))
     else:
         click.echo(json.dumps(data, ensure_ascii=False))
+    if isinstance(data, FlowResult) and isinstance(data.data, ErrorResult):
+        raise SystemExit(1)
 
 
-@click.group()
+class _StructuredErrorGroup(click.Group):
+    """Click group that emits a one-line JSON summary for *unexpected*
+    exceptions (programmer bugs, network failures) before re-raising.
+
+    Expected runtime failures (Timeout/Value from action handlers) are
+    returned as ``ErrorResult`` and never reach this fallback; this only
+    catches things like assertion errors or driver crashes.
+    """
+
+    def invoke(self, ctx: click.Context) -> object:
+        try:
+            return super().invoke(ctx)
+        except click.exceptions.ClickException:
+            raise
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except BaseException as exc:
+            payload = {
+                "command": ctx.invoked_subcommand or ctx.info_name,
+                "error": type(exc).__name__,
+                "message": str(exc).split("\n", 1)[0][:300],
+            }
+            click.echo(json.dumps(payload, ensure_ascii=False), err=True)
+            if os.environ.get("LLM_BROWSER_QUIET") == "1":
+                raise SystemExit(1) from exc
+            raise
+
+
+@click.group(cls=_StructuredErrorGroup)
 @click.option(
     "--session",
     "session_id",
@@ -192,12 +230,27 @@ def screenshot(ctx: click.Context) -> None:
     _output({"screenshot": str(path)})
 
 
+def _find_all_output(session: BrowserSession, selector: str) -> None:
+    locator = session.find_all(selector)
+    driver = session.driver
+    count = driver.count(locator)
+    items = [
+        driver.evaluate(driver.nth(locator, i), "el => el.outerHTML")
+        for i in range(count)
+    ]
+    _output({"count": count, "items": items})
+
+
 @main.command()
 @click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option("--all", "all_", is_flag=True, help="Return all matches as a JSON array.")
 @click.pass_context
-def find(ctx: click.Context, selector: str) -> None:
-    """Find a single element and output its outer HTML."""
+def find(ctx: click.Context, selector: str, all_: bool) -> None:
+    """Find an element (or all matches with --all) and output outer HTML."""
     session: BrowserSession = ctx.obj["session"]
+    if all_:
+        _find_all_output(session, selector)
+        return
     element = session.find(selector)
     html: str = session.driver.evaluate(element, "el => el.outerHTML")
     _output({"html": html})
@@ -207,16 +260,9 @@ def find(ctx: click.Context, selector: str) -> None:
 @click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
 @click.pass_context
 def find_all(ctx: click.Context, selector: str) -> None:
-    """Find all matching elements and output their outer HTML."""
+    """Find all matching elements and output their outer HTML (alias for `find --all`)."""
     session: BrowserSession = ctx.obj["session"]
-    locator = session.find_all(selector)
-    driver = session.driver
-    count = driver.count(locator)
-    items = [
-        driver.evaluate(driver.nth(locator, i), "el => el.outerHTML")
-        for i in range(count)
-    ]
-    _output({"count": count, "items": items})
+    _find_all_output(session, selector)
 
 
 @main.command("latest-tab")

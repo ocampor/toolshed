@@ -13,7 +13,12 @@ from llm_browser.chrome import (
 from llm_browser.constants import DEFAULT_STATE_DIR
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import sanitize_page_html
-from llm_browser.models import CaptureMode, SessionInfo, SessionResult
+from llm_browser.models import (
+    CaptureMode,
+    SessionInfo,
+    SessionResult,
+)
+from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector, expect_single, resolve_selector
 
 logger = logging.getLogger("llm_browser")
@@ -374,23 +379,32 @@ class BrowserSession:
     def parse_elements(
         self,
         selector: Selector,
-        extract: dict[str, dict[str, str]],
+        extract: dict[str, ExtractField],
     ) -> list[dict[str, str | None]]:
-        """Extract structured data from matching elements."""
+        """Extract structured data from matching elements.
+
+        ``extract`` maps output field names to ``ExtractField`` specs that say
+        which child selector to descend into and which attribute/property to
+        read. When ``child_selector`` is None the value is read off the row
+        element itself.
+        """
         results: list[dict[str, str | None]] = []
         locator = resolve_selector(self.driver, self.get_page(), selector)
         for row in self.driver.all(locator):
             record: dict[str, str | None] = {}
             for key, spec in extract.items():
-                child = self.driver.child(row, spec["child_selector"])
-                attr = spec.get("attribute", "textContent")
-                match attr:
+                target = (
+                    self.driver.child(row, spec.child_selector)
+                    if spec.child_selector is not None
+                    else row
+                )
+                match spec.attribute:
                     case "textContent":
-                        record[key] = self.driver.text_content(child)
+                        record[key] = self.driver.text_content(target)
                     case "value":
-                        record[key] = self.driver.input_value(child)
+                        record[key] = self.driver.input_value(target)
                     case _:
-                        record[key] = self.driver.get_attribute(child, attr)
+                        record[key] = self.driver.get_attribute(target, spec.attribute)
             results.append(record)
         return results
 

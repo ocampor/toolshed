@@ -158,9 +158,11 @@ def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
     locator.all.return_value = [row1, row2]
     page.locator.return_value = locator
 
+    from llm_browser.models import ExtractField
+
     result = session.parse_elements(
         "tr.row",
-        {"name": {"child_selector": "td.name", "attribute": "textContent"}},
+        {"name": ExtractField(child_selector="td.name", attribute="textContent")},
     )
     assert result == [{"name": "Alice"}, {"name": "Bob"}]
 

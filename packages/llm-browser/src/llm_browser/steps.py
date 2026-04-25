@@ -36,12 +36,19 @@ def execute_step(
     step: Step,
     data: FlowData,
 ) -> FlowResult | None:
-    """Execute a single flow step. Returns FlowResult at checkpoint, else None."""
+    """Execute a single flow step.
+
+    Returns a ``FlowResult`` to halt the runner — at a checkpoint (success)
+    or when the action returns ``ok=False`` (error short-circuit). Returns
+    ``None`` to continue to the next step.
+    """
     raw = step.model_dump(exclude_none=True)
     resolved = validate_step(resolve_templates_in_dict(raw, data.to_template_dict()))
     if should_skip(session, resolved, data):
         return None
     action_result = execute_action(session, resolved)
+    if not action_result.ok:
+        return FlowResult(step=resolved.name, data=action_result)
     if resolved.eval:
         eval_result = session.driver.evaluate(session.get_page(), resolved.eval)
     else:
