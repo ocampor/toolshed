@@ -1,5 +1,8 @@
 """Pydantic models for browser session state, flow state, and flow results."""
 
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -10,6 +13,7 @@ from pydantic import (
     Tag,
     TypeAdapter,
     field_validator,
+    model_validator,
 )
 
 from llm_browser.parse import ExtractField
@@ -91,6 +95,7 @@ class GotoStep(BaseStep):
 
 class ScreenshotStep(BaseStep):
     action: Literal["screenshot"]
+    path: str | None = None
 
 
 class ReadStep(SelectorStep):
@@ -131,6 +136,7 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    path: str | None = None
 
 
 class DownloadStep(SelectorStep):
@@ -169,6 +175,60 @@ class EvalStep(BaseStep):
     action: None = None
 
 
+class RunFlowStep(BaseStep):
+    """Compose another flow inline as a single step.
+
+    Sub-flows are leaf-only: a flow referenced by ``run-flow`` may
+    not itself contain ``run-flow`` steps. ``SubFlow``'s validators
+    enforce this at parse time.
+
+    ``flow`` is the path written in YAML (relative to the parent's
+    directory, or absolute). ``subflow`` carries the loaded child;
+    it can be supplied directly (programmatic construction, tests),
+    or resolved automatically by an after-validator when the
+    enclosing model is validated with ``context={"base_dir": <Path>}``
+    — :func:`llm_browser.flows.load_flow` provides that context.
+    """
+
+    action: Literal["run-flow"]
+    flow: str = Field(..., min_length=1)
+    data: dict[str, Any] = {}
+    subflow: SubFlow | None = None
+
+    @field_validator("checkpoint")
+    @classmethod
+    def _no_checkpoint(cls, v: bool) -> bool:
+        if v:
+            raise ValueError(
+                "run-flow steps cannot use checkpoint: true; "
+                "checkpoint a step inside the parent or child flow."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _resolve_subflow_from_context(self, info: Any) -> RunFlowStep:
+        # Already resolved (programmatic construction, explicit `subflow:`
+        # in the YAML) — leave it alone.
+        if self.subflow is not None:
+            return self
+        ctx = info.context if info is not None else None
+        base_dir = ctx.get("base_dir") if ctx else None
+        if base_dir is None:
+            # No filesystem context — caller didn't ask us to resolve.
+            return self
+        import yaml
+
+        path = Path(self.flow)
+        if not path.is_absolute():
+            path = Path(base_dir) / path
+        # Pass the same context down so any (future) nested resolution
+        # has it; SubFlow doesn't recurse into run-flow today.
+        self.subflow = SubFlow.model_validate(
+            yaml.safe_load(path.read_text()), context=ctx
+        )
+        return self
+
+
 KNOWN_ACTIONS = frozenset(
     {
         "click",
@@ -182,6 +242,7 @@ KNOWN_ACTIONS = frozenset(
         "screenshot",
         "read",
         "parse",
+        "run-flow",
         "dom",
         "download",
         "think",
@@ -213,6 +274,7 @@ Step = Annotated[
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[WaitStep, Tag("wait")]
+    | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
 ]
@@ -255,6 +317,44 @@ class Flow(BaseModel):
         from llm_browser.params import validate_flow_params
 
         return validate_flow_params(self.params, data)
+
+
+class SubFlow(Flow):
+    """A flow eligible for inclusion via ``run-flow``.
+
+    Top-level flows use ``Flow`` and may freely contain ``run-flow``
+    steps and ``checkpoint: true``. A flow being included as a child
+    is constrained:
+
+    - leaf-only: no nested ``run-flow`` steps (cycle prevention).
+    - no checkpoints: parent owns state persistence.
+
+    Validating a YAML file as ``SubFlow`` rather than ``Flow`` enforces
+    these at parse time, which means linters/CI can catch malformed
+    children without running the browser.
+    """
+
+    @model_validator(mode="after")
+    def _enforce_subflow_constraints(self) -> SubFlow:
+        nested = next((s for s in self.steps if isinstance(s, RunFlowStep)), None)
+        if nested is not None:
+            raise ValueError(
+                f"Sub-flow contains a `run-flow` step ({nested.name!r}); "
+                "nested sub-flows are not allowed."
+            )
+        if any(s.checkpoint for s in self.steps):
+            raise ValueError(
+                "Sub-flow contains a checkpoint; "
+                "checkpointed sub-flows are not supported."
+            )
+        return self
+
+
+# Resolve forward refs: RunFlowStep references SubFlow (defined later) for
+# the `subflow` field. With `from __future__ import annotations`, this
+# rebuild reads `SubFlow` from this module's globals after the class
+# exists.
+RunFlowStep.model_rebuild()
 
 
 class SessionResult(BaseModel):

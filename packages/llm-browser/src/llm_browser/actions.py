@@ -34,6 +34,7 @@ from llm_browser.models import (
     WaitStep,
 )
 from llm_browser.parse import build_model
+from llm_browser.paths import prepare_output_path
 from llm_browser.session import BrowserSession
 
 
@@ -257,6 +258,10 @@ def action_wait(session: BrowserSession, step: WaitStep) -> TextResult:
 
 @_registry.register("screenshot")
 def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> PathResult:
+    if step.path:
+        out = prepare_output_path(step.path)
+        session.driver.screenshot(session.get_page(), out)
+        return PathResult(path=str(out))
     return PathResult(path=str(session.take_screenshot()))
 
 
@@ -287,7 +292,10 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
 
 @_registry.register("dom")
 def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
-    return TextResult(text=session.dom(step.selector, max_depth=step.max_depth))
+    html = session.dom(step.selector, max_depth=step.max_depth)
+    if step.path:
+        prepare_output_path(step.path).write_text(html)
+    return TextResult(text=html)
 
 
 # --- File actions ---

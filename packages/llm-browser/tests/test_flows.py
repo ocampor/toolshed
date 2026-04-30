@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from llm_browser.flows import FlowRunner, load_flow
 from llm_browser.models import EvalStep, FlowData, FlowState
@@ -333,3 +334,279 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     session.driver.evaluate.assert_called_once_with(
         session.get_page.return_value, "fill('XEXX', 'MX')"
     )
+
+
+# --- run-flow (sub-flow composition) ---
+
+
+def _write_named_flow(
+    tmp_path: Path,
+    name: str,
+    steps: list[dict[str, Any]],
+    params: list[str | dict[str, Any]] | None = None,
+) -> Path:
+    """Write a flow under a specific filename so sub-flow includes can reference it."""
+    flow_dict: dict[str, Any] = {"steps": steps}
+    if params:
+        flow_dict["params"] = params
+    path = tmp_path / name
+    path.write_text(yaml.dump(flow_dict))
+    return path
+
+
+def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [
+            {"name": "c1", "action": "click", "selector": "#a"},
+            {"name": "c2", "action": "click", "selector": "#b"},
+        ],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    runner = FlowRunner(session)
+    result = runner.run(parent, {})
+
+    assert result.completed is True
+    # Both child clicks fired against the session.
+    assert session.find.call_count == 2
+
+
+def test_run_flow_param_passthrough(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#{{ target }}"}],
+        params=["target"],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [
+            {
+                "name": "include",
+                "action": "run-flow",
+                "flow": "child.yaml",
+                "data": {"target": "{{ target }}"},
+            }
+        ],
+        params=["target"],
+    )
+    runner = FlowRunner(session)
+    runner.run(parent, {"target": "submit"})
+    # session.find was called with a parsed selector for #submit
+    args, _ = session.find.call_args
+    assert "submit" in str(args[0])
+
+
+def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    # Force the click action to raise so the child's first step fails.
+    session.driver.click.side_effect = TimeoutError("button missing")
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#missing"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [
+            {
+                "name": "best-effort",
+                "action": "run-flow",
+                "flow": "child.yaml",
+                "optional": True,
+            },
+            {"name": "after", "action": "click", "selector": "#after"},
+        ],
+    )
+    # The parent's own click must succeed even when the sub-flow swallows.
+    session.driver.click.side_effect = [TimeoutError("button missing"), None]
+    runner = FlowRunner(session)
+    result = runner.run(parent, {})
+    assert result.completed is True
+
+
+def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    session.driver.click.side_effect = TimeoutError("button missing")
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#missing"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    runner = FlowRunner(session)
+    result = runner.run(parent, {})
+    # Child failure surfaces to the parent runner; not completed.
+    assert result.completed is False
+
+
+def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    _write_named_flow(
+        tmp_path,
+        "grandchild.yaml",
+        [{"name": "g1", "action": "click", "selector": "#g"}],
+    )
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "nested", "action": "run-flow", "flow": "grandchild.yaml"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    runner = FlowRunner(session)
+    with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
+        runner.run(parent, {})
+
+
+def test_run_flow_rejects_checkpoint_in_child(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "cp", "eval": "noop()", "checkpoint": True}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    runner = FlowRunner(session)
+    with pytest.raises(
+        ValidationError, match="checkpointed sub-flows are not supported"
+    ):
+        runner.run(parent, {})
+
+
+def test_run_flow_rejects_checkpoint_on_runflow_step(tmp_path: Path) -> None:
+    """A run-flow step itself cannot be checkpointed (the constraint is at
+    model validation, not at runtime)."""
+    from pydantic import ValidationError
+
+    from llm_browser.models import RunFlowStep
+
+    with pytest.raises(ValidationError, match="run-flow steps cannot use checkpoint"):
+        RunFlowStep(action="run-flow", flow="child.yaml", checkpoint=True)
+
+
+def test_run_flow_resolves_relative_to_parent_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sub-flow paths resolve relative to the parent flow's directory,
+    not CWD."""
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    _write_named_flow(
+        nested,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#x"}],
+    )
+    parent = _write_named_flow(
+        nested,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+
+    # Run from a *different* CWD to prove parent-relative resolution.
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    monkeypatch.chdir(other)
+
+    session = _mock_session(tmp_path)
+    runner = FlowRunner(session)
+    result = runner.run(parent, {})
+    assert result.completed is True
+    assert session.find.call_count == 1
+
+
+def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
+    """`load_flow` resolves every `run-flow` reference at load time,
+    so malformed children fail before the browser ever launches."""
+    _write_named_flow(
+        tmp_path,
+        "bad.yaml",
+        [{"name": "cp", "eval": "noop()", "checkpoint": True}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "bad.yaml"}],
+    )
+    with pytest.raises(
+        ValidationError, match="checkpointed sub-flows are not supported"
+    ):
+        load_flow(parent)
+
+
+def test_load_flow_attaches_subflow_to_runflow_step(tmp_path: Path) -> None:
+    """After `load_flow`, every RunFlowStep has its child attached."""
+    from llm_browser.models import RunFlowStep, SubFlow
+
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#a"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    flow = load_flow(parent)
+    step = flow.steps[0]
+    assert isinstance(step, RunFlowStep)
+    assert isinstance(step.subflow, SubFlow)
+    assert step.subflow.steps[0].name == "c1"
+
+
+def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
+    """A typo in `flow:` surfaces at load time — no runtime surprise."""
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "oops", "action": "run-flow", "flow": "nonexistent.yaml"}],
+    )
+    with pytest.raises(FileNotFoundError):
+        load_flow(parent)
+
+
+def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
+    session = _mock_session(tmp_path)
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "c1", "action": "click", "selector": "#a"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [
+            {
+                "name": "maybe",
+                "action": "run-flow",
+                "flow": "child.yaml",
+                "when": [{"field": "enabled", "op": "is_truthy"}],
+            }
+        ],
+        params=[{"enabled": {"required": False, "default": False}}],
+    )
+    runner = FlowRunner(session)
+    result = runner.run(parent, {})
+    assert result.completed is True
+    assert session.find.call_count == 0

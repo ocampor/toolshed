@@ -1,15 +1,18 @@
 """Step execution: resolve templates, evaluate conditions, dispatch actions."""
 
 import time
+from typing import Callable
 
 from yaml_engine.compile import compile_condition
 from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
-from llm_browser.models import FlowData, FlowResult, Step, validate_step
+from llm_browser.models import FlowData, FlowResult, RunFlowStep, Step, validate_step
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
+
+SubflowDispatcher = Callable[[RunFlowStep], "FlowResult | None"]
 
 
 def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
@@ -31,21 +34,44 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
     return False
 
 
+def resolve_step(step: Step, data: FlowData) -> Step:
+    """Resolve {{ template }} refs inside ``step`` against ``data`` and
+    return a freshly-validated Step. Idempotent — resolving a resolved
+    step is a no-op."""
+    raw = step.model_dump(exclude_none=True)
+    return validate_step(resolve_templates_in_dict(raw, data.to_template_dict()))
+
+
 def execute_step(
     session: BrowserSession,
     step: Step,
     data: FlowData,
+    *,
+    subflow: SubflowDispatcher | None = None,
 ) -> FlowResult | None:
-    """Execute a single flow step.
+    """Execute a single flow step of any kind.
 
-    Returns a ``FlowResult`` to halt the runner — at a checkpoint (success)
+    Returns a ``FlowResult`` to halt the caller — at a checkpoint (success)
     or when the action returns ``ok=False`` (error short-circuit). Returns
     ``None`` to continue to the next step.
+
+    For ``run-flow`` steps the caller must pass ``subflow`` — a callback
+    that takes the resolved ``RunFlowStep`` and runs the referenced flow
+    (``FlowRunner`` provides this binding). Callers that don't compose
+    sub-flows can omit it; it's only required when a ``RunFlowStep``
+    actually appears in the input.
     """
-    raw = step.model_dump(exclude_none=True)
-    resolved = validate_step(resolve_templates_in_dict(raw, data.to_template_dict()))
+    resolved = resolve_step(step, data)
     if should_skip(session, resolved, data):
         return None
+    if isinstance(resolved, RunFlowStep):
+        if subflow is None:
+            raise RuntimeError(
+                "execute_step received a RunFlowStep but no `subflow` "
+                "dispatcher was provided. Use FlowRunner.run() so it can "
+                "bind one, or pass `subflow=...` explicitly."
+            )
+        return subflow(resolved)
     action_result = execute_action(session, resolved)
     if not action_result.ok:
         screenshot_path = (

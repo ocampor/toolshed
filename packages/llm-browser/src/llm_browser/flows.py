@@ -10,18 +10,30 @@ from llm_browser.models import (
     FlowData,
     FlowResult,
     FlowState,
+    RunFlowStep,
     Step,
+    SubFlow,
     validate_step,
 )
 from llm_browser.selector_map import load_selector_map, resolve_refs
 from llm_browser.session import BrowserSession
-from llm_browser.steps import execute_step
+from llm_browser.steps import execute_step, resolve_step
 
 
 def load_flow(flow_path: str | Path) -> Flow:
-    """Load and validate a YAML flow file."""
-    raw = yaml.safe_load(Path(flow_path).read_text())
-    return Flow.model_validate(raw)
+    """Load a flow YAML and resolve every ``run-flow`` reference.
+
+    Reads the parent file, then validates with
+    ``context={"base_dir": <parent dir>}`` — ``RunFlowStep``'s after-
+    validator uses that context to read each referenced child YAML
+    and attach it as ``step.subflow``. Missing files, malformed YAML,
+    and sub-flow constraint violations all surface from this call.
+    """
+    path = Path(flow_path).resolve()
+    return Flow.model_validate(
+        yaml.safe_load(path.read_text()),
+        context={"base_dir": path.parent},
+    )
 
 
 def resolve_step_refs(step: Step, selector_map: dict[str, dict[str, Any]]) -> Step:
@@ -63,20 +75,59 @@ class FlowRunner:
         flow_data = flow.validate_data(state.data)
         return self._execute(state, flow, flow_data)
 
-    def _execute(self, state: FlowState, flow: Flow, flow_data: FlowData) -> FlowResult:
-        """Execute steps from current index until checkpoint or end."""
+    def _execute(
+        self,
+        state: FlowState,
+        flow: Flow,
+        flow_data: FlowData,
+        *,
+        top_level: bool = True,
+    ) -> FlowResult:
+        """Execute steps from current index until checkpoint or end.
+
+        Re-enters itself for ``run-flow`` steps with ``top_level=False``;
+        sub-flow invocations don't persist ``flow_state.json``. The
+        leaf-only constraint (enforced by ``Flow.validate_as_child``)
+        means the recursion is at most one deep.
+        """
         while state.current_index < len(flow.steps):
             step = self._prepare_step(flow.steps[state.current_index])
             state.current_index += 1
-
-            result = execute_step(self._session, step, flow_data)
+            result = execute_step(
+                self._session, step, flow_data, subflow=self._dispatch_subflow
+            )
             if result is not None:
-                self._save_state(state)
+                if top_level:
+                    self._save_state(state)
                 return result
 
-        self._clear_state()
+        if top_level:
+            self._clear_state()
         last_name = flow.steps[-1].name if flow.steps else "end"
         return FlowResult(step=last_name, completed=True)
+
+    def _dispatch_subflow(self, step: RunFlowStep) -> FlowResult | None:
+        """Callback ``execute_step`` invokes for ``run-flow`` steps.
+
+        The child is already loaded (attached at ``step.subflow`` by
+        ``load_flow``); this just recurses into ``_execute``. Returns
+        ``None`` when the child completes (parent advances) or a
+        bubbling ``FlowResult`` on failure, unless the parent step is
+        optional.
+        """
+        child = step.subflow
+        if child is None:
+            raise RuntimeError(
+                f"RunFlowStep {step.name!r} has no `subflow` attached; "
+                "ensure the parent was loaded via `load_flow` rather "
+                "than constructed directly."
+            )
+        child_data = child.validate_data(step.data)
+        child_state = FlowState(flow_path="", data=step.data)
+        result = self._execute(child_state, child, child_data, top_level=False)
+        if result.completed:
+            return None
+        return None if step.optional else result
 
     def _require_resumable_if_checkpointed(self, flow: Flow, flow_path: str) -> None:
         """Refuse flows with checkpoints on sessions that can't survive Python exit.

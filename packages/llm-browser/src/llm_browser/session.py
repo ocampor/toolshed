@@ -19,6 +19,7 @@ from llm_browser.models import (
     SessionResult,
 )
 from llm_browser.parse import ExtractField
+from llm_browser.paths import prepare_output_path
 from llm_browser.selectors import Selector, expect_single, resolve_selector
 
 logger = logging.getLogger("llm_browser")
@@ -286,8 +287,7 @@ class BrowserSession:
 
     def download_file(self, selector: Selector, output_path: Path | str) -> Path:
         """Click element to trigger download and save to output_path."""
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
+        output = prepare_output_path(output_path)
         element = self.find(selector)
 
         def trigger() -> None:

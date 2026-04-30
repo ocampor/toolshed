@@ -48,16 +48,80 @@ No selector needed.
 |--------|--------|-------------|
 | `goto` | `url`, `wait_until` (default domcontentloaded) | Navigate to URL |
 | `wait` | `state` (domcontentloaded, load, networkidle), `timeout` (ms) | Wait for page load state |
-| `screenshot` | — | Take a screenshot |
+| `screenshot` | `path` (optional) | Take a screenshot. Without `path`, writes to the session's default location and returns the path. With `path`, writes to that path (parent dirs created). |
 
 ### Data actions
 
-Return data. Use with `checkpoint: true` to pause and return results.
+Return data. Pair with `path:` (where supported) to land artifacts on
+disk mid-flow without needing `checkpoint: true`.
 
 | Action | Params | Description |
 |--------|--------|-------------|
 | `read` | `extract` (see below) | Extract structured data from elements |
-| `dom` | `max_depth` (default 0 = no limit) | Return cleaned HTML snippet |
+| `dom` | `max_depth` (default 0 = no limit), `path` (optional) | Return cleaned HTML snippet. When `path` is set, writes the same HTML to that path (parent dirs created) AND still returns it inline. |
+
+### Composition
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `run-flow` | `flow` (path), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute). `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+
+#### Sub-flow constraints
+
+- **Leaf-only**: a flow referenced by `run-flow` may not itself contain
+  `run-flow` steps. Nested sub-flows are rejected at child-load time.
+- **No checkpoints in children**: a sub-flow's steps cannot have
+  `checkpoint: true` (state would be ambiguous on resume). Checkpoint
+  in the parent flow instead.
+- **`optional: true` on the `run-flow` step** swallows child failures —
+  the parent advances to the next step instead of bubbling the error.
+- **`when:`** is honored on the `run-flow` step itself; if the
+  condition fails, the child is never loaded.
+
+```yaml
+# parent.yaml
+params:
+  - name
+
+steps:
+  - name: setup
+    action: run-flow
+    flow: setup-form.yaml
+    data:
+      username: "{{ name }}"
+
+  - name: best-effort-cleanup
+    action: run-flow
+    flow: dismiss-popups.yaml
+    optional: true
+```
+
+## Capturing artifacts mid-flow
+
+To save HTML or screenshots from inside a flow without pausing
+execution, use the `path:` field on `dom` and `screenshot`. This is
+the right tool for capture-and-continue patterns (e.g., snapshotting
+a conversation turn, then continuing to the next step).
+
+```yaml
+- name: save turn
+  action: dom
+  selector: "[data-testid='conversation-turn']"
+  path: "{{ out_dir }}/turn.html"
+
+- name: save reply screenshot
+  action: screenshot
+  path: "{{ out_dir }}/screenshot.png"
+```
+
+**Don't use `checkpoint: true` to capture DOM.** Checkpoint was
+designed for external resume coordination: it captures the **whole
+page** to a **fixed** session-level path AND pauses the flow,
+returning to the caller. For scoped element capture at a
+caller-controlled path, the `path:` field is the right tool.
+
+To capture multiple disjoint elements, target their nearest common
+wrapper with one `dom` step rather than running N separate captures.
 
 ## Selectors
 
@@ -110,7 +174,8 @@ when:
 | Option | Type | Description |
 |--------|------|-------------|
 | `name` | string | Step identifier (for checkpoints and logging) |
-| `action` | string | One of the 11 actions above |
+| `action` | string | One of the actions above |
+| `optional` | bool | Swallow `TimeoutError`/`ValueError` from this step (and from all child steps when `action: run-flow`) and continue |
 | `selector` | string or dict | Target element (required for element/data actions) |
 | `when` | list | Conditions to evaluate before executing |
 | `checkpoint` | bool | Pause flow and return result with screenshot |

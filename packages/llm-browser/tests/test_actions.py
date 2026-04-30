@@ -147,6 +147,25 @@ def test_screenshot(session: BrowserSession) -> None:
     assert result is not None
 
 
+def test_screenshot_writes_to_explicit_path(
+    session: BrowserSession, tmp_path: object
+) -> None:
+    from pathlib import Path
+
+    from llm_browser.actions import PathResult
+
+    target = Path(str(tmp_path)) / "nested" / "shot.png"
+    step = ScreenshotStep(name="s", action="screenshot", path=str(target))
+    result = execute_action(session, step)
+    assert isinstance(result, PathResult)
+    assert result.path == str(target)
+    assert target.parent.exists()
+    # driver.screenshot delegates to page.screenshot(path=str(target))
+    session._page.screenshot.assert_called_once_with(  # type: ignore[union-attr]
+        path=str(target), full_page=False
+    )
+
+
 # --- read ---
 
 
@@ -248,6 +267,25 @@ def test_dom(session: BrowserSession) -> None:
     result = execute_action(session, step)
     assert isinstance(result, TextResult)
     assert "Hello" in result.text
+
+
+def test_dom_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
+    from pathlib import Path
+
+    from llm_browser.actions import TextResult
+
+    locator = _single_locator()
+    locator.first.evaluate.return_value = "<section><p>Captured</p></section>"
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    target = Path(str(tmp_path)) / "captures" / "snippet.html"
+    step = DomStep(name="s", action="dom", selector="#content", path=str(target))
+    result = execute_action(session, step)
+
+    assert isinstance(result, TextResult)
+    assert "Captured" in result.text
+    assert target.exists()
+    assert target.read_text() == result.text
 
 
 # --- download ---
