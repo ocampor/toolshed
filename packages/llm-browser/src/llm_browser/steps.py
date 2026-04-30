@@ -48,7 +48,22 @@ def execute_step(
         return None
     action_result = execute_action(session, resolved)
     if not action_result.ok:
-        return FlowResult(step=resolved.name, data=action_result)
+        screenshot_path = (
+            str(session.take_screenshot())
+            if session.capture in ("screenshot", "both")
+            else None
+        )
+        dom_path = (
+            str(session.take_dom_snapshot())
+            if session.capture in ("dom", "both")
+            else None
+        )
+        return FlowResult(
+            step=resolved.name,
+            data=action_result,
+            screenshot=screenshot_path,
+            dom=dom_path,
+        )
     if resolved.eval:
         eval_result = session.driver.evaluate(session.get_page(), resolved.eval)
     else:
