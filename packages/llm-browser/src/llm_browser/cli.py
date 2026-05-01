@@ -5,12 +5,11 @@ import os
 
 import click
 
-from llm_browser.actions import ErrorResult
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flows import load_flow, run_flow
 from llm_browser.selector_map import load_selector_map
-from llm_browser.models import FlowResult, RunFlowStep
+from llm_browser.models import RunFlowStep
 from llm_browser.session import BrowserSession
 
 
@@ -18,17 +17,19 @@ def _output(data: object) -> None:
     """Print JSON to stdout, then exit non-zero if the payload is a
     flow-level error. Supports Pydantic models and plain dicts.
 
-    A FlowResult whose ``data`` is an ``ErrorResult`` represents an expected
-    runtime failure (selector hidden, ambiguous, etc.) — surface it as a
-    non-zero exit so callers can detect it without parsing JSON.
+    A ``FlowError`` represents an expected runtime failure (selector
+    hidden, ambiguous, etc.) — surface it as a non-zero exit so
+    callers can detect it without parsing JSON.
     """
     from pydantic import BaseModel
+
+    from llm_browser.models import FlowError
 
     if isinstance(data, BaseModel):
         click.echo(data.model_dump_json(exclude_none=True))
     else:
         click.echo(json.dumps(data, ensure_ascii=False))
-    if isinstance(data, FlowResult) and isinstance(data.data, ErrorResult):
+    if isinstance(data, FlowError):
         raise SystemExit(1)
 
 
