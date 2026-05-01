@@ -8,9 +8,9 @@ import click
 from llm_browser.actions import ErrorResult
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
-from llm_browser.flows import run_flow
+from llm_browser.flows import load_flow, run_flow
 from llm_browser.selector_map import load_selector_map
-from llm_browser.models import FlowResult
+from llm_browser.models import FlowResult, RunFlowStep
 from llm_browser.session import BrowserSession
 
 
@@ -212,6 +212,66 @@ def run(
         session, flow_path, data, selector_map=selector_map, from_step=from_step
     )
     _output(result)
+
+
+@main.command()
+@click.option("--flow", "flow_path", required=True, help="Path to YAML flow file.")
+@click.option(
+    "--selector-map",
+    "selector_map_path",
+    default=None,
+    help="Path to selector_map.yaml for symbolic refs.",
+)
+def validate(flow_path: str, selector_map_path: str | None) -> None:
+    """Validate a YAML flow without launching a browser.
+
+    Loads the flow + every referenced sub-flow, expands selector-map
+    refs, and runs all model validators. Exits 0 with a JSON summary
+    on success; exits 1 with a one-line JSON failure on any validation
+    error.
+
+    Suitable for pre-commit hooks and CI — no browser session is
+    created or used.
+    """
+    from pathlib import Path
+
+    import yaml as _yaml
+    from pydantic import ValidationError
+
+    try:
+        selector_map = (
+            load_selector_map(Path(selector_map_path))
+            if selector_map_path and Path(selector_map_path).exists()
+            else None
+        )
+        flow = load_flow(flow_path, selector_map=selector_map)
+    except (
+        ValidationError,
+        FileNotFoundError,
+        _yaml.YAMLError,
+        ValueError,
+    ) as exc:
+        click.echo(
+            json.dumps(
+                {
+                    "ok": False,
+                    "flow": flow_path,
+                    "error": type(exc).__name__,
+                    "message": str(exc).split("\n", 1)[0][:500],
+                }
+            ),
+            err=True,
+        )
+        raise SystemExit(1) from exc
+    subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
+    _output(
+        {
+            "ok": True,
+            "flow": flow_path,
+            "step_count": len(flow.steps),
+            "subflow_count": subflow_count,
+        }
+    )
 
 
 @main.command()

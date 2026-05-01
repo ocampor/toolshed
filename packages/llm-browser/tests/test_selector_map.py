@@ -70,8 +70,12 @@ def test_resolve_refs_no_ref_unchanged() -> None:
     assert result == step
 
 
-def test_resolve_refs_unknown_ref_ignored() -> None:
+def test_resolve_refs_unknown_ref_raises() -> None:
+    """An unknown ref is a load-time error, not a silent no-op — caught
+    here instead of cascading into a 'selector required' validation
+    failure later."""
+    import pytest
+
     step = {"name": "s", "ref": "unknown.ref"}
-    result = resolve_refs(step, {})
-    assert "selector" not in result
-    assert "ref" not in result
+    with pytest.raises(ValueError, match="selector ref 'unknown.ref' not found"):
+        resolve_refs(step, {})

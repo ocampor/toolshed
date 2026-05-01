@@ -47,6 +47,28 @@ class BaseStep(BaseModel):
     # and retry-hint targeting.
     _parent: str | None = PrivateAttr(default=None)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_selector_refs(cls, data: Any, info: Any) -> Any:
+        """Replace ``ref:`` with ``selector:`` (and the field/read
+        variants) from ``info.context["selector_map"]`` before pydantic
+        does field-level validation. Without this, ``ref:`` is an
+        unknown field that pydantic silently drops, leaving SelectorStep
+        subtypes to fail with "selector required".
+
+        No-op when the input isn't a dict (programmatic construction
+        from a Step instance) or when no selector map is in context.
+        """
+        if not isinstance(data, dict):
+            return data
+        ctx = info.context if info is not None else None
+        selector_map = ctx.get("selector_map") if ctx else None
+        if selector_map is None:
+            return data
+        from llm_browser.selector_map import resolve_refs
+
+        return resolve_refs(data, selector_map)
+
     @property
     def qualified_name(self) -> str:
         """Slash-separated path from the parent flow's run-flow step

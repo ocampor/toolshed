@@ -482,6 +482,56 @@ def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
         load_flow(parent)
 
 
+def test_load_flow_resolves_refs_with_selector_map(tmp_path: Path) -> None:
+    """`load_flow(path, selector_map=...)` expands `ref:` into
+    concrete `selector:` via pydantic's before-validator."""
+    flow_file = _write_named_flow(
+        tmp_path,
+        "f.yaml",
+        [{"name": "click-x", "action": "click", "ref": "ui.button"}],
+    )
+    selector_map = {"ui.button": {"id": "the-button"}}
+    flow = load_flow(flow_file, selector_map=selector_map)
+    step = flow.steps[0]
+    # Selector survived validation as the resolved spec.
+    assert step.selector.id == "the-button"  # type: ignore[union-attr]
+
+
+def test_load_flow_unknown_ref_fails(tmp_path: Path) -> None:
+    """Unknown ref raises ValidationError — caught at load time, not
+    deferred into a 'selector required' cascade."""
+    flow_file = _write_named_flow(
+        tmp_path,
+        "f.yaml",
+        [{"name": "click-x", "action": "click", "ref": "ui.missing"}],
+    )
+    with pytest.raises(ValidationError, match="not found in selector_map"):
+        load_flow(flow_file, selector_map={"ui.button": {"id": "x"}})
+
+
+def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
+    """Selector map reaches sub-flow children via the validation
+    context that RunFlowStep's after-validator threads through."""
+    from llm_browser.models import RunFlowStep
+
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "click-y", "action": "click", "ref": "ui.button"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    flow = load_flow(parent, selector_map={"ui.button": {"id": "the-button"}})
+    runflow = flow.steps[0]
+    assert isinstance(runflow, RunFlowStep)
+    assert runflow.subflow is not None
+    child_step = runflow.subflow.steps[0]
+    assert child_step.selector.id == "the-button"  # type: ignore[union-attr]
+
+
 def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     _write_named_flow(

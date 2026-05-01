@@ -16,34 +16,50 @@ def load_selector_map(path: Path) -> dict[str, dict[str, Any]]:
     return flat
 
 
+def _lookup(selector_map: dict[str, dict[str, Any]], ref: str) -> dict[str, Any]:
+    """Look up ``ref`` in the selector map; raise ``ValueError`` with a
+    helpful message if it isn't there."""
+    if ref not in selector_map:
+        raise ValueError(
+            f"selector ref {ref!r} not found in selector_map; "
+            f"available: {sorted(selector_map)}"
+        )
+    return selector_map[ref]
+
+
 def resolve_refs(
     step_dict: dict[str, Any],
     selector_map: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Replace 'ref' keys with actual selectors from the map.
+    """Replace ``ref`` keys with actual selectors from the map.
+
+    Strict: raises ``ValueError`` for any ``ref`` not in
+    ``selector_map`` so a typo at flow-load time fails loudly instead
+    of cascading into a "selector required" error from the model
+    validator.
 
     Handles:
-      - step-level: {"ref": "invoice.rfc"} -> {"selector": {"id": "135..."}}
-      - field-level: fields[i]["ref"] -> resolved selector as "id" key
+      - step-level: ``{"ref": "invoice.rfc"} -> {"selector": {"id": "135..."}}``
+      - field-level: ``fields[i]["ref"]`` -> resolved selector as
+        ``id`` (when the map entry is an id) or ``selector`` otherwise.
+      - read-level: ``read[key]["ref"]`` -> resolved as ``selector``.
     """
     result = dict(step_dict)
 
     if "ref" in result:
         ref = str(result.pop("ref"))
-        if ref in selector_map:
-            result["selector"] = selector_map[ref]
+        result["selector"] = _lookup(selector_map, ref)
 
     if "fields" in result:
         resolved_fields = []
         for field in result["fields"]:
             if "ref" in field:
                 ref = str(field.pop("ref"))
-                if ref in selector_map:
-                    spec = selector_map[ref]
-                    if "id" in spec:
-                        field["id"] = spec["id"]
-                    else:
-                        field["selector"] = spec
+                spec = _lookup(selector_map, ref)
+                if "id" in spec:
+                    field["id"] = spec["id"]
+                else:
+                    field["selector"] = spec
             resolved_fields.append(field)
         result["fields"] = resolved_fields
 
@@ -52,8 +68,7 @@ def resolve_refs(
         for key, spec in result["read"].items():
             if "ref" in spec:
                 ref = str(spec.pop("ref"))
-                if ref in selector_map:
-                    spec["selector"] = selector_map[ref]
+                spec["selector"] = _lookup(selector_map, ref)
             resolved_read[key] = spec
         result["read"] = resolved_read
 
