@@ -126,6 +126,17 @@ def get_registry() -> Registry[ActionHandler]:
 _registry = get_registry()
 
 
+def _is_timeout(exc: BaseException) -> bool:
+    """Treat any exception class named ``TimeoutError`` as a timeout.
+    Patchright (and similar driver libs) raise their own TimeoutError
+    that does NOT inherit from the Python builtin, so a bare
+    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
+    and the optional-swallow / ErrorResult contract was violated."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return type(exc).__name__ == "TimeoutError"
+
+
 def execute_action(session: BrowserSession, step: Step) -> ActionResult:
     if step.action is None:
         return VoidResult()
@@ -134,7 +145,9 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
     enforce_gap(behavior, runtime)
     try:
         result: ActionResult = get_registry().get(step.action)(session, step)
-    except (TimeoutError, ValueError) as exc:
+    except Exception as exc:
+        if not (_is_timeout(exc) or isinstance(exc, ValueError)):
+            raise
         if step.optional:
             return SkippedResult(reason=f"{type(exc).__name__}: {str(exc)[:200]}")
         selector = getattr(step, "selector", None)
@@ -147,7 +160,7 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
             selector=repr(selector) if selector is not None else None,
             hint=(
                 "element hidden, missing, or slow to render"
-                if isinstance(exc, TimeoutError)
+                if _is_timeout(exc)
                 else None
             ),
         )

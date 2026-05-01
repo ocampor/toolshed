@@ -318,13 +318,25 @@ class BrowserSession:
         return locator
 
     def element_exists(self, selector: Selector, timeout: int = 3_000) -> bool:
-        """Check if element is present. Never raises."""
+        """Check if element is present. Never raises.
+
+        Catches both the Python builtin ``TimeoutError`` and any driver
+        error whose class name ends with "TimeoutError" — patchright
+        raises ``patchright._impl._errors.TimeoutError`` which does NOT
+        inherit from the builtin, so a bare ``except TimeoutError``
+        misses it and the contract ("never raises") was violated for
+        a missing element.
+        """
         try:
             locator = resolve_selector(self.driver, self.get_page(), selector)
             self.driver.wait_for_state(self.driver.first(locator), "attached", timeout)
             return True
         except TimeoutError:
             return False
+        except Exception as exc:
+            if type(exc).__name__ == "TimeoutError":
+                return False
+            raise
 
     def wait_until_stable(
         self,

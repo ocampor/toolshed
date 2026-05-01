@@ -13,7 +13,15 @@ from llm_browser.session import BrowserSession
 
 
 def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
-    """Return True if the step's when clause is not satisfied."""
+    """Return True if the step's when clause is not satisfied.
+
+    Supported predicates:
+      * ``element_exists``  — skip unless the element is present.
+      * ``element_missing`` — skip unless the element is absent
+        (idempotent toggles: only click when the post-click element
+        isn't already there).
+      * Plain field/op/value forms compiled by ``yaml_engine``.
+    """
     if not step.when:
         return False
     template_dict = data.to_template_dict()
@@ -22,6 +30,11 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
             spec = raw_cond["element_exists"]
             selector = parse_selector(spec["selector"])
             if not session.element_exists(selector):
+                return True
+        elif "element_missing" in raw_cond:
+            spec = raw_cond["element_missing"]
+            selector = parse_selector(spec["selector"])
+            if session.element_exists(selector):
                 return True
         else:
             cond = compile_condition(raw_cond)
