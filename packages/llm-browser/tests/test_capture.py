@@ -1,4 +1,4 @@
-"""Tests for full-page DOM sanitization and checkpoint capture modes."""
+"""Tests for full-page DOM sanitization and capture-on-failure modes."""
 
 from pathlib import Path
 from typing import Any
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flows import FlowRunner
+from llm_browser.flows import run_flow
 from llm_browser.html import sanitize_page_html
 from llm_browser.session import BrowserSession
 
@@ -60,60 +60,6 @@ def test_keeps_form_elements() -> None:
 
 
 @pytest.fixture
-def checkpoint_flow(tmp_path: Path) -> Path:
-    path = tmp_path / "flow.yaml"
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "getVal()", "checkpoint": True},
-    ]
-    path.write_text(yaml.dump({"steps": steps}))
-    return path
-
-
-def _mock_capture_session(tmp_path: Path, capture: str) -> MagicMock:
-    from llm_browser.behavior import Behavior
-
-    session = MagicMock(spec=BrowserSession)
-    session.session_dir = tmp_path
-    session.behavior = Behavior.off()
-    session._behavior_runtime = session.behavior.runtime()
-    session.capture = capture
-    session.driver = MagicMock()
-    session.driver.evaluate.return_value = "v"
-    session.take_screenshot.return_value = tmp_path / "screenshot.png"
-    session.take_dom_snapshot.return_value = tmp_path / "dom.html"
-    session.get_page.return_value.evaluate.return_value = "v"
-    session.element_exists.return_value = True
-    return session
-
-
-def test_checkpoint_default_only_screenshot(
-    tmp_path: Path, checkpoint_flow: Path
-) -> None:
-    session = _mock_capture_session(tmp_path, "screenshot")
-    result = FlowRunner(session).run(checkpoint_flow, {})
-    assert result.screenshot is not None
-    assert result.dom is None
-    session.take_dom_snapshot.assert_not_called()
-
-
-def test_checkpoint_dom_only(tmp_path: Path, checkpoint_flow: Path) -> None:
-    session = _mock_capture_session(tmp_path, "dom")
-    result = FlowRunner(session).run(checkpoint_flow, {})
-    assert result.screenshot is None
-    assert result.dom == str(tmp_path / "dom.html")
-    session.take_screenshot.assert_not_called()
-
-
-def test_checkpoint_both(tmp_path: Path, checkpoint_flow: Path) -> None:
-    session = _mock_capture_session(tmp_path, "both")
-    result = FlowRunner(session).run(checkpoint_flow, {})
-    assert result.screenshot is not None
-    assert result.dom is not None
-    session.take_screenshot.assert_called_once()
-    session.take_dom_snapshot.assert_called_once()
-
-
-@pytest.fixture
 def failing_flow(tmp_path: Path) -> Path:
     path = tmp_path / "failing_flow.yaml"
     steps: list[dict[str, Any]] = [
@@ -124,7 +70,6 @@ def failing_flow(tmp_path: Path) -> Path:
 
 
 def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
-    from llm_browser.actions import ActionResult
     from llm_browser.behavior import Behavior
 
     session = MagicMock(spec=BrowserSession)
@@ -133,19 +78,17 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     session._behavior_runtime = session.behavior.runtime()
     session.capture = capture
     session.driver = MagicMock()
-    session.driver.can_resume_across_processes.return_value = True
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.take_dom_snapshot.return_value = tmp_path / "dom.html"
     session.get_page.return_value = MagicMock()
     session.element_exists.return_value = True
     session.find.side_effect = TimeoutError("element not found")
-    session._load_state.return_value = None
     return session
 
 
 def test_failure_captures_screenshot(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "screenshot")
-    result = FlowRunner(session).run(failing_flow, {})
+    result = run_flow(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is not None
     assert result.dom is None
@@ -155,7 +98,7 @@ def test_failure_captures_screenshot(tmp_path: Path, failing_flow: Path) -> None
 
 def test_failure_captures_dom(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "dom")
-    result = FlowRunner(session).run(failing_flow, {})
+    result = run_flow(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is None
     assert result.dom is not None
@@ -165,7 +108,7 @@ def test_failure_captures_dom(tmp_path: Path, failing_flow: Path) -> None:
 
 def test_failure_captures_both(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "both")
-    result = FlowRunner(session).run(failing_flow, {})
+    result = run_flow(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is not None
     assert result.dom is not None

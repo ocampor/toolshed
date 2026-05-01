@@ -113,7 +113,6 @@ A YAML flow can use the same schema via the `parse` action — same shape as
   action: parse
   selector: "article.Box-row"
   schema_path: "schemas/repo.yaml"   # CWD-relative or absolute
-  checkpoint: true
 ```
 
 The resulting `ParsedResult.rows` are `Repo` instances (built from the
@@ -251,8 +250,8 @@ For long-running interactive sessions, use attach mode.
 
 ## Capture modes
 
-`BrowserSession(capture=...)` controls what gets captured at each flow
-checkpoint:
+`BrowserSession(capture=...)` controls what gets captured when a flow
+step fails (and on the result):
 
 | Mode | Enables | On-disk paths |
 |---|---|---|

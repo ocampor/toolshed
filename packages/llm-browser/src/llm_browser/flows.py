@@ -1,4 +1,4 @@
-"""Flow runner: load YAML flows and orchestrate execution with checkpoint/resume."""
+"""Load YAML flows and execute their steps end-to-end."""
 
 from pathlib import Path
 from typing import Any
@@ -7,17 +7,20 @@ import yaml
 
 from llm_browser.models import (
     Flow,
-    FlowData,
+    FlowError,
     FlowResult,
-    FlowState,
+    FlowSuccess,
+    RetryHint,
     RunFlowStep,
     Step,
     SubFlow,
     validate_step,
 )
-from llm_browser.selector_map import load_selector_map, resolve_refs
+from llm_browser.selector_map import resolve_refs
 from llm_browser.session import BrowserSession
-from llm_browser.steps import execute_step, resolve_step
+from llm_browser.steps import execute_step, resolve_step, should_skip
+
+SelectorMap = dict[str, dict[str, Any]]
 
 
 def load_flow(flow_path: str | Path) -> Flow:
@@ -36,136 +39,114 @@ def load_flow(flow_path: str | Path) -> Flow:
     )
 
 
-def resolve_step_refs(step: Step, selector_map: dict[str, dict[str, Any]]) -> Step:
+def resolve_step_refs(step: Step, selector_map: SelectorMap) -> Step:
     """Resolve selector-map references in a step, returning a new Step."""
     raw = step.model_dump(exclude_none=True)
     resolved = resolve_refs(raw, selector_map)
     return validate_step(resolved)
 
 
-class FlowRunner:
-    """Runs YAML flows with checkpoint/resume support via disk persistence."""
+def run_flow(
+    session: BrowserSession,
+    flow_path: str | Path,
+    data: dict[str, object],
+    *,
+    selector_map: SelectorMap | None = None,
+    from_step: str | None = None,
+) -> FlowResult:
+    """Run a YAML flow against ``session`` to completion (or to the
+    first failing step).
 
-    def __init__(
-        self,
-        session: BrowserSession,
-        selector_map_path: Path | None = None,
-    ) -> None:
-        self._session = session
-        self._state_file = session.session_dir / "flow_state.json"
-        self._selector_map: dict[str, dict[str, Any]] | None = None
-        if selector_map_path and selector_map_path.exists():
-            self._selector_map = load_selector_map(selector_map_path)
+    ``selector_map`` is the loaded selector-map dict (call
+    :func:`llm_browser.selector_map.load_selector_map` once at the CLI
+    layer and pass it through). When provided, every step's selector
+    refs are resolved before execution.
 
-    def run(self, flow_path: str | Path, data: dict[str, object]) -> FlowResult:
-        """Run a flow from the beginning. Pauses at first checkpoint."""
-        resolved_path = str(Path(flow_path).resolve())
-        flow = load_flow(resolved_path)
-        self._require_resumable_if_checkpointed(flow, resolved_path)
-        flow_data = flow.validate_data(data)
-        state = FlowState(flow_path=resolved_path, data=data)
-        return self._execute(state, flow, flow_data)
-
-    def resume(self, data: dict[str, object] | None = None) -> FlowResult:
-        """Resume a paused flow, optionally merging new data."""
-        state = self._load_state()
-        if data:
-            state.data.update(data)
-        flow = load_flow(state.flow_path)
-        flow_data = flow.validate_data(state.data)
-        return self._execute(state, flow, flow_data)
-
-    def _execute(
-        self,
-        state: FlowState,
-        flow: Flow,
-        flow_data: FlowData,
-        *,
-        top_level: bool = True,
-    ) -> FlowResult:
-        """Execute steps from current index until checkpoint or end.
-
-        Re-enters itself for ``run-flow`` steps with ``top_level=False``;
-        sub-flow invocations don't persist ``flow_state.json``. The
-        leaf-only constraint (enforced by ``Flow.validate_as_child``)
-        means the recursion is at most one deep.
-        """
-        while state.current_index < len(flow.steps):
-            step = self._prepare_step(flow.steps[state.current_index])
-            state.current_index += 1
-            result = execute_step(
-                self._session, step, flow_data, subflow=self._dispatch_subflow
-            )
-            if result is not None:
-                if top_level:
-                    self._save_state(state)
-                return result
-
-        if top_level:
-            self._clear_state()
-        last_name = flow.steps[-1].name if flow.steps else "end"
-        return FlowResult(step=last_name, completed=True)
-
-    def _dispatch_subflow(self, step: RunFlowStep) -> FlowResult | None:
-        """Callback ``execute_step`` invokes for ``run-flow`` steps.
-
-        The child is already loaded (attached at ``step.subflow`` by
-        ``load_flow``); this just recurses into ``_execute``. Returns
-        ``None`` when the child completes (parent advances) or a
-        bubbling ``FlowResult`` on failure, unless the parent step is
-        optional.
-        """
-        child = step.subflow
-        if child is None:
-            raise RuntimeError(
-                f"RunFlowStep {step.name!r} has no `subflow` attached; "
-                "ensure the parent was loaded via `load_flow` rather "
-                "than constructed directly."
-            )
-        child_data = child.validate_data(step.data)
-        child_state = FlowState(flow_path="", data=step.data)
-        result = self._execute(child_state, child, child_data, top_level=False)
-        if result.completed:
-            return None
-        return None if step.optional else result
-
-    def _require_resumable_if_checkpointed(self, flow: Flow, flow_path: str) -> None:
-        """Refuse flows with checkpoints on sessions that can't survive Python exit.
-
-        Checkpoints persist flow state to disk and return control to the
-        caller, who later reinvokes ``resume`` — typically in a new process.
-        If the browser dies with this process, resume will have nothing to
-        reconnect to. Attach-mode patchright is the supported path.
-        """
-        if not any(s.checkpoint for s in flow.steps):
-            return
-        info = self._session._load_state()
-        if info is None:
-            return  # session not open yet; let execute_step raise the real error
-        handle = self._session._handle_from_state(info)
-        if self._session.driver.can_resume_across_processes(handle):
-            return
-        raise RuntimeError(
-            f"Flow {flow_path!r} contains a checkpoint but the current session "
-            f"(driver={info.driver}, mode={info.mode}) cannot be resumed across "
-            "Python processes. Use attach mode (session.attach(cdp_url)) or "
-            "remove the checkpoint to run the flow end-to-end in one process."
+    ``from_step`` re-enters the flow at the named step, skipping every
+    step before it. Useful for retrying after a partial failure: read
+    ``last_failure.json``, fix the issue, re-run with
+    ``from_step=<failed step name>``. Step names are unique within a
+    flow (enforced by ``Flow``'s validator), so the lookup is
+    unambiguous. The flag does not propagate into sub-flows; children
+    always run top-to-bottom.
+    """
+    flow = load_flow(str(Path(flow_path).resolve()))
+    result = _run_flow(
+        session, flow, data, selector_map=selector_map, from_step=from_step
+    )
+    if isinstance(result, FlowError):
+        # `result.step` is a slash-separated qualified name (set in
+        # execute_step from the failing step's ``qualified_name``);
+        # the first segment is the parent flow's top-level step name,
+        # which is what ``--from`` operates on.
+        return FlowError(
+            step=result.step,
+            data=result.data,
+            screenshot=result.screenshot,
+            dom=result.dom,
+            retry_hint=RetryHint(
+                flow_path=str(flow_path),
+                data=data,
+                failed_step=result.step.split("/", 1)[0],
+                error=str(result.data),
+            ),
         )
+    return result
 
-    def _prepare_step(self, step: Step) -> Step:
-        """Resolve selector-map references if a selector map is loaded."""
-        if self._selector_map:
-            return resolve_step_refs(step, self._selector_map)
-        return step
 
-    def _save_state(self, state: FlowState) -> None:
-        self._state_file.write_text(state.model_dump_json())
+def _select_steps(steps: list[Step], from_step: str | None) -> list[Step]:
+    """Return the steps to execute. With ``from_step``, slice from
+    the named step onward; raise ``ValueError`` if the name isn't in
+    ``steps``."""
+    if from_step is None:
+        return steps
+    try:
+        start = next(i for i, s in enumerate(steps) if s.name == from_step)
+    except StopIteration:
+        raise ValueError(
+            f"step {from_step!r} not found in flow; "
+            f"available: {[s.name for s in steps]}"
+        )
+    return steps[start:]
 
-    def _load_state(self) -> FlowState:
-        if not self._state_file.exists():
-            raise RuntimeError("No flow to resume. Run a flow first.")
-        return FlowState.model_validate_json(self._state_file.read_text())
 
-    def _clear_state(self) -> None:
-        if self._state_file.exists():
-            self._state_file.unlink()
+def _run_flow(
+    session: BrowserSession,
+    flow: Flow,
+    data: dict[str, object],
+    *,
+    selector_map: SelectorMap | None = None,
+    from_step: str | None = None,
+) -> FlowSuccess | FlowError:
+    """Iterate ``flow.steps`` against ``session``. Sub-flow steps
+    recurse back into ``_run_flow`` with their child Flow + step data;
+    everything else goes through ``execute_step``. Leaf-only constraint
+    on ``SubFlow`` bounds the recursion at depth one.
+    """
+    flow_data = flow.validate_data(data)
+    for step in _select_steps(flow.steps, from_step):
+        prepared = resolve_step_refs(step, selector_map) if selector_map else step
+        match prepared:
+            case RunFlowStep():
+                resolved = resolve_step(prepared, flow_data)
+                if not isinstance(resolved, RunFlowStep) or resolved.subflow is None:
+                    raise RuntimeError(
+                        f"RunFlowStep {resolved.name!r} has no `subflow` attached; "
+                        "ensure the parent was loaded via `load_flow` rather "
+                        "than constructed directly."
+                    )
+                if not should_skip(session, resolved, flow_data):
+                    result = _run_flow(
+                        session,
+                        resolved.subflow,
+                        resolved.data,
+                        selector_map=selector_map,
+                    )
+                    if isinstance(result, FlowError) and not resolved.optional:
+                        return result
+            case _:
+                error = execute_step(session, prepared, flow_data)
+                if error is not None:
+                    return error
+    last_name = flow.steps[-1].name if flow.steps else "end"
+    return FlowSuccess(step=last_name)

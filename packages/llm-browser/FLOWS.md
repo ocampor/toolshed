@@ -22,7 +22,6 @@ steps:
   - name: submit
     selector: "button[type=submit]"
     action: click
-    checkpoint: true
 ```
 
 ## Actions
@@ -53,7 +52,7 @@ No selector needed.
 ### Data actions
 
 Return data. Pair with `path:` (where supported) to land artifacts on
-disk mid-flow without needing `checkpoint: true`.
+disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
@@ -70,9 +69,6 @@ disk mid-flow without needing `checkpoint: true`.
 
 - **Leaf-only**: a flow referenced by `run-flow` may not itself contain
   `run-flow` steps. Nested sub-flows are rejected at child-load time.
-- **No checkpoints in children**: a sub-flow's steps cannot have
-  `checkpoint: true` (state would be ambiguous on resume). Checkpoint
-  in the parent flow instead.
 - **`optional: true` on the `run-flow` step** swallows child failures —
   the parent advances to the next step instead of bubbling the error.
 - **`when:`** is honored on the `run-flow` step itself; if the
@@ -113,12 +109,6 @@ a conversation turn, then continuing to the next step).
   action: screenshot
   path: "{{ out_dir }}/screenshot.png"
 ```
-
-**Don't use `checkpoint: true` to capture DOM.** Checkpoint was
-designed for external resume coordination: it captures the **whole
-page** to a **fixed** session-level path AND pauses the flow,
-returning to the caller. For scoped element capture at a
-caller-controlled path, the `path:` field is the right tool.
 
 To capture multiple disjoint elements, target their nearest common
 wrapper with one `dom` step rather than running N separate captures.
@@ -173,12 +163,11 @@ when:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `name` | string | Step identifier (for checkpoints and logging) |
+| `name` | string | Step identifier (for logging and error messages) |
 | `action` | string | One of the actions above |
 | `optional` | bool | Swallow `TimeoutError`/`ValueError` from this step (and from all child steps when `action: run-flow`) and continue |
 | `selector` | string or dict | Target element (required for element/data actions) |
 | `when` | list | Conditions to evaluate before executing |
-| `checkpoint` | bool | Pause flow and return result with screenshot |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
 
@@ -198,7 +187,6 @@ when:
     code:
       child_selector: "input.code"
       attribute: value
-  checkpoint: true
 ```
 
 Attributes: `textContent`, `value`, or any HTML attribute name.

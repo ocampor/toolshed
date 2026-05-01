@@ -8,7 +8,8 @@ import click
 from llm_browser.actions import ErrorResult
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
-from llm_browser.flows import FlowRunner
+from llm_browser.flows import run_flow
+from llm_browser.selector_map import load_selector_map
 from llm_browser.models import FlowResult
 from llm_browser.session import BrowserSession
 
@@ -183,41 +184,33 @@ def goto(ctx: click.Context, url: str) -> None:
     default=None,
     help="Path to selector_map.yaml for symbolic refs.",
 )
+@click.option(
+    "--from",
+    "from_step",
+    default=None,
+    help="Re-enter the flow at this step name; skip every step before it.",
+)
 @click.pass_context
 def run(
-    ctx: click.Context, flow_path: str, data_json: str, selector_map_path: str | None
+    ctx: click.Context,
+    flow_path: str,
+    data_json: str,
+    selector_map_path: str | None,
+    from_step: str | None,
 ) -> None:
-    """Run a YAML flow. Pauses at first checkpoint."""
+    """Run a YAML flow top-to-bottom (or from --from <step> onward)."""
     from pathlib import Path
 
     session: BrowserSession = ctx.obj["session"]
-    map_path = Path(selector_map_path) if selector_map_path else None
-    runner = FlowRunner(session, selector_map_path=map_path)
+    selector_map = (
+        load_selector_map(Path(selector_map_path))
+        if selector_map_path and Path(selector_map_path).exists()
+        else None
+    )
     data = json.loads(data_json)
-    result = runner.run(flow_path, data)
-    _output(result)
-
-
-@main.command()
-@click.option(
-    "--data", "data_json", default="{}", help="JSON data to merge before resuming."
-)
-@click.option(
-    "--selector-map",
-    "selector_map_path",
-    default=None,
-    help="Path to selector_map.yaml for symbolic refs.",
-)
-@click.pass_context
-def resume(ctx: click.Context, data_json: str, selector_map_path: str | None) -> None:
-    """Resume a paused flow from the last checkpoint."""
-    from pathlib import Path
-
-    session: BrowserSession = ctx.obj["session"]
-    map_path = Path(selector_map_path) if selector_map_path else None
-    runner = FlowRunner(session, selector_map_path=map_path)
-    data = json.loads(data_json) if data_json != "{}" else None
-    result = runner.resume(data)
+    result = run_flow(
+        session, flow_path, data, selector_map=selector_map, from_step=from_step
+    )
     _output(result)
 
 

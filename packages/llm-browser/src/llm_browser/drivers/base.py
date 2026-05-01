@@ -76,16 +76,6 @@ class Driver(ABC):
     @abstractmethod
     def status(self, handle: DriverHandle) -> bool: ...
 
-    def can_resume_across_processes(self, handle: DriverHandle) -> bool:
-        """Whether the browser survives the current Python process exiting.
-
-        Used by ``FlowRunner`` to refuse checkpoint-based flows on sessions
-        that can't be resumed. Default False — override when a driver+handle
-        combination can be reconnected from persisted state (e.g. patchright
-        in attach mode via ``connect_over_cdp``).
-        """
-        return False
-
     @abstractmethod
     def latest_tab(self, handle: DriverHandle) -> Any: ...
 

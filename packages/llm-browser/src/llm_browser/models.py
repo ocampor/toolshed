@@ -10,6 +10,7 @@ from pydantic import (
     ConfigDict,
     Discriminator,
     Field,
+    PrivateAttr,
     Tag,
     TypeAdapter,
     field_validator,
@@ -38,9 +39,20 @@ class BaseStep(BaseModel):
     when: list[dict[str, Any]] = []
     eval: str | None = None
     wait_after: int | None = None
-    checkpoint: bool = False
     optional: bool = False
     timeout: int = 10_000
+    # Set by ``RunFlowStep``'s after-validator on each child step in a
+    # sub-flow: the parent's ``run-flow`` step name. ``None`` for
+    # top-level steps. Drives ``qualified_name`` for diagnostic output
+    # and retry-hint targeting.
+    _parent: str | None = PrivateAttr(default=None)
+
+    @property
+    def qualified_name(self) -> str:
+        """Slash-separated path from the parent flow's run-flow step
+        down to this step. Top-level steps just return their own
+        ``name``; sub-flow steps return ``"<parent>/<name>"``."""
+        return f"{self._parent}/{self.name}" if self._parent else self.name
 
 
 class SelectorStep(BaseStep):
@@ -170,7 +182,7 @@ class WaitStep(SelectorStep):
 
 
 class EvalStep(BaseStep):
-    """Step with no browser action (eval-only, wait, checkpoint)."""
+    """Step with no browser action (eval-only, wait)."""
 
     action: None = None
 
@@ -195,37 +207,28 @@ class RunFlowStep(BaseStep):
     data: dict[str, Any] = {}
     subflow: SubFlow | None = None
 
-    @field_validator("checkpoint")
-    @classmethod
-    def _no_checkpoint(cls, v: bool) -> bool:
-        if v:
-            raise ValueError(
-                "run-flow steps cannot use checkpoint: true; "
-                "checkpoint a step inside the parent or child flow."
-            )
-        return v
-
     @model_validator(mode="after")
     def _resolve_subflow_from_context(self, info: Any) -> RunFlowStep:
         # Already resolved (programmatic construction, explicit `subflow:`
-        # in the YAML) — leave it alone.
-        if self.subflow is not None:
-            return self
-        ctx = info.context if info is not None else None
-        base_dir = ctx.get("base_dir") if ctx else None
-        if base_dir is None:
-            # No filesystem context — caller didn't ask us to resolve.
-            return self
-        import yaml
+        # in the YAML) — still tag children with our name so qualified
+        # names work for the retry hint. Otherwise load + validate the
+        # referenced child YAML.
+        if self.subflow is None:
+            ctx = info.context if info is not None else None
+            base_dir = ctx.get("base_dir") if ctx else None
+            if base_dir is None:
+                # No filesystem context — caller didn't ask us to resolve.
+                return self
+            import yaml
 
-        path = Path(self.flow)
-        if not path.is_absolute():
-            path = Path(base_dir) / path
-        # Pass the same context down so any (future) nested resolution
-        # has it; SubFlow doesn't recurse into run-flow today.
-        self.subflow = SubFlow.model_validate(
-            yaml.safe_load(path.read_text()), context=ctx
-        )
+            path = Path(self.flow)
+            if not path.is_absolute():
+                path = Path(base_dir) / path
+            self.subflow = SubFlow.model_validate(
+                yaml.safe_load(path.read_text()), context=ctx
+            )
+        for child in self.subflow.steps:
+            child._parent = self.name
         return self
 
 
@@ -312,6 +315,21 @@ class Flow(BaseModel):
     params: list[str | dict[str, Any]] = []
     steps: list[Step]
 
+    @model_validator(mode="after")
+    def _enforce_unique_step_names(self) -> Flow:
+        """Step names act as identifiers (used by ``--from`` for
+        partial re-runs). Reject duplicates within the same flow."""
+        from collections import Counter
+
+        counts = Counter(s.name for s in self.steps)
+        duplicates = sorted(name for name, count in counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                f"duplicate step names {duplicates!r}; "
+                "names must be unique within a flow."
+            )
+        return self
+
     def validate_data(self, data: dict[str, object]) -> FlowData:
         """Validate data against declared params, apply defaults, return FlowData."""
         from llm_browser.params import validate_flow_params
@@ -323,14 +341,11 @@ class SubFlow(Flow):
     """A flow eligible for inclusion via ``run-flow``.
 
     Top-level flows use ``Flow`` and may freely contain ``run-flow``
-    steps and ``checkpoint: true``. A flow being included as a child
-    is constrained:
-
-    - leaf-only: no nested ``run-flow`` steps (cycle prevention).
-    - no checkpoints: parent owns state persistence.
+    steps. A flow being included as a child is leaf-only: it cannot
+    itself contain ``run-flow`` steps (cycle prevention).
 
     Validating a YAML file as ``SubFlow`` rather than ``Flow`` enforces
-    these at parse time, which means linters/CI can catch malformed
+    this at parse time, which means linters/CI can catch malformed
     children without running the browser.
     """
 
@@ -341,11 +356,6 @@ class SubFlow(Flow):
             raise ValueError(
                 f"Sub-flow contains a `run-flow` step ({nested.name!r}); "
                 "nested sub-flows are not allowed."
-            )
-        if any(s.checkpoint for s in self.steps):
-            raise ValueError(
-                "Sub-flow contains a checkpoint; "
-                "checkpointed sub-flows are not supported."
             )
         return self
 
@@ -376,19 +386,46 @@ class SessionInfo(BaseModel):
     mode: Literal["launched", "attached"] = "launched"
 
 
-class FlowState(BaseModel):
-    """Persisted flow execution state for checkpoint/resume."""
+class RetryHint(BaseModel):
+    """Information for re-running a failed flow.
+
+    Attached to a :class:`FlowError` by ``run_flow``. Tells the caller
+    which flow to re-run, what data to pass, and which step to resume
+    at via ``--from``.
+    """
 
     flow_path: str
-    data: dict[str, object] = {}
-    current_index: int = 0
+    data: dict[str, object]
+    failed_step: str
+    error: str
 
 
-class FlowResult(BaseModel):
-    """Result returned when a flow pauses at a checkpoint or completes."""
+class FlowSuccess(BaseModel):
+    """Returned by ``run_flow`` when a flow ran to completion.
+
+    Carries the name of the last step run (or ``"end"`` for an empty
+    flow) — mostly informational.
+    """
+
+    step: str
+
+
+class FlowError(BaseModel):
+    """Returned by ``run_flow`` when a flow stopped at a failing step.
+
+    ``step`` is the *innermost* step name where the failure happened
+    (deep inside a sub-flow, if applicable) — useful for diagnostics.
+    ``retry_hint`` is the top-level recovery breadcrumb (the parent
+    step name, suitable for ``--from``); set by ``run_flow``.
+    """
 
     step: str
     data: object = None
     screenshot: str | None = None
     dom: str | None = None
-    completed: bool = False
+    retry_hint: RetryHint | None = None
+
+
+# Public type alias: callers that don't care which arm they got can use
+# ``FlowResult`` as the return type and switch on ``isinstance``.
+FlowResult = FlowSuccess | FlowError

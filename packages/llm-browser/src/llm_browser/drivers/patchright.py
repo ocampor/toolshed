@@ -109,13 +109,6 @@ class PatchrightDriver(PlaywrightDriverBase):
         # when the driver instance is fresh (e.g. a new CLI invocation).
         return _is_attached(handle) and bool(handle.endpoint)
 
-    def can_resume_across_processes(self, handle: DriverHandle) -> bool:
-        """Only attach mode survives Python exiting — the remote Chromium
-        is the user's, and we reconnect via its persisted CDP endpoint.
-        Launched mode dies with ``Playwright.stop()``.
-        """
-        return _is_attached(handle) and bool(handle.endpoint)
-
     # --- Internals ---
 
     def _reattach_or_raise(self, handle: DriverHandle) -> None:

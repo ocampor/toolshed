@@ -6,8 +6,8 @@ from llm_browser.models import (
     EvalStep,
     Flow,
     FlowData,
-    FlowResult,
-    FlowState,
+    FlowError,
+    FlowSuccess,
     GotoStep,
     SessionInfo,
     validate_step,
@@ -23,41 +23,26 @@ def test_session_info_round_trip() -> None:
     assert restored == info
 
 
-def test_flow_state_round_trip() -> None:
-    state = FlowState(flow_path="/tmp/flow.yaml", data={"rfc": "XEXX"}, current_index=2)
-    json_str = state.model_dump_json()
-    restored = FlowState.model_validate_json(json_str)
-    assert restored.flow_path == "/tmp/flow.yaml"
-    assert restored.data == {"rfc": "XEXX"}
-    assert restored.current_index == 2
-
-
-def test_flow_state_defaults() -> None:
-    state = FlowState(flow_path="/tmp/f.yaml", data={})
-    assert state.current_index == 0
-
-
-def test_flow_result_round_trip() -> None:
-    result = FlowResult(step="check", data='{"cp": "05330"}', screenshot="/tmp/s.png")
+def test_flow_error_round_trip() -> None:
+    result = FlowError(step="check", data='{"cp": "05330"}', screenshot="/tmp/s.png")
     json_str = result.model_dump_json()
-    restored = FlowResult.model_validate_json(json_str)
+    restored = FlowError.model_validate_json(json_str)
     assert restored.step == "check"
-    assert restored.completed is False
+    assert restored.data == '{"cp": "05330"}'
 
 
-def test_flow_result_defaults() -> None:
-    result = FlowResult(step="end", completed=True)
-    assert result.data is None
-    assert result.screenshot is None
+def test_flow_success_minimal() -> None:
+    result = FlowSuccess(step="end")
+    assert result.step == "end"
 
 
-def test_flow_result_exclude_none() -> None:
-    result = FlowResult(step="end", completed=True)
+def test_flow_error_exclude_none() -> None:
+    result = FlowError(step="boom")
     d = result.model_dump(exclude_none=True)
     assert "data" not in d
     assert "screenshot" not in d
-    assert d["step"] == "end"
-    assert d["completed"] is True
+    assert "retry_hint" not in d
+    assert d["step"] == "boom"
 
 
 def test_step_defaults() -> None:
@@ -65,7 +50,7 @@ def test_step_defaults() -> None:
     assert step.fields == []
     assert step.when == []
     assert step.action is None
-    assert step.checkpoint is False
+    assert step.optional is False
 
 
 def test_step_discriminated_union() -> None:
@@ -77,13 +62,25 @@ def test_step_discriminated_union() -> None:
 
 def test_flow_round_trip() -> None:
     flow = Flow(
-        steps=[EvalStep(name="s1", eval="1+1"), EvalStep(name="s2", checkpoint=True)]
+        steps=[EvalStep(name="s1", eval="1+1"), EvalStep(name="s2", optional=True)]
     )
     data = flow.model_dump()
     restored = Flow.model_validate(data)
     assert len(restored.steps) == 2
     assert restored.steps[0].name == "s1"
-    assert restored.steps[1].checkpoint is True
+    assert restored.steps[1].optional is True
+
+
+def test_flow_rejects_duplicate_step_names() -> None:
+    with pytest.raises(ValueError, match=r"duplicate step names \['bar', 'foo'\]"):
+        Flow(
+            steps=[
+                EvalStep(name="foo"),
+                EvalStep(name="bar"),
+                EvalStep(name="foo"),
+                EvalStep(name="bar"),
+            ]
+        )
 
 
 def test_flow_data_to_template_dict() -> None:

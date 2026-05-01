@@ -1,4 +1,4 @@
-"""Tests for flow loading, step execution, and FlowRunner."""
+"""Tests for flow loading, step execution, and the `run_flow` entry point."""
 
 from pathlib import Path
 from typing import Any
@@ -8,8 +8,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from llm_browser.flows import FlowRunner, load_flow
-from llm_browser.models import EvalStep, FlowData, FlowState
+from llm_browser.flows import load_flow, run_flow
+from llm_browser.models import EvalStep, FlowData, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, should_skip
 
@@ -59,12 +59,6 @@ def test_load_flow(tmp_path: Path) -> None:
     flow = load_flow(path)
     assert len(flow.steps) == 2
     assert flow.steps[0].name == "step1"
-
-
-def test_load_flow_validates(tmp_path: Path) -> None:
-    path = _write_flow(tmp_path, [{"name": "s1", "checkpoint": True}])
-    flow = load_flow(path)
-    assert flow.steps[0].checkpoint is True
 
 
 # --- should_skip ---
@@ -130,18 +124,6 @@ def test_should_skip_element_exists(tmp_path: Path) -> None:
 # --- execute_step ---
 
 
-def test_execute_step_with_eval_checkpoint(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    session.driver.evaluate.return_value = '{"cp": "05330"}'
-
-    step = EvalStep(name="check", eval="someJs()", checkpoint=True)
-    result = execute_step(session, step, _flow_data())
-
-    assert result is not None
-    assert result.step == "check"
-    assert result.data == '{"cp": "05330"}'
-
-
 def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     step = EvalStep(
@@ -166,155 +148,100 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
     )
 
 
-# --- FlowRunner ---
+# --- run_flow ---
 
 
-def test_run_pauses_at_checkpoint(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    session.driver.evaluate.return_value = "result1"
-
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "1+1"},
-        {"name": "s2", "eval": "getVal()", "checkpoint": True},
-        {"name": "s3", "eval": "should_not_run()"},
-    ]
-    path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
-    result = runner.run(path, {})
-
-    assert result.step == "s2"
-    assert result.completed is False
-
-
-def test_run_completes_without_checkpoint(tmp_path: Path) -> None:
+def test_run_completes_to_end(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     steps = [{"name": "s1", "action": "click", "selector": "#btn"}]
     path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
-    result = runner.run(path, {})
-    assert result.completed is True
+    result = run_flow(session, path, {})
+    assert isinstance(result, FlowSuccess)
 
 
-def test_run_saves_state_at_checkpoint(tmp_path: Path) -> None:
+def test_run_from_step_skips_prior_steps(tmp_path: Path) -> None:
+    """`from_step="step3"` skips step1 and step2; only step3 runs."""
     session = _mock_session(tmp_path)
-    session.driver.evaluate.return_value = "v"
-
-    steps = [{"name": "s1", "eval": "x()", "checkpoint": True}]
-    path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
-    runner.run(path, {"key": "val"})
-
-    state_file = tmp_path / "flow_state.json"
-    assert state_file.exists()
-    state = FlowState.model_validate_json(state_file.read_text())
-    assert state.current_index == 1
-    assert state.data == {"key": "val"}
-
-
-def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "first()", "checkpoint": True},
-        {"name": "s2", "action": "click", "selector": "#done"},
+    steps = [
+        {"name": "step1", "action": "click", "selector": "#a"},
+        {"name": "step2", "action": "click", "selector": "#b"},
+        {"name": "step3", "action": "click", "selector": "#c"},
     ]
     path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
-
-    state = FlowState(flow_path=str(path), data={}, current_index=1)
-    (tmp_path / "flow_state.json").write_text(state.model_dump_json())
-
-    result = runner.resume()
-    assert result.completed is True
-    assert result.step == "s2"
-    session.find.assert_called()
+    result = run_flow(session, path, {}, from_step="step3")
+    assert isinstance(result, FlowSuccess)
+    # Only step3's selector hit the driver — step1 and step2 were skipped.
+    assert session.find.call_count == 1
+    selector = session.find.call_args.args[0]
+    assert "c" in str(selector)
 
 
-def test_resume_no_state_raises(tmp_path: Path) -> None:
+def test_run_from_step_unknown_raises(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
-    runner = FlowRunner(session)
-    with pytest.raises(RuntimeError, match="No flow to resume"):
-        runner.resume()
+    steps = [{"name": "only", "action": "click", "selector": "#a"}]
+    path = _write_flow(tmp_path, steps)
+    with pytest.raises(ValueError, match="step 'missing' not found in flow"):
+        run_flow(session, path, {}, from_step="missing")
 
 
-def test_resume_merges_data(tmp_path: Path) -> None:
+def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
+    """When a step fails, run_flow attaches a RetryHint to the FlowError."""
     session = _mock_session(tmp_path)
-
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "first()", "checkpoint": True},
-        {"name": "s2", "eval": "second()"},
+    steps = [
+        {"name": "ok", "action": "click", "selector": "#a"},
+        {"name": "boom", "action": "click", "selector": "#missing"},
     ]
     path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
 
-    state = FlowState(flow_path=str(path), data={"a": "1"}, current_index=1)
-    (tmp_path / "flow_state.json").write_text(state.model_dump_json())
+    # First click succeeds; second click raises so the action fails.
+    locator = MagicMock()
+    locator.count.return_value = 1
+    session.find.side_effect = [locator, TimeoutError("element missing")]
 
-    runner.resume(data={"b": "2"})
-    assert not (tmp_path / "flow_state.json").exists()
+    result = run_flow(session, path, {"k": "v"})
+    assert isinstance(result, FlowError)
+    assert result.step == "boom"
+    assert result.retry_hint is not None
+    assert result.retry_hint.failed_step == "boom"
+    assert result.retry_hint.flow_path == str(path)
+    assert result.retry_hint.data == {"k": "v"}
+
+
+def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
+    tmp_path: Path,
+) -> None:
+    """When a step inside a sub-flow fails, the hint's `failed_step`
+    is the parent's run-flow step name (not the inner step) so
+    `--from <hint.failed_step>` resolves against the parent flow."""
+    session = _mock_session(tmp_path)
+    session.find.side_effect = TimeoutError("element missing")
+    _write_named_flow(
+        tmp_path,
+        "child.yaml",
+        [{"name": "inner-click", "action": "click", "selector": "#missing"}],
+    )
+    parent = _write_named_flow(
+        tmp_path,
+        "parent.yaml",
+        [{"name": "do-thing", "action": "run-flow", "flow": "child.yaml"}],
+    )
+    result = run_flow(session, parent, {})
+    assert isinstance(result, FlowError)
+    assert result.retry_hint is not None
+    # Hint uses the parent's run-flow step name, not the qualified path.
+    assert result.retry_hint.failed_step == "do-thing"
+    # The result itself carries the qualified path so diagnostics
+    # can show where in the tree the failure happened.
+    assert result.step == "do-thing/inner-click"
 
 
 def test_run_validates_params(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     steps = [{"name": "s1", "eval": "fillRfc('{{ rfc }}')"}]
     path = _write_flow(tmp_path, steps, params=["rfc"])
-    runner = FlowRunner(session)
 
     with pytest.raises(ValueError, match="Missing required param: rfc"):
-        runner.run(path, {})
-
-
-def test_run_refuses_checkpoint_flow_when_session_cannot_resume(
-    tmp_path: Path,
-) -> None:
-    """Flows with checkpoints require a driver+handle that survives Python exit."""
-    session = _mock_session(tmp_path)
-    from llm_browser.models import SessionInfo
-
-    session._load_state.return_value = SessionInfo(
-        driver="patchright", user_data_dir=str(tmp_path), mode="launched"
-    )
-    session._handle_from_state.side_effect = BrowserSession._handle_from_state.__get__(
-        session
-    )
-    session.driver.can_resume_across_processes.return_value = False
-
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "noop()"},
-        {"name": "pause", "checkpoint": True},
-    ]
-    path = _write_flow(tmp_path, steps)
-    runner = FlowRunner(session)
-
-    with pytest.raises(RuntimeError, match="cannot be resumed across"):
-        runner.run(path, {})
-
-
-def test_run_allows_checkpoint_flow_when_session_can_resume(tmp_path: Path) -> None:
-    """Attach-mode patchright opts in to checkpoint flows via the driver hook."""
-    session = _mock_session(tmp_path)
-    from llm_browser.models import SessionInfo
-
-    session._load_state.return_value = SessionInfo(
-        driver="patchright",
-        cdp_url="http://localhost:9222",
-        user_data_dir="",
-        mode="attached",
-    )
-    session._handle_from_state.side_effect = BrowserSession._handle_from_state.__get__(
-        session
-    )
-    session.driver.can_resume_across_processes.return_value = True
-
-    steps: list[dict[str, Any]] = [
-        {"name": "s1", "eval": "noop()"},
-        {"name": "pause", "checkpoint": True},
-    ]
-    path = _write_flow(tmp_path, steps)
-    session.driver.evaluate.return_value = None
-    runner = FlowRunner(session)
-    result = runner.run(path, {})
-    assert result.step == "pause"
+        run_flow(session, path, {})
 
 
 def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
@@ -327,10 +254,9 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     ]
     steps = [{"name": "s1", "eval": "fill('{{ rfc }}', '{{ region }}')"}]
     path = _write_flow(tmp_path, steps, params=params)
-    runner = FlowRunner(session)
-    result = runner.run(path, {"rfc": "XEXX"})
+    result = run_flow(session,path, {"rfc": "XEXX"})
 
-    assert result.completed is True
+    assert isinstance(result, FlowSuccess)
     session.driver.evaluate.assert_called_once_with(
         session.get_page.return_value, "fill('XEXX', 'MX')"
     )
@@ -369,10 +295,9 @@ def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    runner = FlowRunner(session)
-    result = runner.run(parent, {})
+    result = run_flow(session,parent, {})
 
-    assert result.completed is True
+    assert isinstance(result, FlowSuccess)
     # Both child clicks fired against the session.
     assert session.find.call_count == 2
 
@@ -398,8 +323,7 @@ def test_run_flow_param_passthrough(tmp_path: Path) -> None:
         ],
         params=["target"],
     )
-    runner = FlowRunner(session)
-    runner.run(parent, {"target": "submit"})
+    run_flow(session, parent, {"target": "submit"})
     # session.find was called with a parsed selector for #submit
     args, _ = session.find.call_args
     assert "submit" in str(args[0])
@@ -429,9 +353,8 @@ def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
     )
     # The parent's own click must succeed even when the sub-flow swallows.
     session.driver.click.side_effect = [TimeoutError("button missing"), None]
-    runner = FlowRunner(session)
-    result = runner.run(parent, {})
-    assert result.completed is True
+    result = run_flow(session,parent, {})
+    assert isinstance(result, FlowSuccess)
 
 
 def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
@@ -447,10 +370,9 @@ def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
     )
-    runner = FlowRunner(session)
-    result = runner.run(parent, {})
+    result = run_flow(session,parent, {})
     # Child failure surfaces to the parent runner; not completed.
-    assert result.completed is False
+    assert isinstance(result, FlowError)
 
 
 def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
@@ -470,39 +392,8 @@ def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    runner = FlowRunner(session)
     with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
-        runner.run(parent, {})
-
-
-def test_run_flow_rejects_checkpoint_in_child(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    _write_named_flow(
-        tmp_path,
-        "child.yaml",
-        [{"name": "cp", "eval": "noop()", "checkpoint": True}],
-    )
-    parent = _write_named_flow(
-        tmp_path,
-        "parent.yaml",
-        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
-    )
-    runner = FlowRunner(session)
-    with pytest.raises(
-        ValidationError, match="checkpointed sub-flows are not supported"
-    ):
-        runner.run(parent, {})
-
-
-def test_run_flow_rejects_checkpoint_on_runflow_step(tmp_path: Path) -> None:
-    """A run-flow step itself cannot be checkpointed (the constraint is at
-    model validation, not at runtime)."""
-    from pydantic import ValidationError
-
-    from llm_browser.models import RunFlowStep
-
-    with pytest.raises(ValidationError, match="run-flow steps cannot use checkpoint"):
-        RunFlowStep(action="run-flow", flow="child.yaml", checkpoint=True)
+        run_flow(session, parent, {})
 
 
 def test_run_flow_resolves_relative_to_parent_dir(
@@ -529,19 +420,24 @@ def test_run_flow_resolves_relative_to_parent_dir(
     monkeypatch.chdir(other)
 
     session = _mock_session(tmp_path)
-    runner = FlowRunner(session)
-    result = runner.run(parent, {})
-    assert result.completed is True
+    result = run_flow(session,parent, {})
+    assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 1
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
     """`load_flow` resolves every `run-flow` reference at load time,
-    so malformed children fail before the browser ever launches."""
+    so a child that itself contains a `run-flow` step is rejected
+    before the browser ever launches."""
+    _write_named_flow(
+        tmp_path,
+        "grandchild.yaml",
+        [{"name": "g1", "action": "click", "selector": "#x"}],
+    )
     _write_named_flow(
         tmp_path,
         "bad.yaml",
-        [{"name": "cp", "eval": "noop()", "checkpoint": True}],
+        [{"name": "nested", "action": "run-flow", "flow": "grandchild.yaml"}],
     )
     parent = _write_named_flow(
         tmp_path,
@@ -549,7 +445,7 @@ def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
         [{"name": "include", "action": "run-flow", "flow": "bad.yaml"}],
     )
     with pytest.raises(
-        ValidationError, match="checkpointed sub-flows are not supported"
+        ValidationError, match="nested sub-flows are not allowed"
     ):
         load_flow(parent)
 
@@ -606,7 +502,6 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
         ],
         params=[{"enabled": {"required": False, "default": False}}],
     )
-    runner = FlowRunner(session)
-    result = runner.run(parent, {})
-    assert result.completed is True
+    result = run_flow(session,parent, {})
+    assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 0
