@@ -244,3 +244,24 @@ def test_build_model_class_works_with_extract_all(
     assert repos[0].name == "foo"
     assert repos[0].stars == 42
     assert isinstance(repos[0].stars, int)
+
+
+def test_parsed_result_serializes_dynamic_rows() -> None:
+    """ParsedResult.rows must serialize via the *runtime* row type, not the
+    declared BaseModel base — otherwise dynamically-built schemas (build_model)
+    dump as ``{}`` and the data is lost on the way out of the CLI.
+    """
+    from llm_browser.actions import ParsedResult
+
+    Row = ParseBase.__class__(  # type: ignore[call-arg]
+        "Row",
+        (ParseBase,),
+        {
+            "__annotations__": {"name": str, "n": int},
+            "name": ExtractField(child_selector=".name"),
+            "n": ExtractField(child_selector=".n"),
+        },
+    )
+    result = ParsedResult(rows=[Row(name="hi", n=42), None])
+    payload = result.model_dump(exclude_none=True)
+    assert payload["rows"] == [{"name": "hi", "n": 42}, None]

@@ -4,7 +4,7 @@ import time
 from functools import lru_cache
 from typing import Callable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SerializeAsAny
 
 from yaml_engine.registry import Registry
 
@@ -85,7 +85,7 @@ class ParsedResult(ActionResult):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    rows: list[BaseModel | None]
+    rows: list[SerializeAsAny[BaseModel] | None]
 
 
 class SkippedResult(ActionResult):
