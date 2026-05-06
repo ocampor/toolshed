@@ -183,6 +183,13 @@ class BrowserSession:
         self._page = self.driver.page(handle)
         if url is not None:
             self.driver.goto(self._page, url, "domcontentloaded")
+        # A user-profile Chromium auto-opens its default new-tab page on
+        # startup; combined with attach()'s new_page() that leaves at least
+        # two tabs in the context. Subsequent reconnects via
+        # ``_last_page_or_new`` then land on whichever tab Chromium ordered
+        # last, not necessarily ours. Trim the context down to the tab the
+        # caller asked for so reconnects are deterministic.
+        self.driver.close_other_tabs(handle, self._page)
         return SessionResult(
             status="open",
             url=self.driver.page_url(self._page) if self._page else None,

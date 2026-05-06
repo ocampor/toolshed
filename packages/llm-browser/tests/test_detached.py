@@ -77,6 +77,21 @@ def test_launch_detached_persists_pid_and_attaches(tmp_path: Path) -> None:
     assert driver.attach_calls == ["http://127.0.0.1:54321"]
 
 
+def test_launch_detached_closes_other_tabs(tmp_path: Path) -> None:
+    """The daemon must trim the context to the page it launched, so
+    subsequent reconnects via ``_last_page_or_new`` are deterministic
+    even when Chromium auto-opens its default new-tab page."""
+    driver = AttachStubDriver()
+    session = BrowserSession(state_dir=tmp_path, driver=driver)
+    with patch(
+        "llm_browser.session.spawn_detached_chromium",
+        return_value=(9999, "http://127.0.0.1:54321"),
+    ):
+        session.launch_detached(headed=True)
+
+    assert driver.close_other_tabs_calls == [driver._page]
+
+
 def test_stop_detached_kills_pid_and_clears_state(tmp_path: Path) -> None:
     driver = AttachStubDriver()
     session = BrowserSession(state_dir=tmp_path, driver=driver)

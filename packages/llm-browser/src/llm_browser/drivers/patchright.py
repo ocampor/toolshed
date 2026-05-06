@@ -82,6 +82,14 @@ class PatchrightDriver(PlaywrightDriverBase):
         assert self._page is not None
         return self._page
 
+    def close_other_tabs(self, handle: DriverHandle, keep: Any) -> None:
+        if self._context is None:
+            self._reattach_or_raise(handle)
+        assert self._context is not None
+        for p in list(self._context.pages):
+            if p is not keep:
+                p.close()
+
     def latest_tab(self, handle: DriverHandle) -> Any:
         if self._context is None:
             self._reattach_or_raise(handle)

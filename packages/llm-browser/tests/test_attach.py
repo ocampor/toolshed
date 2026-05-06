@@ -18,7 +18,11 @@ class AttachStubDriver(Driver):
     def __init__(self) -> None:
         self.attach_calls: list[str] = []
         self.close_calls: list[DriverHandle] = []
+        self.close_other_tabs_calls: list[Any] = []
         self._page = MagicMock()
+
+    def close_other_tabs(self, handle: DriverHandle, keep: Any) -> None:
+        self.close_other_tabs_calls.append(keep)
 
     def launch(
         self,

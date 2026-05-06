@@ -79,6 +79,12 @@ class Driver(ABC):
     @abstractmethod
     def latest_tab(self, handle: DriverHandle) -> Any: ...
 
+    def close_other_tabs(self, handle: DriverHandle, keep: Any) -> None:
+        """Close every tab in the current context except ``keep``.
+
+        Default no-op for drivers without a multi-page concept.
+        """
+
     # --- Selector resolution ---
 
     @abstractmethod
