@@ -343,6 +343,7 @@ class BrowserSession:
         selector: Selector,
         quiet_ms: int = 1500,
         timeout_s: float = 180.0,
+        find_timeout: int | None = None,
     ) -> str:
         """Wait until ``selector``'s textContent stops changing for ``quiet_ms``.
 
@@ -351,7 +352,7 @@ class BrowserSession:
         drivers the stability loop runs in-page (single CDP call); other
         drivers fall back to a Python poll.
         """
-        element = self.find(selector)
+        element = self.find(selector, timeout=find_timeout) if find_timeout is not None else self.find(selector)
         text = self.driver.wait_for_stable_text(
             element, quiet_ms=quiet_ms, timeout_ms=int(timeout_s * 1000)
         )

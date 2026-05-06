@@ -18,7 +18,7 @@ _cleaner = Cleaner(
     style=True,
     comments=True,
     inline_style=True,
-    safe_attrs_only=True,
+    safe_attrs_only=False,
 )
 
 _page_cleaner = Cleaner(

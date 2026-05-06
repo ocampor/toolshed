@@ -265,6 +265,7 @@ def action_wait(session: BrowserSession, step: WaitStep) -> TextResult:
         step.selector,
         quiet_ms=step.quiet_ms,
         timeout_s=step.timeout_s,
+        find_timeout=step.timeout,
     )
     return TextResult(text=text)
 
