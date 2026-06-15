@@ -61,10 +61,20 @@ Each package is independent. Always `cd` into the package before running command
 
 ## Publishing
 
-Packages are published to the private index at `https://pypi.ocampor.com/simple/`
-(hosted in `ocampor-infra`). Consumers install with a `[[tool.uv.index]]` entry +
-`UV_INDEX_OCAMPOR_USERNAME`/`UV_INDEX_OCAMPOR_PASSWORD` credentials.
+Packages live on the private index at `https://pypi.ocampor.com/simple/` (hosted in
+`ocampor-infra`). Consumers install via a `[[tool.uv.index]]` entry +
+`UV_INDEX_OCAMPOR_USERNAME` / `UV_INDEX_OCAMPOR_PASSWORD` credentials.
 
-- Publish: `scripts/publish.sh packages/<pkg>` (needs the two `UV_INDEX_OCAMPOR_*` env vars).
-- The index refuses to overwrite an existing version — bump `version` in the
-  package's `pyproject.toml` before re-publishing, then re-`uv lock` consumers.
+**Releasing is automated.** Bump `version` in the package's `pyproject.toml` and merge
+to `main`: `.github/workflows/packages.yml` validates the changed package and publishes
+it. The index refuses to overwrite an existing version, so CI fails if you change a
+package without bumping it — bump to release.
+
+Helper scripts (all runnable locally, mirror what CI runs):
+
+- `scripts/changed-packages.sh [base [head]]` — packages changed between git refs.
+- `scripts/validate.sh packages/<pkg>` — ruff + mypy + pytest for one package.
+- `scripts/check-version.sh packages/<pkg>` — is that version already on the index?
+- `scripts/publish.sh packages/<pkg>` — build + upload (needs the `UV_INDEX_OCAMPOR_*` env vars).
+
+`gh workflow run packages.yml` re-seeds the index with every current package version.

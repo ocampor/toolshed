@@ -1,0 +1,76 @@
+name: Packages
+
+on:
+  pull_request:
+    paths: ["packages/**"]
+  push:
+    branches: [main]
+    paths: ["packages/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toolshed-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.detect.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) names=$(./scripts/changed-packages.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}") ;;
+            push)         names=$(./scripts/changed-packages.sh "${{ github.event.before }}" "${{ github.sha }}" || ./scripts/changed-packages.sh) ;;
+            *)            names=$(./scripts/changed-packages.sh) ;;
+          esac
+          echo "packages=$(printf '%s\n' "$names" | jq -R . | jq -sc 'map(select(length>0))')" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false            # isolate packages — one failure doesn't block the rest
+      matrix:
+        package: ${{ fromJSON(needs.detect.outputs.packages) }}
+    name: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: ./scripts/validate.sh "packages/${{ matrix.package }}"
+
+      # Strict gate: fail if a changed package's version is already published;
+      # on manual re-seed (workflow_dispatch), skip it instead of failing.
+      - id: gate
+        env:
+          UV_INDEX_OCAMPOR_USERNAME: ${{ vars.UV_INDEX_OCAMPOR_USERNAME }}
+          UV_INDEX_OCAMPOR_PASSWORD: ${{ secrets.UV_INDEX_OCAMPOR_PASSWORD }}
+        run: |
+          rc=0; ./scripts/check-version.sh "packages/${{ matrix.package }}" || rc=$?
+          if [ "$rc" = "0" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" = "3" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "::notice::${{ matrix.package }} already published — skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Bump 'version' in packages/${{ matrix.package }}/pyproject.toml (already on the index)."
+            exit 1
+          fi
+
+      - if: github.event_name != 'pull_request' && steps.gate.outputs.publish == 'true'
+        env:
+          UV_INDEX_OCAMPOR_USERNAME: ${{ vars.UV_INDEX_OCAMPOR_USERNAME }}
+          UV_INDEX_OCAMPOR_PASSWORD: ${{ secrets.UV_INDEX_OCAMPOR_PASSWORD }}
+        run: ./scripts/publish.sh "packages/${{ matrix.package }}"
