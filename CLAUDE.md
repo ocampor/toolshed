@@ -7,6 +7,7 @@ Shared Python packages monorepo · Python 3.13+ · uv · hatchling · ruff · my
 - `packages/yaml-engine` — Generic YAML-driven engine: registry, conditions, compilation, template substitution
 - `packages/fxrates` — Exchange rate client (Frankfurter/ECB API)
 - `packages/llm-browser` — Playwright browser automation with declarative YAML flows
+- `packages/cf-access` — Cloudflare Access JWT validation middleware for Starlette/MCP origins
 
 ## Commands
 
@@ -57,3 +58,13 @@ Each package is independent. Always `cd` into the package before running command
 - `yaml_engine.registry.Registry[T]` for all extensible dispatch (conditions, actions, fields, params)
 - `@lru_cache(maxsize=1)` singleton pattern for registry getters
 - If a function is tested or importable, make it public — no underscore prefix on reusable code
+
+## Publishing
+
+Packages are published to the private index at `https://pypi.ocampor.com/simple/`
+(hosted in `ocampor-infra`). Consumers install with a `[[tool.uv.index]]` entry +
+`UV_INDEX_OCAMPOR_USERNAME`/`UV_INDEX_OCAMPOR_PASSWORD` credentials.
+
+- Publish: `scripts/publish.sh packages/<pkg>` (needs the two `UV_INDEX_OCAMPOR_*` env vars).
+- The index refuses to overwrite an existing version — bump `version` in the
+  package's `pyproject.toml` before re-publishing, then re-`uv lock` consumers.
