@@ -253,6 +253,81 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: object) -> 
     assert isinstance(row.stars, int)
 
 
+def test_read_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
+    """``read`` step with ``path`` dumps rows as JSON for the caller."""
+    import json
+    from pathlib import Path
+
+    row = MagicMock()
+    child = MagicMock()
+    child.text_content.return_value = "Alice"
+    row.locator.return_value = child
+    locator = MagicMock()
+    locator.all.return_value = [row]
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ReadStep(
+        name="s",
+        action="read",
+        selector="tr",
+        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
+        path=str(target),
+    )
+    execute_action(session, step)
+    assert json.loads(target.read_text()) == [{"name": "Alice"}]
+
+
+def test_parse_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
+    """``parse`` step with ``path`` dumps typed rows as JSON for the caller."""
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from llm_browser.models import ParseStep
+
+    schema = Path(str(tmp_path)) / "repo.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Repo",
+                "fields": {
+                    "name": {"type": "str", "child_selector": "td.name"},
+                    "stars": {"type": "int", "child_selector": "td.stars"},
+                },
+            }
+        )
+    )
+
+    def _make_row(fields: dict[str, str]) -> MagicMock:
+        row = MagicMock()
+
+        def _resolve(child_sel: str) -> MagicMock:
+            child = MagicMock()
+            key = child_sel.split(".", 1)[1]
+            child.text_content.return_value = fields.get(key)
+            return child
+
+        row.locator.side_effect = _resolve
+        return row
+
+    locator = MagicMock()
+    locator.all.return_value = [_make_row({"name": "foo", "stars": "42"})]
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ParseStep(
+        name="s",
+        action="parse",
+        selector="tr.row",
+        schema_path=str(schema),
+        path=str(target),
+    )
+    execute_action(session, step)
+    assert json.loads(target.read_text()) == [{"name": "foo", "stars": 42}]
+
+
 # --- dom ---
 
 

@@ -46,6 +46,12 @@ packages = ["src/llm_browser"]
 [tool.mypy]
 strict = true
 
+# Library source is strictly typed; the tests predate type-checking and are
+# exercised by pytest, so we don't type-check them.
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
 [[tool.mypy.overrides]]
 module = "yaml_engine.*"
 ignore_missing_imports = true

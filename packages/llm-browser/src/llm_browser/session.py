@@ -359,7 +359,11 @@ class BrowserSession:
         drivers the stability loop runs in-page (single CDP call); other
         drivers fall back to a Python poll.
         """
-        element = self.find(selector, timeout=find_timeout) if find_timeout is not None else self.find(selector)
+        element = (
+            self.find(selector, timeout=find_timeout)
+            if find_timeout is not None
+            else self.find(selector)
+        )
         text = self.driver.wait_for_stable_text(
             element, quiet_ms=quiet_ms, timeout_ms=int(timeout_s * 1000)
         )

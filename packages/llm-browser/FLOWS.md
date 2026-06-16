@@ -191,6 +191,11 @@ when:
 
 Attributes: `textContent`, `value`, or any HTML attribute name.
 
+Set `path: <file>` on a `read` or `parse` step to JSON-dump the rows to
+disk — the only way to surface row data back to the caller, since the
+flow runner only returns `FlowSuccess(step=name)` and otherwise drops
+action results.
+
 ## Autocomplete pattern
 
 Use `type` to trigger the dropdown, then `pick` to select from it:

@@ -254,7 +254,7 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     ]
     steps = [{"name": "s1", "eval": "fill('{{ rfc }}', '{{ region }}')"}]
     path = _write_flow(tmp_path, steps, params=params)
-    result = run_flow(session,path, {"rfc": "XEXX"})
+    result = run_flow(session, path, {"rfc": "XEXX"})
 
     assert isinstance(result, FlowSuccess)
     session.driver.evaluate.assert_called_once_with(
@@ -295,7 +295,7 @@ def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow(session,parent, {})
+    result = run_flow(session, parent, {})
 
     assert isinstance(result, FlowSuccess)
     # Both child clicks fired against the session.
@@ -353,7 +353,7 @@ def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
     )
     # The parent's own click must succeed even when the sub-flow swallows.
     session.driver.click.side_effect = [TimeoutError("button missing"), None]
-    result = run_flow(session,parent, {})
+    result = run_flow(session, parent, {})
     assert isinstance(result, FlowSuccess)
 
 
@@ -370,7 +370,7 @@ def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow(session,parent, {})
+    result = run_flow(session, parent, {})
     # Child failure surfaces to the parent runner; not completed.
     assert isinstance(result, FlowError)
 
@@ -420,7 +420,7 @@ def test_run_flow_resolves_relative_to_parent_dir(
     monkeypatch.chdir(other)
 
     session = _mock_session(tmp_path)
-    result = run_flow(session,parent, {})
+    result = run_flow(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 1
 
@@ -444,9 +444,7 @@ def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "bad.yaml"}],
     )
-    with pytest.raises(
-        ValidationError, match="nested sub-flows are not allowed"
-    ):
+    with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
         load_flow(parent)
 
 
@@ -552,6 +550,6 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
         ],
         params=[{"enabled": {"required": False, "default": False}}],
     )
-    result = run_flow(session,parent, {})
+    result = run_flow(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 0

@@ -141,6 +141,7 @@ class ReadStep(SelectorStep):
 
     action: Literal["read"]
     extract: dict[str, ExtractField] = {}
+    path: str | None = None
 
     @field_validator("extract", mode="before")
     @classmethod
@@ -165,6 +166,7 @@ class ParseStep(SelectorStep):
 
     action: Literal["parse"]
     schema_path: str = Field(..., min_length=1)
+    path: str | None = None
 
 
 class DomStep(SelectorStep):

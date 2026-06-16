@@ -289,7 +289,10 @@ def action_read(session: BrowserSession, step: ReadStep) -> ParsedResult:
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows)
+    result = ParsedResult(rows=rows)
+    if step.path:
+        _write_rows(step.path, result)
+    return result
 
 
 @_registry.register("parse")
@@ -301,7 +304,20 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows)
+    result = ParsedResult(rows=rows)
+    if step.path:
+        _write_rows(step.path, result)
+    return result
+
+
+def _write_rows(path: str, result: ParsedResult) -> None:
+    """JSON-dump ``ParsedResult.rows`` to ``path``. Rows are Pydantic models
+    (or ``None``); use ``model_dump`` so dynamic-field ``ExtractedRow`` and
+    typed ``ParseBase`` instances both serialize uniformly."""
+    import json
+
+    payload = [r.model_dump() if r is not None else None for r in result.rows]
+    prepare_output_path(path).write_text(json.dumps(payload, ensure_ascii=False))
 
 
 @_registry.register("dom")
