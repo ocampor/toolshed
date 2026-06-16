@@ -14,8 +14,8 @@ from yaml_engine.types import (
     CompiledRule,
 )
 
-
 # --- Single-item compilers ---
+
 
 def compile_condition(raw: dict[str, object]) -> CompiledCondition[CompiledParam]:
     """Compile a single raw condition dict."""
@@ -62,6 +62,7 @@ def compile_action(raw: dict[str, object]) -> CompiledAction[CompiledParam]:
 
 
 # --- Group sub-compilers ---
+
 
 class GroupOptions(NamedTuple):
     name: str

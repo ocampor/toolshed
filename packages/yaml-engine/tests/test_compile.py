@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from yaml_engine.compile import compile_condition, compile_action, compile_group, load_groups
+from yaml_engine.compile import compile_action, compile_condition, compile_group, load_groups
 
 
 def test_compile_condition_eq():
@@ -46,12 +46,14 @@ def test_compile_action_generic():
 
 def test_compile_action_unknown_raises():
     import pytest
+
     with pytest.raises(ValueError, match="Unknown action format"):
         compile_action({})
 
 
 def test_compile_group_basic():
-    raw = yaml.safe_load(textwrap.dedent("""
+    raw = yaml.safe_load(
+        textwrap.dedent("""
         group: test
         priority: 10
         options:
@@ -64,7 +66,8 @@ def test_compile_group_basic():
                 value: hello
             actions:
               - set: {category: Greeting}
-    """))
+    """)
+    )
     group = compile_group(raw)
     assert group.name == "test"
     assert group.priority == 10
@@ -76,15 +79,19 @@ def test_compile_group_basic():
 
 
 def test_load_groups_from_directory(tmp_path: Path):
-    (tmp_path / "a.yaml").write_text(textwrap.dedent("""
+    (tmp_path / "a.yaml").write_text(
+        textwrap.dedent("""
         group: second
         priority: 20
         rules: []
-    """))
-    (tmp_path / "b.yaml").write_text(textwrap.dedent("""
+    """)
+    )
+    (tmp_path / "b.yaml").write_text(
+        textwrap.dedent("""
         group: first
         priority: 5
         rules: []
-    """))
+    """)
+    )
     groups = load_groups(tmp_path)
     assert [g.name for g in groups] == ["first", "second"]

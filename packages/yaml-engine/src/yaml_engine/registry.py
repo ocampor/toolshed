@@ -31,6 +31,7 @@ class Registry(Generic[T]):
         def decorator(fn: T) -> T:
             self.store[name] = fn
             return fn
+
         return decorator
 
     def get(self, name: str) -> T:

@@ -26,6 +26,7 @@ def evaluate_condition(op: str, value: T, param: object) -> bool:
 
 # --- Built-in operators ---
 
+
 @register_condition("eq")
 def eq(value: T, param: T) -> bool:
     if value is None:

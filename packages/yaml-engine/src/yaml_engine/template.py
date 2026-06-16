@@ -15,6 +15,7 @@ def resolve_template(value: str, data: dict[str, object]) -> str:
     If the entire value is a single {{ var }} and resolves to a non-string,
     the string representation is returned.
     """
+
     def replacer(match: re.Match[str]) -> str:
         key = match.group(1)
         resolved = data.get(key)
@@ -32,11 +33,13 @@ def resolve_templates_in_dict(raw: dict[str, object], data: dict[str, object]) -
         if isinstance(value, str):
             result[key] = resolve_template(value, data)
         elif isinstance(value, dict):
-            result[key] = resolve_templates_in_dict(value, data)  # type: ignore[arg-type]
+            result[key] = resolve_templates_in_dict(value, data)
         elif isinstance(value, list):
             result[key] = [
-                resolve_templates_in_dict(item, data) if isinstance(item, dict)
-                else resolve_template(item, data) if isinstance(item, str)
+                resolve_templates_in_dict(item, data)
+                if isinstance(item, dict)
+                else resolve_template(item, data)
+                if isinstance(item, str)
                 else item
                 for item in value
             ]

@@ -18,6 +18,7 @@ build-backend = "hatchling.build"
 dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "ruff>=0.11.0",
     "types-pyyaml>=6.0.12.20250915",
 ]
 
@@ -26,3 +27,15 @@ packages = ["src/yaml_engine"]
 
 [tool.mypy]
 strict = true
+
+# Library source is strictly typed; the tests predate type-checking and are
+# exercised by pytest, so we don't type-check them.
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

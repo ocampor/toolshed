@@ -4,19 +4,22 @@ import pytest
 
 from yaml_engine.template import resolve_template, resolve_templates_in_dict
 
-
 # --- resolve_template ---
 
-@pytest.mark.parametrize("template, data, expected", [
-    ("{{ name }}", {"name": "Alice"}, "Alice"),
-    ("{{name}}", {"name": "Alice"}, "Alice"),
-    ("Hello {{ name }}!", {"name": "world"}, "Hello world!"),
-    ("{{ a }} and {{ b }}", {"a": "1", "b": "2"}, "1 and 2"),
-    ("{{ missing }}", {}, "{{ missing }}"),
-    ("no vars here", {"name": "Alice"}, "no vars here"),
-    ("{{ count }}", {"count": 42}, "42"),
-    ("{{ rate }}", {"rate": 20.1234}, "20.1234"),
-])
+
+@pytest.mark.parametrize(
+    "template, data, expected",
+    [
+        ("{{ name }}", {"name": "Alice"}, "Alice"),
+        ("{{name}}", {"name": "Alice"}, "Alice"),
+        ("Hello {{ name }}!", {"name": "world"}, "Hello world!"),
+        ("{{ a }} and {{ b }}", {"a": "1", "b": "2"}, "1 and 2"),
+        ("{{ missing }}", {}, "{{ missing }}"),
+        ("no vars here", {"name": "Alice"}, "no vars here"),
+        ("{{ count }}", {"count": 42}, "42"),
+        ("{{ rate }}", {"rate": 20.1234}, "20.1234"),
+    ],
+)
 def test_resolve_template(template, data, expected):
     assert resolve_template(template, data) == expected
 
@@ -26,6 +29,7 @@ def test_resolve_template_none_value_leaves_placeholder():
 
 
 # --- resolve_templates_in_dict ---
+
 
 def test_resolve_dict_simple():
     raw = {"greeting": "Hello {{ name }}", "count": 5}
