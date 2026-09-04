@@ -4,6 +4,7 @@ Usage:
     uv run python scripts/stealth_probe.py --driver patchright
     uv run python scripts/stealth_probe.py --driver patchright --url https://nowsecure.nl
     uv run python scripts/stealth_probe.py --driver camoufox --matrix all
+    uv run python scripts/stealth_probe.py --cdp-url http://127.0.0.1:9223 --matrix all
 
 Each probe navigates, collects a JS fingerprint snapshot, saves a
 screenshot and DOM, and prints a pass/fail-ish verdict where possible.
@@ -28,7 +29,8 @@ from llm_browser.session import BrowserSession
 PROBES: dict[str, dict[str, str]] = {
     "sannysoft": {
         "url": "https://bot.sannysoft.com/",
-        "check": r"(missing|failed)",
+        # "missing (passed)" is a green cell; only a literal failed cell counts.
+        "check": r"\(failed\)|>\s*failed\s*<",
         "note": "classic JS-leak matrix (webdriver, chrome, permissions, plugins)",
     },
     "creepjs": {
@@ -43,7 +45,8 @@ PROBES: dict[str, dict[str, str]] = {
     },
     "browserscan": {
         "url": "https://www.browserscan.net/bot-detection",
-        "check": r"(?i)robot",
+        # Prose on the page mentions robots; only the verdict badge counts.
+        "check": r"(?i)test results:\s*(?:<[^>]*>\s*)*robot",
         "note": "aggregate bot-score page",
     },
     "cloudflare-nowsecure": {
@@ -136,6 +139,10 @@ def main() -> int:
     )
     parser.add_argument("--headed", action="store_true", help="Visible browser")
     parser.add_argument(
+        "--cdp-url",
+        help="Attach to a running Chromium over CDP instead of launching one",
+    )
+    parser.add_argument(
         "--settle-s",
         type=float,
         default=3.0,
@@ -160,8 +167,12 @@ def main() -> int:
         session = BrowserSession(
             session_id=f"stealth-probe-{driver_name}",
             driver=driver_name,
+            stateless=bool(args.cdp_url),
         )
-        session.launch(headed=args.headed)
+        if args.cdp_url:
+            session.attach(args.cdp_url)
+        else:
+            session.launch(headed=args.headed)
         try:
             for probe_name, spec in probes.items():
                 out = root / driver_name / slugify(probe_name)
