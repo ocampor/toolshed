@@ -12,8 +12,7 @@ CDP_URL = "http://127.0.0.1:9223"
 
 
 @pytest.fixture
-def base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BrowserSession:
-    monkeypatch.setattr("llm_browser.cli.DEFAULT_STATE_DIR", tmp_path / "state")
+def base(tmp_path: Path) -> BrowserSession:
     return BrowserSession(state_dir=tmp_path, driver=AttachStubDriver())
 
 
@@ -44,19 +43,15 @@ def test_run_attached_closes_when_flow_raises(base: BrowserSession) -> None:
     assert len(stub_driver(base).close_calls) == 1
 
 
-def test_run_attached_uses_a_fresh_state_dir(
-    base: BrowserSession, tmp_path: Path
-) -> None:
-    """No state.json is reused or left behind, so parallel runs don't collide."""
-    state_dirs: list[Path] = []
+def test_run_attached_is_stateless(base: BrowserSession) -> None:
+    """No state.json is read or written, so parallel runs never collide."""
+    seen: list[BrowserSession] = []
 
     def record(session: BrowserSession) -> object:
-        state_dirs.append(session.session_dir)
-        assert session._state_file.exists()
+        seen.append(session)
+        assert session.stateless
+        assert not session._state_file.exists()
         return None
 
     run_attached(base, CDP_URL, record)
-    run_attached(base, CDP_URL, record)
-
-    assert state_dirs[0] != state_dirs[1]
-    assert not any(d.exists() for d in state_dirs)
+    assert not seen[0]._state_file.exists()

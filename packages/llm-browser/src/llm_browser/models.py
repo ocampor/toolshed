@@ -409,6 +409,7 @@ class SessionResult(BaseModel):
     status: str
     url: str | None = None
     cdp_url: str | None = None
+    target_id: str | None = None
     screenshot: str | None = None
 
 
@@ -420,6 +421,7 @@ class SessionInfo(BaseModel):
     user_data_dir: str = ""
     driver: str = "patchright"
     mode: Literal["launched", "attached"] = "launched"
+    target_id: str | None = None
 
 
 class RetryHint(BaseModel):

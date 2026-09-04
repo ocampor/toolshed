@@ -67,6 +67,15 @@ class Driver(ABC):
             f"{type(self).__name__} does not support attach; use driver='patchright'"
         )
 
+    def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
+        """Attach to one existing tab, addressed by its CDP target id.
+
+        Subclasses that support it (patchright) override this. Others raise.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support attach; use driver='patchright'"
+        )
+
     @abstractmethod
     def page(self, handle: DriverHandle) -> Any: ...
 
