@@ -70,9 +70,14 @@ class PwKeyboard(Protocol):
     def press(self, key: str) -> None: ...
 
 
+class PwMouse(Protocol):
+    def wheel(self, delta_x: int, delta_y: int) -> None: ...
+
+
 class PwPage(Protocol):
     url: str
     keyboard: PwKeyboard
+    mouse: PwMouse
 
     def locator(self, selector: str) -> PwLocator: ...
     def goto(self, url: str, wait_until: str = ...) -> None: ...
@@ -159,6 +164,9 @@ class PlaywrightDriverBase(Driver):
 
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
         _pw_page(page).wait_for_load_state(state, timeout=timeout_ms)
+
+    def scroll(self, page: Any, dx: int, dy: int) -> None:
+        _pw_page(page).mouse.wheel(dx, dy)
 
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
         _pw_loc(locator).wait_for(state=state, timeout=timeout_ms)

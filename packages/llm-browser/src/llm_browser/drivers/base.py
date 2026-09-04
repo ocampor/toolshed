@@ -153,6 +153,13 @@ class Driver(ABC):
     @abstractmethod
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None: ...
 
+    def scroll(self, page: Any, dx: int, dy: int) -> None:
+        """Scroll the page by a mouse-wheel delta.
+
+        Subclasses backed by a wheel-capable API override this.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support scroll")
+
     @abstractmethod
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None: ...
 

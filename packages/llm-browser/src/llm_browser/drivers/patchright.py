@@ -145,7 +145,12 @@ class PatchrightDriver(PlaywrightDriverBase):
             except Exception:
                 pass
         if self._browser is not None:
-            self._browser.close()
+            # Disconnecting from a CDP browser can race the driver shutdown;
+            # the tab is already released, so a failed disconnect is harmless.
+            try:
+                self._browser.close()
+            except Exception:
+                pass
             self._browser = None
 
     def _close_launched(self) -> None:

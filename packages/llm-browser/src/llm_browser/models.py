@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from llm_browser.behavior import Jitter
 from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
 
@@ -186,6 +187,15 @@ class ThinkStep(BaseStep):
     max_ms: int = 2000
 
 
+class ScrollStep(BaseStep):
+    """Mouse-wheel scroll: ``times`` ticks of ``delta`` px, paced by ``pause``."""
+
+    action: Literal["scroll"]
+    delta: int = 600
+    times: int = 1
+    pause: Jitter | None = None
+
+
 class PressStep(BaseStep):
     action: Literal["press"]
     # Optional: when None, press the focused element via ``press_focused``.
@@ -273,6 +283,7 @@ KNOWN_ACTIONS = frozenset(
         "dom",
         "download",
         "think",
+        "scroll",
         "press",
     }
 )
@@ -299,6 +310,7 @@ Step = Annotated[
     | Annotated[DomStep, Tag("dom")]
     | Annotated[DownloadStep, Tag("download")]
     | Annotated[ThinkStep, Tag("think")]
+    | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[WaitStep, Tag("wait")]
     | Annotated[RunFlowStep, Tag("run-flow")]

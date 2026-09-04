@@ -200,6 +200,18 @@ session.close()  # disconnects only — your Chromium keeps running
 Only the `patchright` driver supports attach; others raise
 `NotImplementedError`.
 
+### One-shot remote run
+
+`run --cdp-url` does the whole cycle in one command: attach to the
+running Chromium in a fresh tab, run the flow, release the tab (the
+browser keeps running). Each invocation gets its own temporary state
+dir, so several can run in parallel against the same Chromium.
+
+```bash
+llm-browser run --cdp-url http://127.0.0.1:9223 \
+    --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
+```
+
 ### Automated detached spawn (`daemon`)
 
 If you don't want to manage Chromium yourself but still need multi-CLI

@@ -2,11 +2,12 @@
 
 import json
 import os
+from typing import Callable
 
 import click
 
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
-from llm_browser.constants import DRIVER_ENV_VAR
+from llm_browser.constants import DEFAULT_STATE_DIR, DRIVER_ENV_VAR
 from llm_browser.flows import load_flow, run_flow
 from llm_browser.selector_map import load_selector_map
 from llm_browser.models import RunFlowStep
@@ -191,6 +192,16 @@ def goto(ctx: click.Context, url: str) -> None:
     default=None,
     help="Re-enter the flow at this step name; skip every step before it.",
 )
+@click.option(
+    "--cdp-url",
+    "cdp_url",
+    default=None,
+    help=(
+        "Run one-shot against a running Chromium: attach over CDP in a fresh "
+        "tab, run the flow, release the tab. State is never reused, so several "
+        "invocations can run in parallel against the same browser."
+    ),
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -198,8 +209,15 @@ def run(
     data_json: str,
     selector_map_path: str | None,
     from_step: str | None,
+    cdp_url: str | None,
 ) -> None:
-    """Run a YAML flow top-to-bottom (or from --from <step> onward)."""
+    """Run a YAML flow top-to-bottom (or from --from <step> onward).
+
+    With --cdp-url the flow runs one-shot on an already-running Chromium:
+
+        llm-browser run --cdp-url http://127.0.0.1:9223 \
+            --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
+    """
     from pathlib import Path
 
     session: BrowserSession = ctx.obj["session"]
@@ -209,10 +227,47 @@ def run(
         else None
     )
     data = json.loads(data_json)
-    result = run_flow(
-        session, flow_path, data, selector_map=selector_map, from_step=from_step
+
+    def execute(target: BrowserSession) -> object:
+        return run_flow(
+            target, flow_path, data, selector_map=selector_map, from_step=from_step
+        )
+
+    if cdp_url:
+        _output(run_attached(session, cdp_url, execute))
+    else:
+        _output(execute(session))
+
+
+def run_attached(
+    base: BrowserSession,
+    cdp_url: str,
+    execute: Callable[[BrowserSession], object],
+) -> object:
+    """Attach to ``cdp_url`` in a throwaway session, run ``execute``, close.
+
+    The session gets its own temporary state dir so a previous invocation's
+    ``state.json`` is never reused and parallel runs against the same Chromium
+    each own their tab. Closing an attached session releases only that tab.
+
+    debt: a concurrent session reconnecting from a persisted CDP endpoint picks
+    ``pages[-1]``, so it can land on a tab this run opened.
+    """
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    DEFAULT_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    state_dir = Path(tempfile.mkdtemp(prefix="llm-browser-", dir=DEFAULT_STATE_DIR))
+    session = BrowserSession(
+        state_dir=state_dir, driver=base.driver, behavior=base.behavior
     )
-    _output(result)
+    session.attach(cdp_url)
+    try:
+        return execute(session)
+    finally:
+        session.close()
+        shutil.rmtree(state_dir, ignore_errors=True)
 
 
 @main.command()
