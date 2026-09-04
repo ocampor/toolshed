@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.actions import execute_action
+from llm_browser.behavior import Jitter
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -18,6 +19,7 @@ from llm_browser.models import (
     PressStep,
     ReadStep,
     ScreenshotStep,
+    ScrollStep,
     SelectStep,
     TypeStep,
     WaitStep,
@@ -497,6 +499,46 @@ def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     # find() calls wait_for on the first locator with the given timeout
     locator.first.wait_for.assert_called_with(state="visible", timeout=30_000)
+
+
+# --- scroll ---
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected_calls, expected_delta",
+    [
+        ({}, 1, 600),
+        ({"delta": -400}, 1, -400),
+        ({"delta": 500, "times": 4}, 4, 500),
+    ],
+)
+def test_scroll_wheels_once_per_tick(
+    session: BrowserSession,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, int],
+    expected_calls: int,
+    expected_delta: int,
+) -> None:
+    monkeypatch.setattr("llm_browser.behavior.time.sleep", lambda _s: None)
+    step = ScrollStep(name="s", action="scroll", **kwargs)
+    execute_action(session, step)
+    mouse = session._page.mouse  # type: ignore[union-attr]
+    assert mouse.wheel.call_count == expected_calls
+    mouse.wheel.assert_called_with(0, expected_delta)
+
+
+def test_scroll_pauses_between_ticks(
+    session: BrowserSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[float] = []
+    monkeypatch.setattr("llm_browser.behavior.time.sleep", lambda s: calls.append(s))
+    step = ScrollStep(
+        name="s", action="scroll", times=3, pause=Jitter(min_ms=10, max_ms=20)
+    )
+    execute_action(session, step)
+    pauses = [c for c in calls if c > 0]
+    assert len(pauses) == 3
+    assert all(0.010 <= c <= 0.020 for c in pauses)
 
 
 # --- unknown action ---

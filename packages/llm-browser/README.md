@@ -200,6 +200,34 @@ session.close()  # disconnects only — your Chromium keeps running
 Only the `patchright` driver supports attach; others raise
 `NotImplementedError`.
 
+### Addressing a tab by CDP target id
+
+`attach` returns the `target_id` of the tab it opened. `(cdp_url,
+target_id)` is the full address of that tab: pass both as global options
+and every command drives it — no `state.json`, so parallel callers each
+own their tab and never land on someone else's.
+
+```bash
+llm-browser --cdp-url http://127.0.0.1:9223 attach          # -> {"target_id": "..."}
+llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC goto https://example.com
+llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC close
+```
+
+`close` here releases only that tab; the Chromium keeps running. If the
+tab was closed meanwhile, commands fail with `Tab ABC not found`.
+
+### One-shot remote run
+
+`run --cdp-url` does the whole cycle in one command: attach to the
+running Chromium in a fresh tab, run the flow, release the tab (the
+browser keeps running). The run is stateless and its tab is addressed by
+target id, so several can run in parallel against the same Chromium.
+
+```bash
+llm-browser run --cdp-url http://127.0.0.1:9223 \
+    --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
+```
+
 ### Automated detached spawn (`daemon`)
 
 If you don't want to manage Chromium yourself but still need multi-CLI

@@ -18,6 +18,7 @@ class AttachStubDriver(Driver):
     def __init__(self) -> None:
         self.attach_calls: list[str] = []
         self.close_calls: list[DriverHandle] = []
+        self.attach_to_tab_calls: list[tuple[str, str]] = []
         self.close_other_tabs_calls: list[Any] = []
         self._page = MagicMock()
 
@@ -35,12 +36,16 @@ class AttachStubDriver(Driver):
 
     def attach(self, cdp_url: str) -> DriverHandle:
         self.attach_calls.append(cdp_url)
+        return self.attach_to_tab(cdp_url, "stub-tab")
+
+    def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
+        self.attach_to_tab_calls.append((cdp_url, target_id))
         return DriverHandle(
             driver=self.name,
             pid=None,
             endpoint=cdp_url,
             user_data_dir="",
-            extra={"attached": "1"},
+            extra={"attached": "1", "target_id": target_id},
         )
 
     def page(self, handle: DriverHandle) -> Any:

@@ -64,17 +64,15 @@ class PatchrightDriver(PlaywrightDriverBase):
 
     def attach(self, cdp_url: str) -> DriverHandle:
         """Attach to an already-running Chromium exposing CDP at cdp_url."""
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
-        self._context = _first_context_or_new(self._browser)
-        self._page = self._context.new_page()
-        return DriverHandle(
-            driver=self.name,
-            pid=None,
-            endpoint=cdp_url,
-            user_data_dir="",
-            extra={"attached": "1"},
-        )
+        context = self._connect(cdp_url)
+        self._page = context.new_page()
+        return _attached_handle(self.name, cdp_url, page_target_id(context, self._page))
+
+    def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
+        """Attach to the existing tab identified by its CDP target id."""
+        context = self._connect(cdp_url)
+        self._page = find_page_by_target_id(context, target_id)
+        return _attached_handle(self.name, cdp_url, target_id)
 
     def page(self, handle: DriverHandle) -> Any:
         if self._page is None:
@@ -132,10 +130,20 @@ class PatchrightDriver(PlaywrightDriverBase):
                 "first; launched mode does not survive across CLI invocations "
                 "(use `llm-browser run` end-to-end, or switch to attach mode)."
             )
+        context = self._connect(handle.endpoint)
+        target_id = handle.extra.get("target_id")
+        self._page = (
+            find_page_by_target_id(context, target_id)
+            if target_id
+            else _first_page_or_new(context)
+        )
+
+    def _connect(self, cdp_url: str) -> BrowserContext:
+        """Open a CDP connection and return the context we operate in."""
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(handle.endpoint)
+        self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
         self._context = _first_context_or_new(self._browser)
-        self._page = _last_page_or_new(self._context)
+        return self._context
 
     def _close_attached(self) -> None:
         """Release our tab + CDP connection. Never kills the remote Chromium."""
@@ -145,7 +153,12 @@ class PatchrightDriver(PlaywrightDriverBase):
             except Exception:
                 pass
         if self._browser is not None:
-            self._browser.close()
+            # Disconnecting from a CDP browser can race the driver shutdown;
+            # the tab is already released, so a failed disconnect is harmless.
+            try:
+                self._browser.close()
+            except Exception:
+                pass
             self._browser = None
 
     def _close_launched(self) -> None:
@@ -174,8 +187,31 @@ def _first_page_or_new(context: BrowserContext) -> Page:
     return context.pages[0] if context.pages else context.new_page()
 
 
-def _last_page_or_new(context: BrowserContext) -> Page:
-    return context.pages[-1] if context.pages else context.new_page()
+def page_target_id(context: BrowserContext, page: Page) -> str:
+    """Read a page's CDP target id — the stable address of that tab."""
+    cdp = context.new_cdp_session(page)
+    try:
+        info: Any = cdp.send("Target.getTargetInfo")
+        return str(info["targetInfo"]["targetId"])
+    finally:
+        cdp.detach()
+
+
+def find_page_by_target_id(context: BrowserContext, target_id: str) -> Page:
+    for page in context.pages:
+        if page_target_id(context, page) == target_id:
+            return page
+    raise RuntimeError(f"Tab {target_id} not found; it was closed.")
+
+
+def _attached_handle(driver: str, cdp_url: str, target_id: str) -> DriverHandle:
+    return DriverHandle(
+        driver=driver,
+        pid=None,
+        endpoint=cdp_url,
+        user_data_dir="",
+        extra={"attached": "1", "target_id": target_id},
+    )
 
 
 def _first_context_or_new(browser: Browser) -> BrowserContext:

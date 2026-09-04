@@ -40,13 +40,18 @@ class BrowserSession:
         capture: CaptureMode = "screenshot",
         driver: Driver | str | None = None,
         executable_path: str | Path | None = None,
+        stateless: bool = False,
     ) -> None:
+        self.session_id = session_id
+        self.state_dir = state_dir
+        self.stateless = stateless
         self.session_dir = state_dir / "sessions" / session_id
         self._state_file = self.session_dir / "state.json"
         self._user_data_dir = self.session_dir / "user-data"
         self._screenshot_path = self.session_dir / "screenshot.png"
         self._dom_path = self.session_dir / "dom.html"
         self.driver: Driver = resolve_driver(driver)
+        self._info: SessionInfo | None = None
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
         self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
@@ -62,25 +67,47 @@ class BrowserSession:
         self._user_data_dir.mkdir(parents=True, exist_ok=True)
 
     def _save_state(self, info: SessionInfo) -> None:
+        """Record the live session; persist it too unless stateless."""
+        self._info = info
+        if self.stateless:
+            return
         self._ensure_dirs()
         self._state_file.write_text(info.model_dump_json())
 
     def _load_state(self) -> SessionInfo | None:
+        if self._info is not None or self.stateless:
+            return self._info
         if not self._state_file.exists():
             return None
         return SessionInfo.model_validate_json(self._state_file.read_text())
 
     def _clear_state(self) -> None:
-        if self._state_file.exists():
+        self._info = None
+        if not self.stateless and self._state_file.exists():
             self._state_file.unlink()
 
     def _handle_from_state(self, info: SessionInfo) -> DriverHandle:
+        extra: dict[str, str] = {}
+        if info.mode == "attached":
+            extra["attached"] = "1"
+        if info.target_id:
+            extra["target_id"] = info.target_id
         return DriverHandle(
             driver=info.driver,
             pid=info.pid,
             endpoint=info.cdp_url or None,
             user_data_dir=info.user_data_dir,
-            extra={"attached": "1"} if info.mode == "attached" else {},
+            extra=extra,
+        )
+
+    def _attached_info(self, handle: DriverHandle, cdp_url: str) -> SessionInfo:
+        return SessionInfo(
+            pid=None,
+            cdp_url=handle.endpoint or cdp_url,
+            user_data_dir=handle.user_data_dir,
+            driver=handle.driver,
+            mode="attached",
+            target_id=handle.extra.get("target_id"),
         )
 
     def launch(self, url: str | None = None, headed: bool = True) -> SessionResult:
@@ -114,22 +141,29 @@ class BrowserSession:
         Chromium with a warmed profile to pass fingerprint-grade bot
         detection (Cloudflare, PerimeterX, DataDome).
         """
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("llm-browser session dir: %s (attached)", self.session_dir)
-        handle = self.driver.attach(cdp_url)
-        info = SessionInfo(
-            pid=None,
-            cdp_url=handle.endpoint or cdp_url,
-            user_data_dir=handle.user_data_dir,
-            driver=handle.driver,
-            mode="attached",
-        )
+        return self._open_attached(cdp_url, self.driver.attach(cdp_url))
+
+    def attach_to_tab(self, cdp_url: str, target_id: str) -> SessionResult:
+        """Attach to one existing tab of a running Chromium by its target id.
+
+        ``(cdp_url, target_id)`` is the full address of a tab: a caller can
+        hold it between invocations instead of a state file.
+        """
+        handle = self.driver.attach_to_tab(cdp_url, target_id)
+        return self._open_attached(cdp_url, handle)
+
+    def _open_attached(self, cdp_url: str, handle: DriverHandle) -> SessionResult:
+        if not self.stateless:
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("llm-browser session dir: %s (attached)", self.session_dir)
+        info = self._attached_info(handle, cdp_url)
         self._save_state(info)
         self._page = self.driver.page(handle)
         return SessionResult(
             status="open",
             url=self.driver.page_url(self._page) if self._page else None,
             cdp_url=cdp_url,
+            target_id=info.target_id,
         )
 
     def launch_detached(
@@ -178,6 +212,7 @@ class BrowserSession:
             user_data_dir=str(resolved_profile),
             driver=handle.driver,
             mode="attached",
+            target_id=handle.extra.get("target_id"),
         )
         self._save_state(info)
         self._page = self.driver.page(handle)
@@ -185,10 +220,8 @@ class BrowserSession:
             self.driver.goto(self._page, url, "domcontentloaded")
         # A user-profile Chromium auto-opens its default new-tab page on
         # startup; combined with attach()'s new_page() that leaves at least
-        # two tabs in the context. Subsequent reconnects via
-        # ``_last_page_or_new`` then land on whichever tab Chromium ordered
-        # last, not necessarily ours. Trim the context down to the tab the
-        # caller asked for so reconnects are deterministic.
+        # two tabs in the context. Trim the context down to the tab the
+        # caller asked for.
         self.driver.close_other_tabs(handle, self._page)
         return SessionResult(
             status="open",
@@ -274,7 +307,11 @@ class BrowserSession:
         if info is None:
             return SessionResult(status="closed")
         if self.driver.status(self._handle_from_state(info)):
-            return SessionResult(status="open", cdp_url=info.cdp_url or None)
+            return SessionResult(
+                status="open",
+                cdp_url=info.cdp_url or None,
+                target_id=info.target_id,
+            )
         self._clear_state()
         return SessionResult(status="closed")
 

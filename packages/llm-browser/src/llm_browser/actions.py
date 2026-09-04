@@ -15,6 +15,7 @@ from llm_browser.behavior import (
     mark_action_done,
     post_pause,
 )
+from llm_browser.constants import DEFAULT_SCROLL_PAUSE
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -27,6 +28,7 @@ from llm_browser.models import (
     PressStep,
     ReadStep,
     ScreenshotStep,
+    ScrollStep,
     SelectStep,
     Step,
     ThinkStep,
@@ -337,6 +339,15 @@ def action_download(session: BrowserSession, step: DownloadStep) -> PathResult:
 
 
 # --- Pacing actions ---
+
+
+@_registry.register("scroll")
+def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
+    pause = step.pause if step.pause is not None else DEFAULT_SCROLL_PAUSE
+    for _ in range(step.times):
+        session.driver.scroll(session.get_page(), 0, step.delta)
+        jittered_sleep(pause, session._behavior_runtime.rng)
+    return VoidResult()
 
 
 @_registry.register("think")

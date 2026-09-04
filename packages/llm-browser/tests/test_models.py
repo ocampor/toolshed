@@ -9,6 +9,7 @@ from llm_browser.models import (
     FlowError,
     FlowSuccess,
     GotoStep,
+    ScrollStep,
     SessionInfo,
     validate_step,
 )
@@ -58,6 +59,48 @@ def test_step_discriminated_union() -> None:
     assert isinstance(step, GotoStep)
     assert step.action == "goto"
     assert step.url == "https://example.com"
+
+
+@pytest.mark.parametrize(
+    "raw, delta, times",
+    [
+        ({}, 600, 1),
+        ({"delta": -300}, -300, 1),
+        ({"delta": 500, "times": 4}, 500, 4),
+    ],
+)
+def test_scroll_step_parsing(raw: dict[str, int], delta: int, times: int) -> None:
+    step = validate_step({"name": "s", "action": "scroll", **raw})
+    assert isinstance(step, ScrollStep)
+    assert (step.delta, step.times) == (delta, times)
+    assert step.pause is None
+
+
+def test_scroll_step_pause_parsed_as_jitter() -> None:
+    step = validate_step(
+        {"name": "s", "action": "scroll", "pause": {"min_ms": 50, "max_ms": 100}}
+    )
+    assert isinstance(step, ScrollStep)
+    assert step.pause is not None
+    assert step.pause.max_ms == 100
+
+
+def test_warm_site_flow_validates() -> None:
+    """The shipped warm-up flow must stay loadable as flows evolve."""
+    from pathlib import Path
+
+    from llm_browser.flows import load_flow
+
+    flow_path = Path(__file__).resolve().parents[1] / "flows" / "warm-site.yml"
+    flow = load_flow(flow_path)
+    assert [s.action for s in flow.steps] == [
+        "goto",
+        "think",
+        "scroll",
+        "click",
+        "think",
+        "scroll",
+    ]
 
 
 def test_flow_round_trip() -> None:

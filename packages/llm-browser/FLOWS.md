@@ -49,6 +49,27 @@ No selector needed.
 | `wait` | `state` (domcontentloaded, load, networkidle), `timeout` (ms) | Wait for page load state |
 | `screenshot` | `path` (optional) | Take a screenshot. Without `path`, writes to the session's default location and returns the path. With `path`, writes to that path (parent dirs created). |
 
+### Pacing actions
+
+Human-like idling. No selector needed.
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `think` | `min_ms` (default 500), `max_ms` (default 2000) | Sleep a random time in that range |
+| `scroll` | `delta` (px per wheel tick, default 600, negative scrolls up), `times` (default 1), `pause` (`min_ms`/`max_ms` jitter between ticks, default 300-1200) | Mouse-wheel the page |
+
+```yaml
+- name: read a bit
+  action: think
+  min_ms: 3000
+  max_ms: 8000
+
+- name: scroll down
+  action: scroll
+  delta: 500
+  times: 4
+```
+
 ### Data actions
 
 Return data. Pair with `path:` (where supported) to land artifacts on
