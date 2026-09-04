@@ -30,7 +30,7 @@ PROBES: dict[str, dict[str, str]] = {
     "sannysoft": {
         "url": "https://bot.sannysoft.com/",
         # "missing (passed)" is a green cell; only a literal failed cell counts.
-        "check": r"\(failed\)|>\s*failed\s*<",
+        "check": r"\(failed\)",
         "note": "classic JS-leak matrix (webdriver, chrome, permissions, plugins)",
     },
     "creepjs": {
@@ -46,7 +46,7 @@ PROBES: dict[str, dict[str, str]] = {
     "browserscan": {
         "url": "https://www.browserscan.net/bot-detection",
         # Prose on the page mentions robots; only the verdict badge counts.
-        "check": r"(?i)test results:\s*(?:<[^>]*>\s*)*robot",
+        "check": r"(?i)test results:\s*robot",
         "note": "aggregate bot-score page",
     },
     "cloudflare-nowsecure": {
@@ -114,7 +114,10 @@ def probe_one(
         session.driver.screenshot(page, out_dir / "screenshot.png")
         content = session.driver.content(page)
         (out_dir / "page.html").write_text(content)
-        detected = bool(check and re.search(check, content))
+        # Match against rendered text: the HTML carries the page's own
+        # detection script, whose source contains every verdict string.
+        text = session.driver.evaluate(page, "document.body.innerText")
+        detected = bool(check and re.search(check, text))
         verdict["detected"] = detected
         verdict["webdriver"] = fingerprint.get("webdriver")
         verdict["final_url"] = session.driver.page_url(page)
