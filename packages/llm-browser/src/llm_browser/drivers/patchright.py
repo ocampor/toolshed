@@ -135,7 +135,7 @@ class PatchrightDriver(PlaywrightDriverBase):
         self._page = (
             find_page_by_target_id(context, target_id)
             if target_id
-            else _first_page_or_new(context)
+            else _last_page_or_new(context)
         )
 
     def _connect(self, cdp_url: str) -> BrowserContext:
@@ -187,6 +187,11 @@ def _first_page_or_new(context: BrowserContext) -> Page:
     return context.pages[0] if context.pages else context.new_page()
 
 
+def _last_page_or_new(context: BrowserContext) -> Page:
+    """The tab a handle without a target id addresses: the most recent one."""
+    return context.pages[-1] if context.pages else context.new_page()
+
+
 def page_target_id(context: BrowserContext, page: Page) -> str:
     """Read a page's CDP target id — the stable address of that tab."""
     cdp = context.new_cdp_session(page)
@@ -198,8 +203,17 @@ def page_target_id(context: BrowserContext, page: Page) -> str:
 
 
 def find_page_by_target_id(context: BrowserContext, target_id: str) -> Page:
+    """Find the tab with ``target_id``, skipping tabs we cannot interrogate.
+
+    A sibling tab can be crashed or mid-close, in which case opening a CDP
+    session against it raises — that must not hide the tab we're after.
+    """
     for page in context.pages:
-        if page_target_id(context, page) == target_id:
+        try:
+            found = page_target_id(context, page) == target_id
+        except Exception:
+            continue
+        if found:
             return page
     raise RuntimeError(f"Tab {target_id} not found; it was closed.")
 

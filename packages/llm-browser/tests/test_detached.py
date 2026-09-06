@@ -75,6 +75,8 @@ def test_launch_detached_persists_pid_and_attaches(tmp_path: Path) -> None:
     assert info.pid == 9999
     assert info.cdp_url == "http://127.0.0.1:54321"
     assert driver.attach_calls == ["http://127.0.0.1:54321"]
+    assert result.target_id == "stub-tab"
+    assert info.target_id == "stub-tab"
 
 
 def test_launch_detached_closes_other_tabs(tmp_path: Path) -> None:

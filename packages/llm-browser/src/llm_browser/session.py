@@ -227,6 +227,7 @@ class BrowserSession:
             status="open",
             url=self.driver.page_url(self._page) if self._page else None,
             cdp_url=cdp_url,
+            target_id=info.target_id,
         )
 
     def stop_detached(self) -> SessionResult:

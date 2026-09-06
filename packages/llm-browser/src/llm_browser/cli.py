@@ -2,6 +2,7 @@
 
 import json
 import os
+import uuid
 from typing import Callable
 
 import click
@@ -120,6 +121,7 @@ def main(
         except BehaviorConfigError as e:
             raise click.ClickException(str(e)) from e
     ctx.obj["cdp_url"] = cdp_url
+    ctx.obj["target_id"] = target_id
     ctx.obj["session"] = build_session(
         session_id=session_id,
         driver=driver,
@@ -141,6 +143,8 @@ def build_session(
     With ``--cdp-url`` the session is stateless — no state.json is read or
     written — and ``--target-id`` addresses the exact tab to drive.
     """
+    if target_id and not cdp_url:
+        raise click.UsageError("--target-id requires --cdp-url.")
     session = BrowserSession(
         session_id=session_id,
         driver=driver,
@@ -290,8 +294,9 @@ def run(
             target, flow_path, data, selector_map=selector_map, from_step=from_step
         )
 
-    if cdp_url and not ctx.obj.get("cdp_url"):
-        _output(run_attached(session, cdp_url, execute))
+    endpoint = cdp_url or ctx.obj.get("cdp_url")
+    if endpoint and not ctx.obj.get("target_id"):
+        _output(run_attached(session, endpoint, execute))
     else:
         _output(execute(session))
 
@@ -306,12 +311,18 @@ def run_attached(
     Nothing is persisted, so a previous invocation's state is never reused
     and parallel runs against the same Chromium each own their tab, addressed
     by its CDP target id. Closing an attached session releases only that tab.
+
+    The session id carries a uuid suffix so concurrent runs never share a
+    session directory (screenshots, DOM dumps) with each other or with the
+    caller's own session.
     """
     session = BrowserSession(
-        session_id=base.session_id,
+        session_id=f"{base.session_id}-{uuid.uuid4().hex[:8]}",
         state_dir=base.state_dir,
         driver=base.driver,
         behavior=base.behavior,
+        capture=base.capture,
+        executable_path=base.executable_path,
         stateless=True,
     )
     session.attach(cdp_url)
