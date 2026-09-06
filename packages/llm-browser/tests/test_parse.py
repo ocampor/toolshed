@@ -21,30 +21,11 @@ def session(tmp_path: object) -> BrowserSession:
 def _two_row_locator(rows: list[dict[str, str]]) -> MagicMock:
     """Build a Playwright-locator mock that yields the given pre-extracted rows.
 
-    Each ``rows`` entry is a dict mapping field name → text the child should
-    return for ``textContent``. The mock returns one ``row`` element per dict;
-    ``row.locator(child_selector).first.text_content()`` returns the value.
+    Extraction is a single in-page evaluation over the matched rows, so the
+    mock simply hands back the rows ``evaluate_all`` would have produced.
     """
-    row_mocks = []
-    for fields in rows:
-        row = MagicMock()
-
-        def _make_child_resolver(_fields: dict[str, str]) -> object:
-            def _locator_for(child_sel: str) -> MagicMock:
-                child = MagicMock()
-                # Map "td.name" → "name" — we just take the substring after the
-                # dot so test setups can be terse.
-                key = child_sel.split(".", 1)[1]
-                child.text_content.return_value = _fields.get(key)
-                return child
-
-            return _locator_for
-
-        row.locator.side_effect = _make_child_resolver(fields)
-        row_mocks.append(row)
-
     locator = MagicMock()
-    locator.all.return_value = row_mocks
+    locator.evaluate_all.return_value = rows
     return locator
 
 
