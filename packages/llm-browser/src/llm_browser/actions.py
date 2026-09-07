@@ -22,6 +22,7 @@ from llm_browser.models import (
     DownloadStep,
     FillStep,
     GotoStep,
+    NotifyStep,
     ParseStep,
     PickStep,
     PressStep,
@@ -32,8 +33,10 @@ from llm_browser.models import (
     Step,
     ThinkStep,
     TypeStep,
+    WaitForHumanStep,
     WaitStep,
 )
+from llm_browser.notify import send_notification
 from llm_browser.parse import build_model
 from llm_browser.paths import prepare_output_path
 from llm_browser.session import BrowserSession
@@ -356,3 +359,47 @@ def action_think(session: BrowserSession, step: ThinkStep) -> VoidResult:
     if delay > 0:
         time.sleep(delay)
     return VoidResult()
+
+
+# --- Human-in-the-loop actions ---
+
+
+@_registry.register("notify")
+def action_notify(session: BrowserSession, step: NotifyStep) -> VoidResult:
+    send_notification(
+        step.message, title=step.title, priority=step.priority, click=step.click
+    )
+    return VoidResult()
+
+
+@_registry.register("wait_for_human")
+def action_wait_for_human(
+    session: BrowserSession, step: WaitForHumanStep
+) -> VoidResult:
+    """Surface the tab, page the operator once, then poll until they acted."""
+    if step.bring_to_front:
+        session.driver.bring_to_front(session.get_page())
+    if step.message:
+        send_notification(step.message)
+    wait_for_selector_state(session, step)
+    return VoidResult()
+
+
+def wait_for_selector_state(session: BrowserSession, step: WaitForHumanStep) -> None:
+    """Poll ``step.selector`` every ``poll_ms`` until it matches ``until``.
+
+    Raises ``TimeoutError`` once ``timeout_ms`` has elapsed, which
+    ``execute_action`` turns into an ErrorResult (or a skip when the
+    step is ``optional``).
+    """
+    want_present = step.until == "present"
+    deadline = time.monotonic() + step.timeout_ms / 1000
+    while True:
+        if session.element_exists(step.selector, timeout=step.poll_ms) is want_present:
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"selector {step.selector!r} still not {step.until} after "
+                f"{step.timeout_ms}ms; no human action detected"
+            )
+        time.sleep(step.poll_ms / 1000)

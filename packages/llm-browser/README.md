@@ -141,6 +141,25 @@ llm-browser resume --data '{"confirm": true}'
 
 See [FLOWS.md](FLOWS.md) for the complete flow language reference.
 
+### Session watchdog
+
+Check a site is still logged in and page the owner (over ntfy) when it
+is not — the flow then waits up to 30 minutes for a human to log in:
+
+```bash
+llm-browser run --cdp-url http://127.0.0.1:9222 --flow flows/session-check.yml \
+  --data '{"url":"https://www.wsj.com/","marker":"a[href*=\"account\"], [data-testid=\"user-menu\"]","name":"WSJ"}'
+```
+
+## Environment variables
+
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `LLM_BROWSER_DRIVER` | driver resolution | Default driver name (`patchright`, `camoufox`, `nodriver`) when none is passed explicitly. |
+| `LLM_BROWSER_NTFY_URL` | `notify`, `wait_for_human` | Full ntfy topic URL, e.g. `https://ntfy.sh/my-topic`. Required for notifications. |
+| `LLM_BROWSER_NTFY_TOKEN` | `notify`, `wait_for_human` | Bearer token for a protected ntfy topic. |
+| `LLM_BROWSER_VNC_URL` | `notify`, `wait_for_human` | Default `Click` target on the notification — the VNC console where a human can take over. |
+
 ## Anti-bot landscape
 
 `Behavior.human()` is **timing-only** humanization: inter-key gaps, click

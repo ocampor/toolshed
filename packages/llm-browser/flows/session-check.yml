@@ -1,0 +1,20 @@
+# Check a site is still logged in; page the owner when it is not.
+params:
+  - url
+  - marker
+  - name
+steps:
+  - name: open site
+    action: goto
+    url: "{{ url }}"
+    wait_until: domcontentloaded
+  - name: settle
+    action: think
+    min_ms: 3000
+    max_ms: 5000
+  - name: wait for login
+    action: wait_for_human
+    selector: "{{ marker }}"
+    until: present
+    timeout_ms: 1800000
+    message: "Login needed: {{ name }}"

@@ -21,6 +21,22 @@
   cookies and TLS state. For strict detectors, keep launching Chromium
   yourself against a human-warmed profile.
 
+## 0.6.0
+
+### Added
+
+- `notify` action — POST a message to an ntfy topic (`LLM_BROWSER_NTFY_URL`,
+  optional `LLM_BROWSER_NTFY_TOKEN`), with `title`, `priority` and `click`
+  headers; `click` defaults to `LLM_BROWSER_VNC_URL`. Uses stdlib `urllib`
+  only, via the reusable `llm_browser.notify.send_notification`.
+- `wait_for_human` action — bring the tab to front, optionally page the
+  operator once, then poll a selector until it is present (or absent) or
+  `timeout_ms` elapses.
+- `Driver.bring_to_front(page)` — implemented for the Playwright-family
+  drivers; other drivers raise `NotImplementedError`.
+- `flows/session-check.yml` — check a site is still logged in and page the
+  owner when it is not.
+
 ## 0.2.0
 
 ### Breaking

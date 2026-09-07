@@ -196,6 +196,31 @@ class ScrollStep(BaseStep):
     pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
+class NotifyStep(BaseStep):
+    """Push a message to the ntfy topic in ``LLM_BROWSER_NTFY_URL``."""
+
+    action: Literal["notify"]
+    message: str = Field(..., min_length=1)
+    title: str | None = None
+    priority: int | None = Field(default=None, ge=1, le=5)
+    click: str | None = None
+
+
+class WaitForHumanStep(SelectorStep):
+    """Block until a person has acted on the page.
+
+    Polls ``selector`` until it is present (or absent, per ``until``).
+    With ``message`` set, pages the operator once before polling.
+    """
+
+    action: Literal["wait_for_human"]
+    until: Literal["present", "absent"] = "present"
+    timeout_ms: int = 300_000
+    poll_ms: int = 2_000
+    message: str | None = None
+    bring_to_front: bool = True
+
+
 class PressStep(BaseStep):
     action: Literal["press"]
     # Optional: when None, press the focused element via ``press_focused``.
@@ -285,6 +310,8 @@ KNOWN_ACTIONS = frozenset(
         "think",
         "scroll",
         "press",
+        "notify",
+        "wait_for_human",
     }
 )
 
@@ -312,6 +339,8 @@ Step = Annotated[
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
+    | Annotated[NotifyStep, Tag("notify")]
+    | Annotated[WaitForHumanStep, Tag("wait_for_human")]
     | Annotated[WaitStep, Tag("wait")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],

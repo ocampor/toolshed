@@ -169,6 +169,15 @@ class Driver(ABC):
         """
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
+    def bring_to_front(self, page: Any) -> None:
+        """Raise the page's tab/window to the foreground.
+
+        Subclasses backed by a window-manageable API override this.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support bring_to_front"
+        )
+
     @abstractmethod
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None: ...
 

@@ -70,6 +70,41 @@ Human-like idling. No selector needed.
   times: 4
 ```
 
+### Human-in-the-loop actions
+
+Page a person and wait for them to act. Both read their ntfy config from
+the environment:
+
+| Variable | Description |
+|----------|-------------|
+| `LLM_BROWSER_NTFY_URL` | Full ntfy topic URL (e.g. `https://ntfy.sh/my-topic`). Required — without it these steps fail with `NotifyError`. |
+| `LLM_BROWSER_NTFY_TOKEN` | Optional bearer token for a protected topic. |
+| `LLM_BROWSER_VNC_URL` | Optional default `Click` target for the notification — the console where a human can take over the browser. |
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `notify` | `message` (templated), `title`, `priority` (1-5), `click` (URL, defaults to `LLM_BROWSER_VNC_URL`) | POST the message to the ntfy topic |
+| `wait_for_human` | `selector`, `until` (`present`/`absent`, default present), `timeout_ms` (default 300000), `poll_ms` (default 2000), `message` (sends one notification before polling), `bring_to_front` (default true) | Raise the tab, optionally page the operator, then poll the selector until a person has acted |
+
+`wait_for_human` returns as soon as the selector matches `until`; on
+timeout it raises `TimeoutError`, so the step fails like any other (or
+is skipped with `optional: true`). `bring_to_front` needs a driver that
+supports it (patchright / camoufox); set it to `false` on `nodriver`.
+
+```yaml
+- name: wait for login
+  action: wait_for_human
+  selector: "{{ marker }}"
+  until: present
+  timeout_ms: 1800000
+  message: "Login needed: {{ name }}"
+
+- name: all clear
+  action: notify
+  message: "{{ name }} session is healthy"
+  priority: 2
+```
+
 ### Data actions
 
 Return data. Pair with `path:` (where supported) to land artifacts on

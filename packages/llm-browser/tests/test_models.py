@@ -1,6 +1,7 @@
 """Tests for Pydantic model serialization round-trips."""
 
 import pytest
+from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
 from llm_browser.models import (
@@ -10,7 +11,9 @@ from llm_browser.models import (
     FlowError,
     FlowSuccess,
     GotoStep,
+    NotifyStep,
     ScrollStep,
+    WaitForHumanStep,
     SessionInfo,
     validate_step,
 )
@@ -179,3 +182,48 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[EvalStep(name="s1")])
     with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        ({}, {"until": "present", "timeout_ms": 300_000, "poll_ms": 2_000}),
+        ({"until": "absent"}, {"until": "absent"}),
+        ({"timeout_ms": 1_800_000}, {"timeout_ms": 1_800_000}),
+        ({"poll_ms": 500}, {"poll_ms": 500}),
+    ],
+)
+def test_wait_for_human_parsing(
+    overrides: dict[str, object], expected: dict[str, object]
+) -> None:
+    step = validate_step(
+        {"name": "w", "action": "wait_for_human", "selector": "#m", **overrides}
+    )
+    assert isinstance(step, WaitForHumanStep)
+    assert step.bring_to_front is True
+    assert step.message is None
+    for field, value in expected.items():
+        assert getattr(step, field) == value
+
+
+def test_wait_for_human_requires_selector() -> None:
+    with pytest.raises(ValidationError):
+        validate_step({"name": "w", "action": "wait_for_human"})
+
+
+def test_notify_parsing() -> None:
+    step = validate_step(
+        {"name": "n", "action": "notify", "message": "hi", "click": "https://x"}
+    )
+    assert isinstance(step, NotifyStep)
+    assert step.message == "hi"
+    assert step.click == "https://x"
+    assert step.priority is None
+
+
+@pytest.mark.parametrize("priority", [0, 6])
+def test_notify_rejects_out_of_range_priority(priority: int) -> None:
+    with pytest.raises(ValidationError):
+        validate_step(
+            {"name": "n", "action": "notify", "message": "hi", "priority": priority}
+        )

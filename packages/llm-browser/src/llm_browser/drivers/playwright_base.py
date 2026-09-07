@@ -88,6 +88,7 @@ class PwPage(Protocol):
     def screenshot(self, path: str = ..., full_page: bool = ...) -> None: ...
     def evaluate(self, script: str) -> Any: ...
     def expect_download(self) -> PwDownloadContext: ...
+    def bring_to_front(self) -> None: ...
 
 
 def _pw_page(page: Any) -> PwPage:
@@ -169,6 +170,9 @@ class PlaywrightDriverBase(Driver):
 
     def scroll(self, page: Any, dx: int, dy: int) -> None:
         _pw_page(page).mouse.wheel(dx, dy)
+
+    def bring_to_front(self, page: Any) -> None:
+        _pw_page(page).bring_to_front()
 
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
         _pw_loc(locator).wait_for(state=state, timeout=timeout_ms)
