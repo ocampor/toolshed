@@ -143,6 +143,32 @@ def test_reattach_raises_when_target_gone(monkeypatch: pytest.MonkeyPatch) -> No
         PatchrightDriver().page(attached_handle("MINE"))
 
 
+def test_reattach_reuses_the_playwright_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second attach on the same driver must not orphan the first connection."""
+    context = fake_context(["A"])
+    pw = fake_playwright(monkeypatch, context)
+    starts = 0
+
+    def counting_start() -> Any:
+        nonlocal starts
+        starts += 1
+        return pw
+
+    monkeypatch.setattr(
+        "llm_browser.drivers.patchright.sync_playwright",
+        lambda: MagicMock(start=counting_start),
+    )
+
+    driver = PatchrightDriver()
+    driver.attach_to_tab(CDP_URL, "A")
+    driver.attach_to_tab(CDP_URL, "A")
+
+    assert starts == 1
+    assert pw.chromium.connect_over_cdp.call_count == 1
+
+
 def test_base_driver_attach_to_tab_raises() -> None:
     class NoAttach(AttachStubDriver):
         def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:

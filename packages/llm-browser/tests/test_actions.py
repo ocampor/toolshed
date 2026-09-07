@@ -537,7 +537,8 @@ def test_scroll_pauses_between_ticks(
     )
     execute_action(session, step)
     pauses = [c for c in calls if c > 0]
-    assert len(pauses) == 3
+    # Only between ticks: execute_action already applies the post-action pause.
+    assert len(pauses) == 2
     assert all(0.010 <= c <= 0.020 for c in pauses)
 
 

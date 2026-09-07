@@ -139,9 +139,16 @@ class PatchrightDriver(PlaywrightDriverBase):
         )
 
     def _connect(self, cdp_url: str) -> BrowserContext:
-        """Open a CDP connection and return the context we operate in."""
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
+        """Return the context we operate in, reusing a live connection.
+
+        Re-attaching must not start a second Playwright or a second CDP
+        connection: the previous ones would be orphaned, leaking the node
+        driver process and the websocket.
+        """
+        if self._playwright is None:
+            self._playwright = sync_playwright().start()
+        if self._browser is None or not self._browser.is_connected():
+            self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
         self._context = _first_context_or_new(self._browser)
         return self._context
 
