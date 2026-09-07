@@ -20,6 +20,7 @@ from llm_browser.behavior import (
     humanized_type,
 )
 from llm_browser.drivers.base import Driver
+from llm_browser.scripts import extract_rows_js
 
 
 # --- Narrow Playwright-family protocols ---
@@ -45,6 +46,7 @@ class PwLocator(Protocol):
     def all(self) -> list["PwLocator"]: ...
     def locator(self, selector: str) -> "PwLocator": ...
     def evaluate(self, script: str) -> Any: ...
+    def evaluate_all(self, script: str, arg: Any = ...) -> Any: ...
     def element_handle(self) -> "PwElementHandle | None": ...
 
 
@@ -196,6 +198,14 @@ class PlaywrightDriverBase(Driver):
 
     def child(self, locator: Any, selector: str) -> Any:
         return _pw_loc(locator).locator(selector)
+
+    def extract_rows(
+        self, locator: Any, spec: dict[str, dict[str, str | None]]
+    ) -> list[dict[str, str | None]]:
+        """One page evaluation over every matched row, instead of a locator
+        call per row and field."""
+        rows = _pw_loc(locator).evaluate_all(extract_rows_js(), spec)
+        return cast(list[dict[str, str | None]], rows)
 
     def evaluate(self, target: Any, script: str) -> Any:
         return cast(PwPage | PwLocator, target).evaluate(script)

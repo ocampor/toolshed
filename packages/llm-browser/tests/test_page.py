@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from llm_browser.scripts import extract_rows_js
 from llm_browser.session import BrowserSession
 
 
@@ -144,18 +145,8 @@ def test_frame_returns_frame(session: BrowserSession, page: MagicMock) -> None:
 
 
 def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
-    row1 = MagicMock()
-    child1 = MagicMock()
-    child1.text_content.return_value = "Alice"
-    row1.locator.return_value = child1
-
-    row2 = MagicMock()
-    child2 = MagicMock()
-    child2.text_content.return_value = "Bob"
-    row2.locator.return_value = child2
-
     locator = MagicMock()
-    locator.all.return_value = [row1, row2]
+    locator.evaluate_all.return_value = [{"name": "Alice"}, {"name": "Bob"}]
     page.locator.return_value = locator
 
     from llm_browser.models import ExtractField
@@ -165,6 +156,56 @@ def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
         {"name": ExtractField(child_selector="td.name", attribute="textContent")},
     )
     assert result == [{"name": "Alice"}, {"name": "Bob"}]
+    script, spec = locator.evaluate_all.call_args.args
+    assert script == extract_rows_js()
+    assert spec == {"name": {"child_selector": "td.name", "attribute": "textContent"}}
+
+
+def test_parse_elements_one_evaluation_for_many_rows(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    """The whole table costs one page evaluation, no per-row locator calls."""
+    locator = MagicMock()
+    locator.evaluate_all.return_value = [{"name": f"row{i}"} for i in range(56)]
+    page.locator.return_value = locator
+
+    from llm_browser.models import ExtractField
+
+    rows = session.parse_elements("tr.row", {"name": ExtractField()})
+    assert len(rows) == 56
+    assert locator.evaluate_all.call_count == 1
+    locator.all.assert_not_called()
+
+
+def test_parse_elements_spec_preserves_field_order(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    from llm_browser.models import ExtractField
+
+    page.locator.return_value.evaluate_all.return_value = []
+    session.parse_elements(
+        "tr",
+        {
+            "name": ExtractField(child_selector="td.name"),
+            "url": ExtractField(child_selector="a", attribute="href"),
+            "qty": ExtractField(child_selector="input", attribute="value"),
+        },
+    )
+    spec = page.locator.return_value.evaluate_all.call_args.args[1]
+    assert list(spec) == ["name", "url", "qty"]
+    assert spec["url"] == {"child_selector": "a", "attribute": "href"}
+
+
+def test_parse_elements_row_itself_when_no_child_selector(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    from llm_browser.models import ExtractField
+
+    page.locator.return_value.evaluate_all.return_value = [{"id": "r1"}]
+    result = session.parse_elements("tr", {"id": ExtractField(attribute="data-id")})
+    spec = page.locator.return_value.evaluate_all.call_args.args[1]
+    assert spec == {"id": {"child_selector": None, "attribute": "data-id"}}
+    assert result == [{"id": "r1"}]
 
 
 # --- dom ---
