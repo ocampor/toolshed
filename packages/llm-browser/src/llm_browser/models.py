@@ -209,14 +209,15 @@ class NotifyStep(BaseStep):
 class WaitForHumanStep(SelectorStep):
     """Block until a person has acted on the page.
 
-    Polls ``selector`` until it is present (or absent, per ``until``).
-    With ``message`` set, pages the operator once before polling.
+    Probes ``selector`` once; if it already matches ``until`` the step
+    returns immediately without paging anyone. Otherwise it pages the
+    operator once (when ``message`` is set) and polls every ``poll_ms``.
     """
 
     action: Literal["wait_for_human"]
     until: Literal["present", "absent"] = "present"
-    timeout_ms: int = 300_000
-    poll_ms: int = 2_000
+    timeout_ms: int = Field(default=300_000, gt=0)
+    poll_ms: int = Field(default=2_000, gt=0)
     message: str | None = None
     bring_to_front: bool = True
 

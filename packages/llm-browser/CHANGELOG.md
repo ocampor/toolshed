@@ -1,26 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- `BrowserSession.launch_detached(url, headed)` + `stop_detached()` — spawn a
-  Chromium that survives Python exit and auto-attach over CDP. Gives every
-  driver-equivalent path a multi-CLI session story without requiring users
-  to manage Chromium by hand.
-- `llm-browser daemon` / `llm-browser stop` CLI subcommands.
-- `chrome.spawn_detached_chromium()` — reusable helper that spawns Chromium
-  in a new process group and returns `(pid, cdp_url)` once
-  `DevToolsActivePort` appears.
-
-### Notes
-
-- Detached spawn uses `connect_over_cdp` and so does **not** activate
-  patchright stealth. The win is profile warmth: log in / clear Cloudflare
-  once in the spawned profile and every subsequent CLI call reuses the
-  cookies and TLS state. For strict detectors, keep launching Chromium
-  yourself against a human-warmed profile.
-
 ## 0.6.0
 
 ### Added
@@ -29,11 +8,15 @@
   optional `LLM_BROWSER_NTFY_TOKEN`), with `title`, `priority` and `click`
   headers; `click` defaults to `LLM_BROWSER_VNC_URL`. Uses stdlib `urllib`
   only, via the reusable `llm_browser.notify.send_notification`.
-- `wait_for_human` action — bring the tab to front, optionally page the
-  operator once, then poll a selector until it is present (or absent) or
-  `timeout_ms` elapses.
+- `wait_for_human` action — probe a selector first and return straight away
+  when it already matches; otherwise raise the tab, page the operator once,
+  and poll every `poll_ms` until the selector is present (or absent) or
+  `timeout_ms` elapses. Raising the tab and paging are best-effort: a driver
+  without `bring_to_front` or an unreachable ntfy warns on stderr and the
+  wait continues. `poll_ms` and `timeout_ms` must be > 0.
 - `Driver.bring_to_front(page)` — implemented for the Playwright-family
-  drivers; other drivers raise `NotImplementedError`.
+  drivers; other drivers raise `NotImplementedError`, which `wait_for_human`
+  swallows.
 - `flows/session-check.yml` — check a site is still logged in and page the
   owner when it is not.
 
@@ -74,6 +57,14 @@
 
 ### Added
 
+- `BrowserSession.launch_detached(url, headed)` + `stop_detached()` — spawn a
+  Chromium that survives Python exit and auto-attach over CDP. Gives every
+  driver-equivalent path a multi-CLI session story without requiring users
+  to manage Chromium by hand.
+- `llm-browser daemon` / `llm-browser stop` CLI subcommands.
+- `chrome.spawn_detached_chromium()` — reusable helper that spawns Chromium
+  in a new process group and returns `(pid, cdp_url)` once
+  `DevToolsActivePort` appears.
 - `BrowserSession.attach(cdp_url)` — connect to a Chromium you launched
   yourself. Only `patchright` supports this; `camoufox` and `nodriver` raise
   `NotImplementedError`.
@@ -106,6 +97,14 @@
 - `Behavior.human()` docstring clarifies it covers **timing only** — not
   runtime fingerprints — and only applies to actions routed through
   `execute_action(...)`.
+
+### Notes
+
+- Detached spawn uses `connect_over_cdp` and so does **not** activate
+  patchright stealth. The win is profile warmth: log in / clear Cloudflare
+  once in the spawned profile and every subsequent CLI call reuses the
+  cookies and TLS state. For strict detectors, keep launching Chromium
+  yourself against a human-warmed profile.
 
 ### Known limitations
 

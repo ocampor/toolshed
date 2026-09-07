@@ -84,12 +84,17 @@ the environment:
 | Action | Params | Description |
 |--------|--------|-------------|
 | `notify` | `message` (templated), `title`, `priority` (1-5), `click` (URL, defaults to `LLM_BROWSER_VNC_URL`) | POST the message to the ntfy topic |
-| `wait_for_human` | `selector`, `until` (`present`/`absent`, default present), `timeout_ms` (default 300000), `poll_ms` (default 2000), `message` (sends one notification before polling), `bring_to_front` (default true) | Raise the tab, optionally page the operator, then poll the selector until a person has acted |
+| `wait_for_human` | `selector`, `until` (`present`/`absent`, default present), `timeout_ms` (default 300000, > 0), `poll_ms` (default 2000, > 0), `message` (one notification, sent only if the wait blocks), `bring_to_front` (default true) | Probe the selector; if it does not match yet, raise the tab, page the operator once, then poll until a person has acted |
 
-`wait_for_human` returns as soon as the selector matches `until`; on
-timeout it raises `TimeoutError`, so the step fails like any other (or
-is skipped with `optional: true`). `bring_to_front` needs a driver that
-supports it (patchright / camoufox); set it to `false` on `nodriver`.
+`wait_for_human` probes the selector before doing anything else, so a
+healthy page returns immediately — no tab raise, no notification. Only
+when the first probe misses does it raise the tab, page the operator
+once, and start polling. Each poll tick is a `poll_ms` sleep plus one
+short (500ms) probe, so the cadence is roughly `poll_ms`. On timeout it
+raises `TimeoutError`, so the step fails like any other (or is skipped
+with `optional: true`). Raising the tab and paging are both best-effort:
+a driver without `bring_to_front` (nodriver) or an unreachable ntfy
+prints a warning to stderr and the wait continues.
 
 ```yaml
 - name: wait for login

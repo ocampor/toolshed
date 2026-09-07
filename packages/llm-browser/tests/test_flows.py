@@ -553,3 +553,13 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
     result = run_flow(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 0
+
+
+FLOWS_DIR = Path(__file__).resolve().parent.parent / "flows"
+
+
+@pytest.mark.parametrize("flow_name", ["session-check.yml", "warm-site.yml"])
+def test_shipped_flows_load(flow_name: str) -> None:
+    """Shipped example flows must survive schema drift."""
+    flow = load_flow(FLOWS_DIR / flow_name)
+    assert flow.steps

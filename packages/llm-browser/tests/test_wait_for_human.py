@@ -5,9 +5,14 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from llm_browser.actions import ErrorResult, VoidResult, execute_action
-from llm_browser.constants import NTFY_URL_ENV_VAR, VNC_URL_ENV_VAR
+from llm_browser.constants import (
+    HUMAN_PROBE_TIMEOUT_MS,
+    NTFY_URL_ENV_VAR,
+    VNC_URL_ENV_VAR,
+)
 from llm_browser.models import WaitForHumanStep
 from llm_browser.session import BrowserSession
 
@@ -81,7 +86,7 @@ def test_returns_when_selector_appears(
     timeouts = stub_existence(monkeypatch, session, [False, False, True])
     result = execute_action(session, step(poll_ms=1_000))
     assert isinstance(result, VoidResult)
-    assert timeouts == [1_000, 1_000, 1_000]
+    assert timeouts == [HUMAN_PROBE_TIMEOUT_MS] * 3
     assert clock[0] == pytest.approx(2.0)
 
 
@@ -129,6 +134,24 @@ def test_no_notification_without_message(
     assert notifications == []
 
 
+def test_healthy_first_probe_pages_nobody(
+    session: BrowserSession,
+    clock: list[float],
+    notifications: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of the watchdog: a healthy page wakes no one."""
+    timeouts = stub_existence(monkeypatch, session, [True])
+    result = execute_action(
+        session, step(message="Login needed: WSJ", bring_to_front=True)
+    )
+    assert isinstance(result, VoidResult)
+    assert notifications == []
+    assert timeouts == [HUMAN_PROBE_TIMEOUT_MS]
+    assert session._page.bring_to_front.called is False  # type: ignore[union-attr]
+    assert clock[0] == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize("bring_to_front", [True, False])
 def test_bring_to_front_flag(
     session: BrowserSession,
@@ -136,7 +159,43 @@ def test_bring_to_front_flag(
     monkeypatch: pytest.MonkeyPatch,
     bring_to_front: bool,
 ) -> None:
-    stub_existence(monkeypatch, session, [True])
+    stub_existence(monkeypatch, session, [False, True])
     execute_action(session, step(bring_to_front=bring_to_front))
     page = session._page
     assert page.bring_to_front.called is bring_to_front  # type: ignore[union-attr]
+
+
+def test_bring_to_front_failure_does_not_abort_wait(
+    session: BrowserSession,
+    clock: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session._page.bring_to_front.side_effect = NotImplementedError(  # type: ignore[union-attr]
+        "nodriver does not support bring_to_front"
+    )
+    stub_existence(monkeypatch, session, [False, True])
+    result = execute_action(session, step(bring_to_front=True))
+    assert isinstance(result, VoidResult)
+    assert "bring_to_front failed" in capsys.readouterr().err
+
+
+def test_notify_failure_does_not_abort_wait(
+    session: BrowserSession,
+    clock: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A transient ntfy outage must not cancel a 30-minute human wait."""
+    monkeypatch.delenv(NTFY_URL_ENV_VAR, raising=False)
+    stub_existence(monkeypatch, session, [False, True])
+    result = execute_action(session, step(message="Login needed: WSJ"))
+    assert isinstance(result, VoidResult)
+    assert "notification failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field", ["poll_ms", "timeout_ms"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_rejects_non_positive_intervals(field: str, value: int) -> None:
+    with pytest.raises(ValidationError):
+        step(**{field: value})
