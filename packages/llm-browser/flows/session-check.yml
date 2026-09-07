@@ -19,6 +19,7 @@ steps:
     action: notify
     when: { element_missing: "{{ marker }}" }
     message: "Login needed: {{ name }}"
+    optional: true  # a dead ntfy must not cancel the wait
   - name: wait for login
     selector: "{{ marker }}"
     action: wait_for
