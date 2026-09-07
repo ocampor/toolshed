@@ -1,6 +1,7 @@
 """Step execution: resolve templates, evaluate conditions, dispatch actions."""
 
 import time
+from typing import Any
 
 from yaml_engine.compile import compile_condition
 from yaml_engine.conditions import evaluate_condition
@@ -8,7 +9,7 @@ from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
 from llm_browser.models import FlowData, FlowError, Step, validate_step
-from llm_browser.selectors import parse_selector
+from llm_browser.selectors import Selector, parse_selector
 from llm_browser.session import BrowserSession
 
 
@@ -21,20 +22,21 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
         (idempotent toggles: only click when the post-click element
         isn't already there).
       * Plain field/op/value forms compiled by ``yaml_engine``.
+
+    Both element predicates take either a bare selector
+    (``element_exists: "#btn"``) or a ``{selector: ...}`` mapping.
     """
     if not step.when:
         return False
     template_dict = data.to_template_dict()
     for raw_cond in step.when:
         if "element_exists" in raw_cond:
-            spec = raw_cond["element_exists"]
-            selector = parse_selector(spec["selector"])
-            if not session.element_exists(selector):
+            if not session.element_exists(
+                condition_selector(raw_cond["element_exists"])
+            ):
                 return True
         elif "element_missing" in raw_cond:
-            spec = raw_cond["element_missing"]
-            selector = parse_selector(spec["selector"])
-            if session.element_exists(selector):
+            if session.element_exists(condition_selector(raw_cond["element_missing"])):
                 return True
         else:
             cond = compile_condition(raw_cond)
@@ -42,6 +44,12 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
             if not evaluate_condition(cond.op, value, cond.param):
                 return True
     return False
+
+
+def condition_selector(spec: Any) -> Selector:
+    """Selector of an element predicate, bare or under a ``selector`` key."""
+    raw = spec["selector"] if isinstance(spec, dict) and "selector" in spec else spec
+    return parse_selector(raw)
 
 
 def resolve_step(step: Step, data: FlowData) -> Step:

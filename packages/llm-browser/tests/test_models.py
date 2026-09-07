@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
 from llm_browser.models import (
+    BringToFrontStep,
     EvalStep,
     Flow,
     FlowData,
@@ -13,7 +14,7 @@ from llm_browser.models import (
     GotoStep,
     NotifyStep,
     ScrollStep,
-    WaitForHumanStep,
+    WaitForStep,
     SessionInfo,
     validate_step,
 )
@@ -187,28 +188,38 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
 @pytest.mark.parametrize(
     "overrides, expected",
     [
-        ({}, {"until": "present", "timeout_ms": 300_000, "poll_ms": 2_000}),
+        ({}, {"until": "present", "timeout_ms": 30_000, "poll_ms": 1_000}),
         ({"until": "absent"}, {"until": "absent"}),
         ({"timeout_ms": 1_800_000}, {"timeout_ms": 1_800_000}),
         ({"poll_ms": 500}, {"poll_ms": 500}),
     ],
 )
-def test_wait_for_human_parsing(
+def test_wait_for_parsing(
     overrides: dict[str, object], expected: dict[str, object]
 ) -> None:
     step = validate_step(
-        {"name": "w", "action": "wait_for_human", "selector": "#m", **overrides}
+        {"name": "w", "action": "wait_for", "selector": "#m", **overrides}
     )
-    assert isinstance(step, WaitForHumanStep)
-    assert step.bring_to_front is True
-    assert step.message is None
+    assert isinstance(step, WaitForStep)
     for field, value in expected.items():
         assert getattr(step, field) == value
 
 
-def test_wait_for_human_requires_selector() -> None:
+def test_wait_for_requires_selector() -> None:
     with pytest.raises(ValidationError):
-        validate_step({"name": "w", "action": "wait_for_human"})
+        validate_step({"name": "w", "action": "wait_for"})
+
+
+def test_bring_to_front_parsing() -> None:
+    step = validate_step({"name": "raise", "action": "bring_to_front"})
+    assert isinstance(step, BringToFrontStep)
+
+
+def test_single_when_condition_is_wrapped_in_a_list() -> None:
+    step = validate_step(
+        {"name": "s", "action": "bring_to_front", "when": {"element_missing": "#m"}}
+    )
+    assert step.when == [{"element_missing": "#m"}]
 
 
 def test_notify_parsing() -> None:

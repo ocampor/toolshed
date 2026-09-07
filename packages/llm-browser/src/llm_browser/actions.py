@@ -16,8 +16,9 @@ from llm_browser.behavior import (
     mark_action_done,
     post_pause,
 )
-from llm_browser.constants import HUMAN_PROBE_TIMEOUT_MS
+from llm_browser.constants import PROBE_TIMEOUT_MS
 from llm_browser.models import (
+    BringToFrontStep,
     CheckStep,
     ClickStep,
     DomStep,
@@ -35,10 +36,10 @@ from llm_browser.models import (
     Step,
     ThinkStep,
     TypeStep,
-    WaitForHumanStep,
+    WaitForStep,
     WaitStep,
 )
-from llm_browser.notify import NotifyError, send_notification
+from llm_browser.notify import send_notification
 from llm_browser.parse import build_model
 from llm_browser.paths import prepare_output_path
 from llm_browser.session import BrowserSession
@@ -374,51 +375,39 @@ def action_notify(session: BrowserSession, step: NotifyStep) -> VoidResult:
     return VoidResult()
 
 
-@_registry.register("wait_for_human")
-def action_wait_for_human(
-    session: BrowserSession, step: WaitForHumanStep
-) -> VoidResult:
-    """Poll until a person has acted, paging them only if the wait blocks."""
+@_registry.register("wait_for")
+def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
+    """Probe once, then poll until the selector matches or time runs out."""
     if selector_matches(session, step):
         return VoidResult()
-    if step.bring_to_front:
-        raise_tab(session)
-    if step.message:
-        page_operator(step.message)
     poll_until_selector_matches(session, step)
     return VoidResult()
 
 
-def selector_matches(session: BrowserSession, step: WaitForHumanStep) -> bool:
-    """One short probe: does ``selector`` already match ``until``?"""
-    want_present = step.until == "present"
-    exists = session.element_exists(step.selector, timeout=HUMAN_PROBE_TIMEOUT_MS)
-    return exists is want_present
-
-
-def raise_tab(session: BrowserSession) -> None:
+@_registry.register("bring_to_front")
+def action_bring_to_front(
+    session: BrowserSession, step: BringToFrontStep
+) -> VoidResult:
     """Best-effort: not every driver can surface a tab (nodriver cannot)."""
     try:
         session.driver.bring_to_front(session.get_page())
     except Exception as exc:
         print(f"warning: bring_to_front failed: {exc}", file=sys.stderr)
+    return VoidResult()
 
 
-def page_operator(message: str) -> None:
-    """Best-effort page: a human at the console can still act if ntfy is down."""
-    try:
-        send_notification(message)
-    except NotifyError as exc:
-        print(f"warning: notification failed: {exc}", file=sys.stderr)
+def selector_matches(session: BrowserSession, step: WaitForStep) -> bool:
+    """One short probe: does ``selector`` already match ``until``?"""
+    want_present = step.until == "present"
+    exists = session.element_exists(step.selector, timeout=PROBE_TIMEOUT_MS)
+    return exists is want_present
 
 
-def poll_until_selector_matches(
-    session: BrowserSession, step: WaitForHumanStep
-) -> None:
+def poll_until_selector_matches(session: BrowserSession, step: WaitForStep) -> None:
     """Probe ``step.selector`` every ``poll_ms`` until it matches ``until``.
 
     A tick is a ``poll_ms`` sleep plus one short probe
-    (``HUMAN_PROBE_TIMEOUT_MS``), so the cadence is ~``poll_ms``.
+    (``PROBE_TIMEOUT_MS``), so the cadence is ~``poll_ms``.
     Raises ``TimeoutError`` once ``timeout_ms`` has elapsed, which
     ``execute_action`` turns into an ErrorResult (or a skip when the
     step is ``optional``).
@@ -431,5 +420,5 @@ def poll_until_selector_matches(
         if time.monotonic() >= deadline:
             raise TimeoutError(
                 f"selector {step.selector!r} still not {step.until} after "
-                f"{step.timeout_ms}ms; no human action detected"
+                f"{step.timeout_ms}ms"
             )

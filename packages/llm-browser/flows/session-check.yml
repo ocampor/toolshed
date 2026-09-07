@@ -4,7 +4,7 @@ params:
   - marker
   - name
 steps:
-  - name: open site
+  - name: open
     action: goto
     url: "{{ url }}"
     wait_until: domcontentloaded
@@ -12,9 +12,16 @@ steps:
     action: think
     min_ms: 3000
     max_ms: 5000
+  - name: raise tab
+    action: bring_to_front
+    when: { element_missing: "{{ marker }}" }
+  - name: page owner
+    action: notify
+    when: { element_missing: "{{ marker }}" }
+    message: "Login needed: {{ name }}"
   - name: wait for login
-    action: wait_for_human
     selector: "{{ marker }}"
+    action: wait_for
     until: present
     timeout_ms: 1800000
-    message: "Login needed: {{ name }}"
+    poll_ms: 5000

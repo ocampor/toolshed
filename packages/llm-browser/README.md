@@ -156,9 +156,9 @@ llm-browser run --cdp-url http://127.0.0.1:9222 --flow flows/session-check.yml \
 | Variable | Used by | Description |
 |----------|---------|-------------|
 | `LLM_BROWSER_DRIVER` | driver resolution | Default driver name (`patchright`, `camoufox`, `nodriver`) when none is passed explicitly. |
-| `LLM_BROWSER_NTFY_URL` | `notify`, `wait_for_human` | Full ntfy topic URL, e.g. `https://ntfy.sh/my-topic`. Required for notifications. |
-| `LLM_BROWSER_NTFY_TOKEN` | `notify`, `wait_for_human` | Bearer token for a protected ntfy topic. |
-| `LLM_BROWSER_VNC_URL` | `notify`, `wait_for_human` | Default `Click` target on the notification — the VNC console where a human can take over. |
+| `LLM_BROWSER_NTFY_URL` | `notify` | Full ntfy topic URL, e.g. `https://ntfy.sh/my-topic`. Required for notifications. |
+| `LLM_BROWSER_NTFY_TOKEN` | `notify` | Bearer token for a protected ntfy topic. |
+| `LLM_BROWSER_VNC_URL` | `notify` | Default `Click` target on the notification — the VNC console where a human can take over. |
 
 ## Anti-bot landscape
 

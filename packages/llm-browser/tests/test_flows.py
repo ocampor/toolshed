@@ -9,9 +9,15 @@ import yaml
 from pydantic import ValidationError
 
 from llm_browser.flows import load_flow, run_flow
-from llm_browser.models import EvalStep, FlowData, FlowError, FlowSuccess
+from llm_browser.models import (
+    EvalStep,
+    FlowData,
+    FlowError,
+    FlowSuccess,
+    validate_step,
+)
 from llm_browser.session import BrowserSession
-from llm_browser.steps import execute_step, should_skip
+from llm_browser.steps import execute_step, resolve_step, should_skip
 
 
 def _flow_data(**kwargs: object) -> FlowData:
@@ -119,6 +125,27 @@ def test_should_skip_element_exists(tmp_path: Path) -> None:
     assert should_skip(session, step, _flow_data()) is False
     session.element_exists.return_value = False
     assert should_skip(session, step, _flow_data()) is True
+
+
+def test_should_skip_element_missing_bare_selector(tmp_path: Path) -> None:
+    """A templated bare selector — as `flows/session-check.yml` uses it."""
+    session = _mock_session(tmp_path)
+    step = resolve_step(
+        validate_step(
+            {
+                "name": "page owner",
+                "action": "notify",
+                "message": "Login needed: {{ name }}",
+                "when": {"element_missing": "{{ marker }}"},
+            }
+        ),
+        _flow_data(marker="#account", name="WSJ"),
+    )
+    session.element_exists.return_value = True
+    assert should_skip(session, step, _flow_data()) is True
+    session.element_exists.assert_called_with("#account")
+    session.element_exists.return_value = False
+    assert should_skip(session, step, _flow_data()) is False
 
 
 # --- execute_step ---

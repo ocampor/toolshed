@@ -48,6 +48,12 @@ class BaseStep(BaseModel):
     # and retry-hint targeting.
     _parent: str | None = PrivateAttr(default=None)
 
+    @field_validator("when", mode="before")
+    @classmethod
+    def _wrap_single_condition(cls, v: Any) -> Any:
+        """``when: {element_missing: "#x"}`` is as valid as a list of one."""
+        return [v] if isinstance(v, dict) else v
+
     @model_validator(mode="before")
     @classmethod
     def _resolve_selector_refs(cls, data: Any, info: Any) -> Any:
@@ -206,20 +212,23 @@ class NotifyStep(BaseStep):
     click: str | None = None
 
 
-class WaitForHumanStep(SelectorStep):
-    """Block until a person has acted on the page.
+class WaitForStep(SelectorStep):
+    """Poll ``selector`` until it is present (or absent), or time out.
 
-    Probes ``selector`` once; if it already matches ``until`` the step
-    returns immediately without paging anyone. Otherwise it pages the
-    operator once (when ``message`` is set) and polls every ``poll_ms``.
+    Probes once up front, so a page that already satisfies ``until``
+    returns immediately.
     """
 
-    action: Literal["wait_for_human"]
+    action: Literal["wait_for"]
     until: Literal["present", "absent"] = "present"
-    timeout_ms: int = Field(default=300_000, gt=0)
-    poll_ms: int = Field(default=2_000, gt=0)
-    message: str | None = None
-    bring_to_front: bool = True
+    timeout_ms: int = Field(default=30_000, gt=0)
+    poll_ms: int = Field(default=1_000, gt=0)
+
+
+class BringToFrontStep(BaseStep):
+    """Raise the browser tab so a human at the console sees it."""
+
+    action: Literal["bring_to_front"]
 
 
 class PressStep(BaseStep):
@@ -312,7 +321,8 @@ KNOWN_ACTIONS = frozenset(
         "scroll",
         "press",
         "notify",
-        "wait_for_human",
+        "wait_for",
+        "bring_to_front",
     }
 )
 
@@ -341,7 +351,8 @@ Step = Annotated[
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[NotifyStep, Tag("notify")]
-    | Annotated[WaitForHumanStep, Tag("wait_for_human")]
+    | Annotated[WaitForStep, Tag("wait_for")]
+    | Annotated[BringToFrontStep, Tag("bring_to_front")]
     | Annotated[WaitStep, Tag("wait")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],

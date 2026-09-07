@@ -8,17 +8,20 @@
   optional `LLM_BROWSER_NTFY_TOKEN`), with `title`, `priority` and `click`
   headers; `click` defaults to `LLM_BROWSER_VNC_URL`. Uses stdlib `urllib`
   only, via the reusable `llm_browser.notify.send_notification`.
-- `wait_for_human` action — probe a selector first and return straight away
-  when it already matches; otherwise raise the tab, page the operator once,
-  and poll every `poll_ms` until the selector is present (or absent) or
-  `timeout_ms` elapses. Raising the tab and paging are best-effort: a driver
-  without `bring_to_front` or an unreachable ntfy warns on stderr and the
-  wait continues. `poll_ms` and `timeout_ms` must be > 0.
+- `wait_for` action — probe a selector once and return straight away when it
+  already matches; otherwise poll every `poll_ms` until it is present (or
+  absent) or `timeout_ms` elapses, then raise `TimeoutError`. `poll_ms` and
+  `timeout_ms` must be > 0.
+- `bring_to_front` action — raise the browser tab. Best-effort: a driver
+  without `Driver.bring_to_front` warns on stderr and the flow continues.
 - `Driver.bring_to_front(page)` — implemented for the Playwright-family
-  drivers; other drivers raise `NotImplementedError`, which `wait_for_human`
-  swallows.
-- `flows/session-check.yml` — check a site is still logged in and page the
-  owner when it is not.
+  drivers; other drivers raise `NotImplementedError`.
+- `when:` accepts a single condition mapping (not just a list), and the
+  `element_exists` / `element_missing` predicates accept a bare selector
+  as well as a `{selector: ...}` mapping.
+- `flows/session-check.yml` — check a site is still logged in; composes
+  `bring_to_front`, `notify` and `wait_for` behind `when: element_missing`
+  so a healthy session wakes nobody.
 
 ## 0.2.0
 

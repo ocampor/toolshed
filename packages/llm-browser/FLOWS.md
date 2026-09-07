@@ -72,43 +72,55 @@ Human-like idling. No selector needed.
 
 ### Human-in-the-loop actions
 
-Page a person and wait for them to act. Both read their ntfy config from
-the environment:
+Raise the tab, page a person, and wait for them to act. `notify` reads
+its ntfy config from the environment:
 
 | Variable | Description |
 |----------|-------------|
-| `LLM_BROWSER_NTFY_URL` | Full ntfy topic URL (e.g. `https://ntfy.sh/my-topic`). Required — without it these steps fail with `NotifyError`. |
+| `LLM_BROWSER_NTFY_URL` | Full ntfy topic URL (e.g. `https://ntfy.sh/my-topic`). Required — without it `notify` fails with `NotifyError`. |
 | `LLM_BROWSER_NTFY_TOKEN` | Optional bearer token for a protected topic. |
 | `LLM_BROWSER_VNC_URL` | Optional default `Click` target for the notification — the console where a human can take over the browser. |
 
 | Action | Params | Description |
 |--------|--------|-------------|
 | `notify` | `message` (templated), `title`, `priority` (1-5), `click` (URL, defaults to `LLM_BROWSER_VNC_URL`) | POST the message to the ntfy topic |
-| `wait_for_human` | `selector`, `until` (`present`/`absent`, default present), `timeout_ms` (default 300000, > 0), `poll_ms` (default 2000, > 0), `message` (one notification, sent only if the wait blocks), `bring_to_front` (default true) | Probe the selector; if it does not match yet, raise the tab, page the operator once, then poll until a person has acted |
+| `bring_to_front` | — | Raise the browser tab so a human at the console sees it |
+| `wait_for` | `selector`, `until` (`present`/`absent`, default present), `timeout_ms` (default 30000, > 0), `poll_ms` (default 1000, > 0) | Probe the selector once, then poll until it matches `until` |
 
-`wait_for_human` probes the selector before doing anything else, so a
-healthy page returns immediately — no tab raise, no notification. Only
-when the first probe misses does it raise the tab, page the operator
-once, and start polling. Each poll tick is a `poll_ms` sleep plus one
-short (500ms) probe, so the cadence is roughly `poll_ms`. On timeout it
+`wait_for` probes before sleeping, so a page that already satisfies
+`until` returns immediately. Each poll tick is a `poll_ms` sleep plus one
+short (500ms) probe, so the cadence is roughly `poll_ms`. On expiry it
 raises `TimeoutError`, so the step fails like any other (or is skipped
-with `optional: true`). Raising the tab and paging are both best-effort:
-a driver without `bring_to_front` (nodriver) or an unreachable ntfy
-prints a warning to stderr and the wait continues.
+with `optional: true`).
+
+`bring_to_front` is best-effort: a driver that cannot surface a tab
+(nodriver) prints a warning to stderr and the flow continues.
+
+None of these three decide *whether* a human is needed — that is a
+`when:` clause. Composed, they are the session watchdog
+(`flows/session-check.yml`): raise the tab and page the owner only when
+the logged-in marker is missing, then wait for it either way.
 
 ```yaml
-- name: wait for login
-  action: wait_for_human
-  selector: "{{ marker }}"
-  until: present
-  timeout_ms: 1800000
+- name: raise tab
+  action: bring_to_front
+  when: { element_missing: "{{ marker }}" }
+
+- name: page owner
+  action: notify
+  when: { element_missing: "{{ marker }}" }
   message: "Login needed: {{ name }}"
 
-- name: all clear
-  action: notify
-  message: "{{ name }} session is healthy"
-  priority: 2
+- name: wait for login
+  selector: "{{ marker }}"
+  action: wait_for
+  until: present
+  timeout_ms: 1800000
+  poll_ms: 5000
 ```
+
+A healthy page skips both human-facing steps and clears the `wait_for`
+on its first probe — nobody is woken.
 
 ### Data actions
 
