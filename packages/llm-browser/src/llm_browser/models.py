@@ -193,7 +193,7 @@ class ScrollStep(BaseStep):
     action: Literal["scroll"]
     delta: int = 600
     times: int = 1
-    pause: Jitter | None = None
+    pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
 class PressStep(BaseStep):

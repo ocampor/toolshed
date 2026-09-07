@@ -209,7 +209,7 @@ own their tab and never land on someone else's.
 
 ```bash
 llm-browser --cdp-url http://127.0.0.1:9223 attach          # -> {"target_id": "..."}
-llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC goto https://example.com
+llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC goto --url https://example.com
 llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC close
 ```
 

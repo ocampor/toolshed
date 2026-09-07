@@ -227,6 +227,7 @@ class BrowserSession:
             status="open",
             url=self.driver.page_url(self._page) if self._page else None,
             cdp_url=cdp_url,
+            target_id=info.target_id,
         )
 
     def stop_detached(self) -> SessionResult:
@@ -449,25 +450,12 @@ class BrowserSession:
         read. When ``child_selector`` is None the value is read off the row
         element itself.
         """
-        results: list[dict[str, str | None]] = []
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        for row in self.driver.all(locator):
-            record: dict[str, str | None] = {}
-            for key, spec in extract.items():
-                target = (
-                    self.driver.child(row, spec.child_selector)
-                    if spec.child_selector is not None
-                    else row
-                )
-                match spec.attribute:
-                    case "textContent":
-                        record[key] = self.driver.text_content(target)
-                    case "value":
-                        record[key] = self.driver.input_value(target)
-                    case _:
-                        record[key] = self.driver.get_attribute(target, spec.attribute)
-            results.append(record)
-        return results
+        spec = {
+            name: {"child_selector": f.child_selector, "attribute": f.attribute}
+            for name, f in extract.items()
+        }
+        return self.driver.extract_rows(locator, spec)
 
     def dom(self, selector: Selector, max_depth: int = 0) -> str:
         """Return cleaned HTML snippet of an element."""

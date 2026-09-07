@@ -111,10 +111,62 @@ def test_reattach_resolves_by_target_id_not_last_page(
     assert page is context.pages[0]
 
 
+def test_reattach_without_target_id_picks_the_last_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy handle (pre-target-id state.json) reconnects to the last tab."""
+    context = fake_context(["A", "B"])
+    fake_playwright(monkeypatch, context)
+
+    page = PatchrightDriver().page(attached_handle(None))
+    assert page is context.pages[-1]
+
+
+def test_find_page_by_target_id_skips_unhealthy_tabs() -> None:
+    """A crashed sibling tab must not hide the tab we are addressing."""
+    context = fake_context(["BROKEN", "MINE"])
+    healthy = context.new_cdp_session.side_effect
+
+    def new_cdp_session(page: Any) -> Any:
+        if page is context.pages[0]:
+            raise RuntimeError("Target closed")
+        return healthy(page)
+
+    context.new_cdp_session.side_effect = new_cdp_session
+
+    assert find_page_by_target_id(context, "MINE") is context.pages[1]
+
+
 def test_reattach_raises_when_target_gone(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_playwright(monkeypatch, fake_context(["OTHER"]))
     with pytest.raises(RuntimeError, match="Tab MINE not found"):
         PatchrightDriver().page(attached_handle("MINE"))
+
+
+def test_reattach_reuses_the_playwright_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second attach on the same driver must not orphan the first connection."""
+    context = fake_context(["A"])
+    pw = fake_playwright(monkeypatch, context)
+    starts = 0
+
+    def counting_start() -> Any:
+        nonlocal starts
+        starts += 1
+        return pw
+
+    monkeypatch.setattr(
+        "llm_browser.drivers.patchright.sync_playwright",
+        lambda: MagicMock(start=counting_start),
+    )
+
+    driver = PatchrightDriver()
+    driver.attach_to_tab(CDP_URL, "A")
+    driver.attach_to_tab(CDP_URL, "A")
+
+    assert starts == 1
+    assert pw.chromium.connect_over_cdp.call_count == 1
 
 
 def test_base_driver_attach_to_tab_raises() -> None:

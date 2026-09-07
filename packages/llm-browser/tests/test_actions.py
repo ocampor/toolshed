@@ -168,18 +168,19 @@ def test_screenshot_writes_to_explicit_path(
     )
 
 
+def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> MagicMock:
+    """Make the page's row locator return ``rows`` from its page evaluation."""
+    locator = MagicMock()
+    locator.evaluate_all.return_value = rows
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+    return locator
+
+
 # --- read ---
 
 
 def test_read(session: BrowserSession) -> None:
-    row = MagicMock()
-    child = MagicMock()
-    child.text_content.return_value = "Alice"
-    row.locator.return_value = child
-
-    locator = MagicMock()
-    locator.all.return_value = [row]
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
+    locator = _rows_locator(session, [{"name": "Alice"}])
 
     from llm_browser.actions import ExtractedRow, ParsedResult
 
@@ -195,6 +196,9 @@ def test_read(session: BrowserSession) -> None:
     row = result.rows[0]
     assert isinstance(row, ExtractedRow)
     assert row.model_dump() == {"name": "Alice"}
+    script, spec = locator.evaluate_all.call_args.args
+    assert "querySelector" in script
+    assert spec == {"name": {"child_selector": "td", "attribute": "textContent"}}
 
 
 # --- parse (typed schema action) ---
@@ -222,23 +226,7 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: object) -> 
         )
     )
 
-    # Build a mock that yields one row whose children return string values
-    # for the fields the schema asks for.
-    def _make_row(fields: dict[str, str]) -> MagicMock:
-        row = MagicMock()
-
-        def _resolve(child_sel: str) -> MagicMock:
-            child = MagicMock()
-            key = child_sel.split(".", 1)[1]
-            child.text_content.return_value = fields.get(key)
-            return child
-
-        row.locator.side_effect = _resolve
-        return row
-
-    locator = MagicMock()
-    locator.all.return_value = [_make_row({"name": "foo", "stars": "42"})]
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
+    _rows_locator(session, [{"name": "foo", "stars": "42"}])
 
     step = ParseStep(
         name="s", action="parse", selector="tr.row", schema_path=str(schema)
@@ -260,13 +248,7 @@ def test_read_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
     import json
     from pathlib import Path
 
-    row = MagicMock()
-    child = MagicMock()
-    child.text_content.return_value = "Alice"
-    row.locator.return_value = child
-    locator = MagicMock()
-    locator.all.return_value = [row]
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
+    _rows_locator(session, [{"name": "Alice"}])
 
     target = Path(str(tmp_path)) / "rows.json"
     step = ReadStep(
@@ -302,21 +284,7 @@ def test_parse_writes_to_path(session: BrowserSession, tmp_path: object) -> None
         )
     )
 
-    def _make_row(fields: dict[str, str]) -> MagicMock:
-        row = MagicMock()
-
-        def _resolve(child_sel: str) -> MagicMock:
-            child = MagicMock()
-            key = child_sel.split(".", 1)[1]
-            child.text_content.return_value = fields.get(key)
-            return child
-
-        row.locator.side_effect = _resolve
-        return row
-
-    locator = MagicMock()
-    locator.all.return_value = [_make_row({"name": "foo", "stars": "42"})]
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
+    _rows_locator(session, [{"name": "foo", "stars": "42"}])
 
     target = Path(str(tmp_path)) / "rows.json"
     step = ParseStep(
@@ -537,7 +505,8 @@ def test_scroll_pauses_between_ticks(
     )
     execute_action(session, step)
     pauses = [c for c in calls if c > 0]
-    assert len(pauses) == 3
+    # Only between ticks: execute_action already applies the post-action pause.
+    assert len(pauses) == 2
     assert all(0.010 <= c <= 0.020 for c in pauses)
 
 

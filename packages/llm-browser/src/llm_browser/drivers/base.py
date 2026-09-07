@@ -198,6 +198,33 @@ class Driver(ABC):
     @abstractmethod
     def child(self, locator: Any, selector: str) -> Any: ...
 
+    def extract_rows(
+        self, locator: Any, spec: dict[str, dict[str, str | None]]
+    ) -> list[dict[str, str | None]]:
+        """Read every field of ``spec`` off every element matched by ``locator``.
+
+        ``spec`` maps a field name to ``{"child_selector": ..., "attribute": ...}``.
+        The default walks the matched elements from Python — one transport
+        round-trip per element and field. Drivers that can run a function over
+        all matches in one page evaluation should override.
+        """
+        return [
+            {name: self.read_field(row, field) for name, field in spec.items()}
+            for row in self.all(locator)
+        ]
+
+    def read_field(self, row: Any, field: dict[str, str | None]) -> str | None:
+        """Read one ``spec`` field off one row element."""
+        child_selector = field["child_selector"]
+        target = self.child(row, child_selector) if child_selector else row
+        attribute = field["attribute"]
+        if attribute == "textContent":
+            return self.text_content(target)
+        if attribute == "value":
+            return self.input_value(target)
+        assert attribute is not None
+        return self.get_attribute(target, attribute)
+
     @abstractmethod
     def evaluate(self, target: Any, script: str) -> Any: ...
 

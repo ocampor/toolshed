@@ -88,6 +88,16 @@ FINGERPRINT_JS = """
 })"""
 
 
+# Cloudflare's interstitial says "Just a moment…" in the <title> while the
+# body is still empty, so the title has to be part of the matched text.
+PAGE_TEXT_JS = "() => [document.title, document.body && document.body.innerText]"
+
+
+def page_text(title: str | None, body: str | None) -> str:
+    """The text a probe's ``check`` regex runs against: title, then body."""
+    return "\n".join(part for part in (title, body) if part)
+
+
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
@@ -114,10 +124,10 @@ def probe_one(
         session.driver.screenshot(page, out_dir / "screenshot.png")
         content = session.driver.content(page)
         (out_dir / "page.html").write_text(content)
-        # Match against rendered text: the HTML carries the page's own
-        # detection script, whose source contains every verdict string.
-        text = session.driver.evaluate(page, "document.body.innerText")
-        detected = bool(check and re.search(check, text))
+        # Match against rendered text, not the HTML: the source carries the
+        # page's own detection script, which contains every verdict string.
+        title, body = session.driver.evaluate(page, PAGE_TEXT_JS)
+        detected = bool(check and re.search(check, page_text(title, body)))
         verdict["detected"] = detected
         verdict["webdriver"] = fingerprint.get("webdriver")
         verdict["final_url"] = session.driver.page_url(page)

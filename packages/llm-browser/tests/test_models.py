@@ -2,6 +2,7 @@
 
 import pytest
 
+from llm_browser.behavior import Jitter
 from llm_browser.models import (
     EvalStep,
     Flow,
@@ -73,7 +74,7 @@ def test_scroll_step_parsing(raw: dict[str, int], delta: int, times: int) -> Non
     step = validate_step({"name": "s", "action": "scroll", **raw})
     assert isinstance(step, ScrollStep)
     assert (step.delta, step.times) == (delta, times)
-    assert step.pause is None
+    assert step.pause == Jitter(min_ms=300, max_ms=1200)
 
 
 def test_scroll_step_pause_parsed_as_jitter() -> None:
@@ -81,8 +82,7 @@ def test_scroll_step_pause_parsed_as_jitter() -> None:
         {"name": "s", "action": "scroll", "pause": {"min_ms": 50, "max_ms": 100}}
     )
     assert isinstance(step, ScrollStep)
-    assert step.pause is not None
-    assert step.pause.max_ms == 100
+    assert step.pause == Jitter(min_ms=50, max_ms=100)
 
 
 def test_warm_site_flow_validates() -> None:
