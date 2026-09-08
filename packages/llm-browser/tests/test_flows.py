@@ -1,5 +1,4 @@
-"""Tests for flow loading, step execution, and the `run_flow_file`
-entry point."""
+"""Tests for flow loading, step execution, and the `run_flow_file` entry."""
 
 from pathlib import Path
 from typing import Any

@@ -11,14 +11,8 @@ from llm_browser.constants import LOGGER_NAME, REDACTED
 
 
 def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
-    """Return ``value`` with every occurrence of every secret replaced
-    by ``***``.
-
-    Walks strings, containers and pydantic models, rebuilding each one
-    with the same shape and type so callers keep their typed results
-    (``FlowError.data`` stays an ``ActionResult``). Empty secrets are
-    ignored — replacing ``""`` would shred every string.
-    """
+    """Rebuilds containers and models with their original type, so callers
+    keep typed results (``FlowError.data`` stays an ``ActionResult``)."""
     if not secrets:
         return value
     match value:
@@ -44,14 +38,12 @@ def _redact_text(text: str, secrets: Sequence[str]) -> str:
 
 
 def clean_secrets(secrets: Any) -> list[str]:
-    """Normalize a caller-supplied ``redact`` argument into the list of
-    non-empty secret strings to scrub."""
+    """Empty secrets are dropped — replacing ``""`` would shred every
+    string."""
     return [str(s) for s in secrets if s]
 
 
 class RedactingFilter(logging.Filter):
-    """Scrub secrets from a log record's message and args in place."""
-
     def __init__(self, secrets: Sequence[str]) -> None:
         super().__init__()
         self.secrets = secrets
@@ -64,14 +56,10 @@ class RedactingFilter(logging.Filter):
 
 @contextmanager
 def redacting_logs(secrets: Sequence[str]) -> Iterator[None]:
-    """Scrub secrets from every ``llm_browser`` log record emitted in
-    this block.
-
-    The filter sits on the package logger, so it covers records from the
-    session and actions as well as the runner itself.
-    """
-    # debt: package-wide filter; a concurrent run in another thread with
-    # different secrets would also be scrubbed (harmless, never leaks).
+    """The filter sits on the package logger, so it covers the session and
+    actions as well as the runner."""
+    # debt: package-wide filter; a concurrent run in another thread is
+    # scrubbed too (harmless, never leaks).
     if not secrets:
         yield
         return

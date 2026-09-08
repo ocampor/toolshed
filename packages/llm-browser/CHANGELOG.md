@@ -5,44 +5,27 @@
 ### Added
 
 - `load_flow_text(text, *, subflow_loader=None, selector_map=None)` — parse a
-  flow from YAML text. `run-flow` references that aren't existing files are
-  resolved by calling `subflow_loader(ref)`, which returns the child's YAML
-  text, so a whole flow tree can run without touching disk. A non-file
-  reference with no loader raises `ValueError`.
-- `run_flow(session, flow, data, *, from_step=None, redact=())` runs an
-  already-loaded `Flow`; it never reads a file. `RetryHint.flow_path` is empty
-  for such a run.
-- `llm_browser.flow_files` — the path-based convenience layer over the core:
-  `load_flow(path, *, selector_map=None)` (moved here from `llm_browser.flows`)
-  and `run_flow_file(session, path, data, *, selector_map=None, from_step=None,
-  redact=())`, which loads the file, runs it, and fills `RetryHint.flow_path`
-  in from the path it was given. This is what the CLI uses.
-- `llm-browser run` / `llm-browser validate` accept the flow as YAML text:
-  `--flow-yaml TEXT`, or `--flow -` to read it from stdin. Exactly one of
-  `--flow` / `--flow-yaml` is required.
-- `FlowSuccess.outputs` — what every `read` / `parse` / `dom` step produced,
-  keyed by qualified step name, whether or not the step sets `path:`.
-  Screenshots stay paths on disk.
-- `run_flow(..., redact=[...])` — replaces the listed secret values with `***`
-  in `RetryHint.data`, `RetryHint.error`, the `FlowError` payload, `outputs`,
-  and every `llm_browser` log record emitted during the run.
-  (`llm_browser.redact.redact_secrets` is the reusable helper.)
+  flow from YAML text; non-file `run-flow` refs go to `subflow_loader`.
+- `run_flow(session, flow, data, *, from_step=None, redact=())` — run a loaded
+  `Flow`; never reads a file.
+- `llm_browser.flow_files` — `load_flow` (moved here) and `run_flow_file`, the
+  path-based layer the CLI uses.
+- `llm-browser run` / `validate` accept `--flow-yaml TEXT` or `--flow -`
+  (stdin); exactly one of `--flow` / `--flow-yaml` is required.
+- `FlowSuccess.outputs` — every `read` / `parse` / `dom` result, keyed by
+  qualified step name.
+- `run_flow(..., redact=[...])` — replaces the listed values with `***` in the
+  retry hint, error payload, outputs, and `llm_browser` log records.
 
 ### Changed
 
-- **Breaking:** `run_flow`'s second parameter is now a `Flow` model named
-  `flow` (was `flow_path`), and its `selector_map=` keyword is gone (apply the
-  map at load time). Callers that pass a path should switch to
-  `llm_browser.flow_files.run_flow_file`, which keeps the old behavior
-  including `RetryHint.flow_path`.
+- **Breaking:** `run_flow` takes a `Flow` (was `flow_path`) and drops
+  `selector_map=`; use `flow_files.run_flow_file` for the old behavior.
 - **Breaking:** `load_flow` moved from `llm_browser.flows` to
-  `llm_browser.flow_files`; `load_flow_text` stays in `llm_browser.flows`.
-- `execute_step` returns the step's `ActionResult` on success (a
-  `SkippedResult` when `when:` skips it) instead of `None`; failures still
-  return a `FlowError`.
-- A nested `run-flow` inside a sub-flow is now rejected without loading the
-  grandchild, so a cyclic reference reports the leaf-only rule instead of
-  recursing.
+  `llm_browser.flow_files`.
+- `execute_step` returns the step's `ActionResult` on success instead of `None`.
+- A nested `run-flow` inside a sub-flow is rejected without loading the
+  grandchild.
 
 ## Unreleased
 

@@ -287,8 +287,7 @@ def run(
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
-    The flow comes from a file (--flow PATH), from stdin (--flow -), or
-    from a string (--flow-yaml TEXT) — exactly one of them.
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     With --cdp-url the flow runs one-shot on an already-running Chromium:
 
@@ -324,9 +323,7 @@ def run(
 
 
 def flow_yaml_text(flow_path: str | None, flow_yaml: str | None) -> str | None:
-    """Return the flow's YAML text when it was given as text — inline
-    via ``--flow-yaml`` or on stdin via ``--flow -`` — and ``None`` when
-    ``--flow`` names a file. Exactly one of the two options is required."""
+    """``None`` means ``--flow`` names a file to load."""
     if (flow_path is None) == (flow_yaml is None):
         raise click.UsageError("pass exactly one of --flow or --flow-yaml")
     if flow_yaml is not None:
@@ -345,7 +342,6 @@ def run_cli_flow(
     selector_map: SelectorMap | None,
     from_step: str | None,
 ) -> FlowResult:
-    """Run a flow given either as YAML text or as a path."""
     if yaml_text is None:
         return run_flow_file(
             session, flow_path, data, selector_map=selector_map, from_step=from_step
@@ -411,8 +407,7 @@ def validate(
 ) -> None:
     """Validate a YAML flow without launching a browser.
 
-    The flow comes from a file (--flow PATH), from stdin (--flow -), or
-    from a string (--flow-yaml TEXT) — exactly one of them.
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     Loads the flow + every referenced sub-flow, expands selector-map
     refs, and runs all model validators. Exits 0 with a JSON summary

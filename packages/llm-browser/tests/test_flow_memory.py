@@ -1,5 +1,4 @@
-"""Tests for running flows without touching disk: `load_flow_text`,
-`run_flow` on a Flow model, in-memory step outputs, secret redaction."""
+"""Tests for `load_flow_text`, `run_flow` on a Flow, outputs, redaction."""
 
 import logging
 from pathlib import Path
@@ -81,8 +80,6 @@ def test_load_flow_text_loader_receives_reference() -> None:
 
 
 def test_load_flow_text_prefers_existing_file(tmp_path: Path) -> None:
-    """An existing path wins over the loader, so a text flow can still
-    reference on-disk children."""
     child = tmp_path / "child.yaml"
     child.write_text(CHILD_YAML)
     flow = load_flow_text(

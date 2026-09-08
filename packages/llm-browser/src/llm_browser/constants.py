@@ -10,5 +10,4 @@ LOGGER_NAME = "llm_browser"
 
 REDACTED = "***"
 
-# Actions whose result is kept in ``FlowSuccess.outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom"})

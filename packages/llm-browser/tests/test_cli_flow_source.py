@@ -1,5 +1,4 @@
-"""Tests for the CLI's flow sources: --flow PATH, --flow - (stdin),
---flow-yaml TEXT."""
+"""Tests for the CLI's flow sources: --flow PATH, --flow -, --flow-yaml."""
 
 import json
 from pathlib import Path

@@ -60,18 +60,8 @@ def execute_step(
     step: Step,
     data: FlowData,
 ) -> ActionResult | FlowError:
-    """Execute a single action step.
-
-    Returns a ``FlowError`` only when the action fails (``ok=False``) —
-    that result carries the error data and a capture (screenshot / DOM)
-    to help the caller diagnose. On success (or when ``when:`` skips the
-    step) it returns the ``ActionResult``, so the caller can advance to
-    the next step and keep whatever the action produced.
-
-    Sub-flow composition (``RunFlowStep``) is the runner's concern, not
-    this function's; ``run_loaded_flow`` dispatches those before
-    delegating here.
-    """
+    """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
+    ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it."""
     resolved = resolve_step(step, data)
     if should_skip(session, resolved, data):
         return SkippedResult(reason="when condition not satisfied")
