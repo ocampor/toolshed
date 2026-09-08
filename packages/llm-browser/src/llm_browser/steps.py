@@ -69,7 +69,7 @@ def execute_step(
     the next step and keep whatever the action produced.
 
     Sub-flow composition (``RunFlowStep``) is the runner's concern, not
-    this function's; ``run_flow`` / ``_run_flow`` dispatches those before
+    this function's; ``run_loaded_flow`` dispatches those before
     delegating here.
     """
     resolved = resolve_step(step, data)

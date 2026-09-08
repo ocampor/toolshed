@@ -12,7 +12,7 @@ def subflow_text(ref: str, ctx: Mapping[str, Any]) -> str | None:
     Two context keys drive this, both optional:
 
     - ``base_dir`` — resolve a relative ``ref`` against this directory
-      (what :func:`llm_browser.flows.load_flow` passes).
+      (what :func:`llm_browser.flow_files.load_flow` passes).
     - ``subflow_loader`` — a ``Callable[[str], str]`` returning the
       sub-flow's YAML text, used when ``ref`` isn't an existing file
       (what :func:`llm_browser.flows.load_flow_text` passes, so a caller

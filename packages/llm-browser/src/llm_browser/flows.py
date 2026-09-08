@@ -1,7 +1,6 @@
-"""Load YAML flows and execute their steps end-to-end."""
+"""Parse YAML flow text and execute the steps end-to-end."""
 
 from collections.abc import Callable, Iterable
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -29,35 +28,6 @@ SelectorMap = dict[str, dict[str, Any]]
 SubflowLoader = Callable[[str], str]
 
 
-def load_flow(
-    flow_path: str | Path,
-    *,
-    selector_map: SelectorMap | None = None,
-) -> Flow:
-    """Load a flow YAML, resolve every ``run-flow`` reference, and
-    expand selector-map ``ref:``s — all inside one
-    ``Flow.model_validate`` call.
-
-    The validation context carries:
-
-    - ``base_dir`` so ``RunFlowStep``'s after-validator can read each
-      referenced child YAML and attach it as ``step.subflow``.
-    - ``selector_map`` so ``BaseStep``'s before-validator can replace
-      ``ref: <key>`` with ``selector: <map[key]>`` before pydantic
-      checks the model shape. Strict: an unknown ref raises a
-      ``ValidationError`` at this point, not a "selector required"
-      cascade later.
-
-    Missing files, malformed YAML, sub-flow constraint violations,
-    unknown refs — every load-time error surfaces from this call.
-    """
-    path = Path(flow_path).resolve()
-    return Flow.model_validate(
-        yaml.safe_load(path.read_text()),
-        context={"base_dir": path.parent, "selector_map": selector_map},
-    )
-
-
 def load_flow_text(
     text: str,
     *,
@@ -65,13 +35,13 @@ def load_flow_text(
     selector_map: SelectorMap | None = None,
 ) -> Flow:
     """Load a flow from YAML text — the no-filesystem twin of
-    :func:`load_flow`.
+    :func:`llm_browser.flow_files.load_flow`.
 
     ``run-flow`` steps still resolve eagerly: a ``flow:`` reference that
     names an existing file is read from disk (so a text flow can reuse
     on-disk children), and anything else is handed to ``subflow_loader``,
     which returns the child's YAML text. Children stay leaf-only, exactly
-    as with :func:`load_flow`.
+    as with :func:`llm_browser.flow_files.load_flow`.
 
     Raises ``ValueError`` when a reference resolves to neither a file nor
     a loader.
@@ -84,26 +54,21 @@ def load_flow_text(
 
 def run_flow(
     session: BrowserSession,
-    flow: str | Path | Flow,
+    flow: Flow,
     data: dict[str, object],
     *,
-    selector_map: SelectorMap | None = None,
     from_step: str | None = None,
     redact: Iterable[str] = (),
 ) -> FlowResult:
-    """Run a flow against ``session`` to completion (or to the first
-    failing step).
+    """Run an already-loaded flow against ``session`` to completion (or
+    to the first failing step).
 
-    ``flow`` is either a path to a YAML file (loaded via
-    :func:`load_flow`) or an already-loaded :class:`Flow` — build one
-    with :func:`load_flow_text` to run without touching disk. When a
-    model is passed, ``selector_map`` was already applied at load time
-    and is ignored here, and ``RetryHint.flow_path`` comes back empty.
-
-    ``selector_map`` is the loaded selector-map dict (call
-    :func:`llm_browser.selector_map.load_selector_map` once at the CLI
-    layer and pass it through). When provided, refs in every step
-    (including sub-flow children) are resolved during ``load_flow``.
+    ``flow`` is a :class:`Flow` model — build one with
+    :func:`load_flow_text`, or with
+    :func:`llm_browser.flow_files.load_flow` to read it from disk. To
+    run a flow file in one call, use
+    :func:`llm_browser.flow_files.run_flow_file`, which also fills in
+    ``RetryHint.flow_path``; this runner leaves it empty.
 
     ``from_step`` re-enters the flow at the named step, skipping every
     step before it. Useful for retrying after a partial failure: read
@@ -119,12 +84,8 @@ def run_flow(
     flow runs. Files written by ``path:`` steps are not rewritten.
     """
     secrets = clean_secrets(redact)
-    flow_path = "" if isinstance(flow, Flow) else str(Path(flow).resolve())
-    loaded = (
-        flow if isinstance(flow, Flow) else load_flow(flow, selector_map=selector_map)
-    )
     with redacting_logs(secrets):
-        result = run_loaded_flow(session, loaded, data, from_step=from_step)
+        result = run_loaded_flow(session, flow, data, from_step=from_step)
     if isinstance(result, FlowSuccess):
         return FlowSuccess(
             step=result.step,
@@ -140,7 +101,6 @@ def run_flow(
         screenshot=result.screenshot,
         dom=result.dom,
         retry_hint=RetryHint(
-            flow_path=flow_path,
             data=redact_secrets(data, secrets),
             failed_step=result.step.split("/", 1)[0],
             error=redact_secrets(str(result.data), secrets),
@@ -191,7 +151,7 @@ def run_loaded_flow(
     recurse back into ``run_loaded_flow`` with their child Flow + step
     data; everything else goes through ``execute_step``. Leaf-only
     constraint on ``SubFlow`` bounds the recursion at depth one.
-    Selector-map refs were already expanded during ``load_flow``, so
+    Selector-map refs were already expanded at load time, so
     steps reach here with their concrete ``selector:`` set.
 
     Data-step results accumulate into ``FlowSuccess.outputs``, keyed by
@@ -231,7 +191,7 @@ def run_subflow(
     if not isinstance(resolved, RunFlowStep) or resolved.subflow is None:
         raise RuntimeError(
             f"RunFlowStep {resolved.name!r} has no `subflow` attached; "
-            "ensure the parent was loaded via `load_flow` / `load_flow_text` "
+            "ensure the parent was loaded via `load_flow_text` / `load_flow` "
             "rather than constructed directly."
         )
     if should_skip(session, resolved, flow_data):

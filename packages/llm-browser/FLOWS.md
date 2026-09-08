@@ -142,13 +142,35 @@ by step name (`"<run-flow step>/<step>"` for steps inside a sub-flow).
 `read` / `parse` rows come back as dicts, `dom` as its HTML string.
 
 ```python
-result = run_flow(session, "flow.yaml", {})
+result = run_flow(session, flow, {})
 result.outputs["headlines"]   # [{"title": "..."}, ...]
 ```
 
 `path:` is unchanged and orthogonal: a step with `path:` writes its file
 *and* returns its value. Screenshots stay on disk — `outputs` never
 holds image bytes.
+
+## Running flows
+
+`run_flow(session, flow, data, *, from_step=None, redact=())` takes a
+loaded `Flow` and never touches the filesystem. Build the model with
+`load_flow_text` (below), or read one from disk with
+`llm_browser.flow_files.load_flow(path, selector_map=...)`.
+
+`llm_browser.flow_files.run_flow_file(session, path, data, *,
+selector_map=None, from_step=None, redact=())` is the path-based
+convenience wrapper — load plus run, with `retry_hint.flow_path` set to
+the path it was given. It is what the CLI runs; from Python prefer
+`load_flow_text` + `run_flow`.
+
+The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
+-`), or as a string (`--flow-yaml TEXT`) — exactly one of them, for both
+`run` and `validate`:
+
+```bash
+llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
+cat flow.yaml | llm-browser validate --flow -
+```
 
 ## Running flows without touching disk
 
@@ -164,9 +186,9 @@ flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
 result = run_flow(session, flow, {"user": "bot"})
 ```
 
-`run_flow` takes either a path or a loaded `Flow`. When it gets a model
-there is no path to point back at, so `retry_hint.flow_path` is empty —
-re-run by passing the same model with `from_step=`.
+`run_flow` only ever takes a loaded `Flow`, so there is no path to point
+back at: `retry_hint.flow_path` is empty — re-run by passing the same
+model with `from_step=`. (`run_flow_file` fills the field in.)
 
 ## Redacting secrets
 

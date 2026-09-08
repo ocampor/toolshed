@@ -233,7 +233,7 @@ class RunFlowStep(BaseStep):
     loader understands. ``subflow`` carries the loaded child; it can be
     supplied directly (programmatic construction, tests), or resolved
     automatically by an after-validator from the validation context.
-    :func:`llm_browser.flows.load_flow` provides ``base_dir``;
+    :func:`llm_browser.flow_files.load_flow` provides ``base_dir``;
     :func:`llm_browser.flows.load_flow_text` provides
     ``subflow_loader``. See :func:`llm_browser.subflows.subflow_text`.
     """
@@ -434,12 +434,12 @@ class RetryHint(BaseModel):
     """Information for re-running a failed flow.
 
     Attached to a :class:`FlowError` by ``run_flow``. Tells the caller
-    which flow to re-run, what data to pass, and which step to resume
-    at via ``--from``.
+    what data to pass and which step to resume at via ``--from``.
 
-    ``flow_path`` is empty when the flow was run from an already-loaded
-    :class:`Flow` model — there is no path to point back at, and the
-    caller re-runs by passing the same model again.
+    ``flow_path`` is empty unless the flow came from a file:
+    ``run_flow`` takes a loaded :class:`Flow` and has no path to point
+    at, and ``run_flow_file`` fills the field in from the path it was
+    given.
     """
 
     flow_path: str = ""

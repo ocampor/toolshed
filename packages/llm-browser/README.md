@@ -136,11 +136,12 @@ llm-browser close
 
 ```bash
 llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
+llm-browser run --flow-yaml "$(cat login.yaml)" --data '{}'   # or --flow -
 llm-browser resume --data '{"confirm": true}'
 ```
 
-From Python, a flow can come from a path or from YAML text — nothing has
-to exist on disk:
+From Python, the runner takes a loaded flow — nothing has to exist on
+disk:
 
 ```python
 from llm_browser.flows import load_flow_text, run_flow
@@ -150,10 +151,12 @@ result = run_flow(session, flow, {"password": pw}, redact=[pw])
 result.outputs["headlines"]   # every read / parse / dom step's result
 ```
 
-`run_flow(session, flow, data, *, selector_map=None, from_step=None,
-redact=())` accepts a path or a loaded `Flow`; `redact` replaces the
-listed values with `***` in the retry hint, the error payload, the
-outputs, and the runner's log records.
+`run_flow(session, flow, data, *, from_step=None, redact=())` runs a
+`Flow` model and never reads a file; `redact` replaces the listed values
+with `***` in the retry hint, the error payload, the outputs, and the
+runner's log records. To run a flow file in one call — what the CLI does
+— use `llm_browser.flow_files.run_flow_file(session, path, data, *,
+selector_map=None, from_step=None, redact=())`.
 
 See [FLOWS.md](FLOWS.md) for the complete flow language reference.
 

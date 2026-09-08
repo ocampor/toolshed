@@ -89,7 +89,7 @@ def invoke_run(
 ) -> tuple[Any, AttachStubDriver]:
     driver = AttachStubDriver()
     monkeypatch.setattr("llm_browser.session.resolve_driver", lambda _d: driver)
-    monkeypatch.setattr("llm_browser.cli.run_flow", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr("llm_browser.cli.run_flow_file", lambda *a, **k: {"ok": True})
     result = CliRunner().invoke(main, [*args, "run", "--flow", "flow.yml"])
     return result, driver
 
