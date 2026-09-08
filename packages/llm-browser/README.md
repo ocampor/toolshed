@@ -139,6 +139,22 @@ llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
 llm-browser resume --data '{"confirm": true}'
 ```
 
+From Python, a flow can come from a path or from YAML text — nothing has
+to exist on disk:
+
+```python
+from llm_browser.flows import load_flow_text, run_flow
+
+flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
+result = run_flow(session, flow, {"password": pw}, redact=[pw])
+result.outputs["headlines"]   # every read / parse / dom step's result
+```
+
+`run_flow(session, flow, data, *, selector_map=None, from_step=None,
+redact=())` accepts a path or a loaded `Flow`; `redact` replaces the
+listed values with `***` in the retry hint, the error payload, the
+outputs, and the runner's log records.
+
 See [FLOWS.md](FLOWS.md) for the complete flow language reference.
 
 ## Anti-bot landscape

@@ -8,6 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from llm_browser.actions import SkippedResult
 from llm_browser.flows import load_flow, run_flow
 from llm_browser.models import EvalStep, FlowData, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
@@ -132,7 +133,7 @@ def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
         eval="something()",
     )
     result = execute_step(session, step, _flow_data(needed=False))
-    assert result is None
+    assert isinstance(result, SkippedResult)
     session.driver.evaluate.assert_not_called()
 
 

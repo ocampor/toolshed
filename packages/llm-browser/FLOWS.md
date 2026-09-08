@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute). `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute); when the flow was loaded with `load_flow_text(..., subflow_loader=...)`, a reference that isn't an existing file is passed to that loader instead. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -133,6 +133,55 @@ a conversation turn, then continuing to the next step).
 
 To capture multiple disjoint elements, target their nearest common
 wrapper with one `dom` step rather than running N separate captures.
+
+## Step outputs in memory
+
+Every `read`, `parse` and `dom` step also hands its result back to the
+caller: `run_flow` returns a `FlowSuccess` whose `outputs` dict is keyed
+by step name (`"<run-flow step>/<step>"` for steps inside a sub-flow).
+`read` / `parse` rows come back as dicts, `dom` as its HTML string.
+
+```python
+result = run_flow(session, "flow.yaml", {})
+result.outputs["headlines"]   # [{"title": "..."}, ...]
+```
+
+`path:` is unchanged and orthogonal: a step with `path:` writes its file
+*and* returns its value. Screenshots stay on disk — `outputs` never
+holds image bytes.
+
+## Running flows without touching disk
+
+`load_flow_text(text, subflow_loader=...)` parses a flow from a YAML
+string. Sub-flow references that aren't existing files are handed to
+`subflow_loader`, which returns the child's YAML text, so a whole flow
+tree can come from a database, an HTTP payload, or an LLM:
+
+```python
+from llm_browser.flows import load_flow_text, run_flow
+
+flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
+result = run_flow(session, flow, {"user": "bot"})
+```
+
+`run_flow` takes either a path or a loaded `Flow`. When it gets a model
+there is no path to point back at, so `retry_hint.flow_path` is empty —
+re-run by passing the same model with `from_step=`.
+
+## Redacting secrets
+
+Values injected through `data` can be scrubbed from everything the
+runner hands back:
+
+```python
+run_flow(session, flow, {"password": pw}, redact=[pw])
+```
+
+Each listed value is replaced by `***` in `retry_hint.data`,
+`retry_hint.error`, the failing step's error payload, `outputs`, and any
+`llm_browser` log record emitted while the flow runs. Files written by
+`path:` steps are *not* rewritten — don't point `path:` at a page that
+renders a secret.
 
 ## Selectors
 

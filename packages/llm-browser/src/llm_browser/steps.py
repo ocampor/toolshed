@@ -6,7 +6,7 @@ from yaml_engine.compile import compile_condition
 from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
-from llm_browser.actions import execute_action
+from llm_browser.actions import ActionResult, SkippedResult, execute_action
 from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
@@ -59,13 +59,14 @@ def execute_step(
     session: BrowserSession,
     step: Step,
     data: FlowData,
-) -> FlowError | None:
+) -> ActionResult | FlowError:
     """Execute a single action step.
 
     Returns a ``FlowError`` only when the action fails (``ok=False``) —
     that result carries the error data and a capture (screenshot / DOM)
-    to help the caller diagnose. Returns ``None`` on success so the
-    caller can advance to the next step.
+    to help the caller diagnose. On success (or when ``when:`` skips the
+    step) it returns the ``ActionResult``, so the caller can advance to
+    the next step and keep whatever the action produced.
 
     Sub-flow composition (``RunFlowStep``) is the runner's concern, not
     this function's; ``run_flow`` / ``_run_flow`` dispatches those before
@@ -73,7 +74,7 @@ def execute_step(
     """
     resolved = resolve_step(step, data)
     if should_skip(session, resolved, data):
-        return None
+        return SkippedResult(reason="when condition not satisfied")
     action_result = execute_action(session, resolved)
     if not action_result.ok:
         screenshot_path = (
@@ -96,4 +97,4 @@ def execute_step(
         session.driver.evaluate(session.get_page(), resolved.eval)
     if resolved.wait_after:
         time.sleep(resolved.wait_after / 1000)
-    return None
+    return action_result

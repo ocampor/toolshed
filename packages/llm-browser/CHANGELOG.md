@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `load_flow_text(text, *, subflow_loader=None, selector_map=None)` — parse a
+  flow from YAML text. `run-flow` references that aren't existing files are
+  resolved by calling `subflow_loader(ref)`, which returns the child's YAML
+  text, so a whole flow tree can run without touching disk. A non-file
+  reference with no loader raises `ValueError`.
+- `run_flow` accepts an already-loaded `Flow` model as well as a path.
+  `RetryHint.flow_path` is empty for a model-run flow.
+- `FlowSuccess.outputs` — what every `read` / `parse` / `dom` step produced,
+  keyed by qualified step name, whether or not the step sets `path:`.
+  Screenshots stay paths on disk.
+- `run_flow(..., redact=[...])` — replaces the listed secret values with `***`
+  in `RetryHint.data`, `RetryHint.error`, the `FlowError` payload, `outputs`,
+  and every `llm_browser` log record emitted during the run.
+  (`llm_browser.redact.redact_secrets` is the reusable helper.)
+
+### Changed
+
+- `run_flow`'s second parameter is now named `flow` (was `flow_path`) since it
+  takes a path or a model. Positional callers — the CLI included — are
+  unaffected; a caller passing `flow_path=` by keyword must rename it.
+- `execute_step` returns the step's `ActionResult` on success (a
+  `SkippedResult` when `when:` skips it) instead of `None`; failures still
+  return a `FlowError`.
+- A nested `run-flow` inside a sub-flow is now rejected without loading the
+  grandchild, so a cyclic reference reports the leaf-only rule instead of
+  recursing.
+
 ## Unreleased
 
 ### Added

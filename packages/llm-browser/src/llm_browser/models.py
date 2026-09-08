@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -228,12 +227,15 @@ class RunFlowStep(BaseStep):
     not itself contain ``run-flow`` steps. ``SubFlow``'s validators
     enforce this at parse time.
 
-    ``flow`` is the path written in YAML (relative to the parent's
-    directory, or absolute). ``subflow`` carries the loaded child;
-    it can be supplied directly (programmatic construction, tests),
-    or resolved automatically by an after-validator when the
-    enclosing model is validated with ``context={"base_dir": <Path>}``
-    — :func:`llm_browser.flows.load_flow` provides that context.
+    ``flow`` is the reference written in YAML: a path relative to the
+    parent's directory (or absolute), or — when the enclosing model is
+    validated with a ``subflow_loader`` in context — any name that
+    loader understands. ``subflow`` carries the loaded child; it can be
+    supplied directly (programmatic construction, tests), or resolved
+    automatically by an after-validator from the validation context.
+    :func:`llm_browser.flows.load_flow` provides ``base_dir``;
+    :func:`llm_browser.flows.load_flow_text` provides
+    ``subflow_loader``. See :func:`llm_browser.subflows.subflow_text`.
     """
 
     action: Literal["run-flow"]
@@ -248,18 +250,22 @@ class RunFlowStep(BaseStep):
         # names work for the retry hint. Otherwise load + validate the
         # referenced child YAML.
         if self.subflow is None:
-            ctx = info.context if info is not None else None
-            base_dir = ctx.get("base_dir") if ctx else None
-            if base_dir is None:
-                # No filesystem context — caller didn't ask us to resolve.
-                return self
             import yaml
 
-            path = Path(self.flow)
-            if not path.is_absolute():
-                path = Path(base_dir) / path
+            from llm_browser.subflows import subflow_text
+
+            ctx = info.context if info is not None else None
+            if not ctx or ctx.get("in_subflow"):
+                # No resolution context, or we're already one level deep:
+                # leave the reference unresolved so ``SubFlow``'s leaf-only
+                # validator reports the nesting instead of recursing into
+                # (possibly cyclic) grandchildren.
+                return self
+            text = subflow_text(self.flow, ctx)
+            if text is None:
+                return self
             self.subflow = SubFlow.model_validate(
-                yaml.safe_load(path.read_text()), context=ctx
+                yaml.safe_load(text), context={**ctx, "in_subflow": True}
             )
         for child in self.subflow.steps:
             child._parent = self.name
@@ -430,9 +436,13 @@ class RetryHint(BaseModel):
     Attached to a :class:`FlowError` by ``run_flow``. Tells the caller
     which flow to re-run, what data to pass, and which step to resume
     at via ``--from``.
+
+    ``flow_path`` is empty when the flow was run from an already-loaded
+    :class:`Flow` model — there is no path to point back at, and the
+    caller re-runs by passing the same model again.
     """
 
-    flow_path: str
+    flow_path: str = ""
     data: dict[str, object]
     failed_step: str
     error: str
@@ -443,9 +453,17 @@ class FlowSuccess(BaseModel):
 
     Carries the name of the last step run (or ``"end"`` for an empty
     flow) — mostly informational.
+
+    ``outputs`` holds what every ``read`` / ``parse`` / ``dom`` step
+    produced, keyed by the step's qualified name (``"<run-flow
+    step>/<step>"`` inside a sub-flow, the same naming
+    ``RetryHint.failed_step`` uses). Rows come back as plain dicts,
+    ``dom`` as its HTML string. Steps that also set ``path:`` still
+    write their file; screenshots stay on disk and never land here.
     """
 
     step: str
+    outputs: dict[str, object] = {}
 
 
 class FlowError(BaseModel):
