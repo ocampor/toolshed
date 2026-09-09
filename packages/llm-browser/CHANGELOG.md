@@ -1,33 +1,6 @@
 # Changelog
 
-## 0.6.0
-
-### Added
-
-- `load_flow_text(text, *, subflow_loader=None, selector_map=None)` — parse a
-  flow from YAML text; non-file `run-flow` refs go to `subflow_loader`.
-- `run_flow(session, flow, data, *, from_step=None, redact=())` — run a loaded
-  `Flow`; never reads a file.
-- `llm_browser.flow_files` — `load_flow` (moved here) and `run_flow_file`, the
-  path-based layer the CLI uses.
-- `llm-browser run` / `validate` accept `--flow-yaml TEXT` or `--flow -`
-  (stdin); exactly one of `--flow` / `--flow-yaml` is required.
-- `FlowSuccess.outputs` — every `read` / `parse` / `dom` result, keyed by
-  qualified step name.
-- `run_flow(..., redact=[...])` — replaces the listed values with `***` in the
-  retry hint, error payload, outputs, and `llm_browser` log records.
-
-### Changed
-
-- **Breaking:** `run_flow` takes a `Flow` (was `flow_path`) and drops
-  `selector_map=`; use `flow_files.run_flow_file` for the old behavior.
-- **Breaking:** `load_flow` moved from `llm_browser.flows` to
-  `llm_browser.flow_files`.
-- `execute_step` returns the step's `ActionResult` on success instead of `None`.
-- A nested `run-flow` inside a sub-flow is rejected without loading the
-  grandchild.
-
-## Unreleased
+## 0.7.0 — 2026-09-09
 
 ### Added
 
@@ -44,11 +17,10 @@
   --level`. Each level is one lxml `Cleaner`; they differ only in which
   attributes survive. `medium` drops custom attributes, `svg`/embeds and
   `meta`/`link`; `high` drops every `src` and `href` on top, iframes
-  included; `xhigh` keeps only `id`, `href`, `alt`, `title`, `role`, `type`,
-  `name`, `value`, `placeholder` and collapses empty or redundant
-  `div`/`span`/`section` wrappers. Note `xhigh` keeps `href` where `high`
-  strips it — link targets are worth their bytes once everything else is
-  gone. Default stays `low`.
+  included; `xhigh` keeps only `id`, `alt`, `title`, `role`, `type`, `name`,
+  `value`, `placeholder` and collapses empty or redundant
+  `div`/`span`/`section` wrappers. Each level keeps a subset of the one
+  below it. Default stays `low`.
 - `BrowserSession.probe(selector=None, max_chars=...)` → `PageProbe`
   (`password_visible`, `challenge`, `text`, `selector_text`): one in-page
   evaluate that reports whether a page is showing a credential prompt or a
@@ -82,6 +54,33 @@
   once in the spawned profile and every subsequent CLI call reuses the
   cookies and TLS state. For strict detectors, keep launching Chromium
   yourself against a human-warmed profile.
+
+## 0.6.0
+
+### Added
+
+- `load_flow_text(text, *, subflow_loader=None, selector_map=None)` — parse a
+  flow from YAML text; non-file `run-flow` refs go to `subflow_loader`.
+- `run_flow(session, flow, data, *, from_step=None, redact=())` — run a loaded
+  `Flow`; never reads a file.
+- `llm_browser.flow_files` — `load_flow` (moved here) and `run_flow_file`, the
+  path-based layer the CLI uses.
+- `llm-browser run` / `validate` accept `--flow-yaml TEXT` or `--flow -`
+  (stdin); exactly one of `--flow` / `--flow-yaml` is required.
+- `FlowSuccess.outputs` — every `read` / `parse` / `dom` result, keyed by
+  qualified step name.
+- `run_flow(..., redact=[...])` — replaces the listed values with `***` in the
+  retry hint, error payload, outputs, and `llm_browser` log records.
+
+### Changed
+
+- **Breaking:** `run_flow` takes a `Flow` (was `flow_path`) and drops
+  `selector_map=`; use `flow_files.run_flow_file` for the old behavior.
+- **Breaking:** `load_flow` moved from `llm_browser.flows` to
+  `llm_browser.flow_files`.
+- `execute_step` returns the step's `ActionResult` on success instead of `None`.
+- A nested `run-flow` inside a sub-flow is rejected without loading the
+  grandchild.
 
 ## 0.2.0
 

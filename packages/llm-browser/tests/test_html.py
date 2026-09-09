@@ -163,7 +163,7 @@ def test_xhigh_keeps_only_allowlisted_attrs(
 ) -> None:
     tree = fragment_fromstring(sanitized[SanitizeLevel.XHIGH])
     present = {key for node in tree.iter() for key in node.attrib}
-    assert present == {"id", "href", "alt", "title", "type", "name"}
+    assert present == {"id", "alt", "title", "type", "name"}
 
 
 def test_xhigh_iframe_keeps_only_title(sanitized: dict[SanitizeLevel, str]) -> None:
@@ -179,7 +179,7 @@ def test_xhigh_drops_empty_wrappers(sanitized: dict[SanitizeLevel, str]) -> None
 def test_xhigh_unwraps_single_child_wrappers(
     sanitized: dict[SanitizeLevel, str],
 ) -> None:
-    assert '<nav><a href="/news">News</a></nav>' in sanitized[SanitizeLevel.XHIGH]
+    assert "<nav><a>News</a></nav>" in sanitized[SanitizeLevel.XHIGH]
 
 
 @pytest.mark.parametrize("level", list(SanitizeLevel))

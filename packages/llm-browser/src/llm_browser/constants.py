@@ -16,7 +16,7 @@ OUTPUT_ACTIONS = frozenset({"read", "parse", "dom"})
 EXTRA_SAFE_ATTRS = frozenset({"href", "src", "title"})
 
 XHIGH_ATTRS = frozenset(
-    {"id", "href", "alt", "title", "role", "type", "name", "value", "placeholder"}
+    {"id", "alt", "title", "role", "type", "name", "value", "placeholder"}
 )
 
 URL_ATTRS = ("src", "srcset", "href")
