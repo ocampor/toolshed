@@ -27,6 +27,10 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
     * `do_wait_for_load`  — Runtime.evaluate `document.readyState` polled
                             every 250ms. nodriver 0.48 has no CDP lifecycle
                             hook (`tab.wait()` is a plain sleep).
+    * `wait_for_state`    — Runtime.callFunctionOn `offsetParent` /
+                            `getClientRects` polled for the visible/hidden
+                            states. Required: nodriver exposes no visibility
+                            API, and CDP has no visibility predicate either.
     * `evaluate` / `dom`  — arbitrary user-supplied JS. Inherently JS.
 
 Opt-in synthetic-event escape hatches (emit `isTrusted=false` — detectable):
@@ -41,8 +45,9 @@ DOM event `isTrusted` (common) will only flag the opt-in escape hatches.
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Coroutine, TypeVar
+from typing import Any, Awaitable, Callable, ClassVar, Coroutine, TypeVar
 
+from llm_browser.constants import NODRIVER_POLL_INTERVAL_S
 from llm_browser.drivers.base import Driver, DriverHandle, load_optional_module
 
 # Virtual key codes for trusted keyboard events via Input.dispatchKeyEvent.
@@ -73,6 +78,10 @@ READY_STATES: dict[str, set[str]] = {
     "domcontentloaded": {"interactive", "complete"},
     "networkidle": {"complete"},
 }
+
+# The standard "is it rendered" read: `offsetParent` is null for
+# display:none (and for position:fixed, which getClientRects still covers).
+VISIBILITY_SCRIPT = "(el) => el.offsetParent !== null || el.getClientRects().length > 0"
 
 
 @dataclass
@@ -379,10 +388,75 @@ class NodriverDriver(Driver):
             await asyncio.sleep(0.25)
 
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
-        loc: NodriverLocator = locator
+        self.run(self.do_wait_for_state(locator, state, timeout_ms))
+
+    async def do_wait_for_state(
+        self, loc: NodriverLocator, state: str, timeout_ms: int
+    ) -> None:
+        """Unknown states fall back to `attached`, the pre-state behaviour."""
+        waiters: dict[str, Callable[[NodriverLocator, int], Awaitable[None]]] = {
+            "attached": self.wait_attached,
+            "detached": self.wait_detached,
+            "visible": self.wait_visible,
+            "hidden": self.wait_hidden,
+        }
+        await waiters.get(state, self.wait_attached)(loc, timeout_ms)
+
+    async def wait_attached(self, loc: NodriverLocator, timeout_ms: int) -> None:
         if loc.selector is None:
             return
-        self.run(loc.tab.wait_for(selector=loc.selector, timeout=timeout_ms / 1000.0))
+        await loc.tab.wait_for(selector=loc.selector, timeout=timeout_ms / 1000.0)
+
+    async def wait_detached(self, loc: NodriverLocator, timeout_ms: int) -> None:
+        if loc.selector is None:
+            return
+        await self.poll_until(
+            lambda: self.element_absent(loc), timeout_ms, f"{loc.selector!r} detached"
+        )
+
+    async def wait_visible(self, loc: NodriverLocator, timeout_ms: int) -> None:
+        await self.poll_until(
+            lambda: self.element_visible(loc), timeout_ms, f"{loc.selector!r} visible"
+        )
+
+    async def wait_hidden(self, loc: NodriverLocator, timeout_ms: int) -> None:
+        await self.poll_until(
+            lambda: self.element_hidden(loc), timeout_ms, f"{loc.selector!r} hidden"
+        )
+
+    async def poll_until(
+        self,
+        reached: Callable[[], Awaitable[bool]],
+        timeout_ms: int,
+        what: str,
+    ) -> None:
+        """Raises the builtin TimeoutError so callers match Playwright's contract."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_ms / 1000.0
+        while True:
+            if await reached():
+                return
+            if loop.time() >= deadline:
+                raise TimeoutError(f"wait_for_state: timed out waiting for {what}")
+            await asyncio.sleep(NODRIVER_POLL_INTERVAL_S)
+
+    async def current_element(self, loc: NodriverLocator) -> Any:
+        """Re-query every poll: `resolve_element` caches and raises when absent."""
+        if loc.selector is None:
+            return loc.element
+        return await loc.tab.query_selector(loc.selector)
+
+    async def element_absent(self, loc: NodriverLocator) -> bool:
+        return (await self.current_element(loc)) is None
+
+    async def element_visible(self, loc: NodriverLocator) -> bool:
+        el = await self.current_element(loc)
+        if el is None:
+            return False
+        return bool(await el.apply(VISIBILITY_SCRIPT))
+
+    async def element_hidden(self, loc: NodriverLocator) -> bool:
+        return not await self.element_visible(loc)
 
     # --- Read / capture ---
 

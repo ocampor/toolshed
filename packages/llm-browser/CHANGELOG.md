@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 — 2026-09-09
+
+### Added
+
+- `BrowserSession.wait_for(selector, state="attached", timeout=...)` → `bool`
+  — one wait that covers all four `WaitState` values (`attached`, `detached`,
+  `visible`, `hidden`) and returns `False` on timeout instead of raising, so a
+  caller can branch on "did it happen" without wrapping every call in a
+  `try`. `element_exists()` is now a thin alias for the `attached` case, which
+  puts the never-raises timeout handling (patchright's `TimeoutError` does not
+  inherit from the builtin, so both have to be caught) in exactly one place.
+- `NodriverDriver.wait_for_state` honors `state` for real. It previously
+  ignored the argument and always did an attached-only `tab.wait_for`, so a
+  flow asking for `visible` got a false positive on a `display:none` element
+  and `detached` returned immediately. `attached` keeps the native CDP wait;
+  `detached` polls `tab.query_selector` until it returns `None`; `visible` and
+  `hidden` poll `offsetParent !== null || getClientRects().length > 0` through
+  the element — nodriver exposes no visibility API and CDP has no visibility
+  predicate, so a poll is the honest option. All four raise the builtin
+  `TimeoutError`, which is what `wait_for` maps to `False`.
+
 ## 0.7.0 — 2026-09-09
 
 ### Added

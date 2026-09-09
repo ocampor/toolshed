@@ -25,6 +25,8 @@ from llm_browser.selectors import Selector
 
 CaptureMode = Literal["screenshot", "dom", "both"]
 
+WaitState = Literal["attached", "detached", "visible", "hidden"]
+
 
 class BaseStep(BaseModel):
     """Common fields shared by all step types.

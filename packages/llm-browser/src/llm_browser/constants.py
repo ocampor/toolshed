@@ -9,6 +9,12 @@ DRIVER_ENV_VAR = "LLM_BROWSER_DRIVER"
 
 LOGGER_NAME = "llm_browser"
 
+DEFAULT_WAIT_TIMEOUT_MS = 3_000
+
+# nodriver has no CDP wait for visibility/detachment, so those states are
+# polled; 100ms keeps Runtime traffic low without feeling laggy.
+NODRIVER_POLL_INTERVAL_S = 0.1
+
 REDACTED = "***"
 
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom"})

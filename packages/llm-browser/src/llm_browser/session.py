@@ -12,6 +12,7 @@ from llm_browser.chrome import (
 )
 from llm_browser.constants import (
     DEFAULT_STATE_DIR,
+    DEFAULT_WAIT_TIMEOUT_MS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
 )
@@ -22,6 +23,7 @@ from llm_browser.models import (
     PageProbe,
     SessionInfo,
     SessionResult,
+    WaitState,
 )
 from llm_browser.parse import ExtractField
 from llm_browser.paths import prepare_output_path
@@ -373,26 +375,32 @@ class BrowserSession:
         self.driver.wait_for_state(self.driver.first(locator), state, timeout)
         return locator
 
-    def element_exists(self, selector: Selector, timeout: int = 3_000) -> bool:
-        """Check if element is present. Never raises.
-
-        Catches both the Python builtin ``TimeoutError`` and any driver
-        error whose class name ends with "TimeoutError" — patchright
-        raises ``patchright._impl._errors.TimeoutError`` which does NOT
-        inherit from the builtin, so a bare ``except TimeoutError``
-        misses it and the contract ("never raises") was violated for
-        a missing element.
-        """
+    def wait_for(
+        self,
+        selector: Selector,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+    ) -> bool:
+        """Wait for ``selector`` to reach ``state``; False on timeout, never raises."""
         try:
             locator = resolve_selector(self.driver, self.get_page(), selector)
-            self.driver.wait_for_state(self.driver.first(locator), "attached", timeout)
+            self.driver.wait_for_state(self.driver.first(locator), state, timeout)
             return True
         except TimeoutError:
             return False
         except Exception as exc:
+            # patchright raises ``patchright._impl._errors.TimeoutError``, which
+            # does NOT inherit from the builtin, so a bare ``except TimeoutError``
+            # misses it and the "never raises" contract breaks for a missing
+            # element.
             if type(exc).__name__ == "TimeoutError":
                 return False
             raise
+
+    def element_exists(
+        self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
+    ) -> bool:
+        return self.wait_for(selector, "attached", timeout)
 
     def wait_until_stable(
         self,

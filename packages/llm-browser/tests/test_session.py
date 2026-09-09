@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser.chrome import is_process_alive
+from llm_browser.constants import DEFAULT_WAIT_TIMEOUT_MS
 from llm_browser.models import SessionInfo
 from llm_browser.session import BrowserSession
 
@@ -127,3 +128,63 @@ def test_executable_path_threaded_to_driver(tmp_path: Path) -> None:
     )
     session.launch(url=None, headed=False)
     assert captured["executable_path"] == "/usr/bin/chromium"
+
+
+# --- wait_for / element_exists ---
+
+
+def _session_with_mock_driver(tmp_path: Path) -> BrowserSession:
+    session = BrowserSession(state_dir=tmp_path)
+    session.driver = MagicMock()
+    session._page = MagicMock()
+    return session
+
+
+@pytest.mark.parametrize("state", ["attached", "detached", "visible", "hidden"])
+def test_wait_for_passes_state_to_driver(tmp_path: Path, state: str) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    assert session.wait_for("#out", state, timeout=123) is True
+    _, args, _ = session.driver.wait_for_state.mock_calls[0]
+    assert args[1:] == (state, 123)
+
+
+def test_wait_for_defaults_to_attached_and_default_timeout(tmp_path: Path) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    session.wait_for("#out")
+    _, args, _ = session.driver.wait_for_state.mock_calls[0]
+    assert args[1:] == ("attached", DEFAULT_WAIT_TIMEOUT_MS)
+
+
+class _DriverTimeoutError(Exception):
+    """Stands in for patchright's TimeoutError, which is not the builtin."""
+
+
+_DriverTimeoutError.__name__ = "TimeoutError"
+
+
+@pytest.mark.parametrize("exc", [TimeoutError("nope"), _DriverTimeoutError("nope")])
+def test_wait_for_returns_false_on_timeout(tmp_path: Path, exc: Exception) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    session.driver.wait_for_state.side_effect = exc
+    assert session.wait_for("#out", "visible") is False
+
+
+def test_wait_for_propagates_non_timeout_errors(tmp_path: Path) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    session.driver.wait_for_state.side_effect = RuntimeError("boom")
+    with pytest.raises(RuntimeError, match="boom"):
+        session.wait_for("#out")
+
+
+@pytest.mark.parametrize(
+    "side_effect,expected",
+    [(None, True), (TimeoutError("nope"), False), (_DriverTimeoutError("nope"), False)],
+)
+def test_element_exists_routes_through_wait_for(
+    tmp_path: Path, side_effect: Exception | None, expected: bool
+) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    session.driver.wait_for_state.side_effect = side_effect
+    assert session.element_exists("#out") is expected
+    _, args, _ = session.driver.wait_for_state.mock_calls[0]
+    assert args[1:] == ("attached", DEFAULT_WAIT_TIMEOUT_MS)
