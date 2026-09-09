@@ -10,9 +10,10 @@ import click
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
-from llm_browser.flows import load_flow, run_flow
+from llm_browser.flow_files import load_flow, run_flow_file
+from llm_browser.flows import SelectorMap, load_flow_text, run_flow
 from llm_browser.selector_map import load_selector_map
-from llm_browser.models import RunFlowStep
+from llm_browser.models import FlowResult, RunFlowStep
 from llm_browser.session import BrowserSession
 
 
@@ -239,7 +240,18 @@ def goto(ctx: click.Context, url: str) -> None:
 
 
 @main.command()
-@click.option("--flow", "flow_path", required=True, help="Path to YAML flow file.")
+@click.option(
+    "--flow",
+    "flow_path",
+    default=None,
+    help="Path to YAML flow file, or - to read the flow YAML from stdin.",
+)
+@click.option(
+    "--flow-yaml",
+    "flow_yaml",
+    default=None,
+    help="Flow YAML as a string, instead of --flow.",
+)
 @click.option("--data", "data_json", default="{}", help="JSON data for template vars.")
 @click.option(
     "--selector-map",
@@ -266,13 +278,16 @@ def goto(ctx: click.Context, url: str) -> None:
 @click.pass_context
 def run(
     ctx: click.Context,
-    flow_path: str,
+    flow_path: str | None,
+    flow_yaml: str | None,
     data_json: str,
     selector_map_path: str | None,
     from_step: str | None,
     cdp_url: str | None,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
+
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     With --cdp-url the flow runs one-shot on an already-running Chromium:
 
@@ -288,10 +303,16 @@ def run(
         else None
     )
     data = json.loads(data_json)
+    yaml_text = flow_yaml_text(flow_path, flow_yaml)
 
     def execute(target: BrowserSession) -> object:
-        return run_flow(
-            target, flow_path, data, selector_map=selector_map, from_step=from_step
+        return run_cli_flow(
+            target,
+            str(flow_path),
+            yaml_text,
+            data,
+            selector_map=selector_map,
+            from_step=from_step,
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
@@ -299,6 +320,34 @@ def run(
         _output(run_attached(session, endpoint, execute))
     else:
         _output(execute(session))
+
+
+def flow_yaml_text(flow_path: str | None, flow_yaml: str | None) -> str | None:
+    """``None`` means ``--flow`` names a file to load."""
+    if (flow_path is None) == (flow_yaml is None):
+        raise click.UsageError("pass exactly one of --flow or --flow-yaml")
+    if flow_yaml is not None:
+        return flow_yaml
+    if flow_path == "-":
+        return click.get_text_stream("stdin").read()
+    return None
+
+
+def run_cli_flow(
+    session: BrowserSession,
+    flow_path: str,
+    yaml_text: str | None,
+    data: dict[str, object],
+    *,
+    selector_map: SelectorMap | None,
+    from_step: str | None,
+) -> FlowResult:
+    if yaml_text is None:
+        return run_flow_file(
+            session, flow_path, data, selector_map=selector_map, from_step=from_step
+        )
+    flow = load_flow_text(yaml_text, selector_map=selector_map)
+    return run_flow(session, flow, data, from_step=from_step)
 
 
 def run_attached(
@@ -333,15 +382,32 @@ def run_attached(
 
 
 @main.command()
-@click.option("--flow", "flow_path", required=True, help="Path to YAML flow file.")
+@click.option(
+    "--flow",
+    "flow_path",
+    default=None,
+    help="Path to YAML flow file, or - to read the flow YAML from stdin.",
+)
+@click.option(
+    "--flow-yaml",
+    "flow_yaml",
+    default=None,
+    help="Flow YAML as a string, instead of --flow.",
+)
 @click.option(
     "--selector-map",
     "selector_map_path",
     default=None,
     help="Path to selector_map.yaml for symbolic refs.",
 )
-def validate(flow_path: str, selector_map_path: str | None) -> None:
+def validate(
+    flow_path: str | None,
+    flow_yaml: str | None,
+    selector_map_path: str | None,
+) -> None:
     """Validate a YAML flow without launching a browser.
+
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     Loads the flow + every referenced sub-flow, expands selector-map
     refs, and runs all model validators. Exits 0 with a JSON summary
@@ -356,13 +422,19 @@ def validate(flow_path: str, selector_map_path: str | None) -> None:
     import yaml as _yaml
     from pydantic import ValidationError
 
+    yaml_text = flow_yaml_text(flow_path, flow_yaml)
+    source = str(flow_path) if yaml_text is None else "<inline>"
     try:
         selector_map = (
             load_selector_map(Path(selector_map_path))
             if selector_map_path and Path(selector_map_path).exists()
             else None
         )
-        flow = load_flow(flow_path, selector_map=selector_map)
+        flow = (
+            load_flow(str(flow_path), selector_map=selector_map)
+            if yaml_text is None
+            else load_flow_text(yaml_text, selector_map=selector_map)
+        )
     except (
         ValidationError,
         FileNotFoundError,
@@ -373,7 +445,7 @@ def validate(flow_path: str, selector_map_path: str | None) -> None:
             json.dumps(
                 {
                     "ok": False,
-                    "flow": flow_path,
+                    "flow": source,
                     "error": type(exc).__name__,
                     "message": str(exc).split("\n", 1)[0][:500],
                 }
@@ -385,7 +457,7 @@ def validate(flow_path: str, selector_map_path: str | None) -> None:
     _output(
         {
             "ok": True,
-            "flow": flow_path,
+            "flow": source,
             "step_count": len(flow.steps),
             "subflow_count": subflow_count,
         }

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flows import run_flow
+from llm_browser.flow_files import run_flow_file
 from llm_browser.html import sanitize_page_html
 from llm_browser.session import BrowserSession
 
@@ -88,7 +88,7 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
 
 def test_failure_captures_screenshot(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "screenshot")
-    result = run_flow(session, failing_flow, {})
+    result = run_flow_file(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is not None
     assert result.dom is None
@@ -98,7 +98,7 @@ def test_failure_captures_screenshot(tmp_path: Path, failing_flow: Path) -> None
 
 def test_failure_captures_dom(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "dom")
-    result = run_flow(session, failing_flow, {})
+    result = run_flow_file(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is None
     assert result.dom is not None
@@ -108,7 +108,7 @@ def test_failure_captures_dom(tmp_path: Path, failing_flow: Path) -> None:
 
 def test_failure_captures_both(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "both")
-    result = run_flow(session, failing_flow, {})
+    result = run_flow_file(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
     assert result.screenshot is not None
     assert result.dom is not None

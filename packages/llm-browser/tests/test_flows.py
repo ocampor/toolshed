@@ -1,4 +1,4 @@
-"""Tests for flow loading, step execution, and the `run_flow` entry point."""
+"""Tests for flow loading, step execution, and the `run_flow_file` entry."""
 
 from pathlib import Path
 from typing import Any
@@ -8,7 +8,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from llm_browser.flows import load_flow, run_flow
+from llm_browser.actions import SkippedResult
+from llm_browser.flow_files import load_flow, run_flow_file
 from llm_browser.models import EvalStep, FlowData, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, should_skip
@@ -132,7 +133,7 @@ def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
         eval="something()",
     )
     result = execute_step(session, step, _flow_data(needed=False))
-    assert result is None
+    assert isinstance(result, SkippedResult)
     session.driver.evaluate.assert_not_called()
 
 
@@ -148,14 +149,14 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
     )
 
 
-# --- run_flow ---
+# --- run_flow_file ---
 
 
 def test_run_completes_to_end(tmp_path: Path) -> None:
     session = _mock_session(tmp_path)
     steps = [{"name": "s1", "action": "click", "selector": "#btn"}]
     path = _write_flow(tmp_path, steps)
-    result = run_flow(session, path, {})
+    result = run_flow_file(session, path, {})
     assert isinstance(result, FlowSuccess)
 
 
@@ -168,7 +169,7 @@ def test_run_from_step_skips_prior_steps(tmp_path: Path) -> None:
         {"name": "step3", "action": "click", "selector": "#c"},
     ]
     path = _write_flow(tmp_path, steps)
-    result = run_flow(session, path, {}, from_step="step3")
+    result = run_flow_file(session, path, {}, from_step="step3")
     assert isinstance(result, FlowSuccess)
     # Only step3's selector hit the driver — step1 and step2 were skipped.
     assert session.find.call_count == 1
@@ -181,7 +182,7 @@ def test_run_from_step_unknown_raises(tmp_path: Path) -> None:
     steps = [{"name": "only", "action": "click", "selector": "#a"}]
     path = _write_flow(tmp_path, steps)
     with pytest.raises(ValueError, match="step 'missing' not found in flow"):
-        run_flow(session, path, {}, from_step="missing")
+        run_flow_file(session, path, {}, from_step="missing")
 
 
 def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
@@ -198,7 +199,7 @@ def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
     locator.count.return_value = 1
     session.find.side_effect = [locator, TimeoutError("element missing")]
 
-    result = run_flow(session, path, {"k": "v"})
+    result = run_flow_file(session, path, {"k": "v"})
     assert isinstance(result, FlowError)
     assert result.step == "boom"
     assert result.retry_hint is not None
@@ -225,7 +226,7 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
         "parent.yaml",
         [{"name": "do-thing", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
     assert isinstance(result, FlowError)
     assert result.retry_hint is not None
     # Hint uses the parent's run-flow step name, not the qualified path.
@@ -241,7 +242,7 @@ def test_run_validates_params(tmp_path: Path) -> None:
     path = _write_flow(tmp_path, steps, params=["rfc"])
 
     with pytest.raises(ValueError, match="Missing required param: rfc"):
-        run_flow(session, path, {})
+        run_flow_file(session, path, {})
 
 
 def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
@@ -254,7 +255,7 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     ]
     steps = [{"name": "s1", "eval": "fill('{{ rfc }}', '{{ region }}')"}]
     path = _write_flow(tmp_path, steps, params=params)
-    result = run_flow(session, path, {"rfc": "XEXX"})
+    result = run_flow_file(session, path, {"rfc": "XEXX"})
 
     assert isinstance(result, FlowSuccess)
     session.driver.evaluate.assert_called_once_with(
@@ -295,7 +296,7 @@ def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
 
     assert isinstance(result, FlowSuccess)
     # Both child clicks fired against the session.
@@ -323,7 +324,7 @@ def test_run_flow_param_passthrough(tmp_path: Path) -> None:
         ],
         params=["target"],
     )
-    run_flow(session, parent, {"target": "submit"})
+    run_flow_file(session, parent, {"target": "submit"})
     # session.find was called with a parsed selector for #submit
     args, _ = session.find.call_args
     assert "submit" in str(args[0])
@@ -353,7 +354,7 @@ def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
     )
     # The parent's own click must succeed even when the sub-flow swallows.
     session.driver.click.side_effect = [TimeoutError("button missing"), None]
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
     assert isinstance(result, FlowSuccess)
 
 
@@ -370,7 +371,7 @@ def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
     # Child failure surfaces to the parent runner; not completed.
     assert isinstance(result, FlowError)
 
@@ -393,7 +394,7 @@ def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
     with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
-        run_flow(session, parent, {})
+        run_flow_file(session, parent, {})
 
 
 def test_run_flow_resolves_relative_to_parent_dir(
@@ -420,7 +421,7 @@ def test_run_flow_resolves_relative_to_parent_dir(
     monkeypatch.chdir(other)
 
     session = _mock_session(tmp_path)
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 1
 
@@ -550,6 +551,6 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
         ],
         params=[{"enabled": {"required": False, "default": False}}],
     )
-    result = run_flow(session, parent, {})
+    result = run_flow_file(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 0

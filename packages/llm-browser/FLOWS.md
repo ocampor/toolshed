@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute). `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute), or via `load_flow_text`'s `subflow_loader` when it isn't an existing file. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -133,6 +133,59 @@ a conversation turn, then continuing to the next step).
 
 To capture multiple disjoint elements, target their nearest common
 wrapper with one `dom` step rather than running N separate captures.
+
+## Step outputs
+
+`FlowSuccess.outputs` holds every `read` / `parse` / `dom` result, keyed
+by step name (`"<run-flow step>/<step>"` inside a sub-flow); `read` /
+`parse` as dicts, `dom` as its HTML string. Screenshots stay on disk.
+
+```python
+result = run_flow(session, flow, {})
+result.outputs["headlines"]   # [{"title": "..."}, ...]
+```
+
+A step with `path:` still writes its file.
+
+## Running flows
+
+`run_flow(session, flow, data, *, from_step=None, redact=())` takes a
+loaded `Flow` and never touches the filesystem;
+`llm_browser.flow_files.run_flow_file(session, path, data, *,
+selector_map=None, from_step=None, redact=())` loads a file and runs it,
+setting `retry_hint.flow_path`. `run_flow` leaves that field empty —
+re-run by passing the same model with `from_step=`.
+
+`load_flow_text(text, subflow_loader=...)` parses a flow from a YAML
+string; `run-flow` references that aren't existing files are handed to
+`subflow_loader`, which returns the child's YAML text.
+
+```python
+from llm_browser.flows import load_flow_text, run_flow
+
+flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
+result = run_flow(session, flow, {"user": "bot"})
+```
+
+The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
+-`), or as a string (`--flow-yaml TEXT`) — exactly one of them, for both
+`run` and `validate`:
+
+```bash
+llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
+cat flow.yaml | llm-browser validate --flow -
+```
+
+## Redacting secrets
+
+`redact` replaces each listed value with `***` in `retry_hint.data`,
+`retry_hint.error`, the error payload, `outputs`, and every
+`llm_browser` log record emitted during the run. Files written by
+`path:` steps are not rewritten.
+
+```python
+run_flow(session, flow, {"password": pw}, redact=[pw])
+```
 
 ## Selectors
 

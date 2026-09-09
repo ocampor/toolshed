@@ -136,7 +136,21 @@ llm-browser close
 
 ```bash
 llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
+llm-browser run --flow-yaml "$(cat login.yaml)" --data '{}'   # or --flow -
 llm-browser resume --data '{"confirm": true}'
+```
+
+`run_flow` takes a loaded `Flow`, so nothing has to exist on disk;
+`redact` scrubs the listed values from the retry hint, error payload,
+outputs, and log records. Use `llm_browser.flow_files.run_flow_file` to
+run a flow file in one call.
+
+```python
+from llm_browser.flows import load_flow_text, run_flow
+
+flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
+result = run_flow(session, flow, {"password": pw}, redact=[pw])
+result.outputs["headlines"]   # every read / parse / dom step's result
 ```
 
 See [FLOWS.md](FLOWS.md) for the complete flow language reference.

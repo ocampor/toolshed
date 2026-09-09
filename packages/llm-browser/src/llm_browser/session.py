@@ -10,7 +10,7 @@ from llm_browser.chrome import (
     kill_detached_chromium,
     spawn_detached_chromium,
 )
-from llm_browser.constants import DEFAULT_STATE_DIR
+from llm_browser.constants import DEFAULT_STATE_DIR, LOGGER_NAME
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import sanitize_page_html
 from llm_browser.models import (
@@ -22,7 +22,7 @@ from llm_browser.parse import ExtractField
 from llm_browser.paths import prepare_output_path
 from llm_browser.selectors import Selector, expect_single, resolve_selector
 
-logger = logging.getLogger("llm_browser")
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class BrowserSession:

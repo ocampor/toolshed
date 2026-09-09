@@ -89,7 +89,7 @@ def test_warm_site_flow_validates() -> None:
     """The shipped warm-up flow must stay loadable as flows evolve."""
     from pathlib import Path
 
-    from llm_browser.flows import load_flow
+    from llm_browser.flow_files import load_flow
 
     flow_path = Path(__file__).resolve().parents[1] / "flows" / "warm-site.yml"
     flow = load_flow(flow_path)
