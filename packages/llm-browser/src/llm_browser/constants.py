@@ -15,6 +15,8 @@ DEFAULT_WAIT_TIMEOUT_MS = 3_000
 # polled; 100ms keeps Runtime traffic low without feeling laggy.
 NODRIVER_POLL_INTERVAL_S = 0.1
 
+DEFAULT_URL_SCHEMES = ("http", "https")
+
 REDACTED = "***"
 
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom"})

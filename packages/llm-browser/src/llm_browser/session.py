@@ -1,8 +1,10 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
 import logging
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
@@ -12,6 +14,7 @@ from llm_browser.chrome import (
 )
 from llm_browser.constants import (
     DEFAULT_STATE_DIR,
+    DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
@@ -36,6 +39,15 @@ from llm_browser.selectors import (
 )
 
 logger = logging.getLogger(LOGGER_NAME)
+
+
+def checked_url(
+    url: str, allowed_schemes: Collection[str] = DEFAULT_URL_SCHEMES
+) -> str:
+    """A schemeless url is rejected too: a relative path is not a navigable target."""
+    if urlsplit(url).scheme not in allowed_schemes:
+        raise ValueError(f"url must be {' or '.join(allowed_schemes)}: {url}")
+    return url
 
 
 class BrowserSession:
@@ -355,8 +367,15 @@ class BrowserSession:
 
     # --- Interaction ---
 
-    def goto(self, url: str, wait_until: str = "domcontentloaded") -> None:
-        self.driver.goto(self.get_page(), url, wait_until)
+    def goto(
+        self,
+        url: str,
+        wait_until: str = "domcontentloaded",
+        *,
+        allowed_schemes: Collection[str] = DEFAULT_URL_SCHEMES,
+    ) -> None:
+        target = checked_url(url, allowed_schemes)
+        self.driver.goto(self.get_page(), target, wait_until)
 
     def find(
         self, selector: Selector, state: str = "visible", timeout: int = 10_000

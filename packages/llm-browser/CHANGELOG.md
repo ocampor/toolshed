@@ -21,6 +21,19 @@
   predicate, so a poll is the honest option. All four raise the builtin
   `TimeoutError`, which is what `wait_for` maps to `False`.
 
+### Changed
+
+- `BrowserSession.goto` now validates the URL scheme before it touches the
+  driver and raises `ValueError` for anything outside `DEFAULT_URL_SCHEMES`
+  (`http`, `https`). A flow step or an LLM-supplied URL could previously reach
+  `file:///etc/passwd`, `chrome://settings` or `javascript:` and have the
+  browser act on it; a schemeless relative path is rejected for the same
+  reason. Every caller shares one validation path — `session.checked_url()` —
+  so the flow `goto` action and `llm-browser goto` inherit the guard, and a
+  rejected step surfaces as an ordinary step failure with the offending URL in
+  the message. Pass `allowed_schemes=` to opt a specific call back in, e.g.
+  `allowed_schemes=("file",)` for local fixture pages.
+
 ## 0.7.0 — 2026-09-09
 
 ### Added
