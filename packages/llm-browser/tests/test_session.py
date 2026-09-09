@@ -7,6 +7,7 @@ import pytest
 
 from llm_browser.chrome import is_process_alive
 from llm_browser.constants import DEFAULT_WAIT_TIMEOUT_MS
+from llm_browser.drivers.base import Driver
 from llm_browser.models import SessionInfo
 from llm_browser.session import BrowserSession
 
@@ -188,3 +189,23 @@ def test_element_exists_routes_through_wait_for(
     assert session.element_exists("#out") is expected
     _, args, _ = session.driver.wait_for_state.mock_calls[0]
     assert args[1:] == ("attached", DEFAULT_WAIT_TIMEOUT_MS)
+
+
+def test_screenshot_bytes_returns_driver_bytes(tmp_path: Path) -> None:
+    driver = MagicMock(spec=Driver)
+    driver.screenshot_bytes.return_value = b"png-bytes"
+    session = BrowserSession(state_dir=tmp_path, driver=driver)
+    session._page = MagicMock()
+
+    assert session.screenshot_bytes() == b"png-bytes"
+    driver.screenshot_bytes.assert_called_once_with(session._page)
+
+
+def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
+    driver = MagicMock(spec=Driver)
+    driver.screenshot_bytes.return_value = b"png-bytes"
+    session = BrowserSession(state_dir=tmp_path, driver=driver)
+    session._page = MagicMock()
+
+    session.screenshot_bytes()
+    assert not session._screenshot_path.exists()

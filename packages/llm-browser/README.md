@@ -392,6 +392,7 @@ The call originates from patchright's vendored HTTP bundle (during CDP connect),
 | `dom(selector, max_depth)` | Cleaned HTML snippet |
 | `parse_elements(selector, extract)` | Extract structured data |
 | `take_screenshot()` | Screenshot to file |
+| `screenshot_bytes()` | Screenshot as PNG bytes, no file written |
 | `get_page()` | Raw Playwright Page |
 | `frame(selector)` | Enter iframe |
 | `wait_for_load_state(state)` | Wait for page load |

@@ -347,6 +347,10 @@ class BrowserSession:
         self.driver.screenshot(self.get_page(), self._screenshot_path)
         return self._screenshot_path
 
+    def screenshot_bytes(self) -> bytes:
+        """PNG bytes of the current page, without writing into the session dir."""
+        return self.driver.screenshot_bytes(self.get_page())
+
     def take_dom_snapshot(self) -> Path:
         """Capture a sanitized HTML snapshot of the current page."""
         self._ensure_dirs()

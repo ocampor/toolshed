@@ -6,6 +6,7 @@ plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
 import importlib
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -236,6 +237,13 @@ class Driver(ABC):
 
     @abstractmethod
     def screenshot(self, page: Any, path: Path) -> None: ...
+
+    def screenshot_bytes(self, page: Any) -> bytes:
+        # Fallback for drivers whose screenshot API can only write a file.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "screenshot.png"
+            self.screenshot(page, path)
+            return path.read_bytes()
 
     @abstractmethod
     def expect_download(
