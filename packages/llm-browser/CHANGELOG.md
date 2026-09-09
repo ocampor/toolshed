@@ -8,16 +8,22 @@
   — one wait that covers all four `WaitState` values (`attached`, `detached`,
   `visible`, `hidden`) and returns `False` on timeout instead of raising, so a
   caller can branch on "did it happen" without wrapping every call in a
-  `try`. `element_exists()` is now a thin alias for the `attached` case, which
-  puts the never-raises timeout handling (patchright's `TimeoutError` does not
-  inherit from the builtin, so both have to be caught) in exactly one place.
-- `FlowError.outputs` — the outputs collected before the failing step, keyed
-  by qualified step name exactly like `FlowSuccess.outputs`. A flow that read
-  three pages and then failed on the fourth used to throw all three results
-  away, forcing a full re-run to see any of them; the caller can now use the
-  partial data (or show it to the user) while deciding whether to retry. A
-  failure inside a sub-flow keeps both the parent's earlier outputs and the
-  child's, and `redact` scrubs them on the same pass as a success's.
+  `try`. It is the one place that catches the timeout (patchright's
+  `TimeoutError` does not inherit from the builtin, so both have to be caught);
+  `element_exists(selector)` is now `wait_for(selector, "attached", timeout)`,
+  so `element_exists("#missing")` returns `False` instead of raising.
+- `NodriverDriver.wait_for_state` honors `state` instead of always doing an
+  attached-only `tab.wait_for`, so all four states mean on nodriver what they
+  mean on Playwright: `visible` no longer reports a `display:none` element as
+  found, and `detached` no longer returns immediately. `attached` keeps the
+  native CDP wait; `detached`, `visible` and `hidden` poll, re-querying the
+  locator's selector each round so a node the page replaced or removed is seen
+  (`first` and `nth` carry the selector forward for this), and `hidden` is
+  satisfied by a detached node as well as an unrendered one. Visibility is
+  `offsetParent !== null || getClientRects().length > 0` evaluated on the
+  element — nodriver exposes no visibility API and CDP has no visibility
+  predicate, so a poll is the honest option. All four raise the builtin
+  `TimeoutError`, which is what `wait_for` maps to `False`.
 - `flows.subflow_refs(text)` — lists the `run-flow` references in a flow
   without validating its steps. An async caller (an HTTP or MCP server that
   fetches children over the network) can now discover every child up front,
@@ -30,15 +36,23 @@
   threaded through the validation context. It takes precedence over
   `subflow_loader`, so a caller that already has the children in hand does not
   need a loader at all.
-- `NodriverDriver.wait_for_state` honors `state` for real. It previously
-  ignored the argument and always did an attached-only `tab.wait_for`, so a
-  flow asking for `visible` got a false positive on a `display:none` element
-  and `detached` returned immediately. `attached` keeps the native CDP wait;
-  `detached` polls `tab.query_selector` until it returns `None`; `visible` and
-  `hidden` poll `offsetParent !== null || getClientRects().length > 0` through
-  the element — nodriver exposes no visibility API and CDP has no visibility
-  predicate, so a poll is the honest option. All four raise the builtin
-  `TimeoutError`, which is what `wait_for` maps to `False`.
+- `FlowError.outputs` — the outputs collected before the failing step, keyed
+  by qualified step name exactly like `FlowSuccess.outputs`. A flow that read
+  three pages and then failed on the fourth used to throw all three results
+  away, forcing a full re-run to see any of them; the caller can now use the
+  partial data (or show it to the user) while deciding whether to retry. A
+  failure inside a sub-flow keeps both the parent's earlier outputs and the
+  child's — including an `optional:` sub-flow, whose swallowed failure now
+  hands its partial outputs back to the parent — and `redact` scrubs them on
+  the same pass as a success's.
+- `BrowserSession.screenshot_bytes()` → `bytes` — the current page as PNG
+  bytes, with nothing written into the session dir. A server that only wants
+  to hand the image back had to call `take_screenshot()` and read the file it
+  wrote; on Playwright the bytes now come straight from `page.screenshot()`.
+  `Driver.screenshot_bytes` is non-abstract: its default writes to a temp file
+  through the driver's own `screenshot()` and reads it back, so drivers whose
+  screenshot API only writes files (nodriver) get a working implementation
+  without an override. `take_screenshot()` is unchanged.
 
 ### Changed
 
@@ -71,12 +85,13 @@
   (`http`, `https`). A flow step or an LLM-supplied URL could previously reach
   `file:///etc/passwd`, `chrome://settings` or `javascript:` and have the
   browser act on it; a schemeless relative path is rejected for the same
-  reason. Every caller shares one validation path — `session.checked_url()` —
-  so the flow `goto` action and `llm-browser goto` inherit the guard, and a
-  rejected step surfaces as an ordinary step failure with the offending URL in
-  the message. The two launch paths validate before they start anything, so a
-  bad URL cannot leave an orphaned detached Chromium behind; `url=None` stays
-  legal for both. Pass `allowed_schemes=` to opt a specific call back in, e.g.
+  reason. Every caller shares one validation path —
+  `llm_browser.session.checked_url()` — so the flow `goto` action and
+  `llm-browser goto` inherit the guard, and a rejected step surfaces as an
+  ordinary step failure with the offending URL in the message. The two launch
+  paths validate before they start anything, so a bad URL cannot leave an
+  orphaned detached Chromium behind; `url=None` stays legal for both. Pass
+  `allowed_schemes=` to opt a specific call back in, e.g.
   `allowed_schemes=("file",)` for local fixture pages.
 
 ## 0.7.0 — 2026-09-09
