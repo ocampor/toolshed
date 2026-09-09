@@ -150,13 +150,12 @@ def test_medium_truncates_data_uri(sanitized: dict[SanitizeLevel, str]) -> None:
     assert "base64" not in sanitized[SanitizeLevel.MEDIUM]
 
 
-def test_high_strips_urls_except_iframe(sanitized: dict[SanitizeLevel, str]) -> None:
+def test_high_strips_every_url(sanitized: dict[SanitizeLevel, str]) -> None:
     tree = fragment_fromstring(sanitized[SanitizeLevel.HIGH])
     assert all(link.get("href") is None for link in tree.iter("a"))
     assert all(image.get("src") is None for image in tree.iter("img"))
     frame = next(tree.iter("iframe"))
-    assert frame.get("src") == "https://ads.example.com/f"
-    assert frame.get("title") == "ad"
+    assert dict(frame.attrib) == {"title": "ad"}
 
 
 def test_xhigh_keeps_only_allowlisted_attrs(
@@ -164,7 +163,7 @@ def test_xhigh_keeps_only_allowlisted_attrs(
 ) -> None:
     tree = fragment_fromstring(sanitized[SanitizeLevel.XHIGH])
     present = {key for node in tree.iter() for key in node.attrib}
-    assert present == {"id", "alt", "title", "type", "name"}
+    assert present == {"id", "href", "alt", "title", "type", "name"}
 
 
 def test_xhigh_iframe_keeps_only_title(sanitized: dict[SanitizeLevel, str]) -> None:
@@ -180,7 +179,7 @@ def test_xhigh_drops_empty_wrappers(sanitized: dict[SanitizeLevel, str]) -> None
 def test_xhigh_unwraps_single_child_wrappers(
     sanitized: dict[SanitizeLevel, str],
 ) -> None:
-    assert "<nav><a>News</a></nav>" in sanitized[SanitizeLevel.XHIGH]
+    assert '<nav><a href="/news">News</a></nav>' in sanitized[SanitizeLevel.XHIGH]
 
 
 @pytest.mark.parametrize("level", list(SanitizeLevel))

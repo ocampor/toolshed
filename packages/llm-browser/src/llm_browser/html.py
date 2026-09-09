@@ -3,6 +3,7 @@
 import enum
 import re
 from collections.abc import Callable, Iterator
+from typing import Any
 
 from lxml.html import (
     HtmlElement,
@@ -17,7 +18,6 @@ from lxml.html.clean import Cleaner
 from llm_browser.constants import (
     DATA_URI_PATTERN,
     EXTRA_SAFE_ATTRS,
-    IFRAME_XHIGH_ATTRS,
     KILL_TAGS,
     STRUCTURAL_TAGS,
     URL_ATTRS,
@@ -45,7 +45,9 @@ _low_cleaner = Cleaner(
     remove_unknown_tags=False,
 )
 
-_restricted_cleaner = Cleaner(
+# The three restricted levels differ only in which attributes survive; every
+# other cleaning decision is shared.
+RESTRICTED_OPTIONS: dict[str, Any] = dict(
     scripts=True,
     javascript=True,
     style=True,
@@ -58,16 +60,18 @@ _restricted_cleaner = Cleaner(
     forms=False,
     page_structure=False,
     safe_attrs_only=True,
-    safe_attrs=defs.safe_attrs | EXTRA_SAFE_ATTRS - {"style"},
     kill_tags=list(KILL_TAGS),
     remove_unknown_tags=False,
 )
 
+MEDIUM_ATTRS = defs.safe_attrs | EXTRA_SAFE_ATTRS - {"style"}
+HIGH_ATTRS = MEDIUM_ATTRS - {"src", "href"}
+
 CLEANERS: dict[SanitizeLevel, Cleaner] = {
     SanitizeLevel.LOW: _low_cleaner,
-    SanitizeLevel.MEDIUM: _restricted_cleaner,
-    SanitizeLevel.HIGH: _restricted_cleaner,
-    SanitizeLevel.XHIGH: _restricted_cleaner,
+    SanitizeLevel.MEDIUM: Cleaner(safe_attrs=MEDIUM_ATTRS, **RESTRICTED_OPTIONS),
+    SanitizeLevel.HIGH: Cleaner(safe_attrs=HIGH_ATTRS, **RESTRICTED_OPTIONS),
+    SanitizeLevel.XHIGH: Cleaner(safe_attrs=XHIGH_ATTRS, **RESTRICTED_OPTIONS),
 }
 
 _page_cleaner = Cleaner(
@@ -98,22 +102,6 @@ def truncate_data_uris(tree: HtmlElement) -> None:
             value = node.get(attr)
             if value and value.startswith("data:"):
                 node.set(attr, DATA_URI_PATTERN.sub(r"\1", value))
-
-
-def strip_url_attrs(tree: HtmlElement) -> None:
-    for node in iter_elements(tree):
-        if node.tag == "iframe":
-            continue
-        for attr in ("src", "href"):
-            node.attrib.pop(attr, None)
-
-
-def keep_xhigh_attrs(tree: HtmlElement) -> None:
-    for node in iter_elements(tree):
-        allowed = IFRAME_XHIGH_ATTRS if node.tag == "iframe" else XHIGH_ATTRS
-        for key in list(node.attrib):
-            if key not in allowed:
-                del node.attrib[key]
 
 
 def is_blank_wrapper(node: HtmlElement, root: HtmlElement) -> bool:
@@ -182,13 +170,8 @@ def normalize_whitespace(tree: HtmlElement) -> None:
 LEVEL_PASSES: dict[SanitizeLevel, tuple[Callable[[HtmlElement], None], ...]] = {
     SanitizeLevel.LOW: (),
     SanitizeLevel.MEDIUM: (truncate_data_uris,),
-    SanitizeLevel.HIGH: (truncate_data_uris, strip_url_attrs),
-    SanitizeLevel.XHIGH: (
-        truncate_data_uris,
-        strip_url_attrs,
-        keep_xhigh_attrs,
-        collapse_structural,
-    ),
+    SanitizeLevel.HIGH: (truncate_data_uris,),
+    SanitizeLevel.XHIGH: (truncate_data_uris, collapse_structural),
 }
 
 

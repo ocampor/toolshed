@@ -19,8 +19,6 @@ XHIGH_ATTRS = frozenset(
     {"id", "href", "alt", "title", "role", "type", "name", "value", "placeholder"}
 )
 
-IFRAME_XHIGH_ATTRS = frozenset({"title"})
-
 URL_ATTRS = ("src", "srcset", "href")
 
 KILL_TAGS = ["svg", "object", "embed", "applet"]
