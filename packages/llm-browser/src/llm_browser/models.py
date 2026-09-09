@@ -402,6 +402,19 @@ class SubFlow(Flow):
 RunFlowStep.model_rebuild()
 
 
+class PageProbe(BaseModel):
+    """What one in-page probe saw: credential prompt, bot challenge, text.
+
+    ``selector_text`` is the probed element's text, ``None`` when no selector
+    was asked for or nothing matched.
+    """
+
+    password_visible: bool = False
+    challenge: bool = False
+    text: str = ""
+    selector_text: str | None = None
+
+
 class SessionResult(BaseModel):
     """Result returned by session operations (launch, close, status)."""
 

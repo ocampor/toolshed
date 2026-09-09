@@ -45,6 +45,15 @@
   URLs (`src`/`href`, iframes excepted), and finally everything but a small
   attribute allowlist plus empty/redundant `div`/`span`/`section` wrappers.
   Default stays `low`.
+- `BrowserSession.probe(selector=None, max_chars=...)` → `PageProbe`
+  (`password_visible`, `challenge`, `text`, `selector_text`): one in-page
+  evaluate that reports whether a page is showing a credential prompt or a
+  bot challenge. `llm_browser.probe.human_needed(page_probe)` turns that
+  into a yes/no, and `probe_from_markup(html)` does the same for a static
+  failure snapshot. The challenge-selector list lives in `constants.py` and
+  is injected into `js/page_probe.js`, so JS and Python agree by construction.
+- `selectors.css_string(selector)` — CSS text for an in-page `querySelector`;
+  raises for XPath/fallback selectors, which need a driver locator.
 
 ### Fixed
 

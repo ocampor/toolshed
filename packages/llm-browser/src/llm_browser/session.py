@@ -10,17 +10,28 @@ from llm_browser.chrome import (
     kill_detached_chromium,
     spawn_detached_chromium,
 )
-from llm_browser.constants import DEFAULT_STATE_DIR, LOGGER_NAME
+from llm_browser.constants import (
+    DEFAULT_STATE_DIR,
+    LOGGER_NAME,
+    PROBE_TEXT_MAX_CHARS,
+)
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
+    PageProbe,
     SessionInfo,
     SessionResult,
 )
 from llm_browser.parse import ExtractField
 from llm_browser.paths import prepare_output_path
-from llm_browser.selectors import Selector, expect_single, resolve_selector
+from llm_browser.scripts import page_probe_js
+from llm_browser.selectors import (
+    Selector,
+    css_string,
+    expect_single,
+    resolve_selector,
+)
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -468,6 +479,23 @@ class BrowserSession:
 
         raw: str = self.driver.evaluate(self.find(selector), "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth, level)
+
+    def probe(
+        self,
+        selector: Selector | None = None,
+        max_chars: int = PROBE_TEXT_MAX_CHARS,
+    ) -> PageProbe:
+        """Read the page's human-attention signals in a single evaluate.
+
+        Pass ``selector`` to also capture that element's rendered text in
+        ``PageProbe.selector_text``. Feed the result to
+        :func:`llm_browser.probe.human_needed`.
+        """
+        script = page_probe_js(
+            css_string(selector) if selector is not None else None, max_chars
+        )
+        raw = self.driver.evaluate(self.get_page(), script)
+        return PageProbe.model_validate(raw or {})
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

@@ -73,6 +73,17 @@ def _selector_string(selector: Selector) -> str:
     raise ValueError(f"Unknown selector: {selector!r}")
 
 
+def css_string(selector: Selector) -> str:
+    """CSS text for an in-page ``querySelector`` call.
+
+    XPath and fallback selectors have no CSS form; they need a driver locator.
+    """
+    match selector:
+        case str() | CssSelector() | IdSelector():
+            return _selector_string(selector)
+    raise ValueError(f"{selector!r} has no CSS form; a CSS or id selector is required")
+
+
 def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
     """Resolve a typed selector into a driver-native locator."""
     if isinstance(selector, FallbackSelector):
