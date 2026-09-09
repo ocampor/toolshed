@@ -137,10 +137,11 @@ class BrowserSession:
 
     def launch(self, url: str | None = None, headed: bool = True) -> SessionResult:
         """Launch the browser and connect."""
+        target = checked_url(url) if url is not None else None
         self._ensure_dirs()
         logger.info("llm-browser session dir: %s", self.session_dir)
         handle = self.driver.launch(
-            self._user_data_dir, url, headed, executable_path=self.executable_path
+            self._user_data_dir, target, headed, executable_path=self.executable_path
         )
         info = SessionInfo(
             pid=handle.pid,
@@ -212,6 +213,8 @@ class BrowserSession:
 
         Call ``stop_detached()`` to kill the browser when you're done.
         """
+        # Validated before the spawn so a rejected URL leaves no orphan Chromium.
+        target = checked_url(url) if url is not None else None
         self._ensure_dirs()
         resolved_profile = (
             Path(user_data_dir) if user_data_dir is not None else self._user_data_dir
@@ -241,8 +244,8 @@ class BrowserSession:
         )
         self._save_state(info)
         self._page = self.driver.page(handle)
-        if url is not None:
-            self.driver.goto(self._page, url, "domcontentloaded")
+        if target is not None:
+            self.driver.goto(self._page, target, "domcontentloaded")
         # A user-profile Chromium auto-opens its default new-tab page on
         # startup; combined with attach()'s new_page() that leaves at least
         # two tabs in the context. Trim the context down to the tab the

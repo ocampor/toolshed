@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser.behavior import Behavior
+from llm_browser.models import PageProbe
 from llm_browser.session import BrowserSession
 
 
@@ -18,9 +19,11 @@ def mock_session(tmp_path: Path) -> MagicMock:
     session.get_page.return_value = MagicMock()
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.element_exists.return_value = True
+    session.probe.return_value = PageProbe()
     locator = MagicMock()
     locator.count.return_value = 1
     session.find.return_value = locator
+    session.find_all.return_value = locator
     session.parse_elements.return_value = [{"title": "hello"}]
     session.dom.return_value = "<p>hello</p>"
     return session

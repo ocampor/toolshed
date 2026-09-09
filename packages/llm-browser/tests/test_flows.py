@@ -20,7 +20,6 @@ from llm_browser.models import (
     FlowSuccess,
     PageProbe,
 )
-from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, should_skip
 
 
@@ -41,27 +40,6 @@ def _write_flow(
     return path
 
 
-def _mock_session(tmp_path: Path) -> MagicMock:
-    from llm_browser.behavior import Behavior
-
-    session = MagicMock(spec=BrowserSession)
-    session.session_dir = tmp_path
-    session.behavior = Behavior.off()
-    session._behavior_runtime = session.behavior.runtime()
-    session.capture = "screenshot"
-    session.driver = MagicMock()
-    page = MagicMock()
-    session.get_page.return_value = page
-    session.take_screenshot.return_value = tmp_path / "screenshot.png"
-    session.element_exists.return_value = True
-    session.probe.return_value = PageProbe()
-    locator = MagicMock()
-    locator.count.return_value = 1
-    session.find.return_value = locator
-    session.find_all.return_value = locator
-    return session
-
-
 # --- load_flow ---
 
 
@@ -72,43 +50,44 @@ def test_load_flow(tmp_path: Path) -> None:
     assert flow.steps[0].name == "step1"
 
 
+def test_load_flow_rejects_bad_yaml(tmp_path: Path) -> None:
+    path = tmp_path / "flow.yaml"
+    path.write_text("steps: [\n  - name: x\n")
+    with pytest.raises(ValueError, match="invalid flow YAML"):
+        load_flow(path)
+
+
 # --- should_skip ---
 
 
-def test_should_skip_no_when(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    assert should_skip(session, EvalStep(name="s"), _flow_data()) is False
+def test_should_skip_no_when(mock_session: MagicMock) -> None:
+    assert should_skip(mock_session, EvalStep(name="s"), _flow_data()) is False
 
 
-def test_should_skip_truthy_passes(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_truthy_passes(mock_session: MagicMock) -> None:
     step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(session, step, _flow_data(enabled=True)) is False
+    assert should_skip(mock_session, step, _flow_data(enabled=True)) is False
 
 
-def test_should_skip_truthy_fails(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_truthy_fails(mock_session: MagicMock) -> None:
     step = EvalStep(name="s", when=[{"field": "enabled", "op": "is_truthy"}])
-    assert should_skip(session, step, _flow_data(enabled=False)) is True
+    assert should_skip(mock_session, step, _flow_data(enabled=False)) is True
 
 
-def test_should_skip_eq(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_eq(mock_session: MagicMock) -> None:
     step = EvalStep(name="s", when=[{"field": "mode", "op": "eq", "value": "fast"}])
-    assert should_skip(session, step, _flow_data(mode="fast")) is False
-    assert should_skip(session, step, _flow_data(mode="slow")) is True
+    assert should_skip(mock_session, step, _flow_data(mode="fast")) is False
+    assert should_skip(mock_session, step, _flow_data(mode="slow")) is True
 
 
-def test_should_skip_not_null(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_not_null(mock_session: MagicMock) -> None:
     step = EvalStep(name="s", when=[{"field": "cp", "op": "not_null"}])
-    assert should_skip(session, step, _flow_data(cp="05330")) is False
-    assert should_skip(session, step, _flow_data(cp=None)) is True
-    assert should_skip(session, step, _flow_data()) is True
+    assert should_skip(mock_session, step, _flow_data(cp="05330")) is False
+    assert should_skip(mock_session, step, _flow_data(cp=None)) is True
+    assert should_skip(mock_session, step, _flow_data()) is True
 
 
-def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_multiple_conditions(mock_session: MagicMock) -> None:
     step = EvalStep(
         name="s",
         when=[
@@ -116,45 +95,46 @@ def test_should_skip_multiple_conditions(tmp_path: Path) -> None:
             {"field": "mode", "op": "eq", "value": "fast"},
         ],
     )
-    assert should_skip(session, step, _flow_data(enabled=True, mode="fast")) is False
-    assert should_skip(session, step, _flow_data(enabled=True, mode="slow")) is True
+    assert (
+        should_skip(mock_session, step, _flow_data(enabled=True, mode="fast")) is False
+    )
+    assert (
+        should_skip(mock_session, step, _flow_data(enabled=True, mode="slow")) is True
+    )
 
 
-def test_should_skip_element_exists(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_should_skip_element_exists(mock_session: MagicMock) -> None:
     step = EvalStep(
         name="s",
         when=[{"element_exists": {"selector": "#btn"}}],
     )
-    session.element_exists.return_value = True
-    assert should_skip(session, step, _flow_data()) is False
-    session.element_exists.return_value = False
-    assert should_skip(session, step, _flow_data()) is True
+    mock_session.element_exists.return_value = True
+    assert should_skip(mock_session, step, _flow_data()) is False
+    mock_session.element_exists.return_value = False
+    assert should_skip(mock_session, step, _flow_data()) is True
 
 
 # --- execute_step ---
 
 
-def test_execute_step_skipped_by_when(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_execute_step_skipped_by_when(mock_session: MagicMock) -> None:
     step = EvalStep(
         name="optional",
         when=[{"field": "needed", "op": "is_truthy"}],
         eval="something()",
     )
-    result = execute_step(session, step, _flow_data(needed=False))
+    result = execute_step(mock_session, step, _flow_data(needed=False))
     assert isinstance(result, SkippedResult)
-    session.driver.evaluate.assert_not_called()
+    mock_session.driver.evaluate.assert_not_called()
 
 
-def test_execute_step_template_substitution(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    session.driver.evaluate.return_value = "ok"
+def test_execute_step_template_substitution(mock_session: MagicMock) -> None:
+    mock_session.driver.evaluate.return_value = "ok"
 
     step = EvalStep(name="t", eval="document.getElementById('{{ fid }}').value")
-    execute_step(session, step, _flow_data(fid="myfield"))
-    session.driver.evaluate.assert_called_once_with(
-        session.get_page.return_value,
+    execute_step(mock_session, step, _flow_data(fid="myfield"))
+    mock_session.driver.evaluate.assert_called_once_with(
+        mock_session.get_page.return_value,
         "document.getElementById('myfield').value",
     )
 
@@ -162,42 +142,44 @@ def test_execute_step_template_substitution(tmp_path: Path) -> None:
 # --- run_flow_file ---
 
 
-def test_run_completes_to_end(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_completes_to_end(tmp_path: Path, mock_session: MagicMock) -> None:
     steps = [{"name": "s1", "action": "click", "selector": "#btn"}]
     path = _write_flow(tmp_path, steps)
-    result = run_flow_file(session, path, {})
+    result = run_flow_file(mock_session, path, {})
     assert isinstance(result, FlowSuccess)
 
 
-def test_run_from_step_skips_prior_steps(tmp_path: Path) -> None:
+def test_run_from_step_skips_prior_steps(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
     """`from_step="step3"` skips step1 and step2; only step3 runs."""
-    session = _mock_session(tmp_path)
     steps = [
         {"name": "step1", "action": "click", "selector": "#a"},
         {"name": "step2", "action": "click", "selector": "#b"},
         {"name": "step3", "action": "click", "selector": "#c"},
     ]
     path = _write_flow(tmp_path, steps)
-    result = run_flow_file(session, path, {}, from_step="step3")
+    result = run_flow_file(mock_session, path, {}, from_step="step3")
     assert isinstance(result, FlowSuccess)
     # Only step3's selector hit the driver — step1 and step2 were skipped.
-    assert session.find.call_count == 1
-    selector = session.find.call_args.args[0]
+    assert mock_session.find.call_count == 1
+    selector = mock_session.find.call_args.args[0]
     assert "c" in str(selector)
 
 
-def test_run_from_step_unknown_raises(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_from_step_unknown_raises(tmp_path: Path, mock_session: MagicMock) -> None:
     steps = [{"name": "only", "action": "click", "selector": "#a"}]
     path = _write_flow(tmp_path, steps)
     with pytest.raises(ValueError, match="step 'missing' not found in flow"):
-        run_flow_file(session, path, {}, from_step="missing")
+        run_flow_file(mock_session, path, {}, from_step="missing")
 
 
-def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
+def test_run_emits_retry_hint_on_failure(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
     """When a step fails, run_flow attaches a RetryHint to the FlowError."""
-    session = _mock_session(tmp_path)
     steps = [
         {"name": "ok", "action": "click", "selector": "#a"},
         {"name": "boom", "action": "click", "selector": "#missing"},
@@ -207,9 +189,9 @@ def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
     # First click succeeds; second click raises so the action fails.
     locator = MagicMock()
     locator.count.return_value = 1
-    session.find.side_effect = [locator, TimeoutError("element missing")]
+    mock_session.find.side_effect = [locator, TimeoutError("element missing")]
 
-    result = run_flow_file(session, path, {"k": "v"})
+    result = run_flow_file(mock_session, path, {"k": "v"})
     assert isinstance(result, FlowError)
     assert result.step == "boom"
     assert result.retry_hint is not None
@@ -220,12 +202,12 @@ def test_run_emits_retry_hint_on_failure(tmp_path: Path) -> None:
 
 def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     tmp_path: Path,
+    mock_session: MagicMock,
 ) -> None:
     """When a step inside a sub-flow fails, the hint's `failed_step`
     is the parent's run-flow step name (not the inner step) so
     `--from <hint.failed_step>` resolves against the parent flow."""
-    session = _mock_session(tmp_path)
-    session.find.side_effect = TimeoutError("element missing")
+    mock_session.find.side_effect = TimeoutError("element missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -236,7 +218,7 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
         "parent.yaml",
         [{"name": "do-thing", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow_file(session, parent, {})
+    result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowError)
     assert result.retry_hint is not None
     # Hint uses the parent's run-flow step name, not the qualified path.
@@ -246,18 +228,19 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     assert result.step == "do-thing/inner-click"
 
 
-def test_run_validates_params(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_validates_params(tmp_path: Path, mock_session: MagicMock) -> None:
     steps = [{"name": "s1", "eval": "fillRfc('{{ rfc }}')"}]
     path = _write_flow(tmp_path, steps, params=["rfc"])
 
     with pytest.raises(ValueError, match="Missing required param: rfc"):
-        run_flow_file(session, path, {})
+        run_flow_file(mock_session, path, {})
 
 
-def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    session.driver.evaluate.return_value = "ok"
+def test_run_with_registered_and_inline_params(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
+    mock_session.driver.evaluate.return_value = "ok"
 
     params: list[str | dict[str, Any]] = [
         "rfc",
@@ -265,11 +248,11 @@ def test_run_with_registered_and_inline_params(tmp_path: Path) -> None:
     ]
     steps = [{"name": "s1", "eval": "fill('{{ rfc }}', '{{ region }}')"}]
     path = _write_flow(tmp_path, steps, params=params)
-    result = run_flow_file(session, path, {"rfc": "XEXX"})
+    result = run_flow_file(mock_session, path, {"rfc": "XEXX"})
 
     assert isinstance(result, FlowSuccess)
-    session.driver.evaluate.assert_called_once_with(
-        session.get_page.return_value, "fill('XEXX', 'MX')"
+    mock_session.driver.evaluate.assert_called_once_with(
+        mock_session.get_page.return_value, "fill('XEXX', 'MX')"
     )
 
 
@@ -291,8 +274,7 @@ def _write_named_flow(
     return path
 
 
-def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_flow_dispatches_subflow(tmp_path: Path, mock_session: MagicMock) -> None:
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -306,15 +288,14 @@ def test_run_flow_dispatches_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow_file(session, parent, {})
+    result = run_flow_file(mock_session, parent, {})
 
     assert isinstance(result, FlowSuccess)
-    # Both child clicks fired against the session.
-    assert session.find.call_count == 2
+    # Both child clicks fired against the mock_session.
+    assert mock_session.find.call_count == 2
 
 
-def test_run_flow_param_passthrough(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_flow_param_passthrough(tmp_path: Path, mock_session: MagicMock) -> None:
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -334,16 +315,18 @@ def test_run_flow_param_passthrough(tmp_path: Path) -> None:
         ],
         params=["target"],
     )
-    run_flow_file(session, parent, {"target": "submit"})
-    # session.find was called with a parsed selector for #submit
-    args, _ = session.find.call_args
+    run_flow_file(mock_session, parent, {"target": "submit"})
+    # mock_session.find was called with a parsed selector for #submit
+    args, _ = mock_session.find.call_args
     assert "submit" in str(args[0])
 
 
-def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_flow_optional_swallows_child_failure(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
     # Force the click action to raise so the child's first step fails.
-    session.driver.click.side_effect = TimeoutError("button missing")
+    mock_session.driver.click.side_effect = TimeoutError("button missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -363,14 +346,16 @@ def test_run_flow_optional_swallows_child_failure(tmp_path: Path) -> None:
         ],
     )
     # The parent's own click must succeed even when the sub-flow swallows.
-    session.driver.click.side_effect = [TimeoutError("button missing"), None]
-    result = run_flow_file(session, parent, {})
+    mock_session.driver.click.side_effect = [TimeoutError("button missing"), None]
+    result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
 
 
-def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
-    session.driver.click.side_effect = TimeoutError("button missing")
+def test_run_flow_required_failure_bubbles(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
+    mock_session.driver.click.side_effect = TimeoutError("button missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -381,13 +366,15 @@ def test_run_flow_required_failure_bubbles(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
     )
-    result = run_flow_file(session, parent, {})
+    result = run_flow_file(mock_session, parent, {})
     # Child failure surfaces to the parent runner; not completed.
     assert isinstance(result, FlowError)
 
 
-def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_flow_rejects_nested_subflow(
+    tmp_path: Path,
+    mock_session: MagicMock,
+) -> None:
     _write_named_flow(
         tmp_path,
         "grandchild.yaml",
@@ -404,11 +391,13 @@ def test_run_flow_rejects_nested_subflow(tmp_path: Path) -> None:
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
     with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
-        run_flow_file(session, parent, {})
+        run_flow_file(mock_session, parent, {})
 
 
 def test_run_flow_resolves_relative_to_parent_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    mock_session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Sub-flow paths resolve relative to the parent flow's directory,
     not CWD."""
@@ -430,10 +419,9 @@ def test_run_flow_resolves_relative_to_parent_dir(
     other.mkdir()
     monkeypatch.chdir(other)
 
-    session = _mock_session(tmp_path)
-    result = run_flow_file(session, parent, {})
+    result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
-    assert session.find.call_count == 1
+    assert mock_session.find.call_count == 1
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
@@ -541,8 +529,7 @@ def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
     assert child_step.selector.id == "the-button"  # type: ignore[union-attr]
 
 
-def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
-    session = _mock_session(tmp_path)
+def test_run_flow_when_skips_subflow(tmp_path: Path, mock_session: MagicMock) -> None:
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -561,52 +548,53 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
         ],
         params=[{"enabled": {"required": False, "default": False}}],
     )
-    result = run_flow_file(session, parent, {})
+    result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
-    assert session.find.call_count == 0
+    assert mock_session.find.call_count == 0
 
 
 # --- execute_step: human_needed ---
 
 
-def _failing_click(tmp_path: Path) -> tuple[MagicMock, ClickStep]:
-    session = _mock_session(tmp_path)
+def _failing_click(session: MagicMock) -> ClickStep:
     session.find.side_effect = ValueError("Expected 1 element for '#go', found 0")
-    return session, ClickStep(action="click", name="go", selector="#go")
+    return ClickStep(action="click", name="go", selector="#go")
 
 
-def test_execute_step_flags_a_page_that_needs_a_human(tmp_path: Path) -> None:
-    session, step = _failing_click(tmp_path)
-    session.probe.return_value = PageProbe(password_visible=True, text="Sign in")
-    error = execute_step(session, step, _flow_data())
+def test_execute_step_flags_a_page_that_needs_a_human(mock_session: MagicMock) -> None:
+    step = _failing_click(mock_session)
+    mock_session.probe.return_value = PageProbe(password_visible=True, text="Sign in")
+    error = execute_step(mock_session, step, _flow_data())
     assert isinstance(error, FlowError)
     assert error.human_needed is True
 
 
 def test_execute_step_leaves_human_needed_false_on_an_ordinary_page(
-    tmp_path: Path,
+    mock_session: MagicMock,
 ) -> None:
-    session, step = _failing_click(tmp_path)
-    error = execute_step(session, step, _flow_data())
+    step = _failing_click(mock_session)
+    error = execute_step(mock_session, step, _flow_data())
     assert isinstance(error, FlowError)
     assert error.human_needed is False
 
 
 def test_execute_step_keeps_the_original_error_when_the_probe_fails(
-    tmp_path: Path,
+    mock_session: MagicMock,
 ) -> None:
-    session, step = _failing_click(tmp_path)
-    session.probe.side_effect = RuntimeError("CDP connection closed")
-    error = execute_step(session, step, _flow_data())
+    step = _failing_click(mock_session)
+    mock_session.probe.side_effect = RuntimeError("CDP connection closed")
+    error = execute_step(mock_session, step, _flow_data())
     assert isinstance(error, FlowError)
     assert error.human_needed is False
     assert "found 0" in str(error.data)
-    session.take_screenshot.assert_called_once()
+    mock_session.take_screenshot.assert_called_once()
 
 
-def test_run_flow_carries_human_needed_through_to_the_caller(tmp_path: Path) -> None:
-    session, step = _failing_click(tmp_path)
-    session.probe.return_value = PageProbe(challenge=True)
-    result = run_flow(session, Flow(steps=[step]), {})
+def test_run_flow_carries_human_needed_through_to_the_caller(
+    mock_session: MagicMock,
+) -> None:
+    step = _failing_click(mock_session)
+    mock_session.probe.return_value = PageProbe(challenge=True)
+    result = run_flow(mock_session, Flow(steps=[step]), {})
     assert isinstance(result, FlowError)
     assert result.human_needed is True

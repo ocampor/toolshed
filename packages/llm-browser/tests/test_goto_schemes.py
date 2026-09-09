@@ -1,10 +1,11 @@
-"""`BrowserSession.goto` refuses non-http(s) schemes, and flows inherit that."""
+"""`goto`, `launch` and `launch_detached` refuse non-http(s) schemes."""
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from llm_browser.drivers import DriverHandle
 from llm_browser.models import FlowData, FlowError, GotoStep
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step
@@ -14,6 +15,12 @@ def _session(tmp_path: Path) -> BrowserSession:
     session = BrowserSession(state_dir=tmp_path)
     session.driver = MagicMock()
     session._page = MagicMock()
+    handle = DriverHandle(
+        driver="mock", pid=1, endpoint="http://cdp", user_data_dir="d"
+    )
+    session.driver.launch.return_value = handle
+    session.driver.attach.return_value = handle
+    session.driver.page_url.return_value = None
     return session
 
 
@@ -60,4 +67,51 @@ def test_flow_goto_to_file_scheme_is_a_step_failure(tmp_path: Path) -> None:
     assert result.step == "open"
     assert result.data.error == "ValueError"
     assert "url must be http or https" in result.data.message
+    session.driver.goto.assert_not_called()
+
+
+BAD_URLS = [
+    "file:///etc/passwd",
+    "chrome://settings",
+    "javascript:alert(1)",
+    "view-source:http://x",
+    "some/page.html",
+]
+
+
+@pytest.mark.parametrize("url", BAD_URLS)
+def test_launch_rejects_non_http_schemes(tmp_path: Path, url: str) -> None:
+    session = _session(tmp_path)
+    with pytest.raises(ValueError, match="url must be http or https"):
+        session.launch(url)
+    session.driver.launch.assert_not_called()
+
+
+def test_launch_allows_no_url(tmp_path: Path) -> None:
+    session = _session(tmp_path)
+    session.launch()
+    session.driver.launch.assert_called_once()
+
+
+@pytest.mark.parametrize("url", BAD_URLS)
+def test_launch_detached_rejects_non_http_schemes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
+    spawn = MagicMock()
+    monkeypatch.setattr("llm_browser.session.spawn_detached_chromium", spawn)
+    session = _session(tmp_path)
+    with pytest.raises(ValueError, match="url must be http or https"):
+        session.launch_detached(url)
+    spawn.assert_not_called()
+
+
+def test_launch_detached_allows_no_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "llm_browser.session.spawn_detached_chromium",
+        lambda *a, **k: (123, "http://127.0.0.1:9222"),
+    )
+    session = _session(tmp_path)
+    session.launch_detached()
     session.driver.goto.assert_not_called()

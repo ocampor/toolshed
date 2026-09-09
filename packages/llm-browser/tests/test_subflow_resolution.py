@@ -104,6 +104,28 @@ def test_reference_absent_from_the_mapping_falls_through_to_the_loader() -> None
     assert _child_of(flow).steps[0].name == "c1"
 
 
+def test_base_dir_resolves_child_from_disk(tmp_path: Path) -> None:
+    (tmp_path / "child.yaml").write_text(CHILD_YAML)
+    flow = load_flow_text(_parent_yaml("child.yaml"), base_dir=tmp_path)
+    assert _child_of(flow).steps[0].name == "c1"
+
+
+def test_subflows_mapping_wins_over_base_dir(tmp_path: Path) -> None:
+    (tmp_path / "child.yaml").write_text(_parent_yaml("deeper", name="on_disk"))
+    flow = load_flow_text(
+        _parent_yaml("child.yaml"),
+        subflows={"child.yaml": CHILD_YAML},
+        base_dir=tmp_path,
+    )
+    assert _child_of(flow).steps[0].name == "c1"
+
+
+def test_without_base_dir_a_sibling_ref_is_unresolvable(tmp_path: Path) -> None:
+    (tmp_path / "child.yaml").write_text(CHILD_YAML)
+    with pytest.raises(ValueError, match="child.yaml"):
+        load_flow_text(_parent_yaml(str(tmp_path / "child.yaml")))
+
+
 def test_without_loader_rejects_subflow() -> None:
     with pytest.raises(ValueError, match="subflow_loader"):
         load_flow_text(_parent_yaml("registry://x"))

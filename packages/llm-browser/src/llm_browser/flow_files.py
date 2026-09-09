@@ -3,9 +3,7 @@
 from collections.abc import Iterable
 from pathlib import Path
 
-import yaml
-
-from llm_browser.flows import SelectorMap, run_flow
+from llm_browser.flows import SelectorMap, parse_flow_yaml, run_flow
 from llm_browser.models import Flow, FlowError, FlowResult
 from llm_browser.session import BrowserSession
 
@@ -19,7 +17,7 @@ def load_flow(
     sub-flow — surfaces from this one ``model_validate`` call."""
     path = Path(flow_path).resolve()
     return Flow.model_validate(
-        yaml.safe_load(path.read_text()),
+        parse_flow_yaml(path.read_text()),
         context={"base_dir": path.parent, "selector_map": selector_map},
     )
 

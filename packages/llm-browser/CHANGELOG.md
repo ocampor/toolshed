@@ -52,21 +52,31 @@
   a `base_dir`. So file-loaded flows resolve siblings exactly as before, and
   text-loaded flows resolve only through what the caller passed in; a
   reference with no mapping entry, no loader and no `base_dir` raises
-  `ValueError` naming the reference.
-- `load_flow_text` now raises `ValueError("invalid flow YAML: ...")` instead of
-  leaking `yaml.YAMLError`, so a caller has one exception type to catch for
-  malformed input. Pydantic's `ValidationError` and anything raised by
-  `subflow_loader` still propagate untouched — a loader that signals a missing
-  child with its own exception type keeps working.
-- `BrowserSession.goto` now validates the URL scheme before it touches the
-  driver and raises `ValueError` for anything outside `DEFAULT_URL_SCHEMES`
+  `ValueError` naming the reference. `load_flow_text(..., base_dir=...)` lets a
+  caller opt back in explicitly, and the CLI passes `base_dir=Path.cwd()` for
+  `--flow -` and `--flow-yaml`: someone piping a flow into `llm-browser run` or
+  `llm-browser validate` does have a meaningful working directory, so sibling
+  refs keep resolving there while every library caller stays off the filesystem
+  until it names a directory.
+- `load_flow_text` and `flow_files.load_flow` now raise
+  `ValueError("invalid flow YAML: ...")` instead of leaking `yaml.YAMLError`,
+  so a caller has one exception type to catch for malformed input, and a
+  malformed flow *file* fails the same way as malformed flow *text*.
+  Pydantic's `ValidationError` and anything raised by `subflow_loader` still
+  propagate untouched — a loader that signals a missing child with its own
+  exception type keeps working.
+- `BrowserSession.goto`, `launch` and `launch_detached` now validate the URL
+  scheme before they touch the browser and raise `ValueError` for anything
+  outside `DEFAULT_URL_SCHEMES`
   (`http`, `https`). A flow step or an LLM-supplied URL could previously reach
   `file:///etc/passwd`, `chrome://settings` or `javascript:` and have the
   browser act on it; a schemeless relative path is rejected for the same
   reason. Every caller shares one validation path — `session.checked_url()` —
   so the flow `goto` action and `llm-browser goto` inherit the guard, and a
   rejected step surfaces as an ordinary step failure with the offending URL in
-  the message. Pass `allowed_schemes=` to opt a specific call back in, e.g.
+  the message. The two launch paths validate before they start anything, so a
+  bad URL cannot leave an orphaned detached Chromium behind; `url=None` stays
+  legal for both. Pass `allowed_schemes=` to opt a specific call back in, e.g.
   `allowed_schemes=("file",)` for local fixture pages.
 
 ## 0.7.0 — 2026-09-09

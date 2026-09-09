@@ -16,6 +16,17 @@ from llm_browser.session import BrowserSession
 FLOW_YAML = yaml.dump(
     {"steps": [{"name": "s1", "action": "goto", "url": "https://example.com"}]}
 )
+PARENT_YAML = yaml.dump(
+    {"steps": [{"name": "c", "action": "run-flow", "flow": "child.yaml"}]}
+)
+CHILD_YAML = yaml.dump(
+    {"steps": [{"name": "c1", "action": "goto", "url": "https://child.example"}]}
+)
+
+
+def _with_child_in_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "child.yaml").write_text(CHILD_YAML)
+    monkeypatch.chdir(tmp_path)
 
 
 def _mock_session(tmp_path: Path) -> MagicMock:
@@ -115,3 +126,38 @@ def test_validate_rejects_two_sources() -> None:
     )
     assert result.exit_code == 2
     assert "exactly one" in result.output
+
+
+# --- cwd-relative sub-flow refs ---
+
+
+def test_run_cli_flow_resolves_a_sibling_ref_from_the_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _with_child_in_cwd(tmp_path, monkeypatch)
+    session = _mock_session(tmp_path)
+
+    result = run_cli_flow(
+        session, "", PARENT_YAML, {}, selector_map=None, from_step=None
+    )
+
+    assert isinstance(result, FlowSuccess)
+    assert session.goto.call_args.args == ("https://child.example",)
+
+
+@pytest.mark.parametrize(
+    "args, stdin",
+    [
+        (["validate", "--flow-yaml", PARENT_YAML], ""),
+        (["validate", "--flow", "-"], PARENT_YAML),
+    ],
+)
+def test_validate_resolves_a_sibling_ref_from_the_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str], stdin: str
+) -> None:
+    _with_child_in_cwd(tmp_path, monkeypatch)
+
+    result = CliRunner().invoke(main, args, input=stdin)
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["subflow_count"] == 1

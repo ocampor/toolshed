@@ -3,6 +3,7 @@
 import json
 import os
 import uuid
+from pathlib import Path
 from typing import Callable
 
 import click
@@ -295,7 +296,6 @@ def run(
         llm-browser run --cdp-url http://127.0.0.1:9223 \
             --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
     """
-    from pathlib import Path
 
     session: BrowserSession = ctx.obj["session"]
     selector_map = (
@@ -347,7 +347,9 @@ def run_cli_flow(
         return run_flow_file(
             session, flow_path, data, selector_map=selector_map, from_step=from_step
         )
-    flow = load_flow_text(yaml_text, selector_map=selector_map)
+    # The CLI has a meaningful CWD, so it opts flow text into sibling
+    # `run-flow` refs; the library default keeps text off the filesystem.
+    flow = load_flow_text(yaml_text, selector_map=selector_map, base_dir=Path.cwd())
     return run_flow(session, flow, data, from_step=from_step)
 
 
@@ -418,7 +420,6 @@ def validate(
     Suitable for pre-commit hooks and CI — no browser session is
     created or used.
     """
-    from pathlib import Path
 
     import yaml as _yaml
     from pydantic import ValidationError
@@ -434,7 +435,9 @@ def validate(
         flow = (
             load_flow(str(flow_path), selector_map=selector_map)
             if yaml_text is None
-            else load_flow_text(yaml_text, selector_map=selector_map)
+            else load_flow_text(
+                yaml_text, selector_map=selector_map, base_dir=Path.cwd()
+            )
         )
     except (
         ValidationError,

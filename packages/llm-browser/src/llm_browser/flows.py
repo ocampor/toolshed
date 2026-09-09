@@ -1,6 +1,7 @@
 """Parse YAML flow text and execute the steps end-to-end."""
 
 from collections.abc import Callable, Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -40,17 +41,19 @@ def load_flow_text(
     subflow_loader: SubflowLoader | None = None,
     selector_map: SelectorMap | None = None,
     subflows: Mapping[str, str] | None = None,
+    base_dir: Path | None = None,
 ) -> Flow:
     """``run-flow`` refs resolve eagerly against ``subflows``, then
-    ``subflow_loader`` (``ValueError`` with neither); flow text loaded this way
-    never reads a child off disk — only :func:`llm_browser.flow_files.load_flow`
-    does, via ``base_dir``."""
+    ``subflow_loader``, then ``base_dir`` (``ValueError`` with none of them).
+    ``base_dir`` defaults to ``None``, so flow text never reads a child off
+    disk unless the caller opts in by naming a directory."""
     return Flow.model_validate(
         parse_flow_yaml(text),
         context={
             "subflow_loader": subflow_loader,
             "selector_map": selector_map,
             "subflows": subflows,
+            "base_dir": base_dir,
         },
     )
 
