@@ -178,8 +178,9 @@ def run_subflow(
     step: RunFlowStep,
     flow_data: FlowData,
 ) -> FlowSuccess | FlowError:
-    """A skipped step and a swallowed ``optional:`` failure both come back as
-    an empty success, so the parent advances."""
+    """A skipped step comes back as an empty success; a swallowed
+    ``optional:`` failure comes back as a success carrying the child's
+    partial outputs, so the parent advances without losing that work."""
     resolved = resolve_step(step, flow_data)
     if not isinstance(resolved, RunFlowStep) or resolved.subflow is None:
         raise RuntimeError(
@@ -190,5 +191,5 @@ def run_subflow(
         return FlowSuccess(step=resolved.name)
     result = run_loaded_flow(session, resolved.subflow, resolved.data)
     if isinstance(result, FlowError) and resolved.optional:
-        return FlowSuccess(step=resolved.name)
+        return FlowSuccess(step=resolved.name, outputs=result.outputs)
     return result

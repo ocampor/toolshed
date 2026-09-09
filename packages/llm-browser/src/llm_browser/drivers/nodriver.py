@@ -84,19 +84,26 @@ READY_STATES: dict[str, set[str]] = {
 VISIBILITY_SCRIPT = "(el) => el.offsetParent !== null || el.getClientRects().length > 0"
 
 
+def describe(loc: "NodriverLocator") -> str:
+    return repr(loc.selector) if loc.selector else "element"
+
+
 @dataclass
 class NodriverLocator:
     """Handle for a nodriver selector resolution.
 
-    Carries either a `selector` (resolve lazily on use) or a pre-resolved
-    `element` (from nth/first). Resolution results are cached back onto this
-    object so repeated count/first/all calls don't re-round-trip CDP.
+    Carries a `selector` (resolved lazily on use, and re-queried by the wait
+    paths so a removed or replaced node is seen) and/or a pre-resolved
+    `element` (from nth/all). `index` picks the match a re-query refers to.
+    Resolution results are cached back onto this object so repeated
+    count/first/all calls don't re-round-trip CDP.
     """
 
     tab: Any
     selector: str | None = None
     element: Any = None
     elements: list[Any] | None = None
+    index: int = 0
 
     def __post_init__(self) -> None:
         if self.selector is None and self.element is None:
@@ -408,20 +415,18 @@ class NodriverDriver(Driver):
         await loc.tab.wait_for(selector=loc.selector, timeout=timeout_ms / 1000.0)
 
     async def wait_detached(self, loc: NodriverLocator, timeout_ms: int) -> None:
-        if loc.selector is None:
-            return
         await self.poll_until(
-            lambda: self.element_absent(loc), timeout_ms, f"{loc.selector!r} detached"
+            lambda: self.element_absent(loc), timeout_ms, f"{describe(loc)} detached"
         )
 
     async def wait_visible(self, loc: NodriverLocator, timeout_ms: int) -> None:
         await self.poll_until(
-            lambda: self.element_visible(loc), timeout_ms, f"{loc.selector!r} visible"
+            lambda: self.element_visible(loc), timeout_ms, f"{describe(loc)} visible"
         )
 
     async def wait_hidden(self, loc: NodriverLocator, timeout_ms: int) -> None:
         await self.poll_until(
-            lambda: self.element_hidden(loc), timeout_ms, f"{loc.selector!r} hidden"
+            lambda: self.element_hidden(loc), timeout_ms, f"{describe(loc)} hidden"
         )
 
     async def poll_until(
@@ -441,10 +446,12 @@ class NodriverDriver(Driver):
             await asyncio.sleep(NODRIVER_POLL_INTERVAL_S)
 
     async def current_element(self, loc: NodriverLocator) -> Any:
-        """Re-query every poll: `resolve_element` caches and raises when absent."""
+        """Re-query every poll: `resolve_element` caches, so its handle goes
+        stale as soon as the page replaces the node."""
         if loc.selector is None:
             return loc.element
-        return await loc.tab.query_selector(loc.selector)
+        matches = await loc.tab.query_selector_all(loc.selector)
+        return matches[loc.index] if loc.index < len(matches) else None
 
     async def element_absent(self, loc: NodriverLocator) -> bool:
         return (await self.current_element(loc)) is None
@@ -453,7 +460,12 @@ class NodriverDriver(Driver):
         el = await self.current_element(loc)
         if el is None:
             return False
-        return bool(await el.apply(VISIBILITY_SCRIPT))
+        try:
+            return bool(await el.apply(VISIBILITY_SCRIPT))
+        except Exception:
+            # Reading a handle the page already detached fails over CDP; a node
+            # that is gone is not visible, which is what `hidden` waits for.
+            return False
 
     async def element_hidden(self, loc: NodriverLocator) -> bool:
         return not await self.element_visible(loc)
@@ -490,14 +502,23 @@ class NodriverDriver(Driver):
         return len(self.run(self.resolve_all(locator)))
 
     def first(self, locator: Any) -> Any:
-        elements = self.run(self.resolve_all(locator))
-        if not elements:
-            raise RuntimeError(f"No element matched {locator.selector!r}")
-        return NodriverLocator(tab=locator.tab, element=elements[0])
+        """Lazy while a selector is available, like Playwright's `.first`: the
+        wait paths re-query it, and "nothing matched yet" is a state to wait
+        for rather than an error (`wait_for`/`element_exists` never raise)."""
+        if locator.selector is None:
+            return NodriverLocator(tab=locator.tab, element=locator.element)
+        return NodriverLocator(tab=locator.tab, selector=locator.selector)
 
     def nth(self, locator: Any, index: int) -> Any:
+        """Resolved eagerly — callers iterate indices over one query — but it
+        keeps the selector so the wait paths can re-query this same match."""
         elements = self.run(self.resolve_all(locator))
-        return NodriverLocator(tab=locator.tab, element=elements[index])
+        return NodriverLocator(
+            tab=locator.tab,
+            selector=locator.selector,
+            element=elements[index],
+            index=index,
+        )
 
     def all(self, locator: Any) -> list[Any]:
         elements = self.run(self.resolve_all(locator))

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import yaml
 
 from llm_browser.flows import load_flow_text, run_flow
-from llm_browser.models import FlowError
+from llm_browser.models import FlowError, FlowSuccess
 
 DOM_STEP = {"name": "snap", "action": "dom", "selector": "#main"}
 FAILING_STEP = {"name": "boom", "action": "click", "selector": "#a"}
@@ -49,6 +49,30 @@ def test_parent_outputs_survive_a_failing_subflow(mock_session: MagicMock) -> No
         "snap": "<p>hello</p>",
         "child/inner_snap": "<p>hello</p>",
     }
+
+
+def test_optional_subflow_outputs_survive_its_own_failure(
+    mock_session: MagicMock,
+) -> None:
+    child = _flow_yaml([{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP])
+    parent = _flow_yaml(
+        [
+            {
+                "name": "child",
+                "action": "run-flow",
+                "flow": "c",
+                "optional": True,
+            }
+        ]
+    )
+    mock_session.find.side_effect = TimeoutError("element missing")
+    result = run_flow(
+        mock_session,
+        load_flow_text(parent, subflow_loader=lambda ref: child),
+        {},
+    )
+    assert isinstance(result, FlowSuccess)
+    assert result.outputs == {"child/inner_snap": "<p>hello</p>"}
 
 
 def test_no_outputs_when_the_first_step_fails(mock_session: MagicMock) -> None:

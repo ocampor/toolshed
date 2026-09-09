@@ -384,10 +384,11 @@ The call originates from patchright's vendored HTTP bundle (during CDP connect),
 | `stop_detached()` | Kill a detached Chromium spawned by `launch_detached` |
 | `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
 | `wait_until_stable(sel, quiet_ms, timeout_s)` | Wait for textContent to stop changing (streaming replies) |
-| `goto(url)` | Navigate |
+| `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
 | `find(selector)` | Find exactly one element (returns Playwright Locator) |
 | `find_all(selector)` | Find all matching elements |
-| `element_exists(selector)` | Check if element is present |
+| `wait_for(selector, state, timeout)` | Wait for `attached` / `detached` / `visible` / `hidden`; returns `True`, or `False` on timeout — never raises |
+| `element_exists(selector)` | Check if element is present — alias for `wait_for(selector, "attached")` |
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth)` | Cleaned HTML snippet |
 | `parse_elements(selector, extract)` | Extract structured data |

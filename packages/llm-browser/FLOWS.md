@@ -45,7 +45,7 @@ No selector needed.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `goto` | `url`, `wait_until` (default domcontentloaded) | Navigate to URL |
+| `goto` | `url`, `wait_until` (default domcontentloaded) | Navigate to URL. Since 0.8.0 only `http://` and `https://` URLs are accepted: `file://`, `chrome://`, `javascript:` or a schemeless path (`fixtures/page.html`) fails the step with `url must be http or https`. There is no flow-level opt-out — serve the page over HTTP, or call `session.goto(url, allowed_schemes=("file",))` from Python |
 | `wait` | `state` (domcontentloaded, load, networkidle), `timeout` (ms) | Wait for page load state |
 | `screenshot` | `path` (optional) | Take a screenshot. Without `path`, writes to the session's default location and returns the path. With `path`, writes to that path (parent dirs created). |
 

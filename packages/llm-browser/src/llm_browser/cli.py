@@ -3,8 +3,9 @@
 import json
 import os
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 import click
 
@@ -17,6 +18,16 @@ from llm_browser.html import SanitizeLevel
 from llm_browser.selector_map import load_selector_map
 from llm_browser.models import FlowResult, RunFlowStep
 from llm_browser.session import BrowserSession
+
+
+@contextmanager
+def url_argument_errors() -> Iterator[None]:
+    """A rejected `--url` (non-http scheme) is a bad argument, so report it as
+    one — a clean message and exit 2, not a JSON line plus a traceback."""
+    try:
+        yield
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 def _output(data: object) -> None:
@@ -166,7 +177,8 @@ def build_session(
 def open(ctx: click.Context, url: str, headed: bool) -> None:
     """Launch browser and navigate to URL."""
     session: BrowserSession = ctx.obj["session"]
-    result = session.launch(url=url, headed=headed)
+    with url_argument_errors():
+        result = session.launch(url=url, headed=headed)
     _output(result)
 
 
@@ -216,9 +228,10 @@ def daemon(
 ) -> None:
     """Spawn a detached Chromium that survives this CLI invocation."""
     session: BrowserSession = ctx.obj["session"]
-    result = session.launch_detached(
-        url=url, headed=headed, executable_path=executable, user_data_dir=profile
-    )
+    with url_argument_errors():
+        result = session.launch_detached(
+            url=url, headed=headed, executable_path=executable, user_data_dir=profile
+        )
     _output(result)
 
 
@@ -237,7 +250,8 @@ def stop(ctx: click.Context) -> None:
 def goto(ctx: click.Context, url: str) -> None:
     """Navigate to a URL on the current session."""
     session: BrowserSession = ctx.obj["session"]
-    session.goto(url)
+    with url_argument_errors():
+        session.goto(url)
     _output({"url": session.driver.page_url(session.get_page())})
 
 
