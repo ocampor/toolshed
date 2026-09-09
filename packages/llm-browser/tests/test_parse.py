@@ -7,7 +7,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from llm_browser.parse import ExtractField, ParseBase, build_model
+from llm_browser.parse import (
+    ExtractField,
+    ParseBase,
+    build_model,
+    parse_extract_spec,
+)
 from llm_browser.session import BrowserSession
 
 
@@ -246,3 +251,45 @@ def test_parsed_result_serializes_dynamic_rows() -> None:
     result = ParsedResult(rows=[Row(name="hi", n=42), None])
     payload = result.model_dump(exclude_none=True)
     assert payload["rows"] == [{"name": "hi", "n": 42}, None]
+
+
+# --- ExtractField.parse ---
+
+
+@pytest.mark.parametrize(
+    ("spec", "child_selector", "attribute"),
+    [
+        ("a", "a", "textContent"),
+        ("td.name a", "td.name a", "textContent"),
+        ("a@href", "a", "href"),
+        ("@href", None, "href"),
+        ("a@", "a", "textContent"),
+    ],
+)
+def test_extract_field_parse(
+    spec: str, child_selector: str | None, attribute: str
+) -> None:
+    field = ExtractField.parse(spec)
+    assert field.child_selector == child_selector
+    assert field.attribute == attribute
+
+
+@pytest.mark.parametrize("spec", ["", "@"])
+def test_extract_field_parse_rejects_an_empty_spec(spec: str) -> None:
+    with pytest.raises(ValueError, match="empty extract spec"):
+        ExtractField.parse(spec)
+
+
+def test_parse_extract_spec_maps_every_field() -> None:
+    spec = parse_extract_spec({"title": "h3", "url": "h3 a@href"})
+    assert spec["title"].child_selector == "h3"
+    assert spec["title"].attribute == "textContent"
+    assert spec["url"].child_selector == "h3 a"
+    assert spec["url"].attribute == "href"
+
+
+def test_parse_extract_spec_defaults_to_the_row_text() -> None:
+    spec = parse_extract_spec(None)
+    assert list(spec) == ["text"]
+    assert spec["text"].child_selector is None
+    assert spec["text"].attribute == "textContent"

@@ -58,6 +58,10 @@
   can tell "retry later" from "a person has to log in or clear a challenge"
   without re-parsing the DOM snapshot. The probe is diagnostic only: if it
   raises, the field stays `False` and the original error is untouched.
+- `ExtractField.parse("child selector@attribute")` and
+  `parse.parse_extract_spec({field: spec})` — the compact one-string form of
+  an extraction field, for callers taking specs from JSON or a CLI. Either
+  half may be omitted: `"td.name"`, `"@href"`, `"td.name@href"`.
 
 ### Fixed
 

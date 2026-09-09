@@ -64,3 +64,9 @@ PASSWORD_INPUT_PATTERN = r"<input[^>]*type\s*=\s*[\"']?password"
 CHALLENGE_IFRAME_PATTERN = r"<iframe[^>]*(?:hcaptcha|recaptcha)"
 CHALLENGE_MARKERS = ("cf-challenge", "challenge-platform")
 INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffic")
+
+# --- Extract specs (``"child selector@attribute"``) ---
+
+EXTRACT_ATTRIBUTE_SEPARATOR = "@"
+DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
+DEFAULT_EXTRACT_FIELD = "text"
