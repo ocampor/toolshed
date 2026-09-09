@@ -11,6 +11,18 @@
   `try`. `element_exists()` is now a thin alias for the `attached` case, which
   puts the never-raises timeout handling (patchright's `TimeoutError` does not
   inherit from the builtin, so both have to be caught) in exactly one place.
+- `flows.subflow_refs(text)` — lists the `run-flow` references in a flow
+  without validating its steps. An async caller (an HTTP or MCP server that
+  fetches children over the network) can now discover every child up front,
+  await them all, and hand the results to `load_flow_text(..., subflows=...)`,
+  instead of being forced into a synchronous `subflow_loader` callback in the
+  middle of pydantic validation. Malformed documents yield `[]` rather than
+  raising — validation stays `load_flow_text`'s job — but bad YAML still
+  raises `ValueError`.
+- `load_flow_text(..., subflows=...)` — an explicit ref → YAML-text mapping,
+  threaded through the validation context. It takes precedence over
+  `subflow_loader`, so a caller that already has the children in hand does not
+  need a loader at all.
 - `NodriverDriver.wait_for_state` honors `state` for real. It previously
   ignored the argument and always did an attached-only `tab.wait_for`, so a
   flow asking for `visible` got a false positive on a `display:none` element
@@ -23,6 +35,22 @@
 
 ### Changed
 
+- **Breaking:** `run-flow` references in a flow loaded with
+  `load_flow_text` no longer resolve from the filesystem. Resolution used to
+  try an on-disk file first and fall back to `subflow_loader`, which meant
+  flow text from stdin, `--flow-yaml` or an API request could read arbitrary
+  YAML off the local disk, and which child you got depended on the current
+  working directory. There is now one order — `subflows` mapping, then
+  `subflow_loader`, then `base_dir` — and only `flow_files.load_flow` supplies
+  a `base_dir`. So file-loaded flows resolve siblings exactly as before, and
+  text-loaded flows resolve only through what the caller passed in; a
+  reference with no mapping entry, no loader and no `base_dir` raises
+  `ValueError` naming the reference.
+- `load_flow_text` now raises `ValueError("invalid flow YAML: ...")` instead of
+  leaking `yaml.YAMLError`, so a caller has one exception type to catch for
+  malformed input. Pydantic's `ValidationError` and anything raised by
+  `subflow_loader` still propagate untouched — a loader that signals a missing
+  child with its own exception type keeps working.
 - `BrowserSession.goto` now validates the URL scheme before it touches the
   driver and raises `ValueError` for anything outside `DEFAULT_URL_SCHEMES`
   (`http`, `https`). A flow step or an LLM-supplied URL could previously reach

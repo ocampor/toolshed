@@ -6,30 +6,30 @@ from typing import Any
 
 
 def subflow_text(ref: str, ctx: Mapping[str, Any]) -> str | None:
-    """An existing file beats ``ctx["subflow_loader"]``, so a text-loaded
-    parent can still reference on-disk children; ``None`` means the context
-    (neither ``base_dir`` nor ``subflow_loader``) asked for no resolution."""
-    if not {"base_dir", "subflow_loader"} & ctx.keys():
+    """Mapping, then loader, then ``base_dir``: only a file-loaded flow has a
+    ``base_dir``, so flow text never reaches the filesystem. ``None`` means the
+    context asked for no resolution at all."""
+    if not {"subflows", "subflow_loader", "base_dir"} & ctx.keys():
         return None
-    base_dir = ctx.get("base_dir")
-    path = _resolve_path(ref, base_dir)
-    if path.is_file():
-        return path.read_text()
+    subflows = ctx.get("subflows")
+    if subflows is not None and ref in subflows:
+        from_mapping: str = subflows[ref]
+        return from_mapping
     loader = ctx.get("subflow_loader")
     if loader is not None:
-        text: str = loader(ref)
-        return text
+        loaded: str = loader(ref)
+        return loaded
+    base_dir = ctx.get("base_dir")
     if base_dir is not None:
-        return path.read_text()  # raises FileNotFoundError, as before
-    if "subflow_loader" in ctx:
-        raise ValueError(
-            f"run-flow reference {ref!r}: not a file and no subflow_loader given"
-        )
-    return None
+        return resolve_path(ref, base_dir).read_text()
+    raise ValueError(
+        f"run-flow reference {ref!r}: not in subflows, "
+        "no subflow_loader, and no base_dir"
+    )
 
 
-def _resolve_path(ref: str, base_dir: Any) -> Path:
+def resolve_path(ref: str, base_dir: Any) -> Path:
     path = Path(ref)
-    if path.is_absolute() or base_dir is None:
+    if path.is_absolute():
         return path
     return Path(base_dir) / path

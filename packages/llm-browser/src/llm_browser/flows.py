@@ -1,6 +1,6 @@
 """Parse YAML flow text and execute the steps end-to-end."""
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import yaml
@@ -27,18 +27,50 @@ SelectorMap = dict[str, dict[str, Any]]
 SubflowLoader = Callable[[str], str]
 
 
+def parse_flow_yaml(text: str) -> Any:
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid flow YAML: {exc}") from exc
+
+
 def load_flow_text(
     text: str,
     *,
     subflow_loader: SubflowLoader | None = None,
     selector_map: SelectorMap | None = None,
+    subflows: Mapping[str, str] | None = None,
 ) -> Flow:
-    """``run-flow`` refs resolve eagerly: an existing file is read from disk,
-    anything else goes to ``subflow_loader`` (``ValueError`` without one)."""
+    """``run-flow`` refs resolve eagerly against ``subflows``, then
+    ``subflow_loader`` (``ValueError`` with neither); flow text loaded this way
+    never reads a child off disk — only :func:`llm_browser.flow_files.load_flow`
+    does, via ``base_dir``."""
     return Flow.model_validate(
-        yaml.safe_load(text),
-        context={"subflow_loader": subflow_loader, "selector_map": selector_map},
+        parse_flow_yaml(text),
+        context={
+            "subflow_loader": subflow_loader,
+            "selector_map": selector_map,
+            "subflows": subflows,
+        },
     )
+
+
+def subflow_refs(text: str) -> list[str]:
+    """Refs without validating the steps, so a caller can fetch every child up
+    front and hand them to ``load_flow_text(..., subflows=...)``."""
+    document = parse_flow_yaml(text)
+    steps = document.get("steps") if isinstance(document, Mapping) else None
+    if not isinstance(steps, list):
+        return []
+    refs = (run_flow_ref(entry) for entry in steps)
+    return list(dict.fromkeys(ref for ref in refs if ref is not None))
+
+
+def run_flow_ref(entry: object) -> str | None:
+    if not isinstance(entry, Mapping) or entry.get("action") != "run-flow":
+        return None
+    ref = entry.get("flow")
+    return ref if isinstance(ref, str) and ref else None
 
 
 def run_flow(

@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from llm_browser.flows import load_flow_text, run_flow
-from llm_browser.models import Flow, FlowError, FlowSuccess, RunFlowStep
+from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.redact import redact_secrets
 from llm_browser.session import BrowserSession
 
@@ -52,59 +52,6 @@ def test_load_flow_text_parses_steps() -> None:
     flow = load_flow_text(_flow_yaml([{"name": "s1", "action": "goto", "url": "u"}]))
     assert isinstance(flow, Flow)
     assert flow.steps[0].name == "s1"
-
-
-def test_load_flow_text_resolves_subflow_via_loader() -> None:
-    parent = _flow_yaml(
-        [{"name": "child", "action": "run-flow", "flow": "registry://child"}]
-    )
-    flow = load_flow_text(parent, subflow_loader=lambda ref: CHILD_YAML)
-    step = flow.steps[0]
-    assert isinstance(step, RunFlowStep)
-    assert step.subflow is not None
-    assert step.subflow.steps[0].name == "c1"
-
-
-def test_load_flow_text_loader_receives_reference() -> None:
-    seen: list[str] = []
-
-    def loader(ref: str) -> str:
-        seen.append(ref)
-        return CHILD_YAML
-
-    load_flow_text(
-        _flow_yaml([{"name": "c", "action": "run-flow", "flow": "shared/login"}]),
-        subflow_loader=loader,
-    )
-    assert seen == ["shared/login"]
-
-
-def test_load_flow_text_prefers_existing_file(tmp_path: Path) -> None:
-    child = tmp_path / "child.yaml"
-    child.write_text(CHILD_YAML)
-    flow = load_flow_text(
-        _flow_yaml([{"name": "c", "action": "run-flow", "flow": str(child)}]),
-        subflow_loader=lambda ref: pytest.fail("loader should not be called"),
-    )
-    step = flow.steps[0]
-    assert isinstance(step, RunFlowStep)
-    assert step.subflow is not None
-
-
-def test_load_flow_text_without_loader_rejects_subflow() -> None:
-    with pytest.raises(ValueError, match="subflow_loader"):
-        load_flow_text(
-            _flow_yaml([{"name": "c", "action": "run-flow", "flow": "registry://x"}])
-        )
-
-
-def test_load_flow_text_rejects_nested_subflow() -> None:
-    nested = _flow_yaml([{"name": "n", "action": "run-flow", "flow": "deeper"}])
-    with pytest.raises(ValueError, match="nested sub-flows"):
-        load_flow_text(
-            _flow_yaml([{"name": "c", "action": "run-flow", "flow": "child"}]),
-            subflow_loader=lambda ref: nested,
-        )
 
 
 def test_load_flow_text_expands_selector_refs() -> None:

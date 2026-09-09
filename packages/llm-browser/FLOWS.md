@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. `flow` resolves relative to the parent's directory (or absolute), or via `load_flow_text`'s `subflow_loader` when it isn't an existing file. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Loaded from a file (`load_flow`), `flow` resolves relative to the parent's directory (or absolute); loaded from text (`load_flow_text`), it resolves against the `subflows` mapping and then `subflow_loader`, never from disk. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -156,9 +156,12 @@ selector_map=None, from_step=None, redact=())` loads a file and runs it,
 setting `retry_hint.flow_path`. `run_flow` leaves that field empty —
 re-run by passing the same model with `from_step=`.
 
-`load_flow_text(text, subflow_loader=...)` parses a flow from a YAML
-string; `run-flow` references that aren't existing files are handed to
-`subflow_loader`, which returns the child's YAML text.
+`load_flow_text(text, subflow_loader=..., subflows=...)` parses a flow
+from a YAML string. `run-flow` references are looked up in the `subflows`
+mapping (ref → child YAML text) first, then handed to `subflow_loader`;
+they are never read from disk. `subflow_refs(text)` lists a flow's
+references without validating it, so an async caller can fetch every
+child before calling `load_flow_text`. Bad YAML raises `ValueError`.
 
 ```python
 from llm_browser.flows import load_flow_text, run_flow
