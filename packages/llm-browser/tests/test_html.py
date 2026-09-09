@@ -112,12 +112,30 @@ def test_unknown_tags_are_not_rewritten(fragment: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "needle", ['data-track="art-42"', "<svg", "<path", 'data-ad="top"']
+    "needle",
+    [
+        'data-track="art-42"',
+        'data-ad="top"',
+        'aria-label="Main"',
+        "itemscope",
+        'src="data:image/png;base64',
+    ],
 )
-def test_low_keeps_everything_non_executable(
+def test_low_keeps_custom_attributes(
     sanitized: dict[SanitizeLevel, str], needle: str
 ) -> None:
     assert needle in sanitized[SanitizeLevel.LOW]
+
+
+@pytest.mark.parametrize("level", list(SanitizeLevel))
+@pytest.mark.parametrize("needle", ["<script", "<style"])
+def test_every_level_kills_executable_tags(level: SanitizeLevel, needle: str) -> None:
+    assert needle not in sanitize_html_fragment(SAMPLE, level=level)
+
+
+def test_low_keeps_svg(sanitized: dict[SanitizeLevel, str]) -> None:
+    assert "<svg" in sanitized[SanitizeLevel.LOW]
+    assert "<path" in sanitized[SanitizeLevel.LOW]
 
 
 @pytest.mark.parametrize(
@@ -171,15 +189,31 @@ def test_xhigh_iframe_keeps_only_title(sanitized: dict[SanitizeLevel, str]) -> N
     assert dict(frame.attrib) == {"title": "ad"}
 
 
-def test_xhigh_drops_empty_wrappers(sanitized: dict[SanitizeLevel, str]) -> None:
-    assert "ad-slot" not in sanitized[SanitizeLevel.XHIGH]
-    assert "<div>" not in sanitized[SanitizeLevel.XHIGH]
+def test_xhigh_output_is_exact(sanitized: dict[SanitizeLevel, str]) -> None:
+    assert sanitized[SanitizeLevel.XHIGH] == (
+        '<main id="content">'
+        '<header><a><img alt="Site"></a><nav><a>News</a></nav></header>'
+        "<article><h1>Rates hold steady</h1>"
+        "<p>The bank kept its rate at <b>4.5%</b>. Read <a>more</a>.</p>"
+        '<iframe title="ad"></iframe>'
+        '<form><input type="password" name="pw">'
+        '<button type="submit">Sign in</button></form></article></main>'
+    )
 
 
-def test_xhigh_unwraps_single_child_wrappers(
-    sanitized: dict[SanitizeLevel, str],
-) -> None:
-    assert "<nav><a>News</a></nav>" in sanitized[SanitizeLevel.XHIGH]
+def test_xhigh_strips_structural_tags_but_keeps_their_text() -> None:
+    result = sanitize_html_fragment(
+        "<article><div class='w'>a<span>b</span><section>c</section></div></article>",
+        level=SanitizeLevel.XHIGH,
+    )
+    assert result == "<article>abc</article>"
+
+
+def test_xhigh_keeps_a_structural_root() -> None:
+    result = sanitize_html_fragment(
+        "<div id='c'><span>a</span> b</div>", level=SanitizeLevel.XHIGH
+    )
+    assert result == '<div id="c">a b</div>'
 
 
 @pytest.mark.parametrize("level", list(SanitizeLevel))

@@ -53,6 +53,19 @@ def test_drops_anchor_href() -> None:
     assert ">x</a>" in out
 
 
+def test_keeps_iframe_title() -> None:
+    out = sanitize_page_html(
+        _wrap('<iframe src="https://ads.example/f" title="ad"></iframe>')
+    )
+    assert '<iframe title="ad">' in out
+    assert "ads.example" not in out
+
+
+def test_keeps_unknown_tags() -> None:
+    out = sanitize_page_html(_wrap("<main><p>hi</p></main>"))
+    assert "<main>" in out
+
+
 def test_keeps_form_elements() -> None:
     out = sanitize_page_html(_wrap('<form><input name="q"></form>'))
     assert "<form" in out

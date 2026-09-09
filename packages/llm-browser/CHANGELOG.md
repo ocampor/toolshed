@@ -14,13 +14,14 @@
   `DevToolsActivePort` appears.
 - `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) for DOM extraction, wired
   through `BrowserSession.dom(selector, level=...)` and `llm-browser dom
-  --level`. Each level is one lxml `Cleaner`; they differ only in which
-  attributes survive. `medium` drops custom attributes, `svg`/embeds and
-  `meta`/`link`; `high` drops every `src` and `href` on top, iframes
-  included; `xhigh` keeps only `id`, `alt`, `title`, `role`, `type`, `name`,
-  `value`, `placeholder` and collapses empty or redundant
-  `div`/`span`/`section` wrappers. Each level keeps a subset of the one
-  below it. Default stays `low`.
+  --level`. Every level is one lxml `Cleaner` over the same options — scripts,
+  styles, comments, `svg`/embeds and `meta`/`link` always go — and they differ
+  only in which attributes survive. `low` keeps them all; `medium` drops
+  custom and decorative attributes; `high` drops every `src` and `href` on
+  top, iframes included; `xhigh` keeps only `id`, `alt`, `title`, `role`,
+  `type`, `name`, `value`, `placeholder`, and `div`/`span`/`section` wrappers
+  are removed (their text and children stay). Each level keeps a subset of
+  the one below it. Default stays `low`.
 - `BrowserSession.probe(selector=None, max_chars=...)` → `PageProbe`
   (`password_visible`, `challenge`, `text`, `selector_text`): one in-page
   evaluate that reports whether a page is showing a credential prompt or a
