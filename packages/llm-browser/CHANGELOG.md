@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.7.0 — 2026-09-09
+
+### Added
+
+- `BrowserSession.launch_detached(url, headed)` + `stop_detached()` — spawn a
+  Chromium that survives Python exit and auto-attach over CDP. Gives every
+  driver-equivalent path a multi-CLI session story without requiring users
+  to manage Chromium by hand.
+- `llm-browser daemon` / `llm-browser stop` CLI subcommands.
+- `chrome.spawn_detached_chromium()` — reusable helper that spawns Chromium
+  in a new process group and returns `(pid, cdp_url)` once
+  `DevToolsActivePort` appears.
+- `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) for DOM extraction, wired
+  through `BrowserSession.dom(selector, level=...)` and `llm-browser dom
+  --level`. Every level is one lxml `Cleaner` over the same options — scripts,
+  styles, comments, `svg`/embeds and `meta`/`link` always go — and they differ
+  only in which attributes survive. `low` keeps them all; `medium` drops
+  custom and decorative attributes; `high` drops every `src` and `href` on
+  top, iframes included; `xhigh` keeps only `id`, `alt`, `title`, `role`,
+  `type`, `name`, `value`, `placeholder`, and `div`/`span`/`section` wrappers
+  are removed (their text and children stay). Each level keeps a subset of
+  the one below it. Default stays `low`.
+- `BrowserSession.probe(selector=None, max_chars=...)` → `PageProbe`
+  (`password_visible`, `challenge`, `text`, `selector_text`): one in-page
+  evaluate that reports whether a page is showing a credential prompt or a
+  bot challenge. `llm_browser.probe.human_needed(page_probe)` turns that
+  into a yes/no, and `probe_from_markup(html)` does the same for a static
+  failure snapshot. The challenge-selector list lives in `constants.py` and
+  is injected into `js/page_probe.js`, so JS and Python agree by construction.
+- `selectors.css_string(selector)` — CSS text for an in-page `querySelector`;
+  raises for XPath/fallback selectors, which need a driver locator.
+- `FlowError.human_needed` — a failing step now probes the page, so a caller
+  can tell "retry later" from "a person has to log in or clear a challenge"
+  without re-parsing the DOM snapshot. The probe is diagnostic only: if it
+  raises, the field stays `False` and the original error is untouched.
+- `ExtractField.parse("child selector@attribute")` and
+  `parse.parse_extract_spec({field: spec})` — the compact one-string form of
+  an extraction field, for callers taking specs from JSON or a CLI. Either
+  half may be omitted: `"td.name"`, `"@href"`, `"td.name@href"`.
+
+### Fixed
+
+- `dom()` no longer rewrites unknown tags: lxml treated `main`, `dialog`,
+  `picture`, `template`, `slot` and `path` as unknown and replaced a `main`
+  root with a bare attribute-less `div`.
+- `dom()` output collapses whitespace runs and drops blank-only text nodes,
+  except inside `pre`/`textarea`.
+
+### Notes
+
+- Detached spawn uses `connect_over_cdp` and so does **not** activate
+  patchright stealth. The win is profile warmth: log in / clear Cloudflare
+  once in the spawned profile and every subsequent CLI call reuses the
+  cookies and TLS state. For strict detectors, keep launching Chromium
+  yourself against a human-warmed profile.
+
 ## 0.6.0
 
 ### Added
@@ -26,27 +82,6 @@
 - `execute_step` returns the step's `ActionResult` on success instead of `None`.
 - A nested `run-flow` inside a sub-flow is rejected without loading the
   grandchild.
-
-## Unreleased
-
-### Added
-
-- `BrowserSession.launch_detached(url, headed)` + `stop_detached()` — spawn a
-  Chromium that survives Python exit and auto-attach over CDP. Gives every
-  driver-equivalent path a multi-CLI session story without requiring users
-  to manage Chromium by hand.
-- `llm-browser daemon` / `llm-browser stop` CLI subcommands.
-- `chrome.spawn_detached_chromium()` — reusable helper that spawns Chromium
-  in a new process group and returns `(pid, cdp_url)` once
-  `DevToolsActivePort` appears.
-
-### Notes
-
-- Detached spawn uses `connect_over_cdp` and so does **not** activate
-  patchright stealth. The win is profile warmth: log in / clear Cloudflare
-  once in the spawned profile and every subsequent CLI call reuses the
-  cookies and TLS state. For strict detectors, keep launching Chromium
-  yourself against a human-warmed profile.
 
 ## 0.2.0
 

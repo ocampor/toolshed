@@ -66,6 +66,7 @@ def run_flow(
         data=redact_secrets(result.data, secrets),
         screenshot=result.screenshot,
         dom=result.dom,
+        human_needed=result.human_needed,
         retry_hint=RetryHint(
             data=redact_secrets(data, secrets),
             failed_step=result.step.split("/", 1)[0],

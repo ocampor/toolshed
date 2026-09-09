@@ -1,5 +1,10 @@
 """HTML cleaning utilities for DOM snippet extraction and page snapshots."""
 
+import enum
+import re
+from typing import Any
+
+from lxml import etree
 from lxml.html import (
     HtmlElement,
     HTMLParser,
@@ -10,61 +15,129 @@ from lxml.html import (
 )
 from lxml.html.clean import Cleaner
 
-_page_parser = HTMLParser(remove_blank_text=True)
-
-_cleaner = Cleaner(
-    scripts=True,
-    javascript=True,
-    style=True,
-    comments=True,
-    inline_style=True,
-    safe_attrs_only=False,
+from llm_browser.constants import (
+    DATA_URI_PATTERN,
+    EXTRA_SAFE_ATTRS,
+    KILL_TAGS,
+    STRUCTURAL_TAGS,
+    URL_ATTRS,
+    WHITESPACE_PRESERVE_TAGS,
+    XHIGH_ATTRS,
 )
 
-_page_cleaner = Cleaner(
+
+class SanitizeLevel(enum.StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
+MEDIUM_ATTRS = defs.safe_attrs | EXTRA_SAFE_ATTRS - {"style"}
+HIGH_ATTRS = MEDIUM_ATTRS - {"src", "href"}
+
+# `None` keeps every attribute and every non-executable tag, svg included.
+SAFE_ATTRS: dict[SanitizeLevel, frozenset[str] | None] = {
+    SanitizeLevel.LOW: None,
+    SanitizeLevel.MEDIUM: MEDIUM_ATTRS,
+    SanitizeLevel.HIGH: HIGH_ATTRS,
+    SanitizeLevel.XHIGH: XHIGH_ATTRS,
+}
+
+CLEANER_OPTIONS: dict[str, Any] = dict(
     scripts=True,
     javascript=True,
     style=True,
-    inline_style=True,
     comments=True,
+    inline_style=True,
     links=True,
     meta=True,
-    page_structure=False,
+    frames=False,
+    embedded=False,
     forms=False,
-    frames=True,
-    embedded=True,
-    safe_attrs_only=True,
-    safe_attrs=defs.safe_attrs - {"src", "href"},
-    kill_tags=["svg"],
+    page_structure=False,
+    remove_unknown_tags=False,
 )
 
+CLEANERS: dict[SanitizeLevel, Cleaner] = {
+    level: Cleaner(
+        safe_attrs_only=attrs is not None,
+        safe_attrs=attrs or frozenset(),
+        kill_tags=[] if attrs is None else list(KILL_TAGS),
+        **CLEANER_OPTIONS,
+    )
+    for level, attrs in SAFE_ATTRS.items()
+}
 
-def _truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> None:
+_page_parser = HTMLParser(remove_blank_text=True)
+
+# A tail sits outside its element, so `pre` preserves its own text but not its
+# tail: in XPath a tail is a child of the *enclosing* element, not of `pre`.
+_PRESERVED = " or ".join(
+    f"ancestor-or-self::{tag}" for tag in sorted(WHITESPACE_PRESERVE_TAGS)
+)
+COLLAPSIBLE_TEXT = f"//text()[not({_PRESERVED})]"
+
+
+def truncate_data_uris(tree: HtmlElement) -> None:
+    for node in tree.iter(tag=etree.Element):
+        for attr in URL_ATTRS:
+            value = node.get(attr)
+            if value and value.startswith("data:"):
+                node.set(attr, DATA_URI_PATTERN.sub(r"\1", value))
+
+
+def normalize_whitespace(tree: HtmlElement) -> None:
+    # `strip_tags` can leave two adjacent text nodes that XPath reports
+    # separately, so read the merged value off the element rather than the node.
+    for node in tree.xpath(COLLAPSIBLE_TEXT):
+        owner: HtmlElement = node.getparent()
+        value = owner.tail if node.is_tail else owner.text
+        if not value:
+            continue
+        collapsed = re.sub(r"\s+", " ", value) if value.strip() else None
+        if node.is_tail:
+            owner.tail = collapsed
+        else:
+            owner.text = collapsed
+
+
+def truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> None:
     """Remove children beyond max_depth."""
     if current >= max_depth:
         for child in list(element):
             element.remove(child)
         return
     for child in element:
-        _truncate_tree(child, max_depth, current + 1)
+        truncate_tree(child, max_depth, current + 1)
 
 
-def sanitize_html_fragment(html: str, max_depth: int = 0) -> str:
+def sanitize_html_fragment(
+    html: str,
+    max_depth: int = 0,
+    level: SanitizeLevel = SanitizeLevel.LOW,
+) -> str:
     """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
     tree: HtmlElement = fragment_fromstring(html, create_parent=False)
-    _cleaner(tree)
+    CLEANERS[level](tree)
+    if level is not SanitizeLevel.LOW:
+        truncate_data_uris(tree)
+    if level is SanitizeLevel.XHIGH:
+        # Never touches the root, so a structural root keeps its tag and attrs.
+        etree.strip_tags(tree, *STRUCTURAL_TAGS)
+    normalize_whitespace(tree)
     if max_depth > 0:
-        _truncate_tree(tree, max_depth)
-    return _serialize(tree)
+        truncate_tree(tree, max_depth)
+    return serialize(tree)
 
 
 def sanitize_page_html(html: str) -> str:
     """Sanitize a full page for checkpoint capture."""
     tree: HtmlElement = document_fromstring(html, parser=_page_parser)
-    _page_cleaner(tree)
-    return _serialize(tree)
+    CLEANERS[SanitizeLevel.HIGH](tree)
+    return serialize(tree)
 
 
-def _serialize(tree: HtmlElement) -> str:
+def serialize(tree: HtmlElement) -> str:
     result: str = tostring(tree, encoding="unicode")
     return result

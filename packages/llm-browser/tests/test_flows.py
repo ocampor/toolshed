@@ -10,7 +10,16 @@ from pydantic import ValidationError
 
 from llm_browser.actions import SkippedResult
 from llm_browser.flow_files import load_flow, run_flow_file
-from llm_browser.models import EvalStep, FlowData, FlowError, FlowSuccess
+from llm_browser.flows import run_flow
+from llm_browser.models import (
+    ClickStep,
+    EvalStep,
+    Flow,
+    FlowData,
+    FlowError,
+    FlowSuccess,
+    PageProbe,
+)
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, should_skip
 
@@ -45,6 +54,7 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     session.get_page.return_value = page
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.element_exists.return_value = True
+    session.probe.return_value = PageProbe()
     locator = MagicMock()
     locator.count.return_value = 1
     session.find.return_value = locator
@@ -554,3 +564,49 @@ def test_run_flow_when_skips_subflow(tmp_path: Path) -> None:
     result = run_flow_file(session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert session.find.call_count == 0
+
+
+# --- execute_step: human_needed ---
+
+
+def _failing_click(tmp_path: Path) -> tuple[MagicMock, ClickStep]:
+    session = _mock_session(tmp_path)
+    session.find.side_effect = ValueError("Expected 1 element for '#go', found 0")
+    return session, ClickStep(action="click", name="go", selector="#go")
+
+
+def test_execute_step_flags_a_page_that_needs_a_human(tmp_path: Path) -> None:
+    session, step = _failing_click(tmp_path)
+    session.probe.return_value = PageProbe(password_visible=True, text="Sign in")
+    error = execute_step(session, step, _flow_data())
+    assert isinstance(error, FlowError)
+    assert error.human_needed is True
+
+
+def test_execute_step_leaves_human_needed_false_on_an_ordinary_page(
+    tmp_path: Path,
+) -> None:
+    session, step = _failing_click(tmp_path)
+    error = execute_step(session, step, _flow_data())
+    assert isinstance(error, FlowError)
+    assert error.human_needed is False
+
+
+def test_execute_step_keeps_the_original_error_when_the_probe_fails(
+    tmp_path: Path,
+) -> None:
+    session, step = _failing_click(tmp_path)
+    session.probe.side_effect = RuntimeError("CDP connection closed")
+    error = execute_step(session, step, _flow_data())
+    assert isinstance(error, FlowError)
+    assert error.human_needed is False
+    assert "found 0" in str(error.data)
+    session.take_screenshot.assert_called_once()
+
+
+def test_run_flow_carries_human_needed_through_to_the_caller(tmp_path: Path) -> None:
+    session, step = _failing_click(tmp_path)
+    session.probe.return_value = PageProbe(challenge=True)
+    result = run_flow(session, Flow(steps=[step]), {})
+    assert isinstance(result, FlowError)
+    assert result.human_needed is True

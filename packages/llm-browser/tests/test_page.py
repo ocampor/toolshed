@@ -219,6 +219,16 @@ def test_dom(session: BrowserSession, page: MagicMock) -> None:
     locator.first.evaluate.assert_called_once_with("el => el.outerHTML")
 
 
+def test_dom_level_is_applied(session: BrowserSession, page: MagicMock) -> None:
+    from llm_browser.html import SanitizeLevel
+
+    locator = page.locator.return_value
+    locator.first.evaluate.return_value = '<div data-x="1"><a href="/y">Hi</a></div>'
+    result = session.dom("#content", level=SanitizeLevel.HIGH)
+    assert "data-x" not in result
+    assert "href" not in result
+
+
 # --- Typed selectors ---
 
 

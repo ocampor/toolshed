@@ -20,6 +20,7 @@ coerces them through this class.
 """
 
 import typing
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Self
 
@@ -27,6 +28,7 @@ import yaml
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
+from llm_browser import constants
 from llm_browser.selectors import Selector
 
 
@@ -43,12 +45,42 @@ class ExtractField(FieldInfo):
         self,
         *,
         child_selector: str | None = None,
-        attribute: str = "textContent",
+        attribute: str = constants.DEFAULT_EXTRACT_ATTRIBUTE,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.child_selector = child_selector
         self.attribute = attribute
+
+    @classmethod
+    def parse(cls, spec: str) -> "ExtractField":
+        """Read the compact ``"child selector@attribute"`` form.
+
+        Both halves are optional: ``"td.name"`` reads that child's text,
+        ``"@href"`` reads the attribute off the row element itself, and
+        ``"td.name@href"`` does both.
+        """
+        child_selector, separator, attribute = spec.rpartition(
+            constants.EXTRACT_ATTRIBUTE_SEPARATOR
+        )
+        if not separator:
+            child_selector, attribute = attribute, ""
+        if not child_selector and not attribute:
+            raise ValueError(f"empty extract spec: {spec!r}")
+        return cls(
+            child_selector=child_selector or None,
+            attribute=attribute or constants.DEFAULT_EXTRACT_ATTRIBUTE,
+        )
+
+
+def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField]:
+    """Turn ``{field: "child selector@attribute"}`` into extraction fields.
+
+    ``None`` means "just the text", under the field name ``text``.
+    """
+    if spec is None:
+        return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
+    return {name: ExtractField.parse(value) for name, value in spec.items()}
 
 
 class ParseBase(BaseModel):

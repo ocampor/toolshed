@@ -1,5 +1,6 @@
 """Step execution: resolve templates, evaluate conditions, dispatch actions."""
 
+import logging
 import time
 
 from yaml_engine.compile import compile_condition
@@ -7,9 +8,13 @@ from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import ActionResult, SkippedResult, execute_action
+from llm_browser.constants import LOGGER_NAME
 from llm_browser.models import FlowData, FlowError, Step, validate_step
+from llm_browser.probe import human_needed
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
@@ -55,6 +60,19 @@ def resolve_step(step: Step, data: FlowData) -> Step:
     return resolved
 
 
+def page_needs_human(session: BrowserSession) -> bool:
+    """Whether the failing page is asking for a login or a challenge.
+
+    Diagnostic only: a probe that itself fails must never replace the error
+    the caller actually cares about.
+    """
+    try:
+        return human_needed(session.probe())
+    except Exception:
+        logger.debug("probe failed while diagnosing a step failure", exc_info=True)
+        return False
+
+
 def execute_step(
     session: BrowserSession,
     step: Step,
@@ -82,6 +100,7 @@ def execute_step(
             data=action_result,
             screenshot=screenshot_path,
             dom=dom_path,
+            human_needed=page_needs_human(session),
         )
     if resolved.eval:
         session.driver.evaluate(session.get_page(), resolved.eval)
