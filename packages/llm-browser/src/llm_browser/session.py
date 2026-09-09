@@ -12,7 +12,7 @@ from llm_browser.chrome import (
 )
 from llm_browser.constants import DEFAULT_STATE_DIR, LOGGER_NAME
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
-from llm_browser.html import sanitize_page_html
+from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
     SessionInfo,
@@ -457,12 +457,17 @@ class BrowserSession:
         }
         return self.driver.extract_rows(locator, spec)
 
-    def dom(self, selector: Selector, max_depth: int = 0) -> str:
+    def dom(
+        self,
+        selector: Selector,
+        max_depth: int = 0,
+        level: SanitizeLevel = SanitizeLevel.LOW,
+    ) -> str:
         """Return cleaned HTML snippet of an element."""
         from llm_browser.html import sanitize_html_fragment
 
         raw: str = self.driver.evaluate(self.find(selector), "el => el.outerHTML")
-        return sanitize_html_fragment(raw, max_depth)
+        return sanitize_html_fragment(raw, max_depth, level)
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

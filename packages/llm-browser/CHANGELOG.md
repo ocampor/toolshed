@@ -39,6 +39,20 @@
 - `chrome.spawn_detached_chromium()` — reusable helper that spawns Chromium
   in a new process group and returns `(pid, cdp_url)` once
   `DevToolsActivePort` appears.
+- `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) for DOM extraction, wired
+  through `BrowserSession.dom(selector, level=...)` and `llm-browser dom
+  --level`. Higher levels progressively drop custom attributes, `svg`/embeds,
+  URLs (`src`/`href`, iframes excepted), and finally everything but a small
+  attribute allowlist plus empty/redundant `div`/`span`/`section` wrappers.
+  Default stays `low`.
+
+### Fixed
+
+- `dom()` no longer rewrites unknown tags: lxml treated `main`, `dialog`,
+  `picture`, `template`, `slot` and `path` as unknown and replaced a `main`
+  root with a bare attribute-less `div`.
+- `dom()` output collapses whitespace runs and drops blank-only text nodes,
+  except inside `pre`/`textarea`.
 
 ### Notes
 

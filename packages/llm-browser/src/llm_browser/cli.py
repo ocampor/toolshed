@@ -12,6 +12,7 @@ from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flow_files import load_flow, run_flow_file
 from llm_browser.flows import SelectorMap, load_flow_text, run_flow
+from llm_browser.html import SanitizeLevel
 from llm_browser.selector_map import load_selector_map
 from llm_browser.models import FlowResult, RunFlowStep
 from llm_browser.session import BrowserSession
@@ -520,11 +521,17 @@ def latest_tab(ctx: click.Context) -> None:
 @main.command()
 @click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
 @click.option("--max-depth", default=0, help="Max nesting depth (0 = no limit).")
+@click.option(
+    "--level",
+    type=click.Choice([level.value for level in SanitizeLevel]),
+    default=SanitizeLevel.LOW.value,
+    help="Sanitization aggressiveness.",
+)
 @click.pass_context
-def dom(ctx: click.Context, selector: str, max_depth: int) -> None:
+def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     """Output cleaned DOM snippet of an element."""
     session: BrowserSession = ctx.obj["session"]
-    html = session.dom(selector, max_depth=max_depth)
+    html = session.dom(selector, max_depth=max_depth, level=SanitizeLevel(level))
     _output({"html": html})
 
 
