@@ -472,12 +472,17 @@ class FlowError(BaseModel):
     (deep inside a sub-flow, if applicable) — useful for diagnostics.
     ``retry_hint`` is the top-level recovery breadcrumb (the parent
     step name, suitable for ``--from``); set by ``run_flow``.
+
+    ``human_needed`` is the failing page's verdict from
+    :func:`llm_browser.probe.human_needed` — retrying won't help until
+    someone logs in or clears the challenge.
     """
 
     step: str
     data: object = None
     screenshot: str | None = None
     dom: str | None = None
+    human_needed: bool = False
     retry_hint: RetryHint | None = None
 
 

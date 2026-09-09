@@ -54,6 +54,10 @@
   is injected into `js/page_probe.js`, so JS and Python agree by construction.
 - `selectors.css_string(selector)` — CSS text for an in-page `querySelector`;
   raises for XPath/fallback selectors, which need a driver locator.
+- `FlowError.human_needed` — a failing step now probes the page, so a caller
+  can tell "retry later" from "a person has to log in or clear a challenge"
+  without re-parsing the DOM snapshot. The probe is diagnostic only: if it
+  raises, the field stays `False` and the original error is untouched.
 
 ### Fixed
 

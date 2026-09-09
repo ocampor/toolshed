@@ -29,6 +29,6 @@ def probe_from_markup(markup: str) -> PageProbe:
 
 
 def human_needed(probe: PageProbe) -> bool:
-    return (
+    return bool(
         probe.password_visible or probe.challenge or has_interstitial_phrase(probe.text)
     )
