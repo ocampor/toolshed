@@ -96,6 +96,7 @@ def run_flow(
     return FlowError(
         step=result.step,
         data=redact_secrets(result.data, secrets),
+        outputs=redact_secrets(result.outputs, secrets),
         screenshot=result.screenshot,
         dom=result.dom,
         human_needed=result.human_needed,
@@ -154,7 +155,11 @@ def run_loaded_flow(
         )
         match outcome:
             case FlowError():
-                return outcome
+                # A sub-flow failure already carries the child's outputs;
+                # keep both sides, qualified names keep the keys distinct.
+                return outcome.model_copy(
+                    update={"outputs": {**outputs, **outcome.outputs}}
+                )
             case FlowSuccess():
                 outputs.update(outcome.outputs)
             case _:

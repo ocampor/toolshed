@@ -142,7 +142,8 @@ llm-browser resume --data '{"confirm": true}'
 
 `run_flow` takes a loaded `Flow`, so nothing has to exist on disk;
 `redact` scrubs the listed values from the retry hint, error payload,
-outputs, and log records. Use `llm_browser.flow_files.run_flow_file` to
+outputs (a `FlowError` carries the ones collected before the failing
+step), and log records. Use `llm_browser.flow_files.run_flow_file` to
 run a flow file in one call.
 
 ```python

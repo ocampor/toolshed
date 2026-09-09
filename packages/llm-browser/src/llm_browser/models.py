@@ -478,6 +478,9 @@ class FlowError(BaseModel):
     ``human_needed`` is the failing page's verdict from
     :func:`llm_browser.probe.human_needed` — retrying won't help until
     someone logs in or clears the challenge.
+
+    ``outputs`` holds the results collected before the failing step, keyed
+    the same way as :attr:`FlowSuccess.outputs`.
     """
 
     step: str
@@ -486,6 +489,7 @@ class FlowError(BaseModel):
     dom: str | None = None
     human_needed: bool = False
     retry_hint: RetryHint | None = None
+    outputs: dict[str, object] = {}
 
 
 # Public type alias: callers that don't care which arm they got can use

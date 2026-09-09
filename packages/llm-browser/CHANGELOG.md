@@ -11,6 +11,13 @@
   `try`. `element_exists()` is now a thin alias for the `attached` case, which
   puts the never-raises timeout handling (patchright's `TimeoutError` does not
   inherit from the builtin, so both have to be caught) in exactly one place.
+- `FlowError.outputs` — the outputs collected before the failing step, keyed
+  by qualified step name exactly like `FlowSuccess.outputs`. A flow that read
+  three pages and then failed on the fourth used to throw all three results
+  away, forcing a full re-run to see any of them; the caller can now use the
+  partial data (or show it to the user) while deciding whether to retry. A
+  failure inside a sub-flow keeps both the parent's earlier outputs and the
+  child's, and `redact` scrubs them on the same pass as a success's.
 - `flows.subflow_refs(text)` — lists the `run-flow` references in a flow
   without validating its steps. An async caller (an HTTP or MCP server that
   fetches children over the network) can now discover every child up front,
