@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Loaded from a file (`load_flow`), `flow` resolves relative to the parent's directory (or absolute); loaded from text (`load_flow_text`), it resolves against the `subflows` mapping and then `subflow_loader`, never from disk. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -147,6 +147,54 @@ result.outputs["headlines"]   # [{"title": "..."}, ...]
 
 A step with `path:` still writes its file.
 
+## Loading flows
+
+Getting from flow text to a result is three explicit stages, and every
+consumer walks them itself — the runner only ever sees a `Flow`:
+
+1. **Source** — `llm_browser.flow_pipeline.FlowSource`, a pydantic model
+   holding the flow `text`, its `format` (`"yaml"` or `"json"`) and the
+   `base_dir` a `run-flow` reference resolves against.
+   `FlowSource.from_path(path)` reads a file (`.json` is JSON, anything
+   else YAML) and takes the file's directory as `base_dir`;
+   `FlowSource.from_text(text, format="yaml", base_dir=None)` takes text
+   as it stands, and with no `base_dir` that text can never reach the
+   filesystem.
+2. **Validate** — `build_flow(source, *, subflows=None,
+   subflow_loader=None, selector_map=None)` parses the source per its
+   format and returns a validated `Flow`. A `run-flow` reference is
+   looked up in the `subflows` mapping (ref → child YAML text) first,
+   then handed to `subflow_loader`, and only then read from the source's
+   `base_dir`. Unparsable text raises `ValueError("invalid flow yaml:
+   ...")` / `ValueError("invalid flow json: ...")`.
+   `subflow_refs(source)` lists a flow's references without validating
+   it, so an async caller can fetch every child up front and pass them
+   as `subflows=`.
+3. **Run** — `run_flow(session, flow, data, ...)`.
+
+```python
+from llm_browser.flow_pipeline import FlowSource, build_flow
+from llm_browser.flows import run_flow
+
+source = FlowSource.from_text(yaml_text)
+flow = build_flow(source, subflow_loader=flows_by_name.__getitem__)
+result = run_flow(session, flow, {"user": "bot"})
+```
+
+`llm_browser.flows.load_flow_text(text, ...)` and
+`llm_browser.flow_files.load_flow(path, ...)` are one-line wrappers over
+stages one and two for callers that do not need the source model.
+
+The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
+-`), or as a string (`--flow-yaml TEXT` / `--flow-json TEXT`) — exactly
+one of them, for both `run` and `validate`:
+
+```bash
+llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
+llm-browser run --flow flow.json --data '{}'
+cat flow.yaml | llm-browser validate --flow -
+```
+
 ## Running flows
 
 `run_flow(session, flow, data, *, from_step=None, redact=())` takes a
@@ -155,29 +203,6 @@ loaded `Flow` and never touches the filesystem;
 selector_map=None, from_step=None, redact=())` loads a file and runs it,
 setting `retry_hint.flow_path`. `run_flow` leaves that field empty —
 re-run by passing the same model with `from_step=`.
-
-`load_flow_text(text, subflow_loader=..., subflows=...)` parses a flow
-from a YAML string. `run-flow` references are looked up in the `subflows`
-mapping (ref → child YAML text) first, then handed to `subflow_loader`;
-they are never read from disk. `subflow_refs(text)` lists a flow's
-references without validating it, so an async caller can fetch every
-child before calling `load_flow_text`. Bad YAML raises `ValueError`.
-
-```python
-from llm_browser.flows import load_flow_text, run_flow
-
-flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
-result = run_flow(session, flow, {"user": "bot"})
-```
-
-The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
--`), or as a string (`--flow-yaml TEXT`) — exactly one of them, for both
-`run` and `validate`:
-
-```bash
-llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
-cat flow.yaml | llm-browser validate --flow -
-```
 
 ## Redacting secrets
 

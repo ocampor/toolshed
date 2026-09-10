@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `llm_browser.flow_pipeline` — flow handling is now three explicit stages:
+  `FlowSource` (the flow `text`, its `format` — `"yaml"` or `"json"` — and the
+  `base_dir` a `run-flow` reference resolves against), `build_flow(source, ...)`
+  which parses per format and returns a validated `Flow`, and the unchanged
+  `run_flow(session, flow, data, ...)`. Every consumer builds the model itself
+  and hands it to the runner. `FlowSource.from_path` picks the format from the
+  suffix, so `--flow flow.json` and `build_flow(FlowSource.from_path(...))` load
+  JSON flows; `FlowSource.from_text` defaults to YAML with no `base_dir`, which
+  keeps flow text off the filesystem as before.
+- `llm-browser run --flow-json TEXT` and `llm-browser validate --flow-json TEXT`
+  — a JSON flow as a string, alongside `--flow-yaml`. The two commands now build
+  a `FlowSource` through one helper (`cli.flow_source_from_options`) and run the
+  resulting `Flow`, instead of branching between `load_flow` and
+  `load_flow_text`.
+
+### Changed
+
+- `subflow_refs` moved from `flows` to `flow_pipeline` and takes a `FlowSource`
+  instead of a `str`.
+- Parse errors name the format: `ValueError("invalid flow yaml: ...")` /
+  `ValueError("invalid flow json: ...")`, replacing `"invalid flow YAML: ..."`.
+- `flows.parse_flow_yaml` is gone; `flow_pipeline.parse_flow_document(source)`
+  replaces it. `flows.load_flow_text` and `flow_files.load_flow` keep their
+  signatures and are now wrappers over `build_flow`.
+
 ## 0.8.0 — 2026-09-09
 
 ### Added
