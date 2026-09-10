@@ -66,6 +66,20 @@ def test_non_positive_settle_is_rejected(settle: int) -> None:
         validate_step(wait_for_step(settle=settle))
 
 
+@pytest.mark.parametrize("settle,timeout", [(1500, 1500), (2000, 500)])
+def test_settle_must_fit_inside_the_timeout_when_stable(
+    settle: int, timeout: int
+) -> None:
+    """Otherwise the wait times out on text that never changed at all."""
+    with pytest.raises(ValidationError, match="must be less than timeout"):
+        validate_step(wait_for_step(state="stable", settle=settle, timeout=timeout))
+
+
+def test_a_settle_larger_than_the_timeout_is_fine_for_the_other_states() -> None:
+    step = validate_step(wait_for_step(state="visible", settle=2000, timeout=500))
+    assert step.settle == 2000
+
+
 @pytest.mark.parametrize("timeout", [-1, -3000])
 def test_negative_timeout_is_rejected(timeout: int) -> None:
     with pytest.raises(ValidationError):
@@ -258,6 +272,34 @@ def test_cli_passes_every_option_through(monkeypatch: pytest.MonkeyPatch) -> Non
     session.wait_for_element.assert_called_once_with(
         "#late", state="visible", timeout=1500, interval=250, settle=400
     )
+
+
+def test_cli_rejects_a_settle_that_does_not_fit_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = MagicMock()
+    monkeypatch.setattr("llm_browser.cli.build_session", lambda *a, **k: session)
+
+    result = CliRunner().invoke(
+        main,
+        # fmt: off
+        [
+            "wait-for",
+            "--selector",
+            "#late",
+            "--state",
+            "stable",
+            "--settle",
+            "2000",
+            "--timeout",
+            "500",
+        ],
+        # fmt: on
+    )
+
+    assert result.exit_code == 2
+    assert "must be less than timeout" in result.output
+    session.wait_for_element.assert_not_called()
 
 
 def test_cli_rejects_an_unknown_state(monkeypatch: pytest.MonkeyPatch) -> None:

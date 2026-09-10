@@ -115,7 +115,6 @@ def test_uncheck(session: BrowserSession) -> None:
 def test_pick(session: BrowserSession) -> None:
     locator = MagicMock()
     locator.count.return_value = 2
-    locator.first.wait_for.return_value = None
     item1 = MagicMock()
     item1.text_content.return_value = "Apple"
     item2 = MagicMock()

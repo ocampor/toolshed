@@ -26,6 +26,7 @@ from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
+    check_settle_budget,
     PageProbe,
     SessionInfo,
     SessionResult,
@@ -392,12 +393,20 @@ class BrowserSession:
     ) -> Any:
         """Find exactly one element. Raises ValueError if multiple match.
 
-        Waits first, then resolves: counting matches never waits, so the
-        locator has to be asked for after the element is known to be there.
+        Ambiguity is a mistake, not something to wait out, so it is checked
+        before the poll — otherwise a selector matching two elements burns the
+        whole budget and reports a misleading timeout. It is checked again
+        after, because the wait is what makes a match appear, and counting
+        never waits.
         """
+        page = self.get_page()
+        expect_single(
+            self.driver, resolve_selector(self.driver, page, selector), selector
+        )
         self.wait_for_element(selector, state=state, timeout=timeout)
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        return expect_single(self.driver, locator, selector)
+        return expect_single(
+            self.driver, resolve_selector(self.driver, page, selector), selector
+        )
 
     def find_all(
         self, selector: Selector, state: WaitState = "attached", timeout: int = 10_000
@@ -431,8 +440,10 @@ class BrowserSession:
         handing the wait to the driver, so no in-page script is injected and
         the timeout carries the selector and state in its message. ``settle``
         applies to ``state="stable"`` — how long the element's text has to
-        hold still. Use ``element_exists`` when you want a bool back.
+        hold still, and has to fit inside ``timeout``. Use ``element_exists``
+        when you want a bool back.
         """
+        check_settle_budget(state, settle, timeout)
         waits.poll_for_state(
             self.driver,
             self.get_page(),

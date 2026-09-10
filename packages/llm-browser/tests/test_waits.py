@@ -356,3 +356,27 @@ def test_stable_restarts_the_clock_on_every_change(
 
     # "a" then "b": settling could not have started before the second read.
     assert driver.text_content.call_count >= 3
+
+
+def test_a_settle_that_does_not_fit_the_budget_fails_before_polling(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """The wait could only ever time out, so say why instead of pretending."""
+    session = make_session(tmp_path, driver_with(texts=["done"]))
+
+    with pytest.raises(ValueError, match="must be less than timeout"):
+        session.wait_for_element("#reply", state="stable", settle=2000, timeout=500)
+
+    assert clock.sleeps == []
+
+
+def test_find_rejects_an_ambiguous_selector_before_polling(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """Two matches is a mistake, not a state to wait for: no budget is burned."""
+    session = make_session(tmp_path, driver_with(counts=[2], visible=[False]))
+
+    with pytest.raises(ValueError, match="Expected 1 element"):
+        session.find("#dup", timeout=10_000)
+
+    assert clock.sleeps == []

@@ -102,7 +102,10 @@
   elements match *right now*, so a poll tick cannot stall inside the driver.
   On nodriver, `count`/`find_all` no longer wait up to 10 s for a late
   element; use `wait_for_element`, which `find`, `find_all` and `frame` now
-  call before they resolve anything. `count` there was
+  call before they resolve anything. `find` (and `frame` through it) still
+  counts before it waits, so a selector matching two elements fails at once
+  with `Expected 1 element for ..., found 2` instead of burning the whole
+  budget on a match that could never be single. `count` there was
   `tab.select_all(selector)`, whose retry cycle costs a 500 ms sleep plus a
   `Target.getTargets` refresh apiece and is paid even at `timeout=0`, because
   the timeout is only checked after the first cycle; it is now
@@ -115,8 +118,11 @@
   jittered poll, same budget, same failure report — so "wait for the element"
   and "wait for its text to stop moving" are one step with one set of knobs.
   An element that is not there yet reads as no text at all and never settles,
-  and `timeout` is the whole budget, so a stable wait needs one comfortably
-  larger than `settle`.
+  and `timeout` is the whole budget, so a stable wait needs one larger than
+  `settle`: a step, a `wait_for_element` call or a CLI invocation that asks
+  for less is rejected up front (`settle (2000ms) must be less than timeout
+  (500ms) for state 'stable'`) rather than timing out on text that never
+  changed.
 - `llm-browser wait-for --selector S [--state] [--timeout] [--interval]
   [--settle]` — the same wait from the CLI; a timeout exits non-zero with the
   message, no traceback.

@@ -22,9 +22,24 @@ from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
-from llm_browser.models import Flow, FlowResult, RunFlowStep, WaitState
+from llm_browser.models import (
+    Flow,
+    FlowResult,
+    RunFlowStep,
+    WaitState,
+    check_settle_budget,
+)
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
+
+
+@contextmanager
+def budget_argument_errors() -> Iterator[None]:
+    """A settle/timeout mismatch is a bad option pair: exit 2, like --interval 0."""
+    try:
+        yield
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 @contextmanager
@@ -574,6 +589,8 @@ def wait_for(
 ) -> None:
     """Poll until an element reaches a state; exit non-zero on timeout."""
     session: BrowserSession = ctx.obj["session"]
+    with budget_argument_errors():
+        check_settle_budget(cast(WaitState, state), settle, timeout)
     try:
         session.wait_for_element(
             selector,

@@ -187,6 +187,20 @@ class PressStep(BaseStep):
     key: str = Field(..., min_length=1)
 
 
+def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
+    """A ``stable`` wait needs room for the settle window inside its budget.
+
+    ``TextSettled`` cannot confirm "held still for ``settle``" before
+    ``settle`` has passed, so a smaller ``timeout`` times out even on text
+    that never changed — a misleading failure for what is a misconfiguration.
+    """
+    if state == "stable" and settle >= timeout:
+        raise ValueError(
+            f"settle ({settle}ms) must be less than timeout ({timeout}ms) "
+            "for state 'stable'"
+        )
+
+
 class WaitForStep(SelectorStep):
     """Poll until ``selector`` reaches ``state``, or fail the step.
 
@@ -205,6 +219,11 @@ class WaitForStep(SelectorStep):
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
     interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
     settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+
+    @model_validator(mode="after")
+    def _check_settle_budget(self) -> "WaitForStep":
+        check_settle_budget(self.state, self.settle, self.timeout)
+        return self
 
 
 class EvalStep(BaseStep):

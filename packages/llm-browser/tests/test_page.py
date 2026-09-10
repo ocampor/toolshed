@@ -95,7 +95,6 @@ def test_pick(session: BrowserSession, page: MagicMock) -> None:
     item2 = MagicMock()
     item2.text_content.return_value = "Banana"
     locator.nth.side_effect = lambda i: [item1, item2][i]
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     session.pick(".option", "Banana")
     item2.click.assert_called_once()
@@ -104,7 +103,6 @@ def test_pick(session: BrowserSession, page: MagicMock) -> None:
 def test_pick_single_clicks_first(session: BrowserSession, page: MagicMock) -> None:
     locator = MagicMock()
     locator.count.return_value = 1
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     session.pick(".option", "anything")
     locator.first.click.assert_called_once()
@@ -116,7 +114,6 @@ def test_pick_no_match_raises(session: BrowserSession, page: MagicMock) -> None:
     item = MagicMock()
     item.text_content.return_value = "Other"
     locator.nth.return_value = item
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     with pytest.raises(ValueError, match="No element with text"):
         session.pick(".option", "Missing")
