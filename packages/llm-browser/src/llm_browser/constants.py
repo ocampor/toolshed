@@ -13,6 +13,14 @@ DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
 DEFAULT_POLL_INTERVAL_MS = 500
 
+# How long an element's text has to stay put for the ``stable`` wait state.
+DEFAULT_SETTLE_MS = 1_500
+
+# A Playwright read still needs a timeout — `timeout=0` there means *no*
+# timeout — so a now-read gets one long enough for a slow round-trip and short
+# enough not to be a wait.
+READ_TIMEOUT_MS = 250
+
 # An explicit wait sleeps ``interval`` ± this fraction: a fixed 500ms cadence is
 # itself a fingerprint.
 POLL_JITTER_RATIO = 0.3

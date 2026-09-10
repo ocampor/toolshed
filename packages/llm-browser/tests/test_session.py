@@ -74,32 +74,6 @@ def testis_process_alive_nonexistent() -> None:
     assert is_process_alive(1 << 30) is False
 
 
-# --- wait_until_stable ---
-
-
-def _session_with_evaluate(tmp_path: Path, result: object) -> BrowserSession:
-    s = BrowserSession(state_dir=tmp_path)
-    page = MagicMock()
-    locator = MagicMock()
-    locator.count.return_value = 1
-    locator.first.evaluate.return_value = result
-    page.locator.return_value = locator
-    s._page = page
-    return s
-
-
-def test_wait_until_stable_returns_text(tmp_path: Path) -> None:
-    session = _session_with_evaluate(tmp_path, "final reply")
-    assert session.wait_until_stable("#out") == "final reply"
-
-
-def test_wait_until_stable_times_out(tmp_path: Path) -> None:
-    # In-page script resolves to null on timeout; driver maps that to None.
-    session = _session_with_evaluate(tmp_path, None)
-    with pytest.raises(TimeoutError):
-        session.wait_until_stable("#out", timeout_s=0.01)
-
-
 # --- executable_path ---
 
 

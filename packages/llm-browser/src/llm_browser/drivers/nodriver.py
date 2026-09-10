@@ -418,8 +418,11 @@ class NodriverDriver(Driver):
         return self.run(self.read_text(locator))
 
     async def read_text(self, loc: NodriverLocator) -> str | None:
-        el = await self.resolve_element(loc)
-        text: str | None = el.text
+        """A now-read (rule 1): the bare query, never `tab.select`'s retry."""
+        matches = await self.query(loc)
+        if loc.index >= len(matches):
+            return None
+        text: str | None = matches[loc.index].text
         return text
 
     def input_value(self, locator: Any) -> str:

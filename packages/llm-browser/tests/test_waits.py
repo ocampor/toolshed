@@ -3,6 +3,7 @@
 Time is faked throughout — a real poll loop would make these tests sleep.
 """
 
+import itertools
 import random
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,13 +62,19 @@ def make_session(tmp_path: Path, driver: MagicMock) -> BrowserSession:
     return session
 
 
-def driver_with(counts: list[int] | None = None, visible: list[bool] | None = None):
-    """A driver whose reads walk ``counts`` / ``visible``, repeating the last."""
+def driver_with(
+    counts: list[int] | None = None,
+    visible: list[bool] | None = None,
+    texts: list[str | None] | None = None,
+):
+    """A driver whose reads walk ``counts`` / ``visible`` / ``texts``,
+    repeating the last."""
     driver = MagicMock(spec=Driver)
     driver.resolve.side_effect = lambda page, selector: MagicMock(name=selector)
     driver.first.side_effect = lambda locator: locator
     driver.count.side_effect = _series(counts if counts is not None else [0])
     driver.is_visible.side_effect = _series(visible if visible is not None else [False])
+    driver.text_content.side_effect = _series(texts if texts is not None else [None])
     return driver
 
 
@@ -301,3 +308,51 @@ def test_poll_for_state_is_driver_agnostic() -> None:
     )
 
     assert driver.count.call_count == 1
+
+
+# --- the stable state ---
+
+
+def test_stable_returns_once_the_text_holds_still(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with(texts=["done"]))
+
+    session.wait_for_element("#reply", state="stable", settle=1000, timeout=10_000)
+
+    # First read starts the clock, and the text has to hold for a full settle.
+    assert clock.now - 1000.0 >= 1.0
+
+
+def test_stable_times_out_while_the_text_keeps_changing(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    driver = driver_with()
+    chunks = iter(str(n) for n in itertools.count())
+    driver.text_content.side_effect = lambda locator: next(chunks)
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(TimeoutError, match="#reply did not become stable within"):
+        session.wait_for_element("#reply", state="stable", settle=100, timeout=1000)
+
+
+def test_stable_never_settles_on_an_element_that_is_not_there(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """``None`` is "nothing to read yet", not "settled on nothing"."""
+    session = make_session(tmp_path, driver_with(texts=[None]))
+
+    with pytest.raises(TimeoutError):
+        session.wait_for_element("#reply", state="stable", settle=1, timeout=500)
+
+
+def test_stable_restarts_the_clock_on_every_change(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    driver = driver_with(texts=["a", "b", "b", "b", "b", "b"])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_element("#reply", state="stable", settle=600, timeout=10_000)
+
+    # "a" then "b": settling could not have started before the second read.
+    assert driver.text_content.call_count >= 3

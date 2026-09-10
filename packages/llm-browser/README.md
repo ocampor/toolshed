@@ -28,6 +28,13 @@ session.find("button[type=submit]").click()
 if session.element_exists("#dashboard"):
     print("Logged in")
 
+# Wait for an element to turn up, or for one to go away
+session.wait_for_element("#results", state="visible", timeout=10_000)
+session.wait_for_element(".modal-backdrop", state="detached", timeout=5_000)
+
+# Wait for text that is still moving to hold still
+session.wait_for_element("#isr-total", state="stable", settle=800, timeout=20_000)
+
 # Read page structure
 html = session.dom("body", max_depth=2)
 
@@ -127,6 +134,7 @@ llm-browser open --url https://example.com
 llm-browser goto --url https://example.com/page2
 llm-browser find --selector "#form"
 llm-browser wait-for --selector "#results" --state visible --timeout 10000
+llm-browser wait-for --selector ".cart .total" --state stable --settle 1500 --timeout 30000
 llm-browser find-all --selector "li.item"
 llm-browser dom --selector "#content" --max-depth 2
 llm-browser screenshot
@@ -346,10 +354,10 @@ every abstract method — `BrowserSession`, the flow actions and
 `llm_browser.waits` are written against that ABC, not against a browser API.
 Its class docstring is the contract, and the five rules in it are the parts a
 new backend gets wrong: which methods may block on the DOM (only
-`wait_for_load` and `wait_for_stable_text` — every read answers about the page
-as it is now), that input must be trusted events, which methods may run JS,
-that `first`/`nth` stay re-resolvable, and that timeouts are milliseconds and
-raise the builtin `TimeoutError`. `tests/test_driver_contract.py` checks the
+`wait_for_load` — every read answers about the page as it is now), that input
+must be trusted events, which methods may run JS, that `first`/`nth` stay
+re-resolvable, and that timeouts are milliseconds and raise the builtin
+`TimeoutError`. `tests/test_driver_contract.py` checks the
 read rules against each driver with fakes; add yours to its fixture.
 
 ### nodriver — detectable surfaces
@@ -409,11 +417,10 @@ The call originates from patchright's vendored HTTP bundle (during CDP connect),
 | `launch_detached(url, headed)` | Spawn detached Chromium + auto-attach (multi-CLI safe) |
 | `stop_detached()` | Kill a detached Chromium spawned by `launch_detached` |
 | `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
-| `wait_until_stable(sel, quiet_ms, timeout_s)` | Wait for textContent to stop changing (streaming replies) |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
 | `find(selector)` | Find exactly one element (returns Playwright Locator) |
 | `find_all(selector)` | Find all matching elements |
-| `wait_for_element(selector, state=, timeout=, interval=)` | The one wait: polls from Python on a jittered `interval` until the element is `attached` / `detached` / `visible` / `hidden`, and raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script and no driver-native wait |
+| `wait_for_element(selector, state=, timeout=, interval=, settle=)` | The one wait: polls from Python on a jittered `interval` until the element is `attached` / `detached` / `visible` / `hidden`, or `stable` — its text unchanged for `settle` ms, which is how you wait out streaming replies or a recalculating total. Raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script and no driver-native wait |
 | `element_exists(selector)` | Whether the element shows up within `timeout` — `wait_for_element(..., state="attached")` with the timeout read as `False` instead of raising |
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth)` | Cleaned HTML snippet |

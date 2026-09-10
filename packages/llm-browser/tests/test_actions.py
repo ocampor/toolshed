@@ -22,7 +22,6 @@ from llm_browser.models import (
     ScrollStep,
     SelectStep,
     TypeStep,
-    WaitStep,
     validate_step,
 )
 from llm_browser.session import BrowserSession
@@ -391,22 +390,6 @@ def test_press_requires_key() -> None:
 
 
 # --- wait ---
-
-
-def test_wait(session: BrowserSession) -> None:
-    """``wait`` polls a selector until its text stops changing for ``quiet_ms``."""
-    from llm_browser.actions import TextResult
-
-    # The Playwright-family driver resolves stability in-page via
-    # locator.evaluate(); mock its return.
-    locator = _single_locator()
-    locator.first.evaluate.return_value = "done"
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
-
-    step = WaitStep(name="s", action="wait", selector="#reply", quiet_ms=5, timeout_s=5)
-    result = execute_action(session, step)
-    assert isinstance(result, TextResult)
-    assert result.text == "done"
 
 
 # --- no action ---

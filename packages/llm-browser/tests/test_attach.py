@@ -155,38 +155,6 @@ def test_attach_close_cleanup_removes_capture_files(tmp_path: Path) -> None:
     assert not session._dom_path.exists()
 
 
-def test_default_wait_for_stable_text_returns_none_on_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Driver's Python-side fallback returns None when text keeps changing."""
-    monkeypatch.setattr("time.sleep", lambda *_: None)
-    driver = AttachStubDriver()
-    counter = {"n": 0}
-
-    def never_stable(locator: Any) -> str:
-        counter["n"] += 1
-        return str(counter["n"])
-
-    driver.text_content = never_stable  # type: ignore[method-assign]
-    assert driver.wait_for_stable_text(MagicMock(), quiet_ms=1000, timeout_ms=5) is None
-
-
-def test_default_wait_for_stable_text_returns_stable_value(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("time.sleep", lambda *_: None)
-    driver = AttachStubDriver()
-
-    def _stable(_loc: Any) -> str | None:
-        return "settled"
-
-    driver.text_content = _stable  # type: ignore[method-assign,assignment]
-    assert (
-        driver.wait_for_stable_text(MagicMock(), quiet_ms=1, timeout_ms=500)
-        == "settled"
-    )
-
-
 def test_patchright_reattaches_from_cdp_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

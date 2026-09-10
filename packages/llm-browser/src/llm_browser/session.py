@@ -15,6 +15,7 @@ from llm_browser.chrome import (
 )
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
@@ -422,13 +423,15 @@ class BrowserSession:
         state: WaitState = "attached",
         timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
         interval: int = DEFAULT_POLL_INTERVAL_MS,
+        settle: int = DEFAULT_SETTLE_MS,
     ) -> None:
         """Poll until ``selector`` reaches ``state``; raise ``TimeoutError`` if not.
 
         The one wait: it polls from Python on a jittered cadence instead of
         handing the wait to the driver, so no in-page script is injected and
-        the timeout carries the selector and state in its message. Use
-        ``element_exists`` when you want a bool back.
+        the timeout carries the selector and state in its message. ``settle``
+        applies to ``state="stable"`` — how long the element's text has to
+        hold still. Use ``element_exists`` when you want a bool back.
         """
         waits.poll_for_state(
             self.driver,
@@ -438,35 +441,8 @@ class BrowserSession:
             timeout_ms=timeout,
             interval_ms=interval,
             rng=self._behavior_runtime.rng,
+            settle_ms=settle,
         )
-
-    def wait_until_stable(
-        self,
-        selector: Selector,
-        quiet_ms: int = 1500,
-        timeout_s: float = 180.0,
-        find_timeout: int | None = None,
-    ) -> str:
-        """Wait until ``selector``'s textContent stops changing for ``quiet_ms``.
-
-        Returns the final text. Raises ``TimeoutError`` on timeout. Designed
-        for LLM chat UIs with token-streaming replies. On Playwright-family
-        drivers the stability loop runs in-page (single CDP call); other
-        drivers fall back to a Python poll.
-        """
-        element = (
-            self.find(selector, timeout=find_timeout)
-            if find_timeout is not None
-            else self.find(selector)
-        )
-        text = self.driver.wait_for_stable_text(
-            element, quiet_ms=quiet_ms, timeout_ms=int(timeout_s * 1000)
-        )
-        if text is None:
-            raise TimeoutError(
-                f"wait_until_stable: {selector!r} did not stabilize within {timeout_s}s"
-            )
-        return text
 
     def wait_for_load_state(
         self, state: str = "domcontentloaded", timeout: int = 10_000

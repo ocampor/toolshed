@@ -5,7 +5,8 @@ primitive whether the state is reached, sleep a jittered interval, repeat
 until the deadline. Deliberately *not* built on a driver-native wait: on the
 Playwright family that runs an injected in-page script, which is the
 fingerprint an explicit wait is meant to avoid. Every primitive it calls
-answers immediately — ``count`` and ``is_visible`` are single reads — because
+answers immediately — ``count``, ``is_visible`` and ``text_content`` are
+single reads — because
 a tick that waited inside the driver would blow past this loop's deadline.
 """
 
@@ -14,7 +15,7 @@ import time
 from typing import Any, Callable
 
 from llm_browser.behavior import Jitter
-from llm_browser.constants import POLL_JITTER_RATIO
+from llm_browser.constants import DEFAULT_SETTLE_MS, POLL_JITTER_RATIO
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState
 from llm_browser.selectors import Selector, describe_selector, resolve_selector
@@ -47,6 +48,34 @@ STATE_PREDICATES: dict[WaitState, StatePredicate] = {
 }
 
 
+class TextSettled:
+    """True once the element's text has held still for ``settle_ms``.
+
+    The one state with memory, so each wait gets its own instance. An element
+    that is not there yet reads as ``None`` and counts as a change: nothing
+    has settled while there is nothing to read.
+    """
+
+    def __init__(self, settle_ms: int) -> None:
+        self.settle_s = settle_ms / 1000.0
+        self.text: str | None = None
+        self.since = time.monotonic()
+
+    def __call__(self, driver: Driver, locator: Any) -> bool:
+        text = driver.text_content(driver.first(locator))
+        now = time.monotonic()
+        if text is None or text != self.text:
+            self.text, self.since = text, now
+            return False
+        return now - self.since >= self.settle_s
+
+
+def state_predicate(state: WaitState, settle_ms: int) -> StatePredicate:
+    if state == "stable":
+        return TextSettled(settle_ms)
+    return STATE_PREDICATES[state]
+
+
 def poll_jitter(interval_ms: int) -> Jitter:
     spread = round(interval_ms * POLL_JITTER_RATIO)
     return Jitter(min_ms=max(0, interval_ms - spread), max_ms=interval_ms + spread)
@@ -60,6 +89,7 @@ def poll_for_state(
     timeout_ms: int,
     interval_ms: int,
     rng: random.Random,
+    settle_ms: int = DEFAULT_SETTLE_MS,
 ) -> None:
     """Block until ``selector`` reaches ``state``, or raise ``TimeoutError``.
 
@@ -74,7 +104,7 @@ def poll_for_state(
     branch matched this tick — it never fires while the fallback still
     matches.
     """
-    reached = STATE_PREDICATES[state]
+    reached = state_predicate(state, settle_ms)
     pause = poll_jitter(interval_ms)
     deadline = time.monotonic() + timeout_ms / 1000.0
     while True:

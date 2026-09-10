@@ -33,7 +33,6 @@ from llm_browser.models import (
     ThinkStep,
     TypeStep,
     WaitForStep,
-    WaitStep,
 )
 from llm_browser.parse import build_model
 from llm_browser.paths import prepare_output_path
@@ -261,17 +260,6 @@ def action_goto(session: BrowserSession, step: GotoStep) -> VoidResult:
     return VoidResult()
 
 
-@_registry.register("wait")
-def action_wait(session: BrowserSession, step: WaitStep) -> TextResult:
-    text = session.wait_until_stable(
-        step.selector,
-        quiet_ms=step.quiet_ms,
-        timeout_s=step.timeout_s,
-        find_timeout=step.timeout,
-    )
-    return TextResult(text=text)
-
-
 @_registry.register("wait_for")
 def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
     """A timeout here rides ``execute_action``'s handler: the step fails with
@@ -281,6 +269,7 @@ def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
         state=step.state,
         timeout=step.timeout,
         interval=step.interval,
+        settle=step.settle,
     )
     return VoidResult()
 

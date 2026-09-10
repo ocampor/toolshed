@@ -17,7 +17,11 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
-from llm_browser.constants import DEFAULT_POLL_INTERVAL_MS, DEFAULT_WAIT_TIMEOUT_MS
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+)
 from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
 
@@ -26,7 +30,7 @@ from llm_browser.selectors import Selector
 
 CaptureMode = Literal["screenshot", "dom", "both"]
 
-WaitState = Literal["attached", "detached", "visible", "hidden"]
+WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
 
 class BaseStep(BaseModel):
@@ -183,24 +187,15 @@ class PressStep(BaseStep):
     key: str = Field(..., min_length=1)
 
 
-class WaitStep(SelectorStep):
-    """Wait until ``selector``'s text stops changing for ``quiet_ms``.
-
-    Designed for streaming content (LLM chat replies, progressive lists);
-    page-level load events should use ``goto``'s ``wait_until`` arg instead.
-    """
-
-    action: Literal["wait"]
-    quiet_ms: int = 1500
-    timeout_s: float = 180.0
-
-
 class WaitForStep(SelectorStep):
     """Poll until ``selector`` reaches ``state``, or fail the step.
 
-    The explicit wait: it answers "is the element there yet", where ``wait``
-    answers "has the element's text stopped changing". ``timeout`` is the
-    whole budget; ``interval`` is the nominal gap between polls, jittered.
+    The one wait: four states answer "is the element there yet" and ``stable``
+    answers "has its text stopped changing" — for streaming content (LLM chat
+    replies, progressive lists, a recalculating total). ``timeout`` is the
+    whole budget; ``interval`` is the nominal gap between polls, jittered;
+    ``settle`` is how long the text has to hold still, and applies to
+    ``stable`` only.
     """
 
     action: Literal["wait_for"]
@@ -209,6 +204,7 @@ class WaitForStep(SelectorStep):
     # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
     interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
+    settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
 
 
 class EvalStep(BaseStep):
@@ -293,7 +289,6 @@ Step = Annotated[
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
-    | Annotated[WaitStep, Tag("wait")]
     | Annotated[WaitForStep, Tag("wait_for")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],

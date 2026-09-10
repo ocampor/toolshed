@@ -14,6 +14,7 @@ from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     DRIVER_ENV_VAR,
 )
@@ -556,9 +557,20 @@ def find_all(ctx: click.Context, selector: str) -> None:
     default=DEFAULT_POLL_INTERVAL_MS,
     help="Nominal gap between polls (ms); jittered, clamped to the budget.",
 )
+@click.option(
+    "--settle",
+    type=click.IntRange(min=1),
+    default=DEFAULT_SETTLE_MS,
+    help="For --state stable: how long the text must hold still (ms).",
+)
 @click.pass_context
 def wait_for(
-    ctx: click.Context, selector: str, state: str, timeout: int, interval: int
+    ctx: click.Context,
+    selector: str,
+    state: str,
+    timeout: int,
+    interval: int,
+    settle: int,
 ) -> None:
     """Poll until an element reaches a state; exit non-zero on timeout."""
     session: BrowserSession = ctx.obj["session"]
@@ -568,6 +580,7 @@ def wait_for(
             state=cast(WaitState, state),
             timeout=timeout,
             interval=interval,
+            settle=settle,
         )
     except TimeoutError as exc:
         raise click.ClickException(str(exc)) from exc

@@ -11,7 +11,11 @@ from pydantic import ValidationError
 
 from llm_browser.actions import SkippedResult, VoidResult, execute_action
 from llm_browser.cli import main
-from llm_browser.constants import DEFAULT_POLL_INTERVAL_MS, DEFAULT_WAIT_TIMEOUT_MS
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+)
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowError, FlowSuccess, WaitForStep, validate_step
 from llm_browser.steps import execute_step
@@ -32,9 +36,12 @@ def test_defaults_come_from_constants() -> None:
     assert step.state == "attached"
     assert step.timeout == DEFAULT_WAIT_TIMEOUT_MS
     assert step.interval == DEFAULT_POLL_INTERVAL_MS
+    assert step.settle == DEFAULT_SETTLE_MS
 
 
-@pytest.mark.parametrize("state", ["attached", "detached", "visible", "hidden"])
+@pytest.mark.parametrize(
+    "state", ["attached", "detached", "visible", "hidden", "stable"]
+)
 def test_every_wait_state_validates(state: str) -> None:
     assert validate_step(wait_for_step(state=state)).state == state
 
@@ -53,6 +60,12 @@ def test_non_positive_interval_is_rejected(interval: int) -> None:
         validate_step(wait_for_step(interval=interval))
 
 
+@pytest.mark.parametrize("settle", [0, -1, -1500])
+def test_non_positive_settle_is_rejected(settle: int) -> None:
+    with pytest.raises(ValidationError):
+        validate_step(wait_for_step(settle=settle))
+
+
 @pytest.mark.parametrize("timeout", [-1, -3000])
 def test_negative_timeout_is_rejected(timeout: int) -> None:
     with pytest.raises(ValidationError):
@@ -63,7 +76,9 @@ def test_zero_timeout_is_allowed_as_a_single_check() -> None:
     assert validate_step(wait_for_step(timeout=0)).timeout == 0
 
 
-@pytest.mark.parametrize("option,value", [("--interval", "0"), ("--timeout", "-1")])
+@pytest.mark.parametrize(
+    "option,value", [("--interval", "0"), ("--timeout", "-1"), ("--settle", "0")]
+)
 def test_cli_rejects_out_of_range_budgets(
     monkeypatch: pytest.MonkeyPatch, option: str, value: str
 ) -> None:
@@ -85,11 +100,13 @@ def test_selector_is_required() -> None:
 
 
 def test_action_forwards_every_knob(mock_session: MagicMock) -> None:
-    step = validate_step(wait_for_step(state="hidden", timeout=900, interval=120))
+    step = validate_step(
+        wait_for_step(state="stable", timeout=900, interval=120, settle=300)
+    )
 
     assert isinstance(execute_action(mock_session, step), VoidResult)
     mock_session.wait_for_element.assert_called_once_with(
-        "#late", state="hidden", timeout=900, interval=120
+        "#late", state="stable", timeout=900, interval=120, settle=300
     )
 
 
@@ -192,7 +209,11 @@ def test_step_survives_a_template_round_trip(mock_session: MagicMock) -> None:
     execute_step(mock_session, step, flow.validate_data({"target": "#gone"}))
 
     mock_session.wait_for_element.assert_called_once_with(
-        "#gone", state="hidden", timeout=DEFAULT_WAIT_TIMEOUT_MS, interval=50
+        "#gone",
+        state="hidden",
+        timeout=DEFAULT_WAIT_TIMEOUT_MS,
+        interval=50,
+        settle=DEFAULT_SETTLE_MS,
     )
 
 
@@ -228,12 +249,14 @@ def test_cli_passes_every_option_through(monkeypatch: pytest.MonkeyPatch) -> Non
             "1500",
             "--interval",
             "250",
+            "--settle",
+            "400",
         ],
     )
 
     assert result.exit_code == 0
     session.wait_for_element.assert_called_once_with(
-        "#late", state="visible", timeout=1500, interval=250
+        "#late", state="visible", timeout=1500, interval=250, settle=400
     )
 
 

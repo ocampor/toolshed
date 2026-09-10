@@ -1,85 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- `BrowserSession.wait_for_element(selector, *, state="attached", timeout=3000,
-  interval=500)` — an explicit wait in the shape of Selenium's
-  `WebDriverWait.until`: a Python poll loop that asks the cheapest driver
-  primitive whether the state is reached, sleeps `interval` ± 30 %
-  (`POLL_JITTER_RATIO`), and raises `TimeoutError("<selector> did not become
-  <state> within <timeout>ms")` when the deadline passes. `timeout` is a
-  budget rather than a floor: each sleep is clamped to what is left of it, so
-  the wait overruns by at most one state check and `timeout=0` is exactly one
-  check. The message renders the selector the way it was written (`#id`,
-  `xpath=...`, `#a or #b` for a fallback chain), not as a pydantic repr. Bad
-  budgets are rejected at flow-load time — `timeout >= 0`, `interval > 0` —
-  instead of surfacing mid-poll as a `Jitter` error. It never hands the
-  wait to the driver: on the Playwright family that runs an injected in-page
-  script, and a fixed 500 ms cadence is itself a fingerprint.
-  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
-  `Runtime.evaluate` on nodriver; `visible`/`hidden` by `Driver.is_visible`,
-  which is Playwright's `locator.is_visible()` and, on nodriver, an
-  `offsetParent`/`getClientRects` read (it is abstract on `Driver`, so a new
-  driver cannot forget it). The locator is re-resolved every tick, so a node the page swapped out
-  is still seen to change state — with a `FallbackSelector` that also means
-  the branch can change mid-wait, so `detached` is judged against whichever
-  branch matched this tick and will not fire while the fallback still
-  matches. An error from a tick propagates: a CDP failure is not "not yet".
-
-  It is the only wait left: `find`, `find_all`, `frame` and `element_exists`
-  all go through it, and `element_exists` is the one caller that reads its
-  timeout back as a `bool` instead of letting it raise.
-- `wait_for` flow step (`state`, `timeout`, `interval`) — the explicit-wait
-  counterpart to `wait`, which waits for an element's *text* to stop changing.
-  A timeout fails the step the same way every other step failure is reported:
-  a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
-  with the selector/state/timeout message as its `data.message`. `optional:
-  true` downgrades a never-appearing element to a skip.
-- **Breaking:** `Driver.count(locator)` never waits — it answers how many
-  elements match *right now*, so a poll tick cannot stall inside the driver.
-  On nodriver, `count`/`find_all` no longer wait up to 10 s for a late
-  element; use `wait_for_element`, which `find`, `find_all` and `frame` now
-  call before they resolve anything. `count` there was
-  `tab.select_all(selector)`, whose retry cycle costs a 500 ms sleep plus a
-  `Target.getTargets` refresh apiece and is paid even at `timeout=0`, because
-  the timeout is only checked after the first cycle; it is now
-  `tab.query_selector_all` — the bare `DOM.querySelectorAll` underneath it,
-  no retry, no sleep, no target refresh. Nothing is cached on the locator
-  either, so every read sees the page as it is.
-- `llm-browser wait-for --selector S [--state] [--timeout] [--interval]` — the
-  same wait from the CLI; a timeout exits non-zero with the message, no
-  traceback.
-
-### Changed
-
-- The `Driver` ABC's class docstring is now the driver contract: five rules
-  covering what may block on the DOM, that input must be trusted events,
-  which methods may run JS, what `first`/`nth` have to survive, and that
-  timeouts are milliseconds raising the builtin `TimeoutError`. The read
-  rules are checked against every driver by `tests/test_driver_contract.py`.
-  To keep `base.py` the contract and nothing else, `DriverHandle`,
-  `DriverNotInstalledError` and `load_optional_module` moved to
-  `llm_browser.drivers.handle` and the Python text-stability poll to
-  `llm_browser.drivers.stable_text`. `llm_browser.drivers` re-exports all
-  three names as before; only `from llm_browser.drivers.base import
-  load_optional_module` (or `DriverNotInstalledError`) has to change.
-- `_resolve_with_fallback` probes the primary branch with the now
-  non-waiting `count`. It was always asking "does the primary match right
-  now", and every caller waits for the state it wants afterwards; on nodriver
-  the old waiting `count` made resolution of a fallback selector block for
-  ~10 s whenever the primary was absent — once per tick inside an explicit
-  wait.
-
-### Fixed
-
-- `FLOWS.md` described `wait` as a page-load-state wait with `state` /
-  `timeout` params and filed it under "Page actions". It has been the
-  text-stability wait (`quiet_ms` / `timeout_s`, selector required) for
-  several releases; the reference now says so and lists it with the other
-  element actions.
-
 ## 0.8.0 — 2026-09-09
 
 ### Added
@@ -100,18 +20,6 @@
   and its Playwright and nodriver implementations are gone. Those ran an
   injected in-page script on the Playwright family, and on nodriver `visible`
   reported a `display:none` element as found and `detached` returned at once.
-- `flows.subflow_refs(text)` — lists the `run-flow` references in a flow
-  without validating its steps. An async caller (an HTTP or MCP server that
-  fetches children over the network) can now discover every child up front,
-  await them all, and hand the results to `load_flow_text(..., subflows=...)`,
-  instead of being forced into a synchronous `subflow_loader` callback in the
-  middle of pydantic validation. Malformed documents yield `[]` rather than
-  raising — validation stays `load_flow_text`'s job — but bad YAML still
-  raises `ValueError`.
-- `load_flow_text(..., subflows=...)` — an explicit ref → YAML-text mapping,
-  threaded through the validation context. It takes precedence over
-  `subflow_loader`, so a caller that already has the children in hand does not
-  need a loader at all.
 - `FlowError.outputs` — the outputs collected before the failing step, keyed
   by qualified step name exactly like `FlowSuccess.outputs`. A flow that read
   three pages and then failed on the fourth used to throw all three results
@@ -157,6 +65,61 @@
   repository at all.
 - `flows.with_flow_path(result, path)` — fills `retry_hint.flow_path` for a
   flow that came from a file (moved from the deleted `flow_files`).
+- `BrowserSession.wait_for_element(selector, *, state="attached", timeout=3000,
+  interval=500)` — an explicit wait in the shape of Selenium's
+  `WebDriverWait.until`: a Python poll loop that asks the cheapest driver
+  primitive whether the state is reached, sleeps `interval` ± 30 %
+  (`POLL_JITTER_RATIO`), and raises `TimeoutError("<selector> did not become
+  <state> within <timeout>ms")` when the deadline passes. `timeout` is a
+  budget rather than a floor: each sleep is clamped to what is left of it, so
+  the wait overruns by at most one state check and `timeout=0` is exactly one
+  check. The message renders the selector the way it was written (`#id`,
+  `xpath=...`, `#a or #b` for a fallback chain), not as a pydantic repr. Bad
+  budgets are rejected at flow-load time — `timeout >= 0`, `interval > 0` —
+  instead of surfacing mid-poll as a `Jitter` error. It never hands the
+  wait to the driver: on the Playwright family that runs an injected in-page
+  script, and a fixed 500 ms cadence is itself a fingerprint.
+  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
+  `Runtime.evaluate` on nodriver; `visible`/`hidden` by `Driver.is_visible`,
+  which is Playwright's `locator.is_visible()` and, on nodriver, an
+  `offsetParent`/`getClientRects` read (it is abstract on `Driver`, so a new
+  driver cannot forget it). The locator is re-resolved every tick, so a node the page swapped out
+  is still seen to change state — with a `FallbackSelector` that also means
+  the branch can change mid-wait, so `detached` is judged against whichever
+  branch matched this tick and will not fire while the fallback still
+  matches. An error from a tick propagates: a CDP failure is not "not yet".
+
+  It is the only wait left: `find`, `find_all`, `frame` and `element_exists`
+  all go through it, and `element_exists` is the one caller that reads its
+  timeout back as a `bool` instead of letting it raise.
+- `wait_for` flow step (`state`, `timeout`, `interval`) — the explicit-wait
+  counterpart to `wait`, which waits for an element's *text* to stop changing.
+  A timeout fails the step the same way every other step failure is reported:
+  a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
+  with the selector/state/timeout message as its `data.message`. `optional:
+  true` downgrades a never-appearing element to a skip.
+- **Breaking:** `Driver.count(locator)` never waits — it answers how many
+  elements match *right now*, so a poll tick cannot stall inside the driver.
+  On nodriver, `count`/`find_all` no longer wait up to 10 s for a late
+  element; use `wait_for_element`, which `find`, `find_all` and `frame` now
+  call before they resolve anything. `count` there was
+  `tab.select_all(selector)`, whose retry cycle costs a 500 ms sleep plus a
+  `Target.getTargets` refresh apiece and is paid even at `timeout=0`, because
+  the timeout is only checked after the first cycle; it is now
+  `tab.query_selector_all` — the bare `DOM.querySelectorAll` underneath it,
+  no retry, no sleep, no target refresh. Nothing is cached on the locator
+  either, so every read sees the page as it is.
+- `wait_for` gains a fifth state, `stable`: reached once the element's text
+  has not changed for `settle` ms (default 1500, `settle` is `stable`-only).
+  It is the text-stability wait, folded into the one wait loop — same
+  jittered poll, same budget, same failure report — so "wait for the element"
+  and "wait for its text to stop moving" are one step with one set of knobs.
+  An element that is not there yet reads as no text at all and never settles,
+  and `timeout` is the whole budget, so a stable wait needs one comfortably
+  larger than `settle`.
+- `llm-browser wait-for --selector S [--state] [--timeout] [--interval]
+  [--settle]` — the same wait from the CLI; a timeout exits non-zero with the
+  message, no traceback.
 
 ### Changed
 
@@ -224,6 +187,39 @@
   a usage error rather than a silent cwd lookup.
 - Parse errors read `ValueError("invalid flow yaml: ...")`, replacing
   `"invalid flow YAML: ..."`.
+- **Breaking:** the `wait` step is gone; use `wait_for` with `state: stable`.
+  `quiet_ms` becomes `settle`, and `timeout_s` (seconds, default 180) becomes
+  `timeout` (milliseconds, no default that large) — a `wait` that relied on
+  the long default needs `timeout:` set explicitly. `wait` returned the
+  settled text as a step output and `wait_for` returns nothing; read the text
+  with a following `read` step if you need it. `BrowserSession.wait_until_stable`,
+  `Driver.wait_for_stable_text` (and the Playwright in-page implementation of
+  it) are gone with it: nothing injects a `requestAnimationFrame` loop into
+  the page any more, and stability is judged from Python like every other
+  state.
+- **Breaking:** `Driver.text_content` is a now-read — it returns `None` when
+  nothing matches instead of waiting for something to. It is what the
+  `stable` state polls, so it may not block. On the Playwright family the
+  count answers the miss and the read itself gets a 250 ms budget
+  (`READ_TIMEOUT_MS`; `timeout=0` there means *no* timeout, not "don't
+  wait"); on nodriver it goes through the same bare `query_selector_all` as
+  `count`, never `tab.select`'s retry.
+- The `Driver` ABC's class docstring is now the driver contract: five rules
+  covering what may block on the DOM, that input must be trusted events,
+  which methods may run JS, what `first`/`nth` have to survive, and that
+  timeouts are milliseconds raising the builtin `TimeoutError`. The read
+  rules are checked against every driver by `tests/test_driver_contract.py`.
+  To keep `base.py` the contract and nothing else, `DriverHandle`,
+  `DriverNotInstalledError` and `load_optional_module` moved to
+  `llm_browser.drivers.handle`. `llm_browser.drivers` re-exports all three
+  names as before; only `from llm_browser.drivers.base import
+  load_optional_module` (or `DriverNotInstalledError`) has to change.
+- `_resolve_with_fallback` probes the primary branch with the now
+  non-waiting `count`. It was always asking "does the primary match right
+  now", and every caller waits for the state it wants afterwards; on nodriver
+  the old waiting `count` made resolution of a fallback selector block for
+  ~10 s whenever the primary was absent — once per tick inside an explicit
+  wait.
 
 ## 0.7.0 — 2026-09-09
 

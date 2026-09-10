@@ -38,8 +38,7 @@ Require a `selector` to identify the target element.
 | `select` | `value` | Pick a `<select>` dropdown option |
 | `check` | `checked` (bool, default true) | Set checkbox state |
 | `pick` | `value` | Click the list item matching this text |
-| `wait_for` | `state` (`attached` default, `detached`, `visible`, `hidden`), `timeout` (ms, default 3000), `interval` (ms, default 500, must be > 0) | Poll until the element reaches `state`. Distinct from `wait`, which waits for an element's *text* to stabilise. Here `timeout` is the whole poll budget (not the element-lookup budget it is on every other step), and it is honoured: sleeps are clamped to what is left, and `timeout: 0` checks exactly once. On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip. With a fallback selector, `detached` is judged against whichever branch matches on each tick |
-| `wait` | `quiet_ms` (default 1500), `timeout_s` (default 180), `timeout` (ms, element lookup) | Wait until the element's text stops changing for `quiet_ms` — for streaming content (LLM replies, progressive lists). Returns the settled text |
+| `wait_for` | `state` (`attached` default, `detached`, `visible`, `hidden`, `stable`), `timeout` (ms, default 3000), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only) | The one wait. Four states poll for the element's *presence*; `stable` polls its *text*, and is reached once that text has not changed for `settle` ms — an element that is not there yet never settles. `timeout` is the whole poll budget (not the element-lookup budget it is on every other step), and it is honoured: sleeps are clamped to what is left, and `timeout: 0` checks exactly once — so a `stable` wait needs a budget bigger than `settle`. On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip. With a fallback selector, `detached` is judged against whichever branch matches on each tick |
 
 ### Page actions
 
@@ -49,6 +48,46 @@ No selector needed.
 |--------|--------|-------------|
 | `goto` | `url`, `wait_until` (default domcontentloaded) | Navigate to URL. Since 0.8.0 only `http://` and `https://` URLs are accepted: `file://`, `chrome://`, `javascript:` or a schemeless path (`fixtures/page.html`) fails the step with `url must be http or https`. There is no flow-level opt-out — serve the page over HTTP, or call `session.goto(url, allowed_schemes=("file",))` from Python |
 | `screenshot` | `path` (optional) | Take a screenshot. Without `path`, writes to the session's default location and returns the path. With `path`, writes to that path (parent dirs created). |
+
+
+### Waiting
+
+One step covers both kinds of waiting. Wait for an element when the page is
+about to show or drop something:
+
+```yaml
+- name: captcha appears
+  selector: "iframe[title*='recaptcha' i]"
+  action: wait_for
+  state: visible
+  timeout: 15000
+
+- name: modal is gone
+  selector: ".modal-backdrop"
+  action: wait_for
+  state: detached
+  timeout: 5000
+```
+
+Wait for `stable` when the element is already there and its *text* is still
+moving — the budget has to cover the settle window plus however long the page
+takes to start:
+
+```yaml
+- name: ISR recalculates
+  selector: "#isr-total"
+  action: wait_for
+  state: stable
+  settle: 800
+  timeout: 20000
+
+- name: cart total stops animating
+  selector: ".cart .total"
+  action: wait_for
+  state: stable
+  settle: 1500
+  timeout: 30000
+```
 
 ### Pacing actions
 

@@ -19,6 +19,7 @@ from llm_browser.behavior import (
     humanized_click,
     humanized_type,
 )
+from llm_browser.constants import READ_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
 from llm_browser.scripts import extract_rows_js
 
@@ -39,7 +40,7 @@ class PwLocator(Protocol):
     def press(self, key: str) -> None: ...
     def wait_for(self, state: str = ..., timeout: int = ...) -> None: ...
     def is_visible(self) -> bool: ...
-    def text_content(self) -> str | None: ...
+    def text_content(self, timeout: int = ...) -> str | None: ...
     def input_value(self) -> str: ...
     def get_attribute(self, name: str) -> str | None: ...
     def count(self) -> int: ...
@@ -177,7 +178,20 @@ class PlaywrightDriverBase(Driver):
     # --- Read / capture ---
 
     def text_content(self, locator: Any) -> str | None:
-        return _pw_loc(locator).text_content()
+        """A now-read (rule 1). Playwright's own read waits for the element —
+        and ``timeout=0`` there means *no* timeout — so a miss is answered by
+        the count, and the read gets a round-trip's worth of budget."""
+        loc = _pw_loc(locator)
+        if loc.count() == 0:
+            return None
+        try:
+            return loc.text_content(timeout=READ_TIMEOUT_MS)
+        except Exception as exc:
+            # The node detached between the count and the read: still a miss,
+            # and patchright's TimeoutError is not the builtin one.
+            if type(exc).__name__ == "TimeoutError":
+                return None
+            raise
 
     def input_value(self, locator: Any) -> str:
         return _pw_loc(locator).input_value()
@@ -239,47 +253,6 @@ class PlaywrightDriverBase(Driver):
         if frame is None:
             raise RuntimeError("Could not find frame")
         return frame
-
-    # --- Composite waits ---
-
-    def wait_for_stable_text(
-        self, locator: Any, quiet_ms: int, timeout_ms: int
-    ) -> str | None:
-        """In-page stability detection via requestAnimationFrame.
-
-        A single Runtime.callFunctionOn starts the loop; it resolves only
-        when textContent has been unchanged for ``quiet_ms`` or when
-        ``timeout_ms`` has elapsed. No repeated CDP evaluate traffic.
-        """
-        script = _STABLE_TEXT_SCRIPT.format(
-            quiet_ms=int(quiet_ms), timeout_ms=int(timeout_ms)
-        )
-        result = _pw_loc(locator).evaluate(script)
-        return None if result is None else str(result)
-
-
-_STABLE_TEXT_SCRIPT = """
-(element) => new Promise((resolve) => {{
-    const QUIET_MS = {quiet_ms};
-    const TIMEOUT_MS = {timeout_ms};
-    const deadline = performance.now() + TIMEOUT_MS;
-    let lastText = element.textContent ?? '';
-    let lastChange = performance.now();
-    const step = () => {{
-        const now = performance.now();
-        const text = element.textContent ?? '';
-        if (text !== lastText) {{
-            lastText = text;
-            lastChange = now;
-        }} else if (now - lastChange >= QUIET_MS) {{
-            return resolve(text);
-        }}
-        if (now >= deadline) return resolve(null);
-        requestAnimationFrame(step);
-    }};
-    requestAnimationFrame(step);
-}})
-"""
 
 
 __all__ = ["PlaywrightDriverBase"]

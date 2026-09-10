@@ -12,7 +12,6 @@ from typing import Any, Callable, ClassVar
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.drivers.handle import DriverHandle
-from llm_browser.drivers.stable_text import poll_stable_text
 
 
 class Driver(ABC):
@@ -22,18 +21,18 @@ class Driver(ABC):
     flow actions — is written against these rules rather than any one browser
     API, so a new driver holds to them:
 
-    1. Only ``wait_for_load`` and ``wait_for_stable_text`` may block on the
-       DOM. ``resolve``, ``count``, ``first``, ``nth``, ``all`` and
-       ``is_visible`` answer about the page as it is right now and report a
-       miss as empty or ``False`` — never a retry, never a raise for "not
-       there yet". Waiting is ``llm_browser.waits``' job, on a deadline the
-       caller owns.
+    1. Only ``wait_for_load`` may block on the DOM. ``resolve``, ``count``,
+       ``first``, ``nth``, ``all``, ``is_visible`` and ``text_content``
+       answer about the page as it is right now and report a miss as empty,
+       ``False`` or ``None`` — never a retry, never a raise for "not there
+       yet". Waiting is ``llm_browser.waits``' job, on a deadline the caller
+       owns.
     2. Input must be trusted events — OS-level or CDP ``Input.*`` — never
        synthetic DOM events. ``dispatch_event`` is the one explicit opt-in.
-    3. JS runs in ``evaluate``, ``is_visible``, ``input_value``,
-       ``wait_for_stable_text`` and ``extract_rows``, nowhere else. The rest
-       stays on the DOM, Input and Page domains, so a detector watching
-       Runtime traffic sees none of it on the common path.
+    3. JS runs in ``evaluate``, ``is_visible``, ``input_value`` and
+       ``extract_rows``, nowhere else. The rest stays on the DOM, Input and
+       Page domains, so a detector watching Runtime traffic sees none of it
+       on the common path.
     4. Locators are opaque handles and may be lazy; ``first`` and ``nth``
        carry enough (selector plus index) to be re-resolved, or a node the
        page replaced is never seen to change.
@@ -185,7 +184,12 @@ class Driver(ABC):
     # --- Read / capture ---
 
     @abstractmethod
-    def text_content(self, locator: Any) -> str | None: ...
+    def text_content(self, locator: Any) -> str | None:
+        """The first match's text as it reads right now; ``None`` for a miss.
+
+        The ``stable`` wait polls this, so it may not wait for an element to
+        turn up — "nothing there" is an answer, not a reason to block.
+        """
 
     @abstractmethod
     def input_value(self, locator: Any) -> str: ...
@@ -274,19 +278,3 @@ class Driver(ABC):
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...
-
-    # --- Composite waits ---
-
-    def wait_for_stable_text(
-        self, locator: Any, quiet_ms: int, timeout_ms: int
-    ) -> str | None:
-        """Wait until textContent stops changing for ``quiet_ms``.
-
-        Returns the final text, or ``None`` on timeout. One of the two methods
-        rule 1 lets block. The default polls from Python, a round-trip per
-        tick; a driver with an in-page runtime should override so the loop
-        runs inside the page.
-        """
-        return poll_stable_text(
-            lambda: self.text_content(locator), quiet_ms, timeout_ms
-        )
