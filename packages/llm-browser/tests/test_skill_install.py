@@ -1,13 +1,16 @@
 import asyncio
 import re
 import shlex
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, get_args
+from unittest.mock import MagicMock
 
 import click
 import pytest
 import yaml
 from click.testing import CliRunner
+from pydantic import ValidationError
 from yaml_engine.compile import compile_condition
 
 from llm_browser.cli import main
@@ -15,9 +18,11 @@ from llm_browser.constants import SKILL_NAME
 from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flows import load_flow_document, load_flow_text
 from llm_browser.html import SanitizeLevel, sanitize_html_fragment
-from llm_browser.models import WaitState
+from llm_browser.steps import execute_step
+from llm_browser.models import FlowData, WaitState
 from llm_browser.skill_install import (
     bundle_files,
+    skill_root,
     skill_destination,
     skill_text,
 )
@@ -301,3 +306,106 @@ def test_level_table_matches_the_sanitizer(bundle_text: str) -> None:
         assert not (absent & kept), f"{level.value} kept {absent & kept}"
     assert "`role` and `placeholder` survive at `xhigh`" in bundle_text
     assert "every attribute except `style`" in bundle_text
+
+
+BASE_STEP: dict[str, Any] = {"name": "s", "selector": "#x", "action": "click"}
+
+# What a minimal flow has to carry for each retired *option* the migration table
+# names. Action rows build their own step from the action name.
+MIGRATION_PROBES: dict[str, dict[str, Any]] = {
+    "wait_after": {"wait_after": 1000},
+    "fields": {"fields": [{"id": "q"}]},
+    "checkpoint": {"checkpoint": True},
+    "eval": {"eval": "() => 1"},
+}
+
+
+def migration_rows() -> list[tuple[str, str]]:
+    """`(spelling, claimed state)` for every row of the migration table."""
+    text = skill_root().joinpath("reference", "FLOW_PATTERNS.md").read_text()
+    section = text.split("## Migrating older flows", 1)[1]
+    rows = []
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or not cells[0].startswith("`"):
+            continue
+        state = cells[1].replace("**", "").split(" — ", 1)[0].strip()
+        rows.append((cells[0].split("`")[1], state))
+    return rows
+
+
+MIGRATION_ROWS = migration_rows()
+
+
+def probe_step(spelling: str) -> dict[str, Any]:
+    """The minimal step that carries `spelling`, as the table writes it."""
+    field, _, value = spelling.partition(":")
+    if field == "action":
+        return {**BASE_STEP, "action": value.strip()}
+    probe = MIGRATION_PROBES.get(field)
+    assert probe is not None, f"add a MIGRATION_PROBES entry for {spelling!r}"
+    return {**BASE_STEP, **probe}
+
+
+def observed_effects(
+    session: MagicMock, step_dict: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[str], list[float]]:
+    """What running this step does: which session methods it calls, and how long
+    it sleeps. "Ignored" means indistinguishable from the step without the field."""
+    step = load_flow_text(yaml.safe_dump({"steps": [step_dict]})).steps[0]
+    sleeps: list[float] = []
+    monkeypatch.setattr(time, "sleep", sleeps.append)
+    session.reset_mock()
+    execute_step(session, step, FlowData())
+    return [call[0] for call in session.mock_calls], sleeps
+
+
+def test_migration_table_covers_every_retired_spelling() -> None:
+    assert len(MIGRATION_ROWS) >= 10
+    assert {state for _, state in MIGRATION_ROWS} == {
+        "rejected at load",
+        "accepted and executed",
+        "accepted and ignored",
+    }
+
+
+@pytest.mark.parametrize("spelling, state", MIGRATION_ROWS)
+def test_migration_table_matches_the_loader(
+    spelling: str,
+    state: str,
+    mock_session: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The table's three states are claims about the loader; check each one.
+
+    Without this, a refactor that starts reading `fields:` or starts rejecting
+    `wait_after:` drifts the doc out of sync with no test failure.
+    """
+    step_dict = probe_step(spelling)
+    document = yaml.safe_dump({"steps": [step_dict]})
+
+    if state == "rejected at load":
+        with pytest.raises((ValidationError, ValueError)):
+            load_flow_text(document)
+        return
+
+    baseline = observed_effects(mock_session, BASE_STEP, monkeypatch)
+    actual = observed_effects(mock_session, step_dict, monkeypatch)
+    if state == "accepted and executed":
+        assert actual != baseline, f"{spelling} loads but changes nothing"
+    else:
+        assert actual == baseline, (
+            f"{spelling} is documented as ignored but did {actual}"
+        )
+
+
+@pytest.mark.parametrize("spelling", ["fields:", "checkpoint: true"])
+def test_ignored_options_are_absent_or_unread(spelling: str) -> None:
+    """`checkpoint:` is dropped by pydantic; `fields:` survives on the model but
+    nothing reads it. Both are "ignored" — pin which kind each one is."""
+    field = spelling.split(":")[0]
+    step = load_flow_text(yaml.safe_dump({"steps": [probe_step(spelling)]})).steps[0]
+    if field == "checkpoint":
+        assert not hasattr(step, field)
+    else:
+        assert getattr(step, field) == [{"id": "q"}]
