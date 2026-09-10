@@ -13,11 +13,11 @@ import random
 import time
 from typing import Any, Callable
 
-from llm_browser.behavior import Jitter, jittered_sleep
+from llm_browser.behavior import Jitter
 from llm_browser.constants import POLL_JITTER_RATIO
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState
-from llm_browser.selectors import Selector, resolve_selector
+from llm_browser.selectors import Selector, describe_selector, resolve_selector
 
 StatePredicate = Callable[[Driver, Any], bool]
 
@@ -63,9 +63,16 @@ def poll_for_state(
 ) -> None:
     """Block until ``selector`` reaches ``state``, or raise ``TimeoutError``.
 
+    ``timeout_ms`` is a budget, not a floor: the sleep is clamped to what is
+    left of it, so the wait costs at most one more state check past the
+    deadline and ``timeout_ms=0`` is exactly one check.
+
     The locator is re-resolved every tick: a driver locator can cache the
     element it matched, and a node the page swapped out would then never be
-    seen to change state.
+    seen to change state. With a ``FallbackSelector`` that re-resolution can
+    switch branches mid-wait, so ``detached`` is judged against whichever
+    branch matched this tick — it never fires while the fallback still
+    matches.
     """
     reached = STATE_PREDICATES[state]
     pause = poll_jitter(interval_ms)
@@ -73,8 +80,10 @@ def poll_for_state(
     while True:
         if reached(driver, resolve_selector(driver, page, selector)):
             return
-        jittered_sleep(pause, rng)
-        if time.monotonic() > deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise TimeoutError(
-                f"{selector!r} did not become {state} within {timeout_ms}ms"
+                f"{describe_selector(selector)} did not become "
+                f"{state} within {timeout_ms}ms"
             )
+        time.sleep(min(pause.sample_seconds(rng), remaining))

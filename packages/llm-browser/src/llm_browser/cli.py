@@ -538,11 +538,17 @@ def find_all(ctx: click.Context, selector: str) -> None:
     default="attached",
     help="State to wait for.",
 )
-@click.option("--timeout", default=DEFAULT_WAIT_TIMEOUT_MS, help="Total budget (ms).")
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=DEFAULT_WAIT_TIMEOUT_MS,
+    help="Total budget (ms); 0 checks exactly once.",
+)
 @click.option(
     "--interval",
+    type=click.IntRange(min=1),
     default=DEFAULT_POLL_INTERVAL_MS,
-    help="Nominal gap between polls (ms); jittered.",
+    help="Nominal gap between polls (ms); jittered, clamped to the budget.",
 )
 @click.pass_context
 def wait_for(

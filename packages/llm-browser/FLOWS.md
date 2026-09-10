@@ -38,7 +38,7 @@ Require a `selector` to identify the target element.
 | `select` | `value` | Pick a `<select>` dropdown option |
 | `check` | `checked` (bool, default true) | Set checkbox state |
 | `pick` | `value` | Click the list item matching this text |
-| `wait_for` | `state` (`attached` default, `detached`, `visible`, `hidden`), `timeout` (ms, default 3000), `interval` (ms, default 500) | Poll until the element reaches `state`. Distinct from `wait`, which waits for an element's *text* to stabilise. On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip |
+| `wait_for` | `state` (`attached` default, `detached`, `visible`, `hidden`), `timeout` (ms, default 3000), `interval` (ms, default 500, must be > 0) | Poll until the element reaches `state`. Distinct from `wait`, which waits for an element's *text* to stabilise. Here `timeout` is the whole poll budget (not the element-lookup budget it is on every other step), and it is honoured: sleeps are clamped to what is left, and `timeout: 0` checks exactly once. On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip. With a fallback selector, `detached` is judged against whichever branch matches on each tick |
 | `wait` | `quiet_ms` (default 1500), `timeout_s` (default 180), `timeout` (ms, element lookup) | Wait until the element's text stops changing for `quiet_ms` — for streaming content (LLM replies, progressive lists). Returns the settled text |
 
 ### Page actions

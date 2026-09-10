@@ -227,8 +227,10 @@ class WaitForStep(SelectorStep):
 
     action: Literal["wait_for"]
     state: WaitState = "attached"
-    timeout: int = DEFAULT_WAIT_TIMEOUT_MS
-    interval: int = DEFAULT_POLL_INTERVAL_MS
+    # Bounded here so a typo fails at flow load with a field-named error,
+    # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
+    timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
+    interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
 
 
 class EvalStep(BaseStep):

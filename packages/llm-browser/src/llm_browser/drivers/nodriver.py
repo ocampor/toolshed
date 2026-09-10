@@ -515,14 +515,16 @@ class NodriverDriver(Driver):
     async def query_now(self, loc: NodriverLocator) -> list[Any]:
         """``resolve_all`` without the wait or the cache.
 
-        nodriver's `select_all` retries internally until its own timeout
-        (10s by default) before conceding an empty match; `timeout=0` makes
-        "nothing matches yet" an answer rather than a stall. A locator with no
+        `select_all` retries internally, and each retry costs a 500ms sleep
+        plus a `Target.getTargets` refresh — even `timeout=0` pays one cycle,
+        because the timeout is checked after it. `query_selector_all` is the
+        bare `DOM.querySelectorAll` underneath it, which is what a poll tick
+        wants and what `current_element` already uses. A locator with no
         selector has nothing to re-query, so it falls back.
         """
         if loc.selector is None:
             return await self.resolve_all(loc)
-        return list(await loc.tab.select_all(loc.selector, timeout=0))
+        return list(await loc.tab.query_selector_all(loc.selector))
 
     def first(self, locator: Any) -> Any:
         """Lazy while a selector is available, like Playwright's `.first`: the

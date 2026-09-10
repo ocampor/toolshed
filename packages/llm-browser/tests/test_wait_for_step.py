@@ -45,6 +45,37 @@ def test_unknown_state_is_rejected(bad: Any) -> None:
         validate_step(wait_for_step(state=bad))
 
 
+@pytest.mark.parametrize("interval", [0, -1, -500])
+def test_non_positive_interval_is_rejected(interval: int) -> None:
+    """A zero interval would hot-spin the driver; a negative one used to blow
+    up mid-poll as a ``Jitter`` ValueError that ``optional`` swallowed."""
+    with pytest.raises(ValidationError):
+        validate_step(wait_for_step(interval=interval))
+
+
+@pytest.mark.parametrize("timeout", [-1, -3000])
+def test_negative_timeout_is_rejected(timeout: int) -> None:
+    with pytest.raises(ValidationError):
+        validate_step(wait_for_step(timeout=timeout))
+
+
+def test_zero_timeout_is_allowed_as_a_single_check() -> None:
+    assert validate_step(wait_for_step(timeout=0)).timeout == 0
+
+
+@pytest.mark.parametrize("option,value", [("--interval", "0"), ("--timeout", "-1")])
+def test_cli_rejects_out_of_range_budgets(
+    monkeypatch: pytest.MonkeyPatch, option: str, value: str
+) -> None:
+    monkeypatch.setattr("llm_browser.cli.build_session", lambda *a, **k: MagicMock())
+
+    result = CliRunner().invoke(
+        main, ["wait-for", "--selector", "#late", option, value]
+    )
+
+    assert result.exit_code == 2
+
+
 def test_selector_is_required() -> None:
     with pytest.raises(ValidationError):
         validate_step({"name": "x", "action": "wait_for"})

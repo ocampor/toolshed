@@ -26,6 +26,7 @@ def driver(page: MagicMock) -> MagicMock:
     mock = MagicMock()
     mock.resolve.side_effect = lambda p, sel: p.locator(sel)
     mock.count.side_effect = lambda loc: loc.count()
+    mock.count_now.side_effect = lambda loc: loc.count()
     return mock
 
 
@@ -129,3 +130,19 @@ def test_parse_already_model() -> None:
 def test_parse_unknown_raises() -> None:
     with pytest.raises(ValueError, match="Unknown selector format"):
         parse_selector({"unknown": "value"})
+
+
+def test_fallback_probe_never_waits_inside_the_driver(
+    driver: MagicMock, page: MagicMock
+) -> None:
+    """Resolution asks "does the primary match right now"; `count` may retry
+    internally, which would stall every tick of an explicit wait."""
+    selector = FallbackSelector(
+        primary=CssSelector(css="#a"), fallback=CssSelector(css="#b")
+    )
+    page.locator.return_value.count.return_value = 0
+
+    resolve_selector(driver, page, selector)
+
+    driver.count.assert_not_called()
+    driver.count_now.assert_called_once()

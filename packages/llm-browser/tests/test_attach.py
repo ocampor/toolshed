@@ -86,6 +86,9 @@ class AttachStubDriver(Driver):
     def count(self, locator: Any) -> int:
         return 1
 
+    def is_visible(self, locator: Any) -> bool:
+        return True
+
     def first(self, locator: Any) -> Any:
         return locator
 

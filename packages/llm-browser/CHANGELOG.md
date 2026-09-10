@@ -9,15 +9,25 @@
   `WebDriverWait.until`: a Python poll loop that asks the cheapest driver
   primitive whether the state is reached, sleeps `interval` ± 30 %
   (`POLL_JITTER_RATIO`), and raises `TimeoutError("<selector> did not become
-  <state> within <timeout>ms")` when the deadline passes. It never calls the
+  <state> within <timeout>ms")` when the deadline passes. `timeout` is a
+  budget rather than a floor: each sleep is clamped to what is left of it, so
+  the wait overruns by at most one state check and `timeout=0` is exactly one
+  check. The message renders the selector the way it was written (`#id`,
+  `xpath=...`, `#a or #b` for a fallback chain), not as a pydantic repr. Bad
+  budgets are rejected at flow-load time — `timeout >= 0`, `interval > 0` —
+  instead of surfacing mid-poll as a `Jitter` error. It never calls the
   driver's own `wait_for_state`: on the Playwright family that wait runs an
   injected in-page script, and a fixed 500 ms cadence is itself a fingerprint.
   `attached`/`detached` are answered by `driver.count_now` — a plain DOM query,
   no `Runtime.evaluate` on nodriver; `visible`/`hidden` by the new
   `Driver.is_visible`, which is Playwright's `locator.is_visible()` and, on
   nodriver, the same `offsetParent`/`getClientRects` read `wait_for_state`
-  already polls. The locator is re-resolved every tick, so a node the page
-  swapped out is still seen to change state.
+  already polls (it is abstract on `Driver`, so a new driver cannot forget
+  it). The locator is re-resolved every tick, so a node the page swapped out
+  is still seen to change state — with a `FallbackSelector` that also means
+  the branch can change mid-wait, so `detached` is judged against whichever
+  branch matched this tick and will not fire while the fallback still
+  matches. An error from a tick propagates: a CDP failure is not "not yet".
 
   This sits beside `wait_for`, which stays as it was: `wait_for` hands the wait
   to the driver and returns a `bool`, `wait_for_element` polls from Python and
@@ -30,15 +40,24 @@
   true` downgrades a never-appearing element to a skip.
 - `Driver.count_now(locator)` — `count` with no waiting, for callers that own
   their own deadline. It defaults to `count`, and only `NodriverDriver`
-  overrides it: `count` there goes through `tab.select_all(selector)`, which
-  retries internally until nodriver's own 10s timeout before conceding an
-  empty match, so a poll tick against a never-appearing selector would stall
-  far past the caller's budget. `count_now` passes `timeout=0` and skips the
-  locator's element cache. `count`'s semantics are unchanged for every
-  existing caller.
+  overrides it: `count` there goes through `tab.select_all(selector)`, whose
+  retry cycle costs a 500 ms sleep plus a `Target.getTargets` refresh apiece
+  and is paid even at `timeout=0`, because the timeout is only checked after
+  the first cycle. `count_now` calls `tab.query_selector_all` — the bare
+  `DOM.querySelectorAll` underneath it, no retry, no sleep, no target refresh
+  — and skips the locator's element cache. `count`'s semantics are unchanged
+  for every existing caller.
 - `llm-browser wait-for --selector S [--state] [--timeout] [--interval]` — the
   same wait from the CLI; a timeout exits non-zero with the message, no
   traceback.
+
+### Changed
+
+- `_resolve_with_fallback` probes the primary branch with `count_now` instead
+  of `count`. It was always asking "does the primary match right now", and
+  every caller waits for the state it wants afterwards; on nodriver the old
+  `count` made resolution of a fallback selector block for ~10 s whenever the
+  primary was absent — once per tick inside an explicit wait.
 
 ### Fixed
 

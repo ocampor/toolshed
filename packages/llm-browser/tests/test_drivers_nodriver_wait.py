@@ -36,7 +36,8 @@ class FakeTab:
     def __init__(self, results: list[Any]) -> None:
         self.results = results
         self.wait_for_calls: list[tuple[str, float]] = []
-        self.select_all_timeouts: list[float] = []
+        self.select_all_calls: list[str] = []
+        self.query_calls: list[str] = []
 
     async def wait_for(self, selector: str, timeout: float) -> None:
         self.wait_for_calls.append((selector, timeout))
@@ -44,13 +45,16 @@ class FakeTab:
             raise TimeoutError(selector)
 
     async def query_selector_all(self, selector: str) -> list[Any]:
+        self.query_calls.append(selector)
         found = self.next_result()
         if found is None:
             return []
         return found if isinstance(found, list) else [found]
 
     async def select_all(self, selector: str, timeout: float = 10) -> list[Any]:
-        self.select_all_timeouts.append(timeout)
+        """Real nodriver retries in here — 500ms and a `Target.getTargets` per
+        cycle — so a poll tick must not reach this method at all."""
+        self.select_all_calls.append(selector)
         return await self.query_selector_all(selector)
 
     def next_result(self) -> Any:
@@ -200,19 +204,19 @@ def test_element_exists_is_false_for_a_missing_selector(
     assert session([None]).element_exists("#missing", 40) is False
 
 
-def test_count_now_never_lets_select_all_retry(driver: NodriverDriver) -> None:
-    """`select_all`'s default timeout would stall a poll tick for ~10s."""
+def test_count_now_never_reaches_the_retrying_query(driver: NodriverDriver) -> None:
     loc = _locator([None])
 
     assert driver.count_now(loc) == 0
-    assert loc.tab.select_all_timeouts == [0]
+    assert loc.tab.select_all_calls == []
+    assert loc.tab.query_calls == ["#out"]
 
 
 def test_count_keeps_its_waiting_semantics(driver: NodriverDriver) -> None:
     loc = _locator([FakeElement(True)])
 
     assert driver.count(loc) == 1
-    assert loc.tab.select_all_timeouts == [10]
+    assert loc.tab.select_all_calls == ["#out"]
 
 
 def test_count_now_re_queries_instead_of_reading_the_cache(
@@ -228,4 +232,4 @@ def test_count_now_falls_back_without_a_selector(driver: NodriverDriver) -> None
     loc = _locator([FakeElement(True)], selector=None)
 
     assert driver.count_now(loc) == 1
-    assert loc.tab.select_all_timeouts == []
+    assert loc.tab.query_calls == []

@@ -18,7 +18,12 @@ from llm_browser.constants import (
     POLL_JITTER_RATIO,
 )
 from llm_browser.drivers.base import Driver
-from llm_browser.selectors import CssSelector
+from llm_browser.selectors import (
+    CssSelector,
+    FallbackSelector,
+    IdSelector,
+    XpathSelector,
+)
 from llm_browser.session import BrowserSession
 
 
@@ -103,10 +108,10 @@ def test_timeout_message_names_selector_state_and_timeout(
     with pytest.raises(TimeoutError) as excinfo:
         session.wait_for_element("#missing", state="visible", timeout=1_000)
 
-    assert str(excinfo.value) == "'#missing' did not become visible within 1000ms"
+    assert str(excinfo.value) == "#missing did not become visible within 1000ms"
 
 
-def test_timeout_only_fires_after_the_deadline(
+def test_timeout_fires_at_the_deadline_not_a_tick_past_it(
     tmp_path: Path, clock: FakeClock
 ) -> None:
     session = make_session(tmp_path, driver_with(counts=[0]))
@@ -114,7 +119,89 @@ def test_timeout_only_fires_after_the_deadline(
     with pytest.raises(TimeoutError):
         session.wait_for_element("#missing", timeout=2_000, interval=500)
 
-    assert clock.now - 1000.0 >= 2.0
+    assert clock.now - 1000.0 == pytest.approx(2.0)
+
+
+def test_the_last_sleep_is_clamped_to_what_is_left(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """An interval far wider than the budget must not stretch the wait."""
+    session = make_session(tmp_path, driver_with(counts=[0]))
+
+    with pytest.raises(TimeoutError):
+        session.wait_for_element("#missing", timeout=1_000, interval=10_000)
+
+    assert clock.sleeps == [pytest.approx(1.0)]
+
+
+def test_zero_timeout_checks_exactly_once(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with(counts=[0])
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(TimeoutError):
+        session.wait_for_element("#missing", timeout=0)
+
+    assert driver.count_now.call_count == 1
+    assert clock.sleeps == []
+
+
+def test_zero_timeout_still_returns_when_already_in_state(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with(counts=[1]))
+
+    session.wait_for_element("#here", timeout=0)
+
+    assert clock.sleeps == []
+
+
+def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """A CDP failure is not "the element is missing" — it must not become a
+    timeout, and a later "make polling robust" edit must not swallow it."""
+    driver = driver_with(counts=[0])
+    driver.count_now.side_effect = RuntimeError("Could not find node with given id")
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(RuntimeError, match="Could not find node"):
+        session.wait_for_element("#boom")
+
+
+def test_a_visibility_error_escapes_too(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with(visible=[False])
+    driver.is_visible.side_effect = RuntimeError("Execution context was destroyed")
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(RuntimeError, match="Execution context"):
+        session.wait_for_element("#boom", state="visible")
+
+
+@pytest.mark.parametrize(
+    "selector,rendered",
+    [
+        ("#plain", "#plain"),
+        (CssSelector(css=".a"), ".a"),
+        (XpathSelector(xpath="//div"), "xpath=//div"),
+        (IdSelector(id="main"), '[id="main"]'),
+        (
+            FallbackSelector(
+                primary=CssSelector(css="#a"), fallback=IdSelector(id="b")
+            ),
+            '#a or [id="b"]',
+        ),
+    ],
+)
+def test_the_message_renders_the_selector_the_way_it_was_written(
+    tmp_path: Path, clock: FakeClock, selector: Any, rendered: str
+) -> None:
+    """A pydantic repr in a user-facing message would not match the docs."""
+    session = make_session(tmp_path, driver_with(counts=[0]))
+
+    with pytest.raises(TimeoutError) as excinfo:
+        session.wait_for_element(selector, timeout=0)
+
+    assert str(excinfo.value) == f"{rendered} did not become attached within 0ms"
 
 
 @pytest.mark.parametrize(

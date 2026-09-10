@@ -338,7 +338,7 @@ Default paths are not synthetic. A small set of reads/polls still use
 | `input_value` | JS read of `.value` | CDP has no live-property accessor; `attrs["value"]` is the HTML attribute and diverges after typing. |
 | `set_checked` | JS read of `.checked` | Same — read before click avoids flipping an already-correct checkbox. |
 | `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
-| `wait_for_state` / `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only the `visible`/`hidden` states pay this: `wait_for_element(..., state="attached")` goes through `count_now`, a plain DOM query. |
+| `wait_for_state` / `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only the `visible`/`hidden` states pay this: `wait_for_element(..., state="attached")` goes through `count_now` → `tab.query_selector_all`, a bare `DOM.querySelectorAll` with no Runtime traffic and no `Target.getTargets` refresh. |
 | `evaluate` / `dom` | User-supplied JS | Intentional. |
 
 These are reads — they dispatch no DOM events and don't trip `isTrusted`
@@ -391,7 +391,7 @@ The call originates from patchright's vendored HTTP bundle (during CDP connect),
 | `find_all(selector)` | Find all matching elements |
 | `wait_for(selector, state, timeout)` | Wait for `attached` / `detached` / `visible` / `hidden`; returns `True`, or `False` on timeout — never raises |
 | `element_exists(selector)` | Check if element is present — alias for `wait_for(selector, "attached")` |
-| `wait_for_element(selector, state=, timeout=, interval=)` | Explicit wait: polls from Python on a jittered `interval` until the state is reached, raises `TimeoutError` naming selector, state and timeout. No in-page script; `wait_for` hands the wait to the driver instead |
+| `wait_for_element(selector, state=, timeout=, interval=)` | Explicit wait: polls from Python on a jittered `interval` until the state is reached, raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script; `wait_for` hands the wait to the driver instead |
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth)` | Cleaned HTML snippet |
 | `parse_elements(selector, extract)` | Extract structured data |
