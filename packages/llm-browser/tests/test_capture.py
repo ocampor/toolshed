@@ -95,7 +95,7 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     session.take_dom_snapshot.return_value = tmp_path / "dom.html"
     session.get_page.return_value = MagicMock()
     session.element_exists.return_value = True
-    session.find.side_effect = TimeoutError("element not found")
+    session.click.side_effect = TimeoutError("element not found")
     return session
 
 

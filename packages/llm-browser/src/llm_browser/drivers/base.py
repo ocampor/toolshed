@@ -29,6 +29,12 @@ class Driver(ABC):
        owns.
     2. Input must be trusted events — OS-level or CDP ``Input.*`` — never
        synthetic DOM events. ``dispatch_event`` is the one explicit opt-in.
+       ``humanized_click`` and ``humanized_type`` are that same trusted input
+       paced like a person's, and they stay on the driver because the how is
+       backend-specific: the Playwright family draws a jittered mouse path
+       through ``page.mouse``, while nodriver leaves both defaulted because
+       its native CDP click already moves a real cursor. Whether to reach for
+       them is ``BrowserSession``'s call, not a caller's.
     3. JS runs in ``evaluate``, ``is_visible``, ``input_value`` and
        ``extract_rows``, nowhere else. The rest stays on the DOM, Input and
        Page domains, so a detector watching Runtime traffic sees none of it
@@ -114,11 +120,11 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized click. Default falls back to plain click().
-
-        Drivers with native humanization (e.g. nodriver's element.click,
-        Camoufox with humanize=True) or Playwright-level helpers (see
-        behavior.humanized_click) should override this.
+        """Humanized click — rule 2. Default falls back to plain click(), which
+        is right for a driver whose native click is already humanized
+        (nodriver's element.click, Camoufox with humanize=True). Drivers that
+        need to draw the path themselves override it; see
+        ``behavior.humanized_click`` for the Playwright-family one.
         """
         self.click(locator)
 
@@ -130,8 +136,7 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized type. Default falls back to plain type().
-
+        """Humanized type — rule 2. Default falls back to plain type().
         Override to use behavior.humanized_type or a driver-native path.
         """
         self.type(locator, text)

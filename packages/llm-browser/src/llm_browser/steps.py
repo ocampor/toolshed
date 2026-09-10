@@ -103,7 +103,7 @@ def execute_step(
             human_needed=page_needs_human(session),
         )
     if resolved.eval:
-        session.driver.evaluate(session.get_page(), resolved.eval)
+        session.evaluate(session.get_page(), resolved.eval)
     if resolved.wait_after:
         time.sleep(resolved.wait_after / 1000)
     return action_result

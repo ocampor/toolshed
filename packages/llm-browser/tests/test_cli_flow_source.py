@@ -193,7 +193,7 @@ def test_run_cli_flow_fills_the_retry_hint_with_the_flow_path(
         yaml.dump({"steps": [{"name": "boom", "action": "click", "selector": "#a"}]})
     )
     session = _mock_session(tmp_path)
-    session.find.side_effect = TimeoutError("element missing")
+    session.click.side_effect = TimeoutError("element missing")
 
     result = run_cli_flow(
         session,

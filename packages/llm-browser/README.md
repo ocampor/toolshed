@@ -63,9 +63,9 @@ session = BrowserSession()
 session.launch("https://example.com", headed=True)
 
 # Find and interact
-session.find("#username").fill("admin")
-session.find("#password").fill("secret")
-session.find("button[type=submit]").click()
+session.fill("#username", "admin")
+session.fill("#password", "secret")
+session.click("button[type=submit]")
 
 # Check element presence
 if session.element_exists("#dashboard"):
@@ -371,6 +371,23 @@ step fails (and on the result):
 auto-removed — call `session.close(cleanup=True)` to remove the
 screenshot/DOM files, or delete the session dir yourself to start fresh.
 
+## Architecture
+
+Four layers, each one talking only to the next: steps -> actions -> session ->
+driver. A step is what a flow file says; an action turns one step into one
+session call; the session decides what that means — wait for the element,
+apply the `Behavior` pacing, choose the humanized or the plain primitive — and
+the driver is the only layer that knows a browser API. **Actions never see the
+driver.** An action that reached for `session.driver` would skip the waiting,
+the pacing and the humanization that make a run look human, so
+`tests/test_actions.py` asserts on the source of `actions.py`, `steps.py` and
+`flows.py` that none of them touches a `driver` attribute at all.
+
+The session's input half lives in `llm_browser/session_input.py`;
+`BrowserSession.click` / `fill` / `type` / `press` / `select_option` /
+`set_checked` are one-line delegations to it, and they are the same methods the
+`click`, `fill`, `type`, `press`, `select` and `check` actions call.
+
 ## Drivers
 
 Three browser drivers, selected via object injection or a string name:
@@ -462,6 +479,12 @@ The call originates from patchright's vendored HTTP bundle (during CDP connect),
 | `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
 | `find(selector)` | Find exactly one element (returns Playwright Locator) |
+| `click(selector, dispatch=False)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
+| `fill(selector, value)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` |
+| `type(selector, value, delay_ms=0)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter |
+| `press(selector, key)` | Press `key` on the element; `selector=None` presses on whatever holds focus |
+| `select_option(selector, value)` | Choose an option in a `<select>` |
+| `set_checked(selector, checked)` | Check or uncheck a checkbox |
 | `find_all(selector)` | Find all matching elements |
 | `wait_for_element(selector, state=, timeout=, interval=, settle=)` | The one wait: polls from Python on a jittered `interval` until the element is `attached` / `detached` / `visible` / `hidden`, or `stable` — its text unchanged for `settle` ms, which is how you wait out streaming replies or a recalculating total. Raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script and no driver-native wait |
 | `element_exists(selector)` | Whether the element shows up within `timeout` — `wait_for_element(..., state="attached")` with the timeout read as `False` instead of raising |

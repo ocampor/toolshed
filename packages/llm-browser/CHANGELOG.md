@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `BrowserSession` owns input. `click(selector, dispatch=False)`,
+  `fill(selector, value)`, `type(selector, value, delay_ms=0)`,
+  `press(selector | None, key)`, `select_option(selector, value)` and
+  `set_checked(selector, checked)` each wait for the element, apply the
+  `Behavior` pacing and pick the humanized or the plain driver primitive. The
+  `click`/`fill`/`type`/`press`/`select`/`check` actions are now one line each
+  onto those methods, and `actions.py`, `steps.py` and `flows.py` no longer
+  touch `session.driver` at all — the layering is steps → actions → session →
+  driver, and a test asserts it against the source. Calling
+  `session.click("#go")` from Python now gets the same humanization a flow
+  step gets, where `session.find("#go").click()` still bypasses it.
+- `BehaviorRuntime` is reachable as `session.behavior_runtime` (was
+  `session._behavior_runtime`).
+- `behavior.paced(behavior, runtime)` replaces the `enforce_gap` /
+  `post_pause` / `mark_action_done` sequence callers spelled out. Nested
+  scopes defer to the outermost one, so a session input method called from an
+  action handler does not sit out the post-action pause twice.
+
+### Added
+
+- `BrowserSession.save_screenshot(path)` and `BrowserSession.scroll(dx, dy)` —
+  the page-level driver calls the `screenshot` and `scroll` actions used to
+  make for themselves.
+
 ## 0.8.0 — 2026-09-09
 
 ### Added

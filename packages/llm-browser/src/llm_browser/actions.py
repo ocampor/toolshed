@@ -164,61 +164,31 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
 
 @_registry.register("click")
 def action_click(session: BrowserSession, step: ClickStep) -> VoidResult:
-    element = session.find(step.selector, timeout=step.timeout)
-    if step.dispatch:
-        session.driver.dispatch_event(element, "click")
-    elif session.behavior.mouse_move:
-        session.driver.humanized_click(
-            session.get_page(), element, session.behavior, session.behavior_runtime
-        )
-    else:
-        session.driver.click(element)
+    session.click(step.selector, dispatch=step.dispatch, timeout=step.timeout)
     return VoidResult()
 
 
 @_registry.register("fill")
 def action_fill(session: BrowserSession, step: FillStep) -> VoidResult:
-    element = session.find(step.selector, timeout=step.timeout)
-    if session.behavior.fill_as_type:
-        session.driver.humanized_type(
-            session.get_page(),
-            element,
-            step.value,
-            session.behavior,
-            session.behavior_runtime,
-        )
-    else:
-        session.driver.fill(element, step.value)
+    session.fill(step.selector, step.value, timeout=step.timeout)
     return VoidResult()
 
 
 @_registry.register("type")
 def action_type(session: BrowserSession, step: TypeStep) -> VoidResult:
-    element = session.find(step.selector, timeout=step.timeout)
-    if step.delay > 0 or session.behavior.type_char_delay.max_ms == 0:
-        session.driver.type(element, step.value, delay_ms=step.delay)
-    else:
-        session.driver.humanized_type(
-            session.get_page(),
-            element,
-            step.value,
-            session.behavior,
-            session.behavior_runtime,
-        )
+    session.type(step.selector, step.value, delay_ms=step.delay, timeout=step.timeout)
     return VoidResult()
 
 
 @_registry.register("select")
 def action_select(session: BrowserSession, step: SelectStep) -> VoidResult:
-    element = session.find(step.selector, timeout=step.timeout)
-    session.driver.select_option(element, step.value)
+    session.select_option(step.selector, step.value, timeout=step.timeout)
     return VoidResult()
 
 
 @_registry.register("check")
 def action_check(session: BrowserSession, step: CheckStep) -> VoidResult:
-    element = session.find(step.selector, timeout=step.timeout)
-    session.driver.set_checked(element, step.checked)
+    session.set_checked(step.selector, step.checked, timeout=step.timeout)
     return VoidResult()
 
 
@@ -230,13 +200,7 @@ def action_pick(session: BrowserSession, step: PickStep) -> VoidResult:
 
 @_registry.register("press")
 def action_press(session: BrowserSession, step: PressStep) -> VoidResult:
-    if session.behavior.mouse_move:
-        jittered_sleep(session.behavior.pre_click_pause, session.behavior_runtime.rng)
-    if step.selector is not None:
-        element = session.find(step.selector, timeout=step.timeout)
-        session.driver.press(element, step.key)
-    else:
-        session.driver.press_focused(session.get_page(), step.key)
+    session.press(step.selector, step.key, timeout=step.timeout)
     return VoidResult()
 
 
@@ -267,7 +231,7 @@ def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
 def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> PathResult:
     if step.path:
         out = prepare_output_path(step.path)
-        session.driver.screenshot(session.get_page(), out)
+        session.save_screenshot(out)
         return PathResult(path=str(out))
     return PathResult(path=str(session.take_screenshot()))
 
@@ -335,7 +299,7 @@ def action_download(session: BrowserSession, step: DownloadStep) -> PathResult:
 @_registry.register("scroll")
 def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
     for tick in range(step.times):
-        session.driver.scroll(session.get_page(), 0, step.delta)
+        session.scroll(0, step.delta)
         if tick < step.times - 1:
             jittered_sleep(step.pause, session.behavior_runtime.rng)
     return VoidResult()
