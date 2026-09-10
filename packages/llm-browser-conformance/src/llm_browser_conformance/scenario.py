@@ -45,6 +45,8 @@ class Outcome(StrEnum):
 
 
 class Section(StrEnum):
+    # Not a scenario group: the row a driver's own launch or teardown gets.
+    SESSION = "session"
     WAITS = "waits"
     FLOWS = "flows"
     INPUTS = "inputs"
@@ -182,12 +184,14 @@ class Scenario:
     ``check`` may return a one-line note — used where drivers legitimately
     differ and the point is to *record* which behaviour this one has rather
     than to force a single answer.
+
+    There is deliberately no ``page`` field: the check navigates, so a second
+    copy of the page name here would be documentation nothing verifies.
     """
 
     name: str
     section: Section
     check: Check
-    page: str | None = None
     drivers: frozenset[str] | None = None
     known_gaps: Mapping[str, str] = field(default_factory=dict)
 

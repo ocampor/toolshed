@@ -3,6 +3,10 @@
 One scenario's failure never stops the run: the whole value of the table is
 seeing every driver's answer to every question at once, so each check is
 caught, recorded and followed by the next.
+
+``run_scenario`` is the single verdict. Both front ends call it — the CLI
+prints its ``Outcome``, the pytest wrapper translates the same one into a
+pytest report — so the two can never disagree about the same run.
 """
 
 import json
@@ -21,8 +25,9 @@ from llm_browser_conformance.scenario import (
     ScenarioSkipped,
     Section,
 )
-from llm_browser_conformance.scenarios import select
 from llm_browser_conformance.server import serve_site
+
+TEARDOWN_ROW = "session teardown"
 
 
 @dataclass(frozen=True)
@@ -51,72 +56,85 @@ def run_scenario(scenario: Scenario, ctx: Context) -> Result:
     """A known gap inverts the verdict: failing is expected, passing is news."""
     gap = scenario.gap_for(ctx.driver)
     start = time.monotonic()
+    if not scenario.applies_to(ctx.driver):
+        return outcome_row(
+            scenario, ctx, Outcome.SKIP, start, f"does not apply to {ctx.driver}"
+        )
     try:
         note = scenario.check(ctx) or ""
     except ScenarioSkipped as skipped:
-        return result(scenario, ctx, Outcome.SKIP, start, str(skipped))
+        return outcome_row(scenario, ctx, Outcome.SKIP, start, str(skipped))
     except Exception as failure:  # noqa: BLE001 - one scenario never ends the run
-        outcome = Outcome.XFAIL if gap else Outcome.FAIL
-        return result(scenario, ctx, outcome, start, gap or one_line(failure))
-    outcome = Outcome.XPASS if gap else Outcome.PASS
-    return result(scenario, ctx, outcome, start, f"gap closed: {gap}" if gap else note)
+        verdict = Outcome.XFAIL if gap else Outcome.FAIL
+        return outcome_row(scenario, ctx, verdict, start, gap or one_line(failure))
+    verdict = Outcome.XPASS if gap else Outcome.PASS
+    detail = f"gap closed: {gap}" if gap else note
+    return outcome_row(scenario, ctx, verdict, start, detail)
 
 
-def result(
-    scenario: Scenario, ctx: Context, outcome: Outcome, start: float, detail: str
+def outcome_row(
+    scenario: Scenario, ctx: Context, verdict: Outcome, start: float, detail: str
 ) -> Result:
     return Result(
         scenario=scenario.name,
         section=scenario.section,
         driver=ctx.driver,
-        outcome=outcome,
+        outcome=verdict,
         elapsed_s=round(time.monotonic() - start, 3),
         detail=detail,
     )
 
 
-def skipped_driver(driver: str, scenarios: list[Scenario], reason: str) -> list[Result]:
-    return [
-        Result(s.name, s.section, driver, Outcome.SKIP, 0.0, reason)
-        for s in scenarios
-        if s.applies_to(driver)
-    ]
+def driver_rows(
+    driver: str, scenarios: list[Scenario], verdict: Outcome, detail: str
+) -> list[Result]:
+    return [Result(s.name, s.section, driver, verdict, 0.0, detail) for s in scenarios]
 
 
 def run_driver(
     driver: str, site_url: str, scenarios: list[Scenario], delay_ms: int
 ) -> list[Result]:
+    """Results are kept outside the ``try``.
+
+    A browser that will not start is a whole column of skips-turned-failures,
+    but a browser that will not *stop* has already answered every question:
+    a teardown error gets its own row and never rewrites finished results.
+    """
     reason = unavailable(driver)
     if reason:
-        return skipped_driver(driver, scenarios, reason)
+        return driver_rows(driver, scenarios, Outcome.SKIP, reason)
     applicable = [s for s in scenarios if s.applies_to(driver)]
+    results: list[Result] = []
     try:
         with launched_session(driver) as session:
             ctx = Context(session, site_url, driver, delay_ms)
-            return [run_scenario(s, ctx) for s in applicable]
-    except Exception as failure:  # noqa: BLE001 - a browser that will not start is a row, not a crash
-        return [
+            results.extend(run_scenario(s, ctx) for s in applicable)
+    except Exception as failure:  # noqa: BLE001 - a broken browser is a row, not a crash
+        if not results:
+            return driver_rows(
+                driver, applicable, Outcome.FAIL, f"launch: {one_line(failure)}"
+            )
+        results.append(
             Result(
-                s.name,
-                s.section,
+                TEARDOWN_ROW,
+                Section.SESSION,
                 driver,
                 Outcome.FAIL,
                 0.0,
-                f"launch: {one_line(failure)}",
+                one_line(failure),
             )
-            for s in applicable
-        ]
+        )
+    return results
 
 
 def run(
-    drivers: list[str], only: tuple[str, ...] = (), delay_ms: int = DEFAULT_DELAY_MS
+    drivers: list[str], scenarios: list[Scenario], delay_ms: int = DEFAULT_DELAY_MS
 ) -> list[Result]:
-    scenarios = select(only)
     with serve_site() as site_url:
         return [
-            result
+            row
             for driver in drivers
-            for result in run_driver(driver, site_url, scenarios, delay_ms)
+            for row in run_driver(driver, site_url, scenarios, delay_ms)
         ]
 
 
@@ -127,14 +145,14 @@ def failed(results: list[Result]) -> bool:
 # --- Reporting ---
 
 
-def cell(result: Result | None) -> str:
-    if result is None:
+def cell(row: Result | None) -> str:
+    if row is None:
         return "-"
-    if result.outcome is Outcome.PASS:
-        return f"pass {result.elapsed_s:.1f}s"
-    if result.outcome is Outcome.XFAIL:
-        return f"xfail {result.elapsed_s:.1f}s"
-    return str(result.outcome).upper() if result.outcome.is_failure else "skip"
+    if row.outcome is Outcome.PASS:
+        return f"pass {row.elapsed_s:.1f}s"
+    if row.outcome is Outcome.XFAIL:
+        return f"xfail {row.elapsed_s:.1f}s"
+    return str(row.outcome).upper() if row.outcome.is_failure else "skip"
 
 
 def format_table(results: list[Result], drivers: list[str]) -> str:
@@ -171,8 +189,8 @@ def notes(results: list[Result]) -> list[str]:
             continue
         grouped.setdefault((r.driver, r.outcome, r.detail), []).append(r.scenario)
     lines = [
-        f"{driver:<12} {outcome!s:<6} {scenario_list(names)}: {detail}"
-        for (driver, outcome, detail), names in grouped.items()
+        f"{driver:<12} {verdict!s:<6} {scenario_list(names)}: {detail}"
+        for (driver, verdict, detail), names in grouped.items()
     ]
     return ["details:", *lines] if lines else []
 

@@ -51,10 +51,11 @@ def a_click_on_a_still_disabled_button(ctx: Context) -> str:
 
 
 def an_open_shadow_root_is_reachable(ctx: Context) -> None:
-    result = run(ctx, "shadow-dom.html", "shadow-dom")
-    if not isinstance(result, FlowSuccess):
-        raise ctx.skip("selectors do not pierce an open shadow root")
-    assert one_text(result.outputs, "result") == "shadow value"
+    """A driver whose selectors do not pierce is a known gap, not a skip: any
+    other failure here — the fill regressing, the click missing, the result
+    coming back empty — has to be able to turn this row red."""
+    outputs = expect_success(ctx, "shadow-dom.html", "shadow-dom")
+    assert one_text(outputs, "result") == "shadow value"
 
 
 def a_form_inside_an_iframe_is_filled_and_submitted(ctx: Context) -> None:
@@ -115,13 +116,11 @@ SCENARIOS = [
         "overlay intercepts click",
         Section.STEPS,
         an_overlay_is_waited_out_before_the_click,
-        "overlay.html",
     ),
     Scenario(
         "sticky header",
         Section.STEPS,
         a_click_lands_under_a_sticky_header,
-        "sticky-header.html",
         known_gaps={
             "nodriver": "click does not scroll the target into view, so the "
             "CDP mouse event is dispatched at viewport coordinates the button "
@@ -132,44 +131,42 @@ SCENARIOS = [
         "disabled button",
         Section.STEPS,
         a_click_on_a_still_disabled_button,
-        "disabled-button.html",
     ),
     Scenario(
-        "shadow dom", Section.STEPS, an_open_shadow_root_is_reachable, "shadow-dom.html"
+        "shadow dom",
+        Section.STEPS,
+        an_open_shadow_root_is_reachable,
+        known_gaps={
+            "nodriver": "selectors do not pierce an open shadow root, so the "
+            "input inside it is never found"
+        },
     ),
     Scenario(
         "iframe form",
         Section.STEPS,
         a_form_inside_an_iframe_is_filled_and_submitted,
-        "iframe-form.html",
     ),
     Scenario(
         "redirect",
         Section.STEPS,
         a_redirect_is_followed_to_late_content,
-        "redirect-target.html",
     ),
-    Scenario("download", Section.STEPS, a_download_lands_on_disk, "download.html"),
-    Scenario(
-        "tab order", Section.STEPS, tab_moves_focus_to_the_next_field, "keyboard.html"
-    ),
+    Scenario("download", Section.STEPS, a_download_lands_on_disk),
+    Scenario("tab order", Section.STEPS, tab_moves_focus_to_the_next_field),
     Scenario(
         "enter and escape",
         Section.STEPS,
         enter_submits_and_escape_closes,
-        "keyboard.html",
     ),
     Scenario(
         "new tab",
         Section.STEPS,
         a_target_blank_link_leaves_the_session_where_it_was,
-        "new-tab.html",
     ),
     Scenario(
         "slow xhr rows",
         Section.STEPS,
         rows_that_trickle_in_are_all_read_once_stable,
-        "slow-xhr.html",
         known_gaps={
             "nodriver": "extract_rows walks rows from Python and NodriverDriver."
             "all() drops the selector, so child() re-queries the whole document "

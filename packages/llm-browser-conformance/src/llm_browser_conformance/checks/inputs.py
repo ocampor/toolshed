@@ -113,31 +113,26 @@ SCENARIOS = [
         "dynamic loading",
         Section.INPUTS,
         dynamic_loading_spinner_then_result,
-        "dynamic-loading.html",
     ),
     Scenario(
         "dynamic controls toggle",
         Section.INPUTS,
         dynamic_controls_remove_then_re_add,
-        "dynamic-controls.html",
     ),
     Scenario(
         "dynamic controls enable",
         Section.INPUTS,
         dynamic_controls_enable_makes_the_input_writable,
-        "dynamic-controls.html",
     ),
     Scenario(
         "fill/type/check",
         Section.INPUTS,
         fill_type_and_check_land_their_values,
-        "form.html",
     ),
     Scenario(
         "select_option",
         Section.INPUTS,
         select_option_changes_the_selects_value,
-        "form.html",
         known_gaps={
             "nodriver": "select_option native-clicks the <option>; a closed "
             "native select ignores it and the value never changes"
@@ -147,31 +142,26 @@ SCENARIOS = [
         "hidden input is readable",
         Section.INPUTS,
         a_hidden_input_is_readable_without_being_visible,
-        "form.html",
     ),
     Scenario(
         "click is trusted",
         Section.INPUTS,
         a_click_is_a_trusted_event,
-        "form.html",
     ),
     Scenario(
         "press is trusted",
         Section.INPUTS,
         a_key_press_is_a_trusted_event,
-        "form.html",
     ),
     Scenario(
         "typing fires trusted input",
         Section.INPUTS,
         typing_fires_trusted_input_events,
-        "form.html",
     ),
     Scenario(
         "typing fires trusted keydown",
         Section.INPUTS,
         typing_fires_trusted_key_events,
-        "form.html",
         known_gaps={
             "nodriver": "send_keys dispatches Input.dispatchKeyEvent type=char, "
             "which fires keypress/input but no keydown"
@@ -181,7 +171,6 @@ SCENARIOS = [
         "dispatch is untrusted",
         Section.INPUTS,
         a_dispatched_click_is_reported_untrusted,
-        "form.html",
         known_gaps={
             "camoufox": "Gecko marks an event dispatched from Playwright's "
             "chrome-privileged agent as trusted, so dispatch=True is "
@@ -192,6 +181,5 @@ SCENARIOS = [
         "revealed control is fillable",
         Section.INPUTS,
         a_revealed_control_becomes_fillable,
-        "form.html",
     ),
 ]

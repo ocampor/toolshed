@@ -25,5 +25,5 @@ def click_inside_an_iframe(ctx: Context) -> None:
 
 
 SCENARIOS = [
-    Scenario("iframe click", Section.FRAMES, click_inside_an_iframe, "iframe.html"),
+    Scenario("iframe click", Section.FRAMES, click_inside_an_iframe),
 ]

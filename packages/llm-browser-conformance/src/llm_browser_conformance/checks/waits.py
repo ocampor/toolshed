@@ -109,37 +109,28 @@ SCENARIOS = [
         "wait attached",
         Section.WAITS,
         attached_waits_for_a_late_insert,
-        "attached.html",
     ),
-    Scenario(
-        "wait detached", Section.WAITS, detached_waits_for_a_removal, "detached.html"
-    ),
-    Scenario(
-        "wait visible", Section.WAITS, visible_waits_for_display_to_flip, "visible.html"
-    ),
+    Scenario("wait detached", Section.WAITS, detached_waits_for_a_removal),
+    Scenario("wait visible", Section.WAITS, visible_waits_for_display_to_flip),
     Scenario(
         "wait hidden",
         Section.WAITS,
         hidden_waits_for_the_element_to_stop_rendering,
-        "hidden.html",
     ),
     Scenario(
         "wait stable",
         Section.WAITS,
         stable_waits_for_the_text_to_stop_moving,
-        "stable.html",
     ),
     Scenario(
         "attached is immediate",
         Section.WAITS,
         attached_returns_at_once_for_an_element_already_there,
-        "visible.html",
     ),
     Scenario(
         "visibility:hidden is hidden",
         Section.WAITS,
         visibility_hidden_counts_as_hidden,
-        "visible.html",
         known_gaps={
             "nodriver": "is_visible tests offsetParent/getClientRects, neither "
             "of which notices visibility:hidden"
@@ -149,30 +140,25 @@ SCENARIOS = [
         "opacity:0 is visible",
         Section.WAITS,
         opacity_zero_counts_as_visible,
-        "visible.html",
     ),
     Scenario(
         "timeout message",
         Section.WAITS,
         a_short_timeout_names_selector_and_state,
-        "attached.html",
     ),
     Scenario(
         "detached times out on hidden",
         Section.WAITS,
         detached_times_out_on_an_element_that_only_hides,
-        "hidden.html",
     ),
     Scenario(
         "settle must fit timeout",
         Section.WAITS,
         a_settle_that_does_not_fit_the_budget_is_rejected_before_polling,
-        "stable.html",
     ),
     Scenario(
         "find rejects ambiguity",
         Section.WAITS,
         find_rejects_an_ambiguous_selector_at_once,
-        "ambiguous.html",
     ),
 ]

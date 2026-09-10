@@ -12,7 +12,20 @@ from llm_browser_conformance.checks.support import (
     expect_success,
     one_text,
 )
-from llm_browser_conformance.scenario import Context, Scenario, Section
+from llm_browser_conformance.scenario import (
+    SLACK_MS,
+    Context,
+    Scenario,
+    Section,
+)
+
+# What `flows/native-select-disabled.yaml` declares for its `select` step.
+SELECT_BUDGET_MS = 2_000
+
+PLAYWRIGHT_SELECT_TIMEOUT_GAP = (
+    "Driver.select_option has no timeout, so the step's budget bounds find() "
+    "only and Playwright's own action timeout takes over"
+)
 
 
 def a_controlled_input_keeps_what_fill_and_type_write(ctx: Context) -> None:
@@ -63,8 +76,22 @@ def a_native_select_picks_an_option_behind_an_optgroup(ctx: Context) -> None:
 
 
 def a_disabled_option_cannot_be_selected(ctx: Context) -> None:
-    failure = expect_failure(ctx, "native-select.html", "native-select-disabled")
-    assert failure.step == "select"
+    """The step has to fail, and it has to fail inside the budget it declared.
+
+    Both halves matter: a flow author who writes ``timeout: 2000`` on a
+    ``select`` step and gets a 30s stall has been told something untrue about
+    the step, which is exactly the kind of thing this suite exists to catch.
+    """
+    failures: list[object] = []
+    took = ctx.elapsed(
+        lambda: failures.append(
+            expect_failure(ctx, "native-select.html", "native-select-disabled")
+        )
+    )
+    failure = failures[0]
+    assert getattr(failure, "step", None) == "select"
+    budget = (SELECT_BUDGET_MS + SLACK_MS) / 1000
+    assert took <= budget, f"the step's {SELECT_BUDGET_MS}ms budget took {took:.1f}s"
 
 
 def an_invisible_checkbox_and_a_radio_group_toggle(ctx: Context) -> None:
@@ -79,37 +106,31 @@ SCENARIOS = [
         "controlled input",
         Section.STEPS,
         a_controlled_input_keeps_what_fill_and_type_write,
-        "react-input.html",
     ),
     Scenario(
         "masked input",
         Section.STEPS,
         a_mask_reformats_every_keystroke,
-        "masked-input.html",
     ),
     Scenario(
         "autocomplete click",
         Section.STEPS,
         a_debounced_autocomplete_can_be_clicked,
-        "autocomplete.html",
     ),
     Scenario(
         "autocomplete enter",
         Section.STEPS,
         a_debounced_autocomplete_can_be_chosen_with_enter,
-        "autocomplete.html",
     ),
     Scenario(
         "custom select click",
         Section.STEPS,
         a_div_dropdown_is_driven_by_clicking,
-        "custom-select.html",
     ),
     Scenario(
         "custom select rejects select",
         Section.STEPS,
         select_on_a_div_dropdown_fails_clearly,
-        "custom-select.html",
         # Not a driver difference: execute_action only converts TimeoutError
         # and ValueError into an ErrorResult, so a wrong-element select
         # escapes run_flow as a raw driver exception on every backend --
@@ -124,7 +145,6 @@ SCENARIOS = [
         "native select optgroup",
         Section.STEPS,
         a_native_select_picks_an_option_behind_an_optgroup,
-        "native-select.html",
         known_gaps={
             "nodriver": "select_option native-clicks the <option>; a closed "
             "native select ignores it and the value never changes"
@@ -134,16 +154,16 @@ SCENARIOS = [
         "native select disabled option",
         Section.STEPS,
         a_disabled_option_cannot_be_selected,
-        "native-select.html",
         known_gaps={
             "nodriver": "clicking a disabled <option> is a no-op, so the step "
-            "reports success instead of failing"
+            "reports success instead of failing",
+            "patchright": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
+            "camoufox": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
         },
     ),
     Scenario(
         "checkbox and radio",
         Section.STEPS,
         an_invisible_checkbox_and_a_radio_group_toggle,
-        "checkbox-radio.html",
     ),
 ]

@@ -16,6 +16,12 @@ from llm_browser.session import BrowserSession
 
 CONFORMANCE_DRIVERS = ("patchright", "camoufox", "nodriver")
 
+# Playwright's own action timeout, which no llm-browser step timeout reaches
+# (see `native select disabled option`). Left at its 30s default it would cost
+# the suite a minute per run to demonstrate one gap; 5s is still far outside
+# every step budget the fixtures declare, so the gap still shows.
+PLAYWRIGHT_ACTION_TIMEOUT_MS = 5_000
+
 # nodriver drives a real Chrome over CDP and ships no browser of its own.
 CHROME_BINARIES = (
     "google-chrome",
@@ -51,16 +57,30 @@ def configured(driver: str) -> Driver | str:
     """The driver as the suite runs it.
 
     camoufox is built with ``humanize=False``. Its humanized cursor
-    intermittently leaves a Playwright ``click`` waiting out the whole 30s
-    action timeout on a target it has already declared visible, enabled and
-    stable — a Camoufox cursor problem, not an llm-browser contract question,
-    and one flaky scenario poisons every answer in the column.
+    intermittently leaves a Playwright ``click`` waiting out the whole action
+    timeout on a target it has already declared visible, enabled and stable —
+    a Camoufox cursor problem, not an llm-browser contract question, and one
+    flaky scenario poisons every answer in the column. This is the one home
+    for that decision; the README links here.
     """
     if driver != "camoufox":
         return driver
     from llm_browser.drivers.camoufox import CamoufoxDriver
 
     return CamoufoxDriver(humanize=False)
+
+
+def bound_action_timeout(session: BrowserSession, driver: str) -> None:
+    """Cap what Playwright will wait for one action.
+
+    Not a workaround: the step budget a flow declares never reaches
+    ``Driver.select_option`` (it bounds ``find`` only), so a Playwright driver
+    falls back to its own default. Capping it keeps the run short without
+    hiding the gap — 5s is still well past any budget the fixtures ask for.
+    """
+    if driver == "nodriver":
+        return
+    session.get_page().context.set_default_timeout(PLAYWRIGHT_ACTION_TIMEOUT_MS)
 
 
 @contextmanager
@@ -76,6 +96,7 @@ def launched_session(driver: str) -> Iterator[BrowserSession]:
             executable_path=chrome_binary() if driver == "nodriver" else None,
         )
         session.launch(headed=False)
+        bound_action_timeout(session, driver)
         try:
             yield session
         finally:

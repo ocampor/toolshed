@@ -41,13 +41,11 @@ SCENARIOS = [
         "flow failure captures artifacts",
         Section.FLOWS,
         a_failing_wait_step_captures_screenshot_and_dom,
-        "never.html",
     ),
     Scenario(
         "flow failure flags a login wall",
         Section.FLOWS,
         a_failure_behind_a_login_wall_asks_for_a_human,
-        "login-wall.html",
         known_gaps={
             "nodriver": "page_probe.js is a function literal and nodriver's "
             "evaluate runs it as an expression, so PageProbe comes back empty "
@@ -58,6 +56,5 @@ SCENARIOS = [
         "optional step swallows a timeout",
         Section.FLOWS,
         an_optional_wait_step_turns_a_timeout_into_a_skip,
-        "never.html",
     ),
 ]

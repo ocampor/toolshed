@@ -42,7 +42,10 @@ def pytest_collection_modifyitems(
         return
     skip_real = pytest.mark.skip(reason="real-browser suite: pass --real to run it")
     for item in items:
-        item.add_marker(skip_real)
+        # Keyed off the fixture, so the browser-free tests beside it — which
+        # are the only thing CI runs — never get swept up.
+        if "session" in getattr(item, "fixturenames", ()):
+            item.add_marker(skip_real)
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

@@ -28,25 +28,15 @@ def recorded_cdp_methods() -> Iterator[list[str]]:
     sent: list[str] = []
     original_init = connection.Transaction.__init__
 
-    def recording_init(self: Any, request: Any) -> None:
-        original_init(self, request)
-        sent.append(cdp_method(self))
+    def recording_init(self: Any, cdp_obj: Any) -> None:
+        original_init(self, cdp_obj)
+        sent.append(str(self.method))
 
     connection.Transaction.__init__ = recording_init
     try:
         yield sent
     finally:
         connection.Transaction.__init__ = original_init
-
-
-def cdp_method(transaction: Any) -> str:
-    """nodriver has moved the method name around between releases: it used to
-    be parsed onto the transaction, and is now left in the request dict."""
-    named = getattr(transaction, "method", None)
-    if named:
-        return str(named)
-    request = getattr(transaction, "request", None) or {}
-    return str(request.get("method", ""))
 
 
 def runtime_methods(sent: list[str]) -> list[str]:
@@ -59,6 +49,9 @@ def attached_polls_without_touching_the_runtime_domain(ctx: Context) -> str:
     with recorded_cdp_methods() as sent:
         ctx.wait_now("#late", "attached")
         calls = runtime_methods(sent)
+    # Without this the assertion below is vacuous: a hook that recorded
+    # nothing would report a clean run while measuring nothing at all.
+    assert sent, "no CDP traffic was recorded; the Transaction hook missed"
     assert calls == [], calls
     return f"{len(sent)} CDP calls, 0 Runtime"
 
@@ -83,6 +76,7 @@ def visible_costs_at_most_one_runtime_call_per_poll(ctx: Context) -> str:
             calls = runtime_methods(sent)
     finally:
         del driver.is_visible
+    assert sent, "no CDP traffic was recorded; the Transaction hook missed"
     assert ticks > 0
     assert len(calls) <= ticks, f"{len(calls)} Runtime calls over {ticks} polls"
     return f"{len(calls)} Runtime calls over {ticks} polls"
@@ -93,14 +87,12 @@ SCENARIOS = [
         "attached sends no Runtime",
         Section.STEALTH,
         attached_polls_without_touching_the_runtime_domain,
-        "attached.html",
         drivers=NODRIVER,
     ),
     Scenario(
         "visible costs one Runtime per poll",
         Section.STEALTH,
         visible_costs_at_most_one_runtime_call_per_poll,
-        "visible.html",
         drivers=NODRIVER,
     ),
 ]
