@@ -5,6 +5,7 @@
 ### Added
 
 - `docs/FLOW_PATTERNS.md` — JavaScript-free YAML for autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating-prefix ids and same-text controls.
+- A packaged Claude Code skill for authoring flows (`src/llm_browser/skill/SKILL.md`), with `llm-browser skill install [--dest DIR] [--force]` to copy it into a consumer repo's `.claude/skills/llm-browser-flows/` and `llm-browser skill show` to print it.
 - `BrowserSession.save_screenshot(path)` and `BrowserSession.scroll(dx, dy)`.
 - `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
 

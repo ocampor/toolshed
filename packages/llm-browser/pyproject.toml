@@ -43,6 +43,11 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_browser"]
 
+# The skill is package data, not code: name it explicitly so a future
+# include/exclude rule can never drop it from the wheel.
+[tool.hatch.build.targets.wheel.force-include]
+"src/llm_browser/skill/SKILL.md" = "llm_browser/skill/SKILL.md"
+
 [tool.mypy]
 strict = true
 

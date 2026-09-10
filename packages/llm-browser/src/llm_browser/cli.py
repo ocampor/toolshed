@@ -31,6 +31,7 @@ from llm_browser.models import (
 )
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
+from llm_browser.skill_install import install_skill, skill_text
 
 
 @contextmanager
@@ -657,3 +658,33 @@ def status(ctx: click.Context) -> None:
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
     _output(result)
+
+
+@main.group()
+def skill() -> None:
+    """Manage the packaged Claude Code flow-authoring skill."""
+
+
+@skill.command("install")
+@click.option(
+    "--dest",
+    "dest",
+    default=".",
+    help="Repo root to install into; the skill lands under <DEST>/.claude/skills/.",
+)
+@click.option(
+    "--force", is_flag=True, help="Overwrite an existing SKILL.md at that path."
+)
+def skill_install_command(dest: str, force: bool) -> None:
+    """Copy the skill into <DEST>/.claude/skills/llm-browser-flows/SKILL.md."""
+    try:
+        path = install_skill(Path(dest), force=force)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"path": str(path)})
+
+
+@skill.command("show")
+def skill_show_command() -> None:
+    """Print the packaged SKILL.md to stdout."""
+    click.echo(skill_text(), nl=False)

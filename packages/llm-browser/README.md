@@ -110,6 +110,13 @@ steps:
     value: "{{ user }}"
 ```
 
+Flow patterns for hard widgets (autocomplete, framework-bound inputs, hidden checkboxes, rotating ids):
+[docs/FLOW_PATTERNS.md](docs/FLOW_PATTERNS.md).
+
+Authoring flows with Claude: `llm-browser skill install` drops a flow-authoring skill into
+`.claude/skills/llm-browser-flows/SKILL.md` of the current repo (`--dest DIR` for another one);
+`llm-browser skill show` prints it.
+
 Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
 `run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](FLOWS.md) for the full flow
 language, and [docs/API.md](docs/API.md) for typed extraction (pydantic models, YAML-declared
