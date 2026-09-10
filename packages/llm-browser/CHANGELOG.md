@@ -15,49 +15,51 @@
   check. The message renders the selector the way it was written (`#id`,
   `xpath=...`, `#a or #b` for a fallback chain), not as a pydantic repr. Bad
   budgets are rejected at flow-load time — `timeout >= 0`, `interval > 0` —
-  instead of surfacing mid-poll as a `Jitter` error. It never calls the
-  driver's own `wait_for_state`: on the Playwright family that wait runs an
-  injected in-page script, and a fixed 500 ms cadence is itself a fingerprint.
-  `attached`/`detached` are answered by `driver.count_now` — a plain DOM query,
-  no `Runtime.evaluate` on nodriver; `visible`/`hidden` by the new
-  `Driver.is_visible`, which is Playwright's `locator.is_visible()` and, on
-  nodriver, the same `offsetParent`/`getClientRects` read `wait_for_state`
-  already polls (it is abstract on `Driver`, so a new driver cannot forget
-  it). The locator is re-resolved every tick, so a node the page swapped out
+  instead of surfacing mid-poll as a `Jitter` error. It never hands the
+  wait to the driver: on the Playwright family that runs an injected in-page
+  script, and a fixed 500 ms cadence is itself a fingerprint.
+  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
+  `Runtime.evaluate` on nodriver; `visible`/`hidden` by `Driver.is_visible`,
+  which is Playwright's `locator.is_visible()` and, on nodriver, an
+  `offsetParent`/`getClientRects` read (it is abstract on `Driver`, so a new
+  driver cannot forget it). The locator is re-resolved every tick, so a node the page swapped out
   is still seen to change state — with a `FallbackSelector` that also means
   the branch can change mid-wait, so `detached` is judged against whichever
   branch matched this tick and will not fire while the fallback still
   matches. An error from a tick propagates: a CDP failure is not "not yet".
 
-  This sits beside `wait_for`, which stays as it was: `wait_for` hands the wait
-  to the driver and returns a `bool`, `wait_for_element` polls from Python and
-  raises with a message naming the selector, the state and the budget.
+  It is the only wait left: `find`, `find_all`, `frame` and `element_exists`
+  all go through it, and `element_exists` is the one caller that reads its
+  timeout back as a `bool` instead of letting it raise.
 - `wait_for` flow step (`state`, `timeout`, `interval`) — the explicit-wait
   counterpart to `wait`, which waits for an element's *text* to stop changing.
   A timeout fails the step the same way every other step failure is reported:
   a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
   with the selector/state/timeout message as its `data.message`. `optional:
   true` downgrades a never-appearing element to a skip.
-- `Driver.count_now(locator)` — `count` with no waiting, for callers that own
-  their own deadline. It defaults to `count`, and only `NodriverDriver`
-  overrides it: `count` there goes through `tab.select_all(selector)`, whose
-  retry cycle costs a 500 ms sleep plus a `Target.getTargets` refresh apiece
-  and is paid even at `timeout=0`, because the timeout is only checked after
-  the first cycle. `count_now` calls `tab.query_selector_all` — the bare
-  `DOM.querySelectorAll` underneath it, no retry, no sleep, no target refresh
-  — and skips the locator's element cache. `count`'s semantics are unchanged
-  for every existing caller.
+- **Breaking:** `Driver.count(locator)` never waits — it answers how many
+  elements match *right now*, so a poll tick cannot stall inside the driver.
+  On nodriver, `count`/`find_all` no longer wait up to 10 s for a late
+  element; use `wait_for_element`, which `find`, `find_all` and `frame` now
+  call before they resolve anything. `count` there was
+  `tab.select_all(selector)`, whose retry cycle costs a 500 ms sleep plus a
+  `Target.getTargets` refresh apiece and is paid even at `timeout=0`, because
+  the timeout is only checked after the first cycle; it is now
+  `tab.query_selector_all` — the bare `DOM.querySelectorAll` underneath it,
+  no retry, no sleep, no target refresh. Nothing is cached on the locator
+  either, so every read sees the page as it is.
 - `llm-browser wait-for --selector S [--state] [--timeout] [--interval]` — the
   same wait from the CLI; a timeout exits non-zero with the message, no
   traceback.
 
 ### Changed
 
-- `_resolve_with_fallback` probes the primary branch with `count_now` instead
-  of `count`. It was always asking "does the primary match right now", and
-  every caller waits for the state it wants afterwards; on nodriver the old
-  `count` made resolution of a fallback selector block for ~10 s whenever the
-  primary was absent — once per tick inside an explicit wait.
+- `_resolve_with_fallback` probes the primary branch with the now
+  non-waiting `count`. It was always asking "does the primary match right
+  now", and every caller waits for the state it wants afterwards; on nodriver
+  the old waiting `count` made resolution of a fallback selector block for
+  ~10 s whenever the primary was absent — once per tick inside an explicit
+  wait.
 
 ### Fixed
 
@@ -71,26 +73,22 @@
 
 ### Added
 
-- `BrowserSession.wait_for(selector, state="attached", timeout=...)` → `bool`
+- `BrowserSession.wait_for_element(selector, state=..., timeout=..., interval=...)`
   — one wait that covers all four `WaitState` values (`attached`, `detached`,
-  `visible`, `hidden`) and returns `False` on timeout instead of raising, so a
-  caller can branch on "did it happen" without wrapping every call in a
-  `try`. It is the one place that catches the timeout (patchright's
-  `TimeoutError` does not inherit from the builtin, so both have to be caught);
-  `element_exists(selector)` is now `wait_for(selector, "attached", timeout)`,
-  so `element_exists("#missing")` returns `False` instead of raising.
-- `NodriverDriver.wait_for_state` honors `state` instead of always doing an
-  attached-only `tab.wait_for`, so all four states mean on nodriver what they
-  mean on Playwright: `visible` no longer reports a `display:none` element as
-  found, and `detached` no longer returns immediately. `attached` keeps the
-  native CDP wait; `detached`, `visible` and `hidden` poll, re-querying the
-  locator's selector each round so a node the page replaced or removed is seen
-  (`first` and `nth` carry the selector forward for this), and `hidden` is
-  satisfied by a detached node as well as an unrendered one. Visibility is
+  `visible`, `hidden`) on every driver, and the only wait: `find`, `find_all`,
+  `frame`, `element_exists` and the `wait_for` step all go through it, so a
+  state means the same thing whichever one you call. `element_exists(selector)`
+  is that wait with the timeout read as `False` rather than raising, so
+  `element_exists("#missing")` returns `False` instead of raising.
+- `Driver.is_visible(locator)` — whether the first match is rendered right
+  now, `False` if nothing matches. On nodriver it is
   `offsetParent !== null || getClientRects().length > 0` evaluated on the
-  element — nodriver exposes no visibility API and CDP has no visibility
-  predicate, so a poll is the honest option. All four raise the builtin
-  `TimeoutError`, which is what `wait_for` maps to `False`.
+  element: nodriver exposes no visibility API and CDP has no visibility
+  predicate, so a read is the honest option. It is what the `visible` and
+  `hidden` states poll, in place of the driver-native waits — `Driver.wait_for_state`
+  and its Playwright and nodriver implementations are gone. Those ran an
+  injected in-page script on the Playwright family, and on nodriver `visible`
+  reported a `display:none` element as found and `detached` returned at once.
 - `flows.subflow_refs(text)` — lists the `run-flow` references in a flow
   without validating its steps. An async caller (an HTTP or MCP server that
   fetches children over the network) can now discover every child up front,

@@ -171,18 +171,14 @@ class Driver(ABC):
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
     @abstractmethod
-    def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None: ...
-
-    @abstractmethod
     def is_visible(self, locator: Any) -> bool:
         """Whether the first match is rendered right now; False if nothing matches.
 
-        A single non-blocking read, unlike ``wait_for_state``: it is what the
-        Python-side explicit wait in ``llm_browser.waits`` polls. Abstract
-        rather than defaulted because there is no honest fallback — a driver
-        that skipped it would raise past ``execute_action``'s
-        timeout-or-ValueError contract and abort the flow instead of failing
-        the step.
+        A single non-blocking read: it is what the Python-side explicit wait
+        in ``llm_browser.waits`` polls. Abstract rather than defaulted because
+        there is no honest fallback — a driver that skipped it would raise
+        past ``execute_action``'s timeout-or-ValueError contract and abort the
+        flow instead of failing the step.
         """
 
     # --- Read / capture ---
@@ -197,17 +193,14 @@ class Driver(ABC):
     def get_attribute(self, locator: Any, name: str) -> str | None: ...
 
     @abstractmethod
-    def count(self, locator: Any) -> int: ...
-
-    def count_now(self, locator: Any) -> int:
-        """``count`` with no waiting: how many elements match *right now*.
+    def count(self, locator: Any) -> int:
+        """How many elements match *right now* — no waiting.
 
         A poll tick that blocks inside the driver makes the poll loop's own
-        deadline meaningless, so ``llm_browser.waits`` asks for this instead.
-        Drivers whose ``count`` retries internally override it; for the rest
-        counting is already instantaneous.
+        deadline meaningless, so ``llm_browser.waits`` needs this to answer
+        immediately. A caller that needs the element to be there waits for it
+        first, through ``BrowserSession.wait_for_element``.
         """
-        return self.count(locator)
 
     @abstractmethod
     def first(self, locator: Any) -> Any: ...

@@ -54,7 +54,7 @@ def test_goto_custom_wait_until(session: BrowserSession, page: MagicMock) -> Non
 def test_find(session: BrowserSession, page: MagicMock) -> None:
     locator = page.locator.return_value
     result = session.find("#btn")
-    locator.first.wait_for.assert_called_once_with(state="visible", timeout=10_000)
+    locator.first.is_visible.assert_called()
     assert result is locator.first
 
 
@@ -69,7 +69,7 @@ def test_find_raises_on_multiple(session: BrowserSession, page: MagicMock) -> No
 def test_find_all(session: BrowserSession, page: MagicMock) -> None:
     locator = page.locator.return_value
     result = session.find_all("li.item")
-    locator.first.wait_for.assert_called_once_with(state="attached", timeout=10_000)
+    locator.count.assert_called()
     assert result is locator
 
 
@@ -79,9 +79,9 @@ def test_element_exists_true(session: BrowserSession) -> None:
 
 def test_element_exists_false(session: BrowserSession, page: MagicMock) -> None:
     locator = _single_locator()
-    locator.first.wait_for.side_effect = TimeoutError
+    locator.count.return_value = 0
     page.locator.return_value = locator
-    assert session.element_exists("#missing") is False
+    assert session.element_exists("#missing", timeout=0) is False
 
 
 # --- pick ---

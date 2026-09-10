@@ -17,10 +17,6 @@ DEFAULT_POLL_INTERVAL_MS = 500
 # itself a fingerprint.
 POLL_JITTER_RATIO = 0.3
 
-# nodriver has no CDP wait for visibility/detachment, so those states are
-# polled; 100ms keeps Runtime traffic low without feeling laggy.
-NODRIVER_POLL_INTERVAL_S = 0.1
-
 DEFAULT_URL_SCHEMES = ("http", "https")
 
 REDACTED = "***"

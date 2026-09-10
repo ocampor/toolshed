@@ -119,9 +119,8 @@ def _resolve_with_fallback(
     fallback: SelectorSpec,
 ) -> Any:
     result = resolve_selector(driver, page, primary)
-    # ``count_now``, not ``count``: resolution asks "does the primary match
-    # right now", and every caller waits for the state it wants afterwards.
-    # Waiting here would stall a poll tick inside the driver.
-    if driver.count_now(result) > 0:
+    # Resolution asks "does the primary match right now"; every caller waits
+    # for the state it wants afterwards.
+    if driver.count(result) > 0:
         return result
     return resolve_selector(driver, page, fallback)

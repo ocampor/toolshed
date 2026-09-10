@@ -463,10 +463,12 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
 
 def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=30_000)
+    wait = MagicMock()
+    session.wait_for_element = wait  # type: ignore[method-assign]
+
     execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    # find() calls wait_for on the first locator with the given timeout
-    locator.first.wait_for.assert_called_with(state="visible", timeout=30_000)
+
+    wait.assert_called_once_with("#btn", state="visible", timeout=30_000)
 
 
 # --- scroll ---

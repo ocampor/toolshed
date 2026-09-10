@@ -171,9 +171,6 @@ class PlaywrightDriverBase(Driver):
     def scroll(self, page: Any, dx: int, dy: int) -> None:
         _pw_page(page).mouse.wheel(dx, dy)
 
-    def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
-        _pw_loc(locator).wait_for(state=state, timeout=timeout_ms)
-
     def is_visible(self, locator: Any) -> bool:
         return _pw_loc(locator).is_visible()
 

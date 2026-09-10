@@ -387,48 +387,33 @@ class BrowserSession:
         self.driver.goto(self.get_page(), target, wait_until)
 
     def find(
-        self, selector: Selector, state: str = "visible", timeout: int = 10_000
+        self, selector: Selector, state: WaitState = "visible", timeout: int = 10_000
     ) -> Any:
-        """Find exactly one element. Raises ValueError if multiple match."""
+        """Find exactly one element. Raises ValueError if multiple match.
+
+        Waits first, then resolves: counting matches never waits, so the
+        locator has to be asked for after the element is known to be there.
+        """
+        self.wait_for_element(selector, state=state, timeout=timeout)
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        element = expect_single(self.driver, locator, selector)
-        self.driver.wait_for_state(element, state, timeout)
-        return element
+        return expect_single(self.driver, locator, selector)
 
     def find_all(
-        self, selector: Selector, state: str = "attached", timeout: int = 10_000
+        self, selector: Selector, state: WaitState = "attached", timeout: int = 10_000
     ) -> Any:
         """Find all matching elements, waiting for at least one."""
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        self.driver.wait_for_state(self.driver.first(locator), state, timeout)
-        return locator
-
-    def wait_for(
-        self,
-        selector: Selector,
-        state: WaitState = "attached",
-        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
-    ) -> bool:
-        """Wait for ``selector`` to reach ``state``; False on timeout, never raises."""
-        try:
-            locator = resolve_selector(self.driver, self.get_page(), selector)
-            self.driver.wait_for_state(self.driver.first(locator), state, timeout)
-            return True
-        except TimeoutError:
-            return False
-        except Exception as exc:
-            # patchright raises ``patchright._impl._errors.TimeoutError``, which
-            # does NOT inherit from the builtin, so a bare ``except TimeoutError``
-            # misses it and the "never raises" contract breaks for a missing
-            # element.
-            if type(exc).__name__ == "TimeoutError":
-                return False
-            raise
+        self.wait_for_element(selector, state=state, timeout=timeout)
+        return resolve_selector(self.driver, self.get_page(), selector)
 
     def element_exists(
         self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
     ) -> bool:
-        return self.wait_for(selector, "attached", timeout)
+        """Whether ``selector`` shows up within ``timeout``; never raises."""
+        try:
+            self.wait_for_element(selector, state="attached", timeout=timeout)
+        except TimeoutError:
+            return False
+        return True
 
     def wait_for_element(
         self,
@@ -440,10 +425,10 @@ class BrowserSession:
     ) -> None:
         """Poll until ``selector`` reaches ``state``; raise ``TimeoutError`` if not.
 
-        The explicit-wait counterpart to ``wait_for``: it polls from Python on
-        a jittered cadence instead of handing the wait to the driver, so no
-        in-page script is injected and the timeout carries the selector and
-        state in its message. Use ``wait_for`` when you want a bool back.
+        The one wait: it polls from Python on a jittered cadence instead of
+        handing the wait to the driver, so no in-page script is injected and
+        the timeout carries the selector and state in its message. Use
+        ``element_exists`` when you want a bool back.
         """
         waits.poll_for_state(
             self.driver,
@@ -505,9 +490,7 @@ class BrowserSession:
 
     def frame(self, selector: Selector, timeout: int = 10_000) -> Any:
         """Enter an iframe, returning the Frame."""
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        element = expect_single(self.driver, locator, selector)
-        self.driver.wait_for_state(element, "attached", timeout)
+        element = self.find(selector, state="attached", timeout=timeout)
         return self.driver.enter_frame(element)
 
     def parse_elements(

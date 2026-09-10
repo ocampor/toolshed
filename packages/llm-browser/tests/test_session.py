@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser.chrome import is_process_alive
-from llm_browser.constants import DEFAULT_WAIT_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
 from llm_browser.models import SessionInfo
 from llm_browser.session import BrowserSession
@@ -131,7 +130,7 @@ def test_executable_path_threaded_to_driver(tmp_path: Path) -> None:
     assert captured["executable_path"] == "/usr/bin/chromium"
 
 
-# --- wait_for / element_exists ---
+# --- element_exists ---
 
 
 def _session_with_mock_driver(tmp_path: Path) -> BrowserSession:
@@ -141,54 +140,24 @@ def _session_with_mock_driver(tmp_path: Path) -> BrowserSession:
     return session
 
 
-@pytest.mark.parametrize("state", ["attached", "detached", "visible", "hidden"])
-def test_wait_for_passes_state_to_driver(tmp_path: Path, state: str) -> None:
+def test_element_exists_is_true_once_the_element_attaches(tmp_path: Path) -> None:
     session = _session_with_mock_driver(tmp_path)
-    assert session.wait_for("#out", state, timeout=123) is True
-    _, args, _ = session.driver.wait_for_state.mock_calls[0]
-    assert args[1:] == (state, 123)
+    session.driver.count.return_value = 1
+    assert session.element_exists("#out") is True
 
 
-def test_wait_for_defaults_to_attached_and_default_timeout(tmp_path: Path) -> None:
+def test_element_exists_is_false_when_nothing_ever_matches(tmp_path: Path) -> None:
     session = _session_with_mock_driver(tmp_path)
-    session.wait_for("#out")
-    _, args, _ = session.driver.wait_for_state.mock_calls[0]
-    assert args[1:] == ("attached", DEFAULT_WAIT_TIMEOUT_MS)
+    session.driver.count.return_value = 0
+    assert session.element_exists("#out", timeout=0) is False
 
 
-class _DriverTimeoutError(Exception):
-    """Stands in for patchright's TimeoutError, which is not the builtin."""
-
-
-_DriverTimeoutError.__name__ = "TimeoutError"
-
-
-@pytest.mark.parametrize("exc", [TimeoutError("nope"), _DriverTimeoutError("nope")])
-def test_wait_for_returns_false_on_timeout(tmp_path: Path, exc: Exception) -> None:
+def test_element_exists_propagates_a_driver_error(tmp_path: Path) -> None:
+    """A CDP failure is not "not yet": only a timeout reads as False."""
     session = _session_with_mock_driver(tmp_path)
-    session.driver.wait_for_state.side_effect = exc
-    assert session.wait_for("#out", "visible") is False
-
-
-def test_wait_for_propagates_non_timeout_errors(tmp_path: Path) -> None:
-    session = _session_with_mock_driver(tmp_path)
-    session.driver.wait_for_state.side_effect = RuntimeError("boom")
+    session.driver.count.side_effect = RuntimeError("boom")
     with pytest.raises(RuntimeError, match="boom"):
-        session.wait_for("#out")
-
-
-@pytest.mark.parametrize(
-    "side_effect,expected",
-    [(None, True), (TimeoutError("nope"), False), (_DriverTimeoutError("nope"), False)],
-)
-def test_element_exists_routes_through_wait_for(
-    tmp_path: Path, side_effect: Exception | None, expected: bool
-) -> None:
-    session = _session_with_mock_driver(tmp_path)
-    session.driver.wait_for_state.side_effect = side_effect
-    assert session.element_exists("#out") is expected
-    _, args, _ = session.driver.wait_for_state.mock_calls[0]
-    assert args[1:] == ("attached", DEFAULT_WAIT_TIMEOUT_MS)
+        session.element_exists("#out")
 
 
 def test_screenshot_bytes_returns_driver_bytes(tmp_path: Path) -> None:

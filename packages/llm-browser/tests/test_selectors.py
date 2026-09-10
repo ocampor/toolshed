@@ -26,7 +26,6 @@ def driver(page: MagicMock) -> MagicMock:
     mock = MagicMock()
     mock.resolve.side_effect = lambda p, sel: p.locator(sel)
     mock.count.side_effect = lambda loc: loc.count()
-    mock.count_now.side_effect = lambda loc: loc.count()
     return mock
 
 
@@ -144,5 +143,4 @@ def test_fallback_probe_never_waits_inside_the_driver(
 
     resolve_selector(driver, page, selector)
 
-    driver.count.assert_not_called()
-    driver.count_now.assert_called_once()
+    driver.count.assert_called_once()

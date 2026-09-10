@@ -66,7 +66,7 @@ def driver_with(counts: list[int] | None = None, visible: list[bool] | None = No
     driver = MagicMock(spec=Driver)
     driver.resolve.side_effect = lambda page, selector: MagicMock(name=selector)
     driver.first.side_effect = lambda locator: locator
-    driver.count_now.side_effect = _series(counts if counts is not None else [0])
+    driver.count.side_effect = _series(counts if counts is not None else [0])
     driver.is_visible.side_effect = _series(visible if visible is not None else [False])
     return driver
 
@@ -88,7 +88,7 @@ def test_returns_on_the_tick_the_element_appears(
 
     session.wait_for_element("#late")
 
-    assert driver.count_now.call_count == 3
+    assert driver.count.call_count == 3
     assert len(clock.sleeps) == 2
 
 
@@ -141,7 +141,7 @@ def test_zero_timeout_checks_exactly_once(tmp_path: Path, clock: FakeClock) -> N
     with pytest.raises(TimeoutError):
         session.wait_for_element("#missing", timeout=0)
 
-    assert driver.count_now.call_count == 1
+    assert driver.count.call_count == 1
     assert clock.sleeps == []
 
 
@@ -161,7 +161,7 @@ def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
     """A CDP failure is not "the element is missing" — it must not become a
     timeout, and a later "make polling robust" edit must not swallow it."""
     driver = driver_with(counts=[0])
-    driver.count_now.side_effect = RuntimeError("Could not find node with given id")
+    driver.count.side_effect = RuntimeError("Could not find node with given id")
     session = make_session(tmp_path, driver)
 
     with pytest.raises(RuntimeError, match="Could not find node"):
@@ -300,14 +300,4 @@ def test_poll_for_state_is_driver_agnostic() -> None:
         rng=random.Random(0),
     )
 
-    assert driver.count_now.call_count == 1
-
-
-def test_presence_polls_the_no_wait_count(tmp_path: Path, clock: FakeClock) -> None:
-    """``count`` may retry inside the driver; a tick must not."""
-    driver = driver_with(counts=[1])
-    session = make_session(tmp_path, driver)
-
-    session.wait_for_element("#here")
-
-    driver.count.assert_not_called()
+    assert driver.count.call_count == 1
