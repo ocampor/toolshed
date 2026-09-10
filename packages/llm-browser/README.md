@@ -163,3 +163,15 @@ session.close()  # disconnects only — your Chromium keeps running
 
 `BrowserSession(capture=...)` controls what's saved when a flow step fails: `"screenshot"`
 (default), `"dom"`, or `"both"`. Paths and cleanup: [docs/API.md](docs/API.md#capture-modes).
+
+### Conformance
+
+Real-browser check of every driver against a self-served fixture site: `packages/llm-browser-conformance` (separate package).
+
+```bash
+cd packages/llm-browser-conformance && uv sync --all-extras
+uv run llm-browser-check                    # every installed driver
+uv run llm-browser-check --driver nodriver --json
+```
+
+Run it after any change below `BrowserSession`. `FAIL` = contract violation, `skip` = API the driver does not implement, `xfail` = known gap listed in that package's README.
