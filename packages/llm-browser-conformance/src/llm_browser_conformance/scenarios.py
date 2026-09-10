@@ -5,7 +5,15 @@ group stays readable on its own. Both front ends walk this list — adding a
 scenario here adds a row to ``llm-browser-check`` and a pytest case at once.
 """
 
-from llm_browser_conformance.checks import flows, frames, inputs, stealth, waits
+from llm_browser_conformance.checks import (
+    controls,
+    flows,
+    frames,
+    inputs,
+    stealth,
+    steps,
+    waits,
+)
 from llm_browser_conformance.scenario import Scenario
 
 ALL_SCENARIOS: list[Scenario] = [
@@ -13,6 +21,8 @@ ALL_SCENARIOS: list[Scenario] = [
     *flows.SCENARIOS,
     *inputs.SCENARIOS,
     *frames.SCENARIOS,
+    *steps.SCENARIOS,
+    *controls.SCENARIOS,
     *stealth.SCENARIOS,
 ]
 

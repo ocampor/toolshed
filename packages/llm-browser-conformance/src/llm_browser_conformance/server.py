@@ -2,6 +2,8 @@
 
 Everything the suite needs is in ``site/``; nothing reaches the public
 internet, so a run is reproducible on a laptop, in CI and inside a sandbox.
+The one dynamic route is ``/redirect``, because a 302 cannot be expressed as
+a static file.
 """
 
 import functools
@@ -14,8 +16,22 @@ from pathlib import Path
 SITE_DIR = Path(__file__).parent / "site"
 
 
+REDIRECT_PATH = "/redirect"
+REDIRECT_TARGET = "/redirect-target.html"
+
+
 class SiteHandler(http.server.SimpleHTTPRequestHandler):
-    """The stdlib static handler, quietened."""
+    """Static files, plus a single 302 so the suite can exercise redirects."""
+
+    def do_GET(self) -> None:
+        path, _, query = self.path.partition("?")
+        if path == REDIRECT_PATH:
+            target = f"{REDIRECT_TARGET}?{query}" if query else REDIRECT_TARGET
+            self.send_response(302)
+            self.send_header("Location", target)
+            self.end_headers()
+            return
+        super().do_GET()
 
     def log_message(self, format: str, *args: object) -> None:
         """The stdlib handler's per-request stderr line would drown the table."""

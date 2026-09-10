@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Checkbox and radio</title>
+<input type="checkbox" id="agree" style="opacity:0">
+<label for="agree" id="agree-label">Agree</label>
+<input type="radio" name="color" id="red" value="red" checked>
+<input type="radio" name="color" id="green" value="green">
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+document.addEventListener("change", () => {
+  document.getElementById("result").textContent =
+    document.querySelector("input[name=color]:checked").value;
+});
+</script>

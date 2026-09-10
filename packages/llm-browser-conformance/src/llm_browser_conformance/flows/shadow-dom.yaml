@@ -1,0 +1,18 @@
+# The input and button live in an open shadow root; the result is written to
+# the light DOM so the assertion does not need to pierce as well.
+steps:
+  - name: fill
+    action: fill
+    selector: "#host input"
+    value: shadow value
+    timeout: 3000
+  - name: send
+    action: click
+    selector: "#host button"
+    timeout: 3000
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

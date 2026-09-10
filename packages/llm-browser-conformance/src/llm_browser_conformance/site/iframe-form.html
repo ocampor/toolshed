@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Iframe form</title>
+<h1 id="parent-title">Parent</h1>
+<div id="result"></div>
+<iframe id="frame" src="iframe-form-child.html" width="400" height="200"></iframe>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+</script>

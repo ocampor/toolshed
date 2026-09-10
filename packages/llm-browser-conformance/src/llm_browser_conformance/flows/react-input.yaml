@@ -1,0 +1,33 @@
+# A controlled input: the page reverts any value that arrived without an
+# `input` event, so both fill and type have to fire real ones.
+steps:
+  - name: fill
+    action: fill
+    selector: "#controlled"
+    value: alpha
+  - name: filled
+    action: read
+    selector: "#display"
+    extract:
+      text:
+        attribute: textContent
+  - name: clear
+    action: fill
+    selector: "#controlled"
+    value: ""
+  - name: type
+    action: type
+    selector: "#controlled"
+    value: beta
+  - name: typed
+    action: read
+    selector: "#display"
+    extract:
+      text:
+        attribute: textContent
+  - name: events
+    action: read
+    selector: "#events"
+    extract:
+      text:
+        attribute: textContent

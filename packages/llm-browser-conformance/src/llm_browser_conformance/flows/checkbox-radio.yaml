@@ -1,0 +1,21 @@
+# The checkbox is invisible (opacity:0) behind a styled label; the radios are
+# a group where checking one unchecks the other.
+steps:
+  - name: check
+    action: check
+    selector: "#agree"
+    checked: true
+  - name: uncheck
+    action: check
+    selector: "#agree"
+    checked: false
+  - name: pick-green
+    action: check
+    selector: "#green"
+    checked: true
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

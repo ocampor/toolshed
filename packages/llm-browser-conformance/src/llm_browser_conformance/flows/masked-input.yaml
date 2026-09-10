@@ -1,0 +1,14 @@
+# The mask rewrites the field on every keystroke, so a value written in one
+# shot ends up mangled.
+steps:
+  - name: type
+    action: type
+    selector: "#phone"
+    value: "5551234567"
+    delay: 20
+  - name: value
+    action: read
+    selector: "#phone"
+    extract:
+      text:
+        attribute: value

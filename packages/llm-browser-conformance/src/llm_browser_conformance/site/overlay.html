@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Overlay</title>
+<div id="overlay" style="position:fixed; inset:0; z-index:10; background:rgba(0,0,0,0.4)"></div>
+<button id="btn">Click me</button>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+document.getElementById("btn").addEventListener("click", () => {
+  document.getElementById("result").textContent = "clicked";
+});
+
+setTimeout(() => document.getElementById("overlay").remove(), delay);
+</script>

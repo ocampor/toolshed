@@ -1,0 +1,7 @@
+# Negative case: a disabled <option> cannot be chosen.
+steps:
+  - name: select
+    action: select
+    selector: "#choice"
+    value: b
+    timeout: 2000
