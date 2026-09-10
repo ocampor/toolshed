@@ -8,7 +8,8 @@ from functools import lru_cache
 
 from yaml_engine.registry import Registry
 
-from llm_browser.drivers.base import Driver, DriverHandle, DriverNotInstalledError
+from llm_browser.drivers.base import Driver
+from llm_browser.drivers.handle import DriverHandle, DriverNotInstalledError
 from llm_browser.drivers.patchright import PatchrightDriver
 
 DEFAULT_DRIVER_NAME = "patchright"

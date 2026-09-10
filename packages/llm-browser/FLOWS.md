@@ -353,3 +353,10 @@ Replace `click_if_exists` or `dismiss_modal` with `click` + `when`:
   when:
     - { element_exists: { selector: ".popup" } }
 ```
+
+## Drivers
+
+Every action reaches the browser through a `Driver` — the ABC in
+`llm_browser/drivers/base.py`, whose class docstring is the contract a backend
+implements (what may wait, what may run JS, what a locator has to survive).
+See "Writing a driver" in the README.

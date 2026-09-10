@@ -339,6 +339,19 @@ from llm_browser.drivers.camoufox import CamoufoxDriver
 session = BrowserSession(driver=CamoufoxDriver(locale="fr-FR", humanize=True))
 ```
 
+### Writing a driver
+
+A driver is any subclass of `llm_browser.drivers.base.Driver` that implements
+every abstract method — `BrowserSession`, the flow actions and
+`llm_browser.waits` are written against that ABC, not against a browser API.
+Its class docstring is the contract, and the five rules in it are the parts a
+new backend gets wrong: which methods may block on the DOM (only
+`wait_for_load` and `wait_for_stable_text` — every read answers about the page
+as it is now), that input must be trusted events, which methods may run JS,
+that `first`/`nth` stay re-resolvable, and that timeouts are milliseconds and
+raise the builtin `TimeoutError`. `tests/test_driver_contract.py` checks the
+read rules against each driver with fakes; add yours to its fixture.
+
 ### nodriver — detectable surfaces
 
 Default paths are not synthetic. A small set of reads/polls still use

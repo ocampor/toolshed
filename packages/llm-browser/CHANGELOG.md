@@ -54,6 +54,17 @@
 
 ### Changed
 
+- The `Driver` ABC's class docstring is now the driver contract: five rules
+  covering what may block on the DOM, that input must be trusted events,
+  which methods may run JS, what `first`/`nth` have to survive, and that
+  timeouts are milliseconds raising the builtin `TimeoutError`. The read
+  rules are checked against every driver by `tests/test_driver_contract.py`.
+  To keep `base.py` the contract and nothing else, `DriverHandle`,
+  `DriverNotInstalledError` and `load_optional_module` moved to
+  `llm_browser.drivers.handle` and the Python text-stability poll to
+  `llm_browser.drivers.stable_text`. `llm_browser.drivers` re-exports all
+  three names as before; only `from llm_browser.drivers.base import
+  load_optional_module` (or `DriverNotInstalledError`) has to change.
 - `_resolve_with_fallback` probes the primary branch with the now
   non-waiting `count`. It was always asking "does the primary match right
   now", and every caller waits for the state it wants afterwards; on nodriver

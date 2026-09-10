@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from llm_browser.behavior import Jitter, jittered_sleep
-from llm_browser.drivers.base import DriverHandle, load_optional_module
+from llm_browser.drivers.handle import DriverHandle, load_optional_module
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 
 DEFAULT_CAMOUFOX_KWARGS: dict[str, Any] = {

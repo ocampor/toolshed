@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Coroutine, TypeVar
 
-from llm_browser.drivers.base import Driver, DriverHandle, load_optional_module
+from llm_browser.drivers.base import Driver
+from llm_browser.drivers.handle import DriverHandle, load_optional_module
 
 # Virtual key codes for trusted keyboard events via Input.dispatchKeyEvent.
 # Using JS element.value="" would bypass input/change events — detectable.

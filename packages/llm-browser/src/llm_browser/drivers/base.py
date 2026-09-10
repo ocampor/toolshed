@@ -1,49 +1,45 @@
-"""Driver abstract base class, handle model, and errors.
+"""The driver contract: one abstract base every browser backend implements.
 
 A Driver owns both lifecycle (launch/connect/close) and interactions
 (click/fill/type/navigate/read). Splitting these onto one class keeps
 plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
-import importlib
 import tempfile
-import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Callable, ClassVar
 
-from pydantic import BaseModel
-
 from llm_browser.behavior import Behavior, BehaviorRuntime
-
-
-class DriverHandle(BaseModel):
-    """Per-driver connection/lifecycle state persisted to disk."""
-
-    driver: str
-    pid: int | None = None
-    endpoint: str | None = None
-    user_data_dir: str
-    extra: dict[str, str] = {}
-
-
-class DriverNotInstalledError(RuntimeError):
-    """Raised when a driver's optional extra is missing."""
-
-
-def load_optional_module(module: str, extra: str) -> ModuleType:
-    """Import an optional driver dependency or raise DriverNotInstalledError."""
-    try:
-        return importlib.import_module(module)
-    except ImportError as e:
-        raise DriverNotInstalledError(
-            f"{extra} is not installed. Run: pip install llm-browser[{extra}]"
-        ) from e
+from llm_browser.drivers.handle import DriverHandle
+from llm_browser.drivers.stable_text import poll_stable_text
 
 
 class Driver(ABC):
-    """Base class for browser drivers. Owns lifecycle + interactions."""
+    """Base class for browser drivers. Owns lifecycle + interactions.
+
+    Everything above a driver — ``llm_browser.waits``, ``BrowserSession``, the
+    flow actions — is written against these rules rather than any one browser
+    API, so a new driver holds to them:
+
+    1. Only ``wait_for_load`` and ``wait_for_stable_text`` may block on the
+       DOM. ``resolve``, ``count``, ``first``, ``nth``, ``all`` and
+       ``is_visible`` answer about the page as it is right now and report a
+       miss as empty or ``False`` — never a retry, never a raise for "not
+       there yet". Waiting is ``llm_browser.waits``' job, on a deadline the
+       caller owns.
+    2. Input must be trusted events — OS-level or CDP ``Input.*`` — never
+       synthetic DOM events. ``dispatch_event`` is the one explicit opt-in.
+    3. JS runs in ``evaluate``, ``is_visible``, ``input_value``,
+       ``wait_for_stable_text`` and ``extract_rows``, nowhere else. The rest
+       stays on the DOM, Input and Page domains, so a detector watching
+       Runtime traffic sees none of it on the common path.
+    4. Locators are opaque handles and may be lazy; ``first`` and ``nth``
+       carry enough (selector plus index) to be re-resolved, or a node the
+       page replaced is never seen to change.
+    5. Timeouts are milliseconds, and an expired one raises the builtin
+       ``TimeoutError``.
+    """
 
     name: ClassVar[str]
     supports_reconnect: ClassVar[bool] = False
@@ -98,7 +94,8 @@ class Driver(ABC):
     # --- Selector resolution ---
 
     @abstractmethod
-    def resolve(self, page: Any, selector: str) -> Any: ...
+    def resolve(self, page: Any, selector: str) -> Any:
+        """A locator for ``selector``; matching nothing yet is not an error."""
 
     # --- Interactions ---
 
@@ -153,7 +150,9 @@ class Driver(ABC):
     def set_checked(self, locator: Any, checked: bool) -> None: ...
 
     @abstractmethod
-    def dispatch_event(self, locator: Any, event: str) -> None: ...
+    def dispatch_event(self, locator: Any, event: str) -> None:
+        """Fire a synthetic (``isTrusted=false``) DOM event — the opt-in
+        escape hatch from rule 2, for overlays real input cannot reach."""
 
     # --- Navigation / waiting ---
 
@@ -161,7 +160,8 @@ class Driver(ABC):
     def goto(self, page: Any, url: str, wait_until: str) -> None: ...
 
     @abstractmethod
-    def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None: ...
+    def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
+        """Block until the page reaches ``state`` — the only page-level wait."""
 
     def scroll(self, page: Any, dx: int, dy: int) -> None:
         """Scroll the page by a mouse-wheel delta.
@@ -174,8 +174,9 @@ class Driver(ABC):
     def is_visible(self, locator: Any) -> bool:
         """Whether the first match is rendered right now; False if nothing matches.
 
-        A single non-blocking read: it is what the Python-side explicit wait
-        in ``llm_browser.waits`` polls. Abstract rather than defaulted because
+        A single read, including for a handle whose node the page already
+        detached. It is what the Python-side explicit wait in
+        ``llm_browser.waits`` polls. Abstract rather than defaulted because
         there is no honest fallback — a driver that skipped it would raise
         past ``execute_action``'s timeout-or-ValueError contract and abort the
         flow instead of failing the step.
@@ -194,19 +195,22 @@ class Driver(ABC):
 
     @abstractmethod
     def count(self, locator: Any) -> int:
-        """How many elements match *right now* — no waiting.
+        """How many elements match *right now* — no waiting, no cache.
 
         A poll tick that blocks inside the driver makes the poll loop's own
-        deadline meaningless, so ``llm_browser.waits`` needs this to answer
-        immediately. A caller that needs the element to be there waits for it
+        deadline meaningless, and one that reads a cache never sees the page
+        change. A caller that needs the element to be there waits for it
         first, through ``BrowserSession.wait_for_element``.
         """
 
     @abstractmethod
-    def first(self, locator: Any) -> Any: ...
+    def first(self, locator: Any) -> Any:
+        """The first match, lazily: it must survive the element going away."""
 
     @abstractmethod
-    def nth(self, locator: Any, index: int) -> Any: ...
+    def nth(self, locator: Any, index: int) -> Any:
+        """The ``index``-th match, carrying selector and index so a wait can
+        re-resolve this same match after the page swaps the node."""
 
     @abstractmethod
     def all(self, locator: Any) -> list[Any]: ...
@@ -242,7 +246,9 @@ class Driver(ABC):
         return self.get_attribute(target, attribute)
 
     @abstractmethod
-    def evaluate(self, target: Any, script: str) -> Any: ...
+    def evaluate(self, target: Any, script: str) -> Any:
+        """Run user-supplied JS against a page or element — the JS touchpoint
+        of rule 3, and the only one that is arbitrary."""
 
     @abstractmethod
     def content(self, page: Any) -> str: ...
@@ -254,7 +260,8 @@ class Driver(ABC):
     def screenshot(self, page: Any, path: Path) -> None: ...
 
     def screenshot_bytes(self, page: Any) -> bytes:
-        # Fallback for drivers whose screenshot API can only write a file.
+        """The page as PNG bytes. The default writes a temp file and reads it
+        back, for drivers whose screenshot API can only write one."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / "screenshot.png"
             self.screenshot(page, path)
@@ -275,25 +282,11 @@ class Driver(ABC):
     ) -> str | None:
         """Wait until textContent stops changing for ``quiet_ms``.
 
-        Returns the final text, or ``None`` on timeout.
-
-        Default implementation polls from Python — each iteration crosses
-        the transport. On Chromium/CDP this is a distinctive repeated
-        ``Runtime.callFunctionOn`` pattern that Runtime-traffic detectors
-        can fingerprint. Drivers with an in-page runtime should override
-        so the stability detection runs inside the page.
+        Returns the final text, or ``None`` on timeout. One of the two methods
+        rule 1 lets block. The default polls from Python, a round-trip per
+        tick; a driver with an in-page runtime should override so the loop
+        runs inside the page.
         """
-        poll_s = 0.25
-        quiet_s = quiet_ms / 1000.0
-        deadline = time.monotonic() + timeout_ms / 1000.0
-        last_text = self.text_content(locator) or ""
-        last_change = time.monotonic()
-        while time.monotonic() < deadline:
-            time.sleep(poll_s)
-            text = self.text_content(locator) or ""
-            now = time.monotonic()
-            if text != last_text:
-                last_text, last_change = text, now
-            elif now - last_change >= quiet_s:
-                return text
-        return None
+        return poll_stable_text(
+            lambda: self.text_content(locator), quiet_ms, timeout_ms
+        )
