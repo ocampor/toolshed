@@ -37,228 +37,47 @@
 
 ### Added
 
-- `BrowserSession.wait_for_element(selector, state=..., timeout=..., interval=...)`
-  — one wait that covers all four `WaitState` values (`attached`, `detached`,
-  `visible`, `hidden`) on every driver, and the only wait: `find`, `find_all`,
-  `frame`, `element_exists` and the `wait_for` step all go through it, so a
-  state means the same thing whichever one you call. `element_exists(selector)`
-  is that wait with the timeout read as `False` rather than raising, so
-  `element_exists("#missing")` returns `False` instead of raising.
-- `Driver.is_visible(locator)` — whether the first match is rendered right
-  now, `False` if nothing matches. On nodriver it is
-  `offsetParent !== null || getClientRects().length > 0` evaluated on the
-  element: nodriver exposes no visibility API and CDP has no visibility
-  predicate, so a read is the honest option. It is what the `visible` and
-  `hidden` states poll, in place of the driver-native waits — `Driver.wait_for_state`
-  and its Playwright and nodriver implementations are gone. Those ran an
-  injected in-page script on the Playwright family, and on nodriver `visible`
-  reported a `display:none` element as found and `detached` returned at once.
-- `FlowError.outputs` — the outputs collected before the failing step, keyed
-  by qualified step name exactly like `FlowSuccess.outputs`. A flow that read
-  three pages and then failed on the fourth used to throw all three results
-  away, forcing a full re-run to see any of them; the caller can now use the
-  partial data (or show it to the user) while deciding whether to retry. A
-  failure inside a sub-flow keeps both the parent's earlier outputs and the
-  child's — including an `optional:` sub-flow, whose swallowed failure now
-  hands its partial outputs back to the parent — and `redact` scrubs them on
-  the same pass as a success's.
-- `BrowserSession.screenshot_bytes()` → `bytes` — the current page as PNG
-  bytes, with nothing written into the session dir. A server that only wants
-  to hand the image back had to call `take_screenshot()` and read the file it
-  wrote; on Playwright the bytes now come straight from `page.screenshot()`.
-  `Driver.screenshot_bytes` is non-abstract: its default writes to a temp file
-  through the driver's own `screenshot()` and reads it back, so drivers whose
-  screenshot API only writes files (nodriver) get a working implementation
-  without an override. `take_screenshot()` is unchanged.
-- `llm_browser.flow_repository` — `FlowRepository`, a protocol with a single
-  `async def get(ref) -> str` returning a flow's YAML text (or raising
-  `FlowNotFoundError(ref)`), plus `FileFlowRepository(base_dir)` which reads
-  relative refs under `base_dir` and honours absolute ones. The repository is
-  the only part of flow loading that differs between consumers.
-- `DictFlowRepository(flows)` — a mapping of reference → YAML text — and
-  `LayeredFlowRepository(*layers)`, which takes the first layer that has the
-  reference and raises `FlowNotFoundError(ref)` when none does. A consumer
-  that accepts child flows with a request layers them over its own store:
-  `LayeredFlowRepository(DictFlowRepository(request_flows), store)`. Only a
-  `FlowNotFoundError` falls through to the next layer; anything else
-  propagates, and `FileFlowRepository` reports a miss only for a missing path
-  (a permission or I/O error propagates).
-- `flow_pipeline.resolve_flow(ref, repo)` / `resolve_flow_text(text, repo)` —
-  stage one, async and the only stage that does I/O. They parse the YAML and
-  inline every `run-flow` reference as the child's document, fetching children
-  concurrently and once per distinct reference. A child that references a flow
-  of its own is rejected here, so leaf-only no longer depends on validation
-  context.
-- `flows.load_flow_document(document, *, selector_map=None)` — stage two, pure:
-  it validates an already-resolved document into a `Flow`. The selector map is
-  a parameter applied to the document (parent steps and any embedded child),
-  not a validation-context key.
-- `run-flow` steps take the child flow inline: `flow:` accepts the child's own
-  mapping (`params:` / `steps:`), so a flow with embedded children needs no
-  repository at all.
-- `flows.with_flow_path(result, path)` — fills `retry_hint.flow_path` for a
-  flow that came from a file (moved from the deleted `flow_files`).
-- `BrowserSession.wait_for_element(selector, *, state="attached", timeout=3000,
-  interval=500)` — an explicit wait in the shape of Selenium's
-  `WebDriverWait.until`: a Python poll loop that asks the cheapest driver
-  primitive whether the state is reached, sleeps `interval` ± 30 %
-  (`POLL_JITTER_RATIO`), and raises `TimeoutError("<selector> did not become
-  <state> within <timeout>ms")` when the deadline passes. `timeout` is a
-  budget rather than a floor: each sleep is clamped to what is left of it, so
-  the wait overruns by at most one state check and `timeout=0` is exactly one
-  check. The message renders the selector the way it was written (`#id`,
-  `xpath=...`, `#a or #b` for a fallback chain), not as a pydantic repr. Bad
-  budgets are rejected at flow-load time — `timeout >= 0`, `interval > 0` —
-  instead of surfacing mid-poll as a `Jitter` error. It never hands the
-  wait to the driver: on the Playwright family that runs an injected in-page
-  script, and a fixed 500 ms cadence is itself a fingerprint.
-  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
-  `Runtime.evaluate` on nodriver; `visible`/`hidden` by `Driver.is_visible`,
-  which is Playwright's `locator.is_visible()` and, on nodriver, an
-  `offsetParent`/`getClientRects` read (it is abstract on `Driver`, so a new
-  driver cannot forget it). The locator is re-resolved every tick, so a node the page swapped out
-  is still seen to change state — with a `FallbackSelector` that also means
-  the branch can change mid-wait, so `detached` is judged against whichever
-  branch matched this tick and will not fire while the fallback still
-  matches. An error from a tick propagates: a CDP failure is not "not yet".
-
-  It is the only wait left: `find`, `find_all`, `frame` and `element_exists`
-  all go through it, and `element_exists` is the one caller that reads its
-  timeout back as a `bool` instead of letting it raise.
-- `wait_for` flow step (`state`, `timeout`, `interval`) — the explicit-wait
-  counterpart to `wait`, which waits for an element's *text* to stop changing.
-  A timeout fails the step the same way every other step failure is reported:
-  a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
-  with the selector/state/timeout message as its `data.message`. `optional:
-  true` downgrades a never-appearing element to a skip.
-- **Breaking:** `Driver.count(locator)` never waits — it answers how many
-  elements match *right now*, so a poll tick cannot stall inside the driver.
-  On nodriver, `count`/`find_all` no longer wait up to 10 s for a late
-  element; use `wait_for_element`, which `find`, `find_all` and `frame` now
-  call before they resolve anything. `find` (and `frame` through it) still
-  counts before it waits, so a selector matching two elements fails at once
-  with `Expected 1 element for ..., found 2` instead of burning the whole
-  budget on a match that could never be single. `count` there was
-  `tab.select_all(selector)`, whose retry cycle costs a 500 ms sleep plus a
-  `Target.getTargets` refresh apiece and is paid even at `timeout=0`, because
-  the timeout is only checked after the first cycle; it is now
-  `tab.query_selector_all` — the bare `DOM.querySelectorAll` underneath it,
-  no retry, no sleep, no target refresh. Nothing is cached on the locator
-  either, so every read sees the page as it is.
-- `wait_for` gains a fifth state, `stable`: reached once the element's text
-  has not changed for `settle` ms (default 1500, `settle` is `stable`-only).
-  It is the text-stability wait, folded into the one wait loop — same
-  jittered poll, same budget, same failure report — so "wait for the element"
-  and "wait for its text to stop moving" are one step with one set of knobs.
-  An element that is not there yet reads as no text at all and never settles,
-  and `timeout` is the whole budget, so a stable wait needs one larger than
-  `settle`: a step, a `wait_for_element` call or a CLI invocation that asks
-  for less is rejected up front (`settle (2000ms) must be less than timeout
-  (500ms) for state 'stable'`) rather than timing out on text that never
-  changed.
-- `llm-browser wait-for --selector S [--state] [--timeout] [--interval]
-  [--settle]` — the same wait from the CLI; a timeout exits non-zero with the
-  message, no traceback.
+- `BrowserSession.wait_for_element(selector, state=, timeout=, interval=)` — the one wait for `attached`/`detached`/`visible`/`hidden`; `find`, `find_all`, `frame` and `element_exists` all go through it.
+- `wait_for` flow step and `llm-browser wait-for` CLI command; `wait_for` gains a `stable` state (`settle` param) for text that has to stop changing.
+- `Driver.is_visible(locator)` backs the `visible`/`hidden` states.
+- `FlowError.outputs` — outputs collected before a failing step (including inside a sub-flow) are no longer thrown away.
+- `BrowserSession.screenshot_bytes()`; `Driver.screenshot_bytes` has a non-abstract default.
+- `llm_browser.flow_repository`: `FlowRepository` protocol, `FileFlowRepository`, `DictFlowRepository`, `LayeredFlowRepository`.
+- `flow_pipeline.resolve_flow` / `resolve_flow_text` — the async, I/O-only reference-resolution stage.
+- `flows.load_flow_document(document, *, selector_map=None)` — the pure validation stage.
+- `RunFlowStep.flow` accepts an inline child flow (`SubFlow`), so a flow needs no repository when its children are embedded.
+- `flows.with_flow_path(result, path)`.
 
 ### Changed
 
-- **Breaking:** `run-flow` references in a flow loaded with
-  `load_flow_text` no longer resolve from the filesystem. Resolution used to
-  try an on-disk file first and fall back to `subflow_loader`, which meant
-  flow text from stdin, `--flow-yaml` or an API request could read arbitrary
-  YAML off the local disk, and which child you got depended on the current
-  working directory. There is now one order — `subflows` mapping, then
-  `subflow_loader`, then `base_dir` — and only `flow_files.load_flow` supplies
-  a `base_dir`. So file-loaded flows resolve siblings exactly as before, and
-  text-loaded flows resolve only through what the caller passed in; a
-  reference with no mapping entry, no loader and no `base_dir` raises
-  `ValueError` naming the reference. `load_flow_text(..., base_dir=...)` lets a
-  caller opt back in explicitly, and the CLI passes `base_dir=Path.cwd()` for
-  `--flow -` and `--flow-yaml`: someone piping a flow into `llm-browser run` or
-  `llm-browser validate` does have a meaningful working directory, so sibling
-  refs keep resolving there while every library caller stays off the filesystem
-  until it names a directory.
-- `load_flow_text` and `flow_files.load_flow` now raise
-  `ValueError("invalid flow YAML: ...")` instead of leaking `yaml.YAMLError`,
-  so a caller has one exception type to catch for malformed input, and a
-  malformed flow *file* fails the same way as malformed flow *text*.
-  Pydantic's `ValidationError` and anything raised by `subflow_loader` still
-  propagate untouched — a loader that signals a missing child with its own
-  exception type keeps working.
-- `BrowserSession.goto`, `launch` and `launch_detached` now validate the URL
-  scheme before they touch the browser and raise `ValueError` for anything
-  outside `DEFAULT_URL_SCHEMES`
-  (`http`, `https`). A flow step or an LLM-supplied URL could previously reach
-  `file:///etc/passwd`, `chrome://settings` or `javascript:` and have the
-  browser act on it; a schemeless relative path is rejected for the same
-  reason. Every caller shares one validation path —
-  `llm_browser.session.checked_url()` — so the flow `goto` action and
-  `llm-browser goto` inherit the guard, and a rejected step surfaces as an
-  ordinary step failure with the offending URL in the message. The two launch
-  paths validate before they start anything, so a bad URL cannot leave an
-  orphaned detached Chromium behind; `url=None` stays legal for both. Pass
-  `allowed_schemes=` to opt a specific call back in, e.g.
-  `allowed_schemes=("file",)` for local fixture pages.
-- **Breaking:** `RunFlowStep.flow` is now `SubFlow | str` and `RunFlowStep.subflow`
-  is gone — the child lives in `flow`. A `flow:` that is still a string fails
-  validation with `unresolved sub-flow <ref>: resolve it through a
-  FlowRepository first`.
-- **Breaking:** `flows.load_flow_text(text)` no longer takes `subflow_loader`,
-  `subflows`, `base_dir` or `selector_map`; it validates text that has nothing
-  left to resolve. Sub-flow resolution goes through a `FlowRepository`, and
-  selector maps through `load_flow_document(..., selector_map=...)`.
-- **Breaking:** removed `llm_browser.flow_files` (`load_flow`, `run_flow_file`),
-  `llm_browser.subflows` (`subflow_source`), `flow_pipeline.FlowSource`,
-  `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document` and the
-  `SubflowLoader` alias. `parse_flow_yaml(text)` is the one parser both stages
-  use, and `SelectorMap` now lives in `llm_browser.selector_map`.
-- **Breaking:** validation takes no context at all — the `subflows`,
-  `subflow_loader`, `base_dir`, `selector_map` and `in_subflow` keys are gone.
-- A flow document that is not a mapping raises
-  `ValueError("invalid flow yaml: expected a mapping, got ...")`.
-- An unknown selector `ref:` now raises `ValueError` instead of a pydantic
-  `ValidationError` (it is expanded before validation), and a missing flow file
-  raises `FlowNotFoundError` instead of `FileNotFoundError`.
-- The `run` and `validate` commands resolve their flow through
-  `cli.resolve_flow_options` (replacing `flow_source_from_options`) and run it
-  under `asyncio.run`. A file resolves its references against its own
-  directory; `--flow -` and `--flow-yaml` use the CWD. An empty `--flow ''` is
-  a usage error rather than a silent cwd lookup.
-- Parse errors read `ValueError("invalid flow yaml: ...")`, replacing
-  `"invalid flow YAML: ..."`.
-- **Breaking:** the `wait` step is gone; use `wait_for` with `state: stable`.
-  `quiet_ms` becomes `settle`, and `timeout_s` (seconds, default 180) becomes
-  `timeout` (milliseconds, no default that large) — a `wait` that relied on
-  the long default needs `timeout:` set explicitly. `wait` returned the
-  settled text as a step output and `wait_for` returns nothing; read the text
-  with a following `read` step if you need it. `BrowserSession.wait_until_stable`,
-  `Driver.wait_for_stable_text` (and the Playwright in-page implementation of
-  it) are gone with it: nothing injects a `requestAnimationFrame` loop into
-  the page any more, and stability is judged from Python like every other
-  state.
-- **Breaking:** `Driver.text_content` is a now-read — it returns `None` when
-  nothing matches instead of waiting for something to. It is what the
-  `stable` state polls, so it may not block. On the Playwright family the
-  count answers the miss and the read itself gets a 250 ms budget
-  (`READ_TIMEOUT_MS`; `timeout=0` there means *no* timeout, not "don't
-  wait"); on nodriver it goes through the same bare `query_selector_all` as
-  `count`, never `tab.select`'s retry.
-- The `Driver` ABC's class docstring is now the driver contract: five rules
-  covering what may block on the DOM, that input must be trusted events,
-  which methods may run JS, what `first`/`nth` have to survive, and that
-  timeouts are milliseconds raising the builtin `TimeoutError`. The read
-  rules are checked against every driver by `tests/test_driver_contract.py`.
-  To keep `base.py` the contract and nothing else, `DriverHandle`,
-  `DriverNotInstalledError` and `load_optional_module` moved to
-  `llm_browser.drivers.handle`. `llm_browser.drivers` re-exports all three
-  names as before; only `from llm_browser.drivers.base import
-  load_optional_module` (or `DriverNotInstalledError`) has to change.
-- `_resolve_with_fallback` probes the primary branch with the now
-  non-waiting `count`. It was always asking "does the primary match right
-  now", and every caller waits for the state it wants afterwards; on nodriver
-  the old waiting `count` made resolution of a fallback selector block for
-  ~10 s whenever the primary was absent — once per tick inside an explicit
-  wait.
+- `load_flow_text` / `flow_files.load_flow` raise `ValueError("invalid flow yaml: ...")` instead of leaking `yaml.YAMLError`.
+- `run` / `validate` resolve their flow through `cli.resolve_flow_options` under `asyncio.run`; an empty `--flow ''` is now a usage error.
+- `Driver`'s class docstring is now the five-rule driver contract; `DriverHandle`, `DriverNotInstalledError`, `load_optional_module` moved to `llm_browser.drivers.handle` (still re-exported from `llm_browser.drivers`).
+- `_resolve_with_fallback` probes the primary branch with the now non-waiting `count`.
+
+### Breaking
+
+- `Driver.count(locator)` and `Driver.text_content(locator)` never wait — they answer "right now"; on nodriver, `count`/`find_all` no longer block up to 10s for a late element.
+- `flows.load_flow_text(text)` drops `subflow_loader`, `subflows`, `base_dir` and `selector_map`; validation itself takes no context at all.
+- `RunFlowStep.flow` is now `SubFlow | str`; `RunFlowStep.subflow` is gone — the child lives in `flow`.
+- `BrowserSession.goto` / `launch` / `launch_detached` reject non-`http(s)` URLs by default; pass `allowed_schemes=` to opt back in.
+- `run-flow` reference resolution order is now `subflows` mapping → `subflow_loader` → `base_dir`; text-loaded flows no longer resolve siblings from the filesystem unless `load_flow_text(..., base_dir=...)` opts in.
+- An unknown selector `ref:` raises `ValueError` instead of pydantic `ValidationError`; a missing flow file raises `FlowNotFoundError` instead of `FileNotFoundError`.
+
+### Removed
+
+- `wait` step, `BrowserSession.wait_until_stable`, `Driver.wait_for_stable_text`, `Driver.wait_for_state`.
+- `llm_browser.flow_files` (`load_flow`, `run_flow_file`), `llm_browser.subflows` (`subflow_source`).
+- `flow_pipeline.FlowSource`, `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document`, the `SubflowLoader` alias; `SelectorMap` moved to `llm_browser.selector_map`.
+
+### Migration
+
+- `wait` step → `wait_for` with `state: stable` (`quiet_ms`→`settle`, `timeout_s`→`timeout` ms)
+- explicit element waits → `wait_for_element` / the `wait_for` step
+- `flow_files.load_flow` → `resolve_flow` + `load_flow_document`
+- `count` no longer waits on nodriver — use `wait_for_element` instead
+- `goto` accepts `http`/`https` only by default — pass `allowed_schemes=` to opt out
+- `parse_flow_document` removed — `parse_flow_yaml` is the one parser
 
 ## 0.7.0 — 2026-09-09
 

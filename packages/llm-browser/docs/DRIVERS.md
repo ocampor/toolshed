@@ -1,0 +1,86 @@
+# Driver Stealth Details
+
+See [README → Drivers](../README.md#drivers) for the 3-row summary. This page has the anti-bot
+landscape and each driver's fine print.
+
+## Anti-bot landscape
+
+`Behavior.human()` is **timing-only** humanization: inter-key gaps, click jitter, mouse paths,
+pre/post action pauses. It only applies to actions routed through `execute_action(...)` (i.e.
+YAML flow steps or `session.pick`/`goto`/`find`-based interactions). Calls on the raw
+`Page`/`Locator` returned by `session.get_page()` bypass humanization.
+
+Timing humanization does NOT modify runtime JS fingerprints (navigator, WebGL, canvas, CDP
+detection). Those are the driver's job:
+
+- `patchright` removes Playwright automation fingerprints but still runs a freshly-launched
+  Chromium — OK for moderate bot detection.
+- `camoufox` spoofs fingerprints at the C++ level — good for most fingerprint-grade targets
+  (DataDome, PerimeterX).
+- For the hardest targets (Cloudflare JSD on high-traffic sites, Akamai Bot Manager) a launched
+  automation context will often lose no matter how much stealth is applied. The supported path
+  is **attach mode** ([docs/ATTACH.md](ATTACH.md)): launch Chromium yourself with a warmed
+  profile and connect to it over CDP.
+
+Generic bot-test pages (bot.sannysoft.com, arh.antoinevastel.com) don't predict real-world
+outcomes against specific vendors — always probe the actual target.
+
+## Headless caveat
+
+Chromium-based drivers (`patchright`, `nodriver`) leak `HeadlessChrome` in the User-Agent and
+fall back to SwiftShader for WebGL when run headless — both are cheap detection signals. For
+fingerprint-grade targets, run them headed (or under Xvfb). `camoufox` spoofs UA and WebGL even
+in headless mode and is the only viable headless option against strict detectors. See
+`scripts/stealth_probe.py` to reproduce.
+
+## Writing a driver
+
+A driver is any subclass of `llm_browser.drivers.base.Driver` that implements every abstract
+method — `BrowserSession`, the flow actions and `llm_browser.waits` are written against that
+ABC, not against a browser API. Its class docstring is the contract, and the five rules in it
+are the parts a new backend gets wrong: which methods may block on the DOM (only
+`wait_for_load` — every read answers about the page as it is now), that input must be trusted
+events, which methods may run JS, that `first`/`nth` stay re-resolvable, and that timeouts are
+milliseconds and raise the builtin `TimeoutError`. `tests/test_driver_contract.py` checks the
+read rules against each driver with fakes; add yours to its fixture. Conformance suite:
+`packages/llm-browser-conformance`.
+
+## nodriver — detectable surfaces
+
+Default paths are not synthetic. A small set of reads/polls still use `Runtime.callFunctionOn`
+because CDP exposes no equivalent:
+
+| Surface | Mechanism | Why it stays |
+|---|---|---|
+| `input_value` | JS read of `.value` | CDP has no live-property accessor; `attrs["value"]` is the HTML attribute and diverges after typing. |
+| `set_checked` | JS read of `.checked` | Same — read before click avoids flipping an already-correct checkbox. |
+| `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
+| `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only `visible`/`hidden` pay this: `wait_for_element(..., state="attached")` goes through `count` → `tab.query_selector_all`, a bare `DOM.querySelectorAll` with no Runtime traffic and no `Target.getTargets` refresh. |
+| `evaluate` / `dom` | User-supplied JS | Intentional. |
+
+These are reads — they dispatch no DOM events and don't trip `isTrusted` checks. Only a
+detector that fingerprints Runtime-domain CDP traffic itself would catch them.
+
+Opt-in escape hatches that **do** emit `isTrusted=false` (use sparingly):
+
+- `dispatch_event(locator, event)` — fires `new Event(...)`.
+- `click(locator, dispatch=True)` — JS `HTMLElement.click()` for overlay bypass.
+
+## camoufox — stealth defaults
+
+`CamoufoxDriver()` injects these kwargs unless the caller overrides them:
+
+| Default | Why |
+|---|---|
+| `humanize=True` | C++-level Bezier mouse paths; Playwright's linear interpolation is detectable. |
+| `block_webrtc=True` | WebRTC leaks the real IP behind HTTP proxies. |
+| `geoip=True` *(conditional)* | Injected only when `locale` is set without any of `geoip` / `timezone` / `geolocation` — aligns timezone + geolocation with the outgoing IP so locale/tz/IP/Accept-Language triangulate consistently. |
+
+Caveats:
+
+- `persistent_context=True` is always on (required for session reuse). If you rotate proxies
+  between runs but reuse `user_data_dir`, cookies and storage link the sessions across IPs —
+  rotate the user-data dir for fresh identities.
+- Pinning `locale` on an IP that doesn't match its region (e.g. `locale="fr-FR"` on a US IP)
+  still misaligns — caller intent can't be inferred. Pin `timezone` and `geolocation` explicitly
+  or use a matching proxy.
