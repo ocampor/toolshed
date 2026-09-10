@@ -11,6 +11,7 @@ from llm_browser.session import BrowserSession
 from tests.test_attach import AttachStubDriver
 
 CDP_URL = "http://127.0.0.1:9223"
+FLOW_YAML = "steps:\n  - name: s1\n    action: goto\n    url: https://example.com\n"
 
 
 @pytest.fixture
@@ -89,8 +90,11 @@ def invoke_run(
 ) -> tuple[Any, AttachStubDriver]:
     driver = AttachStubDriver()
     monkeypatch.setattr("llm_browser.session.resolve_driver", lambda _d: driver)
-    monkeypatch.setattr("llm_browser.cli.run_flow_file", lambda *a, **k: {"ok": True})
-    result = CliRunner().invoke(main, [*args, "run", "--flow", "flow.yml"])
+    monkeypatch.setattr("llm_browser.cli.run_cli_flow", lambda *a, **k: {"ok": True})
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("flow.yml").write_text(FLOW_YAML)
+        result = runner.invoke(main, [*args, "run", "--flow", "flow.yml"])
     return result, driver
 
 
