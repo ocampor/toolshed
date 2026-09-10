@@ -1,50 +1,23 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- `FLOW_PATTERNS.md` — JavaScript-free YAML for autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating-prefix ids and same-text controls, plus the per-`--level` attribute table and the migration table for retired step spellings.
-- A packaged Claude Code skill for authoring flows, with `llm-browser skill install [--dest DIR] [--force]` to copy it into a consumer repo's `.claude/skills/llm-browser-flows/` and `llm-browser skill show` to print it. `install` copies the whole bundle — `SKILL.md` plus `reference/FLOWS.md`, `reference/FLOW_PATTERNS.md` and `reference/DRIVERS.md` — so the installed skill's links resolve.
-- `DRIVERS.md` documents per-driver selector and key support: XPath and `press` chords work on `patchright`/`camoufox` only, and on `nodriver` a chord types its literal text and reports success.
-- `FLOWS.md` documents the `element_missing` condition, that `value:` is required for `op: eq`, and that the `dom` step is always sanitized at `low`.
-- `BrowserSession.save_screenshot(path)` and `BrowserSession.scroll(dx, dy)`.
-- `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
-
-### Changed
-
-- `FLOWS.md`, `docs/DRIVERS.md` and `docs/FLOW_PATTERNS.md` moved under `src/llm_browser/skill/reference/` so they ship in the wheel with the skill; the old paths are one-line pointers.
-- `BrowserSession` owns input: `click(selector, dispatch=False)`, `fill(selector, value)`, `type(selector, value, delay_ms=0)`, `press(selector | None, key)`, `select_option(selector, value)` and `set_checked(selector, checked)` each wait for the element, apply the `Behavior` pacing and pick the humanized or the plain driver primitive.
-- The `click`/`fill`/`type`/`press`/`select`/`check` actions are one line each onto those methods; `actions.py`, `steps.py` and `flows.py` no longer touch `session.driver`, and a test asserts it against the source.
-- `session.click("#go")` from Python gets the same humanization a flow step gets; `session.find("#go").click()` still bypasses it.
-- `pick` and `download_file` click the way a `click` step does.
-- `BehaviorRuntime` is reachable as `session.behavior_runtime` (was `session._behavior_runtime`).
-- `behavior.paced` replaces the `enforce_gap` / `post_pause` / `mark_action_done` sequence callers spelled out.
-
-### Fixed
-
-- A YAML schema's `type:` string is parsed against an allowlist (`schema_types.resolve_type`) instead of `eval`-ed against `typing`.
-
 ## 0.8.0 — 2026-09-09
 
 ### Added
 
-- `BrowserSession.wait_for_element(selector, state=, timeout=, interval=, settle=)`, the `wait_for` flow step and the `llm-browser wait-for` CLI command — the one wait for `attached`/`detached`/`visible`/`hidden`/`stable` (text unchanged for `settle` ms); `find`, `find_all`, `frame` and `element_exists` all go through it.
-- `Driver.is_visible(locator)` backs the `visible`/`hidden` states.
+- `BrowserSession.wait_for_element(selector, state=, timeout=, interval=, settle=)`, the `wait_for` flow step and the `llm-browser wait-for` CLI command — the one wait for `attached`/`detached`/`visible`/`hidden`/`stable` (text unchanged for `settle` ms), backed by `Driver.is_visible(locator)`; `find`, `find_all`, `frame` and `element_exists` all go through it.
 - `FlowError.outputs` — outputs collected before a failing step (including inside a sub-flow) are no longer thrown away.
-- `BrowserSession.screenshot_bytes()`; `Driver.screenshot_bytes` has a non-abstract default.
-- `llm_browser.flow_repository`: `FlowRepository` protocol, `FileFlowRepository`, `DictFlowRepository`, `LayeredFlowRepository`.
-- `flow_pipeline.resolve_flow` / `resolve_flow_text` — the async, I/O-only reference-resolution stage.
-- `flows.load_flow_document(document, *, selector_map=None)` — the pure validation stage.
-- `RunFlowStep.flow` accepts an inline child flow (`SubFlow`), so a flow needs no repository when its children are embedded.
-- `flows.with_flow_path(result, path)`.
+- `BrowserSession.screenshot_bytes()`, `save_screenshot(path)` and `scroll(dx, dy)`; `Driver.screenshot_bytes` has a non-abstract default.
+- `llm_browser.flow_repository` (`FlowRepository` protocol, `FileFlowRepository`, `DictFlowRepository`, `LayeredFlowRepository`), `flow_pipeline.resolve_flow`/`resolve_flow_text` and `flows.load_flow_document(document, *, selector_map=None)` — the reference-resolution and validation stages split out of the old loader.
+- `RunFlowStep.flow` accepts an inline child flow (`SubFlow`), so a flow needs no repository when its children are embedded; `flows.with_flow_path(result, path)`.
+- `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
+- Packaged Claude Code skill for authoring flows (`llm-browser skill install [--dest DIR] [--force]`, `llm-browser skill show`), plus `FLOWS.md`, `FLOW_PATTERNS.md` and `DRIVERS.md` reference docs shipped in the wheel.
 
 ### Changed
 
-- `load_flow_text` raises `ValueError("invalid flow yaml: ...")` instead of leaking `yaml.YAMLError`.
-- `run` / `validate` resolve their flow through `cli.resolve_flow_options` under `asyncio.run`; an empty `--flow ''` is now a usage error.
-- `Driver`'s class docstring is now the five-rule driver contract; `DriverHandle`, `DriverNotInstalledError`, `load_optional_module` moved to `llm_browser.drivers.handle` (still re-exported from `llm_browser.drivers`).
-- `_resolve_with_fallback` probes the primary branch with the now non-waiting `count`.
+- `load_flow_text` raises `ValueError("invalid flow yaml: ...")` instead of leaking `yaml.YAMLError`; `run`/`validate` resolve their flow through `cli.resolve_flow_options` under `asyncio.run`, and an empty `--flow ''` is now a usage error.
+- `Driver`'s class docstring is now the five-rule driver contract; `DriverHandle`, `DriverNotInstalledError`, `load_optional_module` moved to `llm_browser.drivers.handle` (still re-exported from `llm_browser.drivers`); `_resolve_with_fallback` probes the primary branch with the now non-waiting `count`.
+- `BrowserSession` owns input: `click`, `fill`, `type`, `press`, `select_option` and `set_checked` each wait for the element, apply `Behavior` pacing and pick the humanized or plain driver primitive; `actions.py`, `steps.py` and `flows.py` no longer touch `session.driver`.
+- `BehaviorRuntime` is reachable as `session.behavior_runtime` (was `session._behavior_runtime`); `behavior.paced` replaces the `enforce_gap` / `post_pause` / `mark_action_done` sequence callers spelled out.
 
 ### Breaking
 
@@ -52,23 +25,25 @@
 - `flows.load_flow_text(text)` drops `subflow_loader`, `subflows`, `base_dir` and `selector_map`; validation itself takes no context at all.
 - `RunFlowStep.flow` is now `SubFlow | str`; `RunFlowStep.subflow` is gone — the child lives in `flow`.
 - `BrowserSession.goto` / `launch` / `launch_detached` reject non-`http(s)` URLs by default; pass `allowed_schemes=` to opt back in.
-- `run-flow` references are resolved by a `FlowRepository` (`flow_pipeline.resolve_flow`) before validation; a flow loaded from text no longer resolves siblings from the filesystem.
-- An unknown selector `ref:` raises `ValueError` instead of pydantic `ValidationError`; a missing flow file raises `FlowNotFoundError` instead of `FileNotFoundError`.
+- `run-flow` references are resolved by a `FlowRepository` (`flow_pipeline.resolve_flow`) before validation, so a flow loaded from text no longer resolves siblings from the filesystem; an unknown selector `ref:` raises `ValueError` instead of pydantic `ValidationError`, and a missing flow file raises `FlowNotFoundError` instead of `FileNotFoundError`.
 
 ### Removed
 
-- `wait` step, `BrowserSession.wait_until_stable`, `Driver.wait_for_stable_text`, `Driver.wait_for_state`.
-- `llm_browser.flow_files` (`load_flow`, `run_flow_file`), `llm_browser.subflows` (`subflow_source`).
-- `flow_pipeline.FlowSource`, `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document`, the `SubflowLoader` alias; `SelectorMap` moved to `llm_browser.selector_map`.
+- `wait` step, `BrowserSession.wait_until_stable`, `Driver.wait_for_stable_text`, `Driver.wait_for_state`, `Driver.count_now`.
+- `llm_browser.flow_files` (`load_flow`, `run_flow_file`), `llm_browser.subflows` (`subflow_source`); `flow_pipeline.FlowSource`, `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document`, the `SubflowLoader` alias; `SelectorMap` moved to `llm_browser.selector_map`.
+
+### Fixed
+
+- A YAML schema's `type:` string is parsed against an allowlist (`schema_types.resolve_type`) instead of `eval`-ed against `typing`.
 
 ### Migration
 
 - `wait` step → `wait_for` with `state: stable` (`quiet_ms`→`settle`, `timeout_s`→`timeout` ms)
-- explicit element waits → `wait_for_element` / the `wait_for` step
-- `flow_files.load_flow` (removed) → `resolve_flow` + `load_flow_document`
+- `session.wait_for` → `wait_for_element`
+- `load_flow` / `load_flow_text(subflows=…)` → `resolve_flow` + `load_flow_document`
 - `count` no longer waits on nodriver — use `wait_for_element` instead
 - `goto` accepts `http`/`https` only by default — pass `allowed_schemes=` to opt out
-- `parse_flow_document` removed — `parse_flow_yaml` is the one parser
+- `Driver.wait_for_state`, `count_now` and `wait_for_stable_text` are removed with no replacement
 
 ## 0.7.0 — 2026-09-09
 
