@@ -15,6 +15,11 @@
   driver, and a test asserts it against the source. Calling
   `session.click("#go")` from Python now gets the same humanization a flow
   step gets, where `session.find("#go").click()` still bypasses it.
+- `pick` and `download_file` click the way a `click` step does. Both called
+  the driver straight, so under `Behavior.human()` a `pick` or `download` step
+  got a zero-travel, zero-pre-pause click while the step beside it drew a full
+  mouse path — the stealth profile of a run used to depend on which action you
+  reached for.
 - `BehaviorRuntime` is reachable as `session.behavior_runtime` (was
   `session._behavior_runtime`).
 - `behavior.paced(behavior, runtime)` replaces the `enforce_gap` /

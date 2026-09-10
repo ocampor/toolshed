@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser import actions, flows, steps
+from llm_browser import session as session_module
 from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.models import (
@@ -513,15 +514,54 @@ def test_unknown_action_raises() -> None:
 # --- layering ---
 
 
+# Every driver method that drives the page from a policy decision — humanized
+# or plain, trusted or dispatched. Reading one of these off a driver outside
+# ``session_input`` is a second copy of that decision.
+DRIVER_INPUT_METHODS = frozenset(
+    {
+        "click",
+        "fill",
+        "type",
+        "press",
+        "press_focused",
+        "select_option",
+        "set_checked",
+        "dispatch_event",
+        "humanized_click",
+        "humanized_type",
+    }
+)
+
+
+def driver_attributes(module: object) -> list[ast.Attribute]:
+    tree = ast.parse(Path(module.__file__).read_text())  # type: ignore[attr-defined]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr == "driver"
+    ]
+
+
 @pytest.mark.parametrize("module", [actions, steps, flows])
 def test_the_layers_above_the_session_never_touch_the_driver(module: object) -> None:
     """steps -> actions -> session -> driver. An action that reaches for
     ``session.driver`` skips the session's pacing and humanization, so the
     layering is asserted on the source itself rather than left to review."""
-    tree = ast.parse(Path(module.__file__).read_text())  # type: ignore[attr-defined]
-    reads = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and node.attr == "driver"
-    ]
+    reads = driver_attributes(module)
     assert reads == [], [ast.unparse(node) for node in reads]
+
+
+def test_only_session_input_drives_the_page() -> None:
+    """``session.py`` may hold the driver — it owns the lifecycle — but the
+    input primitives are ``session_input``'s alone. A second call site is a
+    second humanized-vs-plain decision, and it drifts."""
+    tree = ast.parse(Path(session_module.__file__).read_text())
+    calls = [
+        ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in DRIVER_INPUT_METHODS
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "driver"
+    ]
+    assert calls == []

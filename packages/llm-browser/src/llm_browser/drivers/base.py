@@ -121,10 +121,11 @@ class Driver(ABC):
         runtime: BehaviorRuntime,
     ) -> None:
         """Humanized click — rule 2. Default falls back to plain click(), which
-        is right for a driver whose native click is already humanized
-        (nodriver's element.click, Camoufox with humanize=True). Drivers that
-        need to draw the path themselves override it; see
-        ``behavior.humanized_click`` for the Playwright-family one.
+        is right for a driver whose native click is already humanized —
+        nodriver, whose ``element.click`` moves a real cursor over CDP, is the
+        only one that keeps it. The Playwright family, Camoufox included,
+        overrides this in ``playwright_base`` to draw the path itself; see
+        ``behavior.humanized_click``.
         """
         self.click(locator)
 

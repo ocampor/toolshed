@@ -13,6 +13,7 @@ from llm_browser.models import ClickStep
 from llm_browser.session import BrowserSession
 
 PACE_MS = 40
+PRE_CLICK_MS = 25
 PACED = Behavior(
     post_action_pause=Jitter(min_ms=PACE_MS, max_ms=PACE_MS),
     mouse_move=False,
@@ -146,6 +147,34 @@ def test_input_pauses_after_the_action(
     assert sleeps == [PACE_MS / 1000.0]
 
 
+def test_press_pauses_before_the_key_when_the_behavior_moves_the_mouse(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """A humanized click pauses inside ``humanized_click``; a press has no
+    such call to hide behind, so ``press`` owns the pre-click pause itself."""
+    session.behavior = PACED.model_copy(
+        update={
+            "mouse_move": True,
+            "pre_click_pause": Jitter(min_ms=PRE_CLICK_MS, max_ms=PRE_CLICK_MS),
+        }
+    )
+    session.behavior_runtime = session.behavior.runtime()
+    session.press("#field", "Enter")
+    assert sleeps == [PRE_CLICK_MS / 1000.0, PACE_MS / 1000.0]
+
+
+def test_press_skips_the_pre_click_pause_when_the_mouse_stays_put(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """Same non-zero ``pre_click_pause`` as above; only ``mouse_move`` differs."""
+    session.behavior = PACED.model_copy(
+        update={"pre_click_pause": Jitter(min_ms=PRE_CLICK_MS, max_ms=PRE_CLICK_MS)}
+    )
+    session.behavior_runtime = session.behavior.runtime()
+    session.press("#field", "Enter")
+    assert sleeps == [PACE_MS / 1000.0]
+
+
 def test_a_failed_input_skips_the_post_pause(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
@@ -166,3 +195,28 @@ def test_an_action_paces_once_not_twice(
     session.behavior_runtime = session.behavior.runtime()
     execute_action(session, ClickStep(name="s", action="click", selector="#btn"))
     assert sleeps == [PACE_MS / 1000.0]
+
+
+# --- the session's other click paths ---
+
+
+def test_pick_clicks_the_way_a_click_step_does(session: BrowserSession) -> None:
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    session.driver.text_content.return_value = "Banana"
+    session.driver.count.return_value = 2
+    session.pick(".option", "Banana")
+    driver(session).humanized_click.assert_called_once()
+    driver(session).click.assert_not_called()
+
+
+def test_download_arms_the_trigger_with_the_same_click(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    session.download_file("#dl", tmp_path / "out.csv")
+    _page, trigger, _output = driver(session).expect_download.call_args.args
+    trigger()
+    driver(session).humanized_click.assert_called_once()
+    driver(session).click.assert_not_called()

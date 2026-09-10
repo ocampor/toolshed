@@ -381,7 +381,7 @@ class BrowserSession:
         element = self.find(selector)
 
         def trigger() -> None:
-            self.driver.click(element)
+            session_input.click_element(self, element)
 
         return self.driver.expect_download(self.get_page(), trigger, output)
 
@@ -533,12 +533,12 @@ class BrowserSession:
         locator = self.find_all(selector)
         count = self.driver.count(locator)
         if count == 1:
-            self.driver.click(self.driver.first(locator))
+            session_input.click_element(self, self.driver.first(locator))
             return
         for i in range(count):
             item = self.driver.nth(locator, i)
             if self.driver.text_content(item) == value:
-                self.driver.click(item)
+                session_input.click_element(self, item)
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 

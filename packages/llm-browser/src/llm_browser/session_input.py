@@ -26,18 +26,29 @@ def click(
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
     for overlays that real input cannot reach."""
     with paced(session.behavior, session.behavior_runtime):
-        element = session.find(selector, timeout=timeout)
-        if dispatch:
-            session.driver.dispatch_event(element, "click")
-        elif session.behavior.mouse_move:
-            session.driver.humanized_click(
-                session.get_page(),
-                element,
-                session.behavior,
-                session.behavior_runtime,
-            )
-        else:
-            session.driver.click(element)
+        click_element(
+            session, session.find(selector, timeout=timeout), dispatch=dispatch
+        )
+
+
+def click_element(
+    session: "BrowserSession", element: Any, *, dispatch: bool = False
+) -> None:
+    """Click an element the caller already resolved.
+
+    The one place the humanized-vs-plain-vs-dispatch choice is made, so a
+    session method that found its element some other way — ``pick`` walking a
+    list, ``download_file`` arming a download — clicks like every other click.
+    Pacing belongs to whoever opened the action, not here.
+    """
+    if dispatch:
+        session.driver.dispatch_event(element, "click")
+    elif session.behavior.mouse_move:
+        session.driver.humanized_click(
+            session.get_page(), element, session.behavior, session.behavior_runtime
+        )
+    else:
+        session.driver.click(element)
 
 
 def fill(

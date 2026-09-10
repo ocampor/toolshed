@@ -383,6 +383,11 @@ the pacing and the humanization that make a run look human, so
 `tests/test_actions.py` asserts on the source of `actions.py`, `steps.py` and
 `flows.py` that none of them touches a `driver` attribute at all.
 
+Every click in the package goes through one branch, `session_input.click_element`
+— humanized, plain or dispatched — including the ones `pick` and `download_file`
+resolve for themselves, so how a run looks never depends on which action a flow
+reached for.
+
 The session's input half lives in `llm_browser/session_input.py`;
 `BrowserSession.click` / `fill` / `type` / `press` / `select_option` /
 `set_checked` are one-line delegations to it, and they are the same methods the
