@@ -173,6 +173,15 @@ class Driver(ABC):
     @abstractmethod
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None: ...
 
+    def is_visible(self, locator: Any) -> bool:
+        """Whether the first match is rendered right now; False if nothing matches.
+
+        A single non-blocking read, unlike ``wait_for_state``: it is what the
+        Python-side explicit wait in ``llm_browser.waits`` polls. Subclasses
+        must provide it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support is_visible")
+
     # --- Read / capture ---
 
     @abstractmethod

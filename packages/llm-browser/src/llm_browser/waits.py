@@ -1,0 +1,78 @@
+"""Driver-agnostic explicit waits: a Python poll loop, not a driver wait.
+
+Shaped like Selenium's ``WebDriverWait.until`` — ask the cheapest driver
+primitive whether the state is reached, sleep a jittered interval, repeat
+until the deadline. Deliberately *not* built on ``Driver.wait_for_state``:
+on the Playwright family that runs an injected in-page script, which is the
+fingerprint an explicit wait is meant to avoid.
+"""
+
+import random
+import time
+from typing import Any, Callable
+
+from llm_browser.behavior import Jitter, jittered_sleep
+from llm_browser.constants import POLL_JITTER_RATIO
+from llm_browser.drivers.base import Driver
+from llm_browser.models import WaitState
+from llm_browser.selectors import Selector, resolve_selector
+
+StatePredicate = Callable[[Driver, Any], bool]
+
+
+def is_attached(driver: Driver, locator: Any) -> bool:
+    return driver.count(locator) > 0
+
+
+def is_detached(driver: Driver, locator: Any) -> bool:
+    return driver.count(locator) == 0
+
+
+def is_visible(driver: Driver, locator: Any) -> bool:
+    """A locator matching nothing is not visible, so this covers absence too."""
+    return driver.is_visible(driver.first(locator))
+
+
+def is_hidden(driver: Driver, locator: Any) -> bool:
+    return not is_visible(driver, locator)
+
+
+STATE_PREDICATES: dict[WaitState, StatePredicate] = {
+    "attached": is_attached,
+    "detached": is_detached,
+    "visible": is_visible,
+    "hidden": is_hidden,
+}
+
+
+def poll_jitter(interval_ms: int) -> Jitter:
+    spread = round(interval_ms * POLL_JITTER_RATIO)
+    return Jitter(min_ms=max(0, interval_ms - spread), max_ms=interval_ms + spread)
+
+
+def poll_for_state(
+    driver: Driver,
+    page: Any,
+    selector: Selector,
+    state: WaitState,
+    timeout_ms: int,
+    interval_ms: int,
+    rng: random.Random,
+) -> None:
+    """Block until ``selector`` reaches ``state``, or raise ``TimeoutError``.
+
+    The locator is re-resolved every tick: a driver locator can cache the
+    element it matched, and a node the page swapped out would then never be
+    seen to change state.
+    """
+    reached = STATE_PREDICATES[state]
+    pause = poll_jitter(interval_ms)
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while True:
+        if reached(driver, resolve_selector(driver, page, selector)):
+            return
+        jittered_sleep(pause, rng)
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                f"{selector!r} did not become {state} within {timeout_ms}ms"
+            )

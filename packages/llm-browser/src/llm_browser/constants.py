@@ -11,6 +11,12 @@ LOGGER_NAME = "llm_browser"
 
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
+DEFAULT_POLL_INTERVAL_MS = 500
+
+# An explicit wait sleeps ``interval`` ± this fraction: a fixed 500ms cadence is
+# itself a fingerprint.
+POLL_JITTER_RATIO = 0.3
+
 # nodriver has no CDP wait for visibility/detachment, so those states are
 # polled; 100ms keeps Runtime traffic low without feeling laggy.
 NODRIVER_POLL_INTERVAL_S = 0.1

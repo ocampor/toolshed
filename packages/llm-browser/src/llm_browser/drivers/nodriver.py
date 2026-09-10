@@ -28,9 +28,14 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
                             every 250ms. nodriver 0.48 has no CDP lifecycle
                             hook (`tab.wait()` is a plain sleep).
     * `wait_for_state`    — Runtime.callFunctionOn `offsetParent` /
-                            `getClientRects` polled for the visible/hidden
-                            states. Required: nodriver exposes no visibility
-                            API, and CDP has no visibility predicate either.
+      `is_visible`            `getClientRects` for the visible/hidden states
+                            (polled, by `wait_for_state`; one shot, by
+                            `is_visible`). Required: nodriver exposes no
+                            visibility API, and CDP has no visibility
+                            predicate either. `is_visible` is the read the
+                            Python-side explicit wait polls; `attached` /
+                            `detached` there go through `count`, a plain
+                            DOM query with no Runtime traffic.
     * `evaluate` / `dom`  — arbitrary user-supplied JS. Inherently JS.
 
 Opt-in synthetic-event escape hatches (emit `isTrusted=false` — detectable):
@@ -396,6 +401,9 @@ class NodriverDriver(Driver):
 
     def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
         self.run(self.do_wait_for_state(locator, state, timeout_ms))
+
+    def is_visible(self, locator: Any) -> bool:
+        return self.run(self.element_visible(locator))
 
     async def do_wait_for_state(
         self, loc: NodriverLocator, state: str, timeout_ms: int

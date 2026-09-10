@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from llm_browser import waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -13,6 +14,7 @@ from llm_browser.chrome import (
     spawn_detached_chromium,
 )
 from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
@@ -427,6 +429,31 @@ class BrowserSession:
         self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
     ) -> bool:
         return self.wait_for(selector, "attached", timeout)
+
+    def wait_for_element(
+        self,
+        selector: Selector,
+        *,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        interval: int = DEFAULT_POLL_INTERVAL_MS,
+    ) -> None:
+        """Poll until ``selector`` reaches ``state``; raise ``TimeoutError`` if not.
+
+        The explicit-wait counterpart to ``wait_for``: it polls from Python on
+        a jittered cadence instead of handing the wait to the driver, so no
+        in-page script is injected and the timeout carries the selector and
+        state in its message. Use ``wait_for`` when you want a bool back.
+        """
+        waits.poll_for_state(
+            self.driver,
+            self.get_page(),
+            selector,
+            state,
+            timeout_ms=timeout,
+            interval_ms=interval,
+            rng=self._behavior_runtime.rng,
+        )
 
     def wait_until_stable(
         self,
