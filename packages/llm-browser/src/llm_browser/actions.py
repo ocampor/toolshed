@@ -32,6 +32,7 @@ from llm_browser.models import (
     Step,
     ThinkStep,
     TypeStep,
+    WaitForStep,
     WaitStep,
 )
 from llm_browser.parse import build_model
@@ -269,6 +270,19 @@ def action_wait(session: BrowserSession, step: WaitStep) -> TextResult:
         find_timeout=step.timeout,
     )
     return TextResult(text=text)
+
+
+@_registry.register("wait_for")
+def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
+    """A timeout here rides ``execute_action``'s handler: the step fails with
+    the selector/state message, and ``optional: true`` turns it into a skip."""
+    session.wait_for_element(
+        step.selector,
+        state=step.state,
+        timeout=step.timeout,
+        interval=step.interval,
+    )
+    return VoidResult()
 
 
 @_registry.register("screenshot")

@@ -5,18 +5,22 @@ import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Callable, Iterator, cast, get_args
 
 import click
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
-from llm_browser.constants import DRIVER_ENV_VAR
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+    DRIVER_ENV_VAR,
+)
 from llm_browser.flow_files import load_flow, run_flow_file
 from llm_browser.flows import SelectorMap, load_flow_text, run_flow
 from llm_browser.html import SanitizeLevel
 from llm_browser.selector_map import load_selector_map
-from llm_browser.models import FlowResult, RunFlowStep
+from llm_browser.models import FlowResult, RunFlowStep, WaitState
 from llm_browser.session import BrowserSession
 
 
@@ -524,6 +528,38 @@ def find_all(ctx: click.Context, selector: str) -> None:
     """Find all matching elements and output their outer HTML (alias for `find --all`)."""
     session: BrowserSession = ctx.obj["session"]
     _find_all_output(session, selector)
+
+
+@main.command("wait-for")
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option(
+    "--state",
+    type=click.Choice(get_args(WaitState)),
+    default="attached",
+    help="State to wait for.",
+)
+@click.option("--timeout", default=DEFAULT_WAIT_TIMEOUT_MS, help="Total budget (ms).")
+@click.option(
+    "--interval",
+    default=DEFAULT_POLL_INTERVAL_MS,
+    help="Nominal gap between polls (ms); jittered.",
+)
+@click.pass_context
+def wait_for(
+    ctx: click.Context, selector: str, state: str, timeout: int, interval: int
+) -> None:
+    """Poll until an element reaches a state; exit non-zero on timeout."""
+    session: BrowserSession = ctx.obj["session"]
+    try:
+        session.wait_for_element(
+            selector,
+            state=cast(WaitState, state),
+            timeout=timeout,
+            interval=interval,
+        )
+    except TimeoutError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"selector": selector, "state": state})
 
 
 @main.command("latest-tab")

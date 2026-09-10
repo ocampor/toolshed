@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
+from llm_browser.constants import DEFAULT_POLL_INTERVAL_MS, DEFAULT_WAIT_TIMEOUT_MS
 from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
 
@@ -216,6 +217,20 @@ class WaitStep(SelectorStep):
     timeout_s: float = 180.0
 
 
+class WaitForStep(SelectorStep):
+    """Poll until ``selector`` reaches ``state``, or fail the step.
+
+    The explicit wait: it answers "is the element there yet", where ``wait``
+    answers "has the element's text stopped changing". ``timeout`` is the
+    whole budget; ``interval`` is the nominal gap between polls, jittered.
+    """
+
+    action: Literal["wait_for"]
+    state: WaitState = "attached"
+    timeout: int = DEFAULT_WAIT_TIMEOUT_MS
+    interval: int = DEFAULT_POLL_INTERVAL_MS
+
+
 class EvalStep(BaseStep):
     """Step with no browser action (eval-only, wait)."""
 
@@ -277,6 +292,7 @@ KNOWN_ACTIONS = frozenset(
         "pick",
         "goto",
         "wait",
+        "wait_for",
         "screenshot",
         "read",
         "parse",
@@ -314,6 +330,7 @@ Step = Annotated[
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[WaitStep, Tag("wait")]
+    | Annotated[WaitForStep, Tag("wait_for")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
