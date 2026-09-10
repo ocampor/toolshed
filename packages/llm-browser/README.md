@@ -2,6 +2,49 @@
 
 Playwright browser automation with declarative YAML flows, designed for LLM-driven agents.
 
+## Architecture
+
+A flow is loaded before it is run — every `run-flow` reference gets inlined
+first, so the rest of the pipeline never touches disk or a store again:
+
+```
+source (file | text | store)
+   │  FlowRepository.get(ref)      FileFlowRepository · DictFlowRepository · LayeredFlowRepository
+   ▼
+resolve_flow / resolve_flow_text   inline every run-flow child (async, the only I/O)
+   ▼
+load_flow_document / load_flow_text   pure pydantic validation → Flow
+   ▼
+run_flow(session, flow, data)
+```
+
+Running a flow steps down through four layers, each narrower than the one above:
+
+```
+Flow (pydantic)      steps: [GotoStep, ClickStep, WaitForStep, ReadStep, RunFlowStep(SubFlow)…]
+   │  run_flow → execute_step (capture on failure, redact, outputs)
+   ▼
+actions              registry action name → fn(session, step) -> ActionResult      one per step type
+   │
+   ▼
+BrowserSession       goto · find · wait_for_element · dom · probe · parse_elements · screenshot
+   │  selector resolution, waits (waits.py), sanitization (html.py), probe JS, behavior pacing
+   ▼
+Driver (ABC)         resolve/count/first/is_visible/text_content · click/fill/type/press · goto/wait_for_load · evaluate · screenshot
+   │  contract: no DOM waits (only wait_for_load blocks), trusted input, JS only in evaluate/is_visible/input_value/extract_rows
+   ▼
+patchright | camoufox | nodriver
+```
+
+- **Flow** — the validated pydantic document and its steps; owns templating, `when` conditions, and stitching results together, never calls a driver directly.
+- **actions** — a registry that maps a step to session calls, one function per action name; several also reach `session.driver` directly for the interaction itself.
+- **BrowserSession** — selector resolution, `waits.py` polling loops, `html.py` sanitization, probe scripts and behavior pacing; owns *how* to wait, never blocks inside a `Driver` call itself.
+- **Driver (ABC)** — the one abstraction over browser backends: no DOM-aware waiting except `wait_for_load`, only trusted input events, and JS confined to `evaluate`, `is_visible`, `input_value` and `extract_rows`.
+- **patchright / camoufox / nodriver** — concrete drivers implementing the ABC; adding a backend means implementing every abstract method and holding to the same five rules.
+
+Waiting: the five `wait_for` states are documented in [FLOWS.md](FLOWS.md#waiting).
+Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py`.
+
 ## Install
 
 ```bash

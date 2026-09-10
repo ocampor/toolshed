@@ -1,5 +1,7 @@
 # Flow Language Reference
 
+For where flows sit in the library see README → Architecture.
+
 A flow is a YAML file that describes a sequence of browser interactions.
 
 ## Structure
