@@ -1,5 +1,7 @@
 """Shared constants for llm-browser."""
 
+import datetime
+import decimal
 import re
 from pathlib import Path
 
@@ -89,3 +91,16 @@ INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffi
 EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"
+
+# --- YAML schema types ---
+
+# The only names a schema `type:` string may use; see `schema_types.py`.
+SCHEMA_TYPE_NAMES = {
+    "str": str,
+    "int": int,
+    "float": float,
+    "bool": bool,
+    "Decimal": decimal.Decimal,
+    "date": datetime.date,
+    "datetime": datetime.datetime,
+}

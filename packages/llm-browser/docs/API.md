@@ -59,9 +59,15 @@ Repo = build_model("schemas/repo.yaml")
 repos = Repo.extract_all(session, "article.Box-row")
 ```
 
-`type` strings are evaluated against `typing` + Python builtins, so `str`, `int`, `int | None`,
-`Optional[int]`, `list[str]`, etc. all work. A given schema lives in *one* place — Python or
+`type` strings are parsed against an allowlist, never evaluated; anything else raises
+`ValueError: unsupported schema type: ...`. A given schema lives in *one* place — Python or
 YAML, not both.
+
+| Form | Accepted |
+| --- | --- |
+| Primitives | `str`, `int`, `float`, `bool`, `Decimal`, `date`, `datetime` |
+| Optional | `X \| None`, `Optional[X]` |
+| Containers | `list[X]`, `dict[str, X]` (nestable, e.g. `list[dict[str, str]]`) |
 
 ### From a YAML flow
 

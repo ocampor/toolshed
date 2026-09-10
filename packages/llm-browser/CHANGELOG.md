@@ -33,6 +33,12 @@
   the page-level driver calls the `screenshot` and `scroll` actions used to
   make for themselves.
 
+### Fixed
+
+- A YAML schema's `type:` string is parsed against an allowlist
+  (`schema_types.resolve_type`) instead of `eval`-ed against `typing` — a schema
+  file can no longer execute arbitrary code through `build_model`.
+
 ## 0.8.0 — 2026-09-09
 
 ### Added
