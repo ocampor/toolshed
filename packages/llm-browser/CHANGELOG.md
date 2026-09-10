@@ -4,13 +4,16 @@
 
 ### Added
 
-- `docs/FLOW_PATTERNS.md` — JavaScript-free YAML for autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating-prefix ids and same-text controls.
-- A packaged Claude Code skill for authoring flows (`src/llm_browser/skill/SKILL.md`), with `llm-browser skill install [--dest DIR] [--force]` to copy it into a consumer repo's `.claude/skills/llm-browser-flows/` and `llm-browser skill show` to print it.
+- `FLOW_PATTERNS.md` — JavaScript-free YAML for autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating-prefix ids and same-text controls, plus the per-`--level` attribute table and the migration table for retired step spellings.
+- A packaged Claude Code skill for authoring flows, with `llm-browser skill install [--dest DIR] [--force]` to copy it into a consumer repo's `.claude/skills/llm-browser-flows/` and `llm-browser skill show` to print it. `install` copies the whole bundle — `SKILL.md` plus `reference/FLOWS.md`, `reference/FLOW_PATTERNS.md` and `reference/DRIVERS.md` — so the installed skill's links resolve.
+- `DRIVERS.md` documents per-driver selector and key support: XPath and `press` chords work on `patchright`/`camoufox` only, and on `nodriver` a chord types its literal text and reports success.
+- `FLOWS.md` documents the `element_missing` condition, that `value:` is required for `op: eq`, and that the `dom` step is always sanitized at `low`.
 - `BrowserSession.save_screenshot(path)` and `BrowserSession.scroll(dx, dy)`.
 - `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
 
 ### Changed
 
+- `FLOWS.md`, `docs/DRIVERS.md` and `docs/FLOW_PATTERNS.md` moved under `src/llm_browser/skill/reference/` so they ship in the wheel with the skill; the old paths are one-line pointers.
 - `BrowserSession` owns input: `click(selector, dispatch=False)`, `fill(selector, value)`, `type(selector, value, delay_ms=0)`, `press(selector | None, key)`, `select_option(selector, value)` and `set_checked(selector, checked)` each wait for the element, apply the `Behavior` pacing and pick the humanized or the plain driver primitive.
 - The `click`/`fill`/`type`/`press`/`select`/`check` actions are one line each onto those methods; `actions.py`, `steps.py` and `flows.py` no longer touch `session.driver`, and a test asserts it against the source.
 - `session.click("#go")` from Python gets the same humanization a flow step gets; `session.find("#go").click()` still bypasses it.

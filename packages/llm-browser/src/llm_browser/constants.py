@@ -19,6 +19,9 @@ SKILL_DIR_NAME = "skill"
 
 SKILL_FILENAME = "SKILL.md"
 
+# The one CLI group that needs no browser; `cli.main` skips session setup for it.
+SKILL_COMMAND_GROUP = "skill"
+
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
 # How long ``find`` and the input methods wait for their element.
