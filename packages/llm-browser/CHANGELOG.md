@@ -5,29 +5,25 @@
 ### Added
 
 - `llm_browser.flow_pipeline` — flow handling is now three explicit stages:
-  `FlowSource` (the flow `text`, its `format` — `"yaml"` or `"json"` — and the
-  `base_dir` a `run-flow` reference resolves against), `build_flow(source, ...)`
-  which parses per format and returns a validated `Flow`, and the unchanged
-  `run_flow(session, flow, data, ...)`. Every consumer builds the model itself
-  and hands it to the runner. `FlowSource.from_path` picks the format from the
-  suffix, so `--flow flow.json` and `build_flow(FlowSource.from_path(...))` load
-  JSON flows; `FlowSource.from_text` defaults to YAML with no `base_dir`, which
-  keeps flow text off the filesystem as before. A `run-flow` child is parsed
-  the same way: text from `subflows`/`subflow_loader` in the parent's format,
-  a child file by its own suffix — so a tab-indented `child.json` under a JSON
-  parent loads instead of dying in the YAML scanner.
-- `llm-browser run --flow-json TEXT` and `llm-browser validate --flow-json TEXT`
-  — a JSON flow as a string, alongside `--flow-yaml`. The two commands now build
-  a `FlowSource` through one helper (`cli.flow_source_from_options`) and run the
-  resulting `Flow`, instead of branching between `load_flow` and
-  `load_flow_text`.
+  `FlowSource` (the flow `text` and the `base_dir` a `run-flow` reference
+  resolves against), `build_flow(source, ...)` which parses and validates it
+  into a `Flow`, and the unchanged `run_flow(session, flow, data, ...)`. Every
+  consumer builds the model itself and hands it to the runner.
+  `FlowSource.from_path` reads a file and takes its directory as `base_dir`;
+  `FlowSource.from_text` has no `base_dir` by default, which keeps flow text
+  off the filesystem as before.
+- The `run` and `validate` commands build their `FlowSource` through one helper
+  (`cli.flow_source_from_options`) and run the resulting `Flow`, instead of
+  branching between `load_flow` and `load_flow_text`. An empty `--flow ''` is
+  now a usage error rather than a silent cwd lookup.
 
 ### Changed
 
 - `subflow_refs` moved from `flows` to `flow_pipeline` and takes a `FlowSource`
   instead of a `str`.
-- Parse errors name the format: `ValueError("invalid flow yaml: ...")` /
-  `ValueError("invalid flow json: ...")`, replacing `"invalid flow YAML: ..."`.
+- Parse errors read `ValueError("invalid flow yaml: ...")`, replacing
+  `"invalid flow YAML: ..."`; a bad sub-flow now gets the same wrapper instead
+  of a bare `yaml.YAMLError`.
 - `flows.parse_flow_yaml` is gone; `flow_pipeline.parse_flow_document(source)`
   replaces it. `flows.load_flow_text` and `flow_files.load_flow` keep their
   signatures and are now wrappers over `build_flow`.

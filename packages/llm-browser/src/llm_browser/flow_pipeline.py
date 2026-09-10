@@ -2,7 +2,6 @@
 out. Stage three — :func:`llm_browser.flows.run_flow` — takes the ``Flow``, so
 every consumer builds the model itself and hands it to the runner."""
 
-import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -10,11 +9,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-from llm_browser.constants import (
-    DEFAULT_FLOW_FORMAT,
-    FLOW_FORMAT_BY_SUFFIX,
-    FlowFormat,
-)
 from llm_browser.models import Flow
 
 SelectorMap = dict[str, dict[str, Any]]
@@ -22,49 +16,30 @@ SelectorMap = dict[str, dict[str, Any]]
 #: Maps a ``run-flow`` reference to the sub-flow's YAML text.
 SubflowLoader = Callable[[str], str]
 
-FLOW_PARSERS: dict[FlowFormat, Callable[[str], Any]] = {
-    "yaml": yaml.safe_load,
-    "json": json.loads,
-}
-
 
 class FlowSource(BaseModel):
-    """Stage one: where a flow's text came from. ``base_dir`` is what a
+    """Stage one: where a flow's YAML text came from. ``base_dir`` is what a
     ``run-flow`` reference resolves against, so text with no directory never
     reaches the filesystem."""
 
     text: str
-    format: FlowFormat = DEFAULT_FLOW_FORMAT
     base_dir: Path | None = None
 
     @classmethod
     def from_path(cls, path: str | Path) -> "FlowSource":
         resolved = Path(path).resolve()
-        return cls(
-            text=resolved.read_text(),
-            format=flow_format_for(resolved),
-            base_dir=resolved.parent,
-        )
+        return cls(text=resolved.read_text(), base_dir=resolved.parent)
 
     @classmethod
-    def from_text(
-        cls,
-        text: str,
-        format: FlowFormat = DEFAULT_FLOW_FORMAT,
-        base_dir: Path | None = None,
-    ) -> "FlowSource":
-        return cls(text=text, format=format, base_dir=base_dir)
-
-
-def flow_format_for(path: Path) -> FlowFormat:
-    return FLOW_FORMAT_BY_SUFFIX.get(path.suffix.lower(), DEFAULT_FLOW_FORMAT)
+    def from_text(cls, text: str, base_dir: Path | None = None) -> "FlowSource":
+        return cls(text=text, base_dir=base_dir)
 
 
 def parse_flow_document(source: FlowSource) -> Any:
     try:
-        return FLOW_PARSERS[source.format](source.text)
-    except (yaml.YAMLError, json.JSONDecodeError) as exc:
-        raise ValueError(f"invalid flow {source.format}: {exc}") from exc
+        return yaml.safe_load(source.text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid flow yaml: {exc}") from exc
 
 
 def build_flow(
@@ -84,7 +59,6 @@ def build_flow(
             "selector_map": selector_map,
             "subflows": subflows,
             "base_dir": source.base_dir,
-            "flow_format": source.format,
         },
     )
 

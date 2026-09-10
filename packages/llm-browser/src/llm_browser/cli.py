@@ -261,19 +261,13 @@ def goto(ctx: click.Context, url: str) -> None:
     "--flow",
     "flow_path",
     default=None,
-    help="Path to a flow file (.json is JSON, else YAML), or - for stdin.",
+    help="Path to YAML flow file, or - to read the flow YAML from stdin.",
 )
 @click.option(
     "--flow-yaml",
     "flow_yaml",
     default=None,
     help="Flow YAML as a string, instead of --flow.",
-)
-@click.option(
-    "--flow-json",
-    "flow_json",
-    default=None,
-    help="Flow JSON as a string, instead of --flow.",
 )
 @click.option("--data", "data_json", default="{}", help="JSON data for template vars.")
 @click.option(
@@ -303,7 +297,6 @@ def run(
     ctx: click.Context,
     flow_path: str | None,
     flow_yaml: str | None,
-    flow_json: str | None,
     data_json: str,
     selector_map_path: str | None,
     from_step: str | None,
@@ -311,8 +304,7 @@ def run(
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
-    Pass exactly one of --flow PATH (- for stdin), --flow-yaml TEXT or
-    --flow-json TEXT.
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     With --cdp-url the flow runs one-shot on an already-running Chromium:
 
@@ -327,7 +319,7 @@ def run(
         else None
     )
     data = json.loads(data_json)
-    source = flow_source_from_options(flow_path, flow_yaml, flow_json)
+    source = flow_source_from_options(flow_path, flow_yaml)
     flow = build_flow(source, selector_map=selector_map)
 
     def execute(target: BrowserSession) -> object:
@@ -343,21 +335,19 @@ def run(
 
 
 def flow_source_from_options(
-    flow_path: str | None, flow_yaml: str | None, flow_json: str | None
+    flow_path: str | None, flow_yaml: str | None
 ) -> FlowSource:
     """The one place the CLI turns its options into a flow source.
 
     The CLI has a meaningful CWD, so text sources opt into sibling `run-flow`
     refs; the library default keeps flow text off the filesystem.
     """
-    if sum(option is not None for option in (flow_path, flow_yaml, flow_json)) != 1:
-        raise click.UsageError("pass exactly one of --flow, --flow-yaml or --flow-json")
+    if (flow_path is None) == (flow_yaml is None):
+        raise click.UsageError("pass exactly one of --flow or --flow-yaml")
     if flow_path == "":
         raise click.UsageError("--flow needs a path, or - for stdin")
     if flow_yaml is not None:
         return FlowSource.from_text(flow_yaml, base_dir=Path.cwd())
-    if flow_json is not None:
-        return FlowSource.from_text(flow_json, "json", base_dir=Path.cwd())
     if flow_path == "-":
         stdin = click.get_text_stream("stdin").read()
         return FlowSource.from_text(stdin, base_dir=Path.cwd())
@@ -423,19 +413,13 @@ def run_attached(
     "--flow",
     "flow_path",
     default=None,
-    help="Path to a flow file (.json is JSON, else YAML), or - for stdin.",
+    help="Path to YAML flow file, or - to read the flow YAML from stdin.",
 )
 @click.option(
     "--flow-yaml",
     "flow_yaml",
     default=None,
     help="Flow YAML as a string, instead of --flow.",
-)
-@click.option(
-    "--flow-json",
-    "flow_json",
-    default=None,
-    help="Flow JSON as a string, instead of --flow.",
 )
 @click.option(
     "--selector-map",
@@ -446,13 +430,11 @@ def run_attached(
 def validate(
     flow_path: str | None,
     flow_yaml: str | None,
-    flow_json: str | None,
     selector_map_path: str | None,
 ) -> None:
     """Validate a YAML flow without launching a browser.
 
-    Pass exactly one of --flow PATH (- for stdin), --flow-yaml TEXT or
-    --flow-json TEXT.
+    Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
     Loads the flow + every referenced sub-flow, expands selector-map
     refs, and runs all model validators. Exits 0 with a JSON summary
@@ -473,7 +455,7 @@ def validate(
             if selector_map_path and Path(selector_map_path).exists()
             else None
         )
-        source = flow_source_from_options(flow_path, flow_yaml, flow_json)
+        source = flow_source_from_options(flow_path, flow_yaml)
         flow = build_flow(source, selector_map=selector_map)
     except (
         ValidationError,

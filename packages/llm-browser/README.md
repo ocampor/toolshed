@@ -137,13 +137,12 @@ llm-browser close
 ```bash
 llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
 llm-browser run --flow-yaml "$(cat login.yaml)" --data '{}'   # or --flow -
-llm-browser run --flow-json "$(cat login.json)" --data '{}'   # or --flow login.json
 llm-browser resume --data '{"confirm": true}'
 ```
 
-Loading a flow is three stages — a `FlowSource` (text, format,
-`base_dir`), `build_flow` to validate it into a `Flow`, then `run_flow`
-to execute it. Every consumer builds the model itself and hands it to
+Loading a flow is three stages — a `FlowSource` (the YAML text and the
+`base_dir` its `run-flow` refs resolve against), `build_flow` to
+validate it into a `Flow`, then `run_flow` to execute it. Every consumer builds the model itself and hands it to
 the runner, so nothing has to exist on disk. `redact` scrubs the listed
 values from the retry hint, error payload, outputs (a `FlowError`
 carries the ones collected before the failing step), and log records.

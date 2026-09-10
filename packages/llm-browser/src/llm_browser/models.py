@@ -260,7 +260,7 @@ class RunFlowStep(BaseStep):
                 return self
             self.subflow = SubFlow.model_validate(
                 parse_flow_document(source),
-                context={**ctx, "in_subflow": True, "flow_format": source.format},
+                context={**ctx, "in_subflow": True},
             )
         for child in self.subflow.steps:
             child._parent = self.name

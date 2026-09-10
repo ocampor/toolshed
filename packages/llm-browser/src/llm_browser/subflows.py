@@ -4,27 +4,21 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from llm_browser.constants import DEFAULT_FLOW_FORMAT
 from llm_browser.flow_pipeline import FlowSource
 
 
 def subflow_source(ref: str, ctx: Mapping[str, Any]) -> FlowSource | None:
     """Mapping, then loader, then ``base_dir``: only a file-loaded flow has a
     ``base_dir``, so flow text never reaches the filesystem. ``None`` means the
-    context asked for no resolution at all.
-
-    Text handed in by the caller is parsed in the parent's format; a child read
-    from disk gets its own format, from its suffix.
-    """
+    context asked for no resolution at all."""
     if not {"subflows", "subflow_loader", "base_dir"} & ctx.keys():
         return None
-    format = ctx.get("flow_format") or DEFAULT_FLOW_FORMAT
     subflows = ctx.get("subflows")
     if subflows is not None and ref in subflows:
-        return FlowSource.from_text(subflows[ref], format)
+        return FlowSource.from_text(subflows[ref])
     loader = ctx.get("subflow_loader")
     if loader is not None:
-        return FlowSource.from_text(loader(ref), format)
+        return FlowSource.from_text(loader(ref))
     base_dir = ctx.get("base_dir")
     if base_dir is not None:
         return FlowSource.from_path(resolve_path(ref, base_dir))

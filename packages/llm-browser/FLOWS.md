@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. A child supplied as text is parsed in the parent's format; a child file is parsed by its own suffix. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -153,23 +153,18 @@ Getting from flow text to a result is three explicit stages, and every
 consumer walks them itself — the runner only ever sees a `Flow`:
 
 1. **Source** — `llm_browser.flow_pipeline.FlowSource`, a pydantic model
-   holding the flow `text`, its `format` (`"yaml"` or `"json"`) and the
-   `base_dir` a `run-flow` reference resolves against.
-   `FlowSource.from_path(path)` reads a file (`.json` is JSON, anything
-   else YAML) and takes the file's directory as `base_dir`;
-   `FlowSource.from_text(text, format="yaml", base_dir=None)` takes text
-   as it stands, and with no `base_dir` that text can never reach the
-   filesystem.
+   holding the flow `text` and the `base_dir` a `run-flow` reference
+   resolves against. `FlowSource.from_path(path)` reads a file and takes
+   the file's directory as `base_dir`; `FlowSource.from_text(text,
+   base_dir=None)` takes text as it stands, and with no `base_dir` that
+   text can never reach the filesystem.
 2. **Validate** — `build_flow(source, *, subflows=None,
-   subflow_loader=None, selector_map=None)` parses the source per its
-   format and returns a validated `Flow`. A `run-flow` reference is
-   looked up in the `subflows` mapping (ref → child flow text) first,
-   then handed to `subflow_loader`, and only then read from the source's
-   `base_dir`. A child handed in as text is parsed in the parent's
-   format; a child read from disk is parsed by its own suffix.
-   Unparsable text raises `ValueError("invalid flow yaml: ...")` /
-   `ValueError("invalid flow json: ...")`, naming the format that
-   failed.
+   subflow_loader=None, selector_map=None)` parses the source's YAML and
+   returns a validated `Flow`. A `run-flow` reference is looked up in
+   the `subflows` mapping (ref → child YAML text) first, then handed to
+   `subflow_loader`, and only then read from the source's `base_dir`;
+   children are YAML too. Unparsable text — parent or child — raises
+   `ValueError("invalid flow yaml: ...")`.
    `subflow_refs(source)` lists a flow's references without validating
    it, so an async caller can fetch every child up front and pass them
    as `subflows=`.
@@ -189,12 +184,11 @@ result = run_flow(session, flow, {"user": "bot"})
 stages one and two for callers that do not need the source model.
 
 The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
--`), or as a string (`--flow-yaml TEXT` / `--flow-json TEXT`) — exactly
-one of them, for both `run` and `validate`:
+-`), or as a string (`--flow-yaml TEXT`) — exactly one of them, for both
+`run` and `validate`:
 
 ```bash
 llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
-llm-browser run --flow flow.json --data '{}'
 cat flow.yaml | llm-browser validate --flow -
 ```
 
