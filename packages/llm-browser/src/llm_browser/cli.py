@@ -17,6 +17,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     DRIVER_ENV_VAR,
+    SKILL_COMMAND_GROUP,
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
@@ -31,6 +32,7 @@ from llm_browser.models import (
 )
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
+from llm_browser.skill_install import install_skill, skill_text
 
 
 @contextmanager
@@ -149,6 +151,11 @@ def main(
 ) -> None:
     """LLM-friendly browser automation with YAML flows."""
     ctx.ensure_object(dict)
+    if ctx.invoked_subcommand == SKILL_COMMAND_GROUP:
+        # `skill install|show` only touches the filesystem. Building a session
+        # here would resolve a driver — and fail on a bogus LLM_BROWSER_DRIVER —
+        # for the first command a new consumer repo runs.
+        return
     driver = driver_name or os.environ.get(DRIVER_ENV_VAR)
     behavior = None
     if behavior_config:
@@ -657,3 +664,33 @@ def status(ctx: click.Context) -> None:
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
     _output(result)
+
+
+@main.group(SKILL_COMMAND_GROUP)
+def skill() -> None:
+    """Manage the packaged Claude Code flow-authoring skill."""
+
+
+@skill.command("install")
+@click.option(
+    "--dest",
+    "dest",
+    default=".",
+    help="Repo root to install into; the skill lands under <DEST>/.claude/skills/.",
+)
+@click.option(
+    "--force", is_flag=True, help="Overwrite an existing SKILL.md at that path."
+)
+def skill_install_command(dest: str, force: bool) -> None:
+    """Copy the skill bundle into <DEST>/.claude/skills/llm-browser-flows/."""
+    try:
+        path = install_skill(Path(dest), force=force)
+    except (FileExistsError, NotADirectoryError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"path": str(path)})
+
+
+@skill.command("show")
+def skill_show_command() -> None:
+    """Print the packaged SKILL.md to stdout."""
+    click.echo(skill_text(), nl=False)
