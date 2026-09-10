@@ -8,13 +8,7 @@ from pydantic import BaseModel, SerializeAsAny
 
 from yaml_engine.registry import Registry
 
-from llm_browser.behavior import (
-    Jitter,
-    enforce_gap,
-    jittered_sleep,
-    mark_action_done,
-    post_pause,
-)
+from llm_browser.behavior import Jitter, jittered_sleep, paced
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -141,11 +135,9 @@ def _is_timeout(exc: BaseException) -> bool:
 def execute_action(session: BrowserSession, step: Step) -> ActionResult:
     if step.action is None:
         return VoidResult()
-    behavior = session.behavior
-    runtime = session._behavior_runtime
-    enforce_gap(behavior, runtime)
     try:
-        result: ActionResult = get_registry().get(step.action)(session, step)
+        with paced(session.behavior, session.behavior_runtime):
+            return get_registry().get(step.action)(session, step)
     except Exception as exc:
         if not (_is_timeout(exc) or isinstance(exc, ValueError)):
             raise
@@ -165,9 +157,6 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
                 else None
             ),
         )
-    post_pause(behavior, runtime)
-    mark_action_done(runtime)
-    return result
 
 
 # --- Element actions ---
@@ -180,7 +169,7 @@ def action_click(session: BrowserSession, step: ClickStep) -> VoidResult:
         session.driver.dispatch_event(element, "click")
     elif session.behavior.mouse_move:
         session.driver.humanized_click(
-            session.get_page(), element, session.behavior, session._behavior_runtime
+            session.get_page(), element, session.behavior, session.behavior_runtime
         )
     else:
         session.driver.click(element)
@@ -196,7 +185,7 @@ def action_fill(session: BrowserSession, step: FillStep) -> VoidResult:
             element,
             step.value,
             session.behavior,
-            session._behavior_runtime,
+            session.behavior_runtime,
         )
     else:
         session.driver.fill(element, step.value)
@@ -214,7 +203,7 @@ def action_type(session: BrowserSession, step: TypeStep) -> VoidResult:
             element,
             step.value,
             session.behavior,
-            session._behavior_runtime,
+            session.behavior_runtime,
         )
     return VoidResult()
 
@@ -242,7 +231,7 @@ def action_pick(session: BrowserSession, step: PickStep) -> VoidResult:
 @_registry.register("press")
 def action_press(session: BrowserSession, step: PressStep) -> VoidResult:
     if session.behavior.mouse_move:
-        jittered_sleep(session.behavior.pre_click_pause, session._behavior_runtime.rng)
+        jittered_sleep(session.behavior.pre_click_pause, session.behavior_runtime.rng)
     if step.selector is not None:
         element = session.find(step.selector, timeout=step.timeout)
         session.driver.press(element, step.key)
@@ -348,14 +337,14 @@ def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
     for tick in range(step.times):
         session.driver.scroll(session.get_page(), 0, step.delta)
         if tick < step.times - 1:
-            jittered_sleep(step.pause, session._behavior_runtime.rng)
+            jittered_sleep(step.pause, session.behavior_runtime.rng)
     return VoidResult()
 
 
 @_registry.register("think")
 def action_think(session: BrowserSession, step: ThinkStep) -> VoidResult:
     jitter = Jitter(min_ms=step.min_ms, max_ms=step.max_ms)
-    delay = jitter.sample_seconds(session._behavior_runtime.rng)
+    delay = jitter.sample_seconds(session.behavior_runtime.rng)
     if delay > 0:
         time.sleep(delay)
     return VoidResult()

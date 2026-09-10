@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from llm_browser import waits
+from llm_browser import session_input, waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -14,6 +14,7 @@ from llm_browser.chrome import (
     spawn_detached_chromium,
 )
 from llm_browser.constants import (
+    DEFAULT_FIND_TIMEOUT_MS,
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_STATE_DIR,
@@ -83,7 +84,7 @@ class BrowserSession:
         self._info: SessionInfo | None = None
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
-        self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
+        self.behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
@@ -354,6 +355,14 @@ class BrowserSession:
         self.driver.screenshot(self.get_page(), self._screenshot_path)
         return self._screenshot_path
 
+    def save_screenshot(self, path: Path) -> None:
+        """Screenshot to a caller-chosen path, leaving the session dir alone."""
+        self.driver.screenshot(self.get_page(), path)
+
+    def scroll(self, dx: int, dy: int) -> None:
+        """Scroll the page by a mouse-wheel delta."""
+        self.driver.scroll(self.get_page(), dx, dy)
+
     def screenshot_bytes(self) -> bytes:
         """PNG bytes of the current page, without writing into the session dir."""
         return self.driver.screenshot_bytes(self.get_page())
@@ -389,7 +398,10 @@ class BrowserSession:
         self.driver.goto(self.get_page(), target, wait_until)
 
     def find(
-        self, selector: Selector, state: WaitState = "visible", timeout: int = 10_000
+        self,
+        selector: Selector,
+        state: WaitState = "visible",
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> Any:
         """Find exactly one element. Raises ValueError if multiple match.
 
@@ -409,7 +421,10 @@ class BrowserSession:
         )
 
     def find_all(
-        self, selector: Selector, state: WaitState = "attached", timeout: int = 10_000
+        self,
+        selector: Selector,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> Any:
         """Find all matching elements, waiting for at least one."""
         self.wait_for_element(selector, state=state, timeout=timeout)
@@ -451,7 +466,7 @@ class BrowserSession:
             state,
             timeout_ms=timeout,
             interval_ms=interval,
-            rng=self._behavior_runtime.rng,
+            rng=self.behavior_runtime.rng,
             settle_ms=settle,
         )
 
@@ -460,6 +475,58 @@ class BrowserSession:
     ) -> None:
         """Wait for page load state (domcontentloaded, load, networkidle)."""
         self.driver.wait_for_load(self.get_page(), state, timeout)
+
+    # --- Input ---
+    #
+    # Thin delegations to ``session_input``, which owns the resolve/pace/
+    # humanize decisions. Callers above the session use these, never the driver.
+
+    def click(
+        self,
+        selector: Selector,
+        *,
+        dispatch: bool = False,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.click(self, selector, dispatch=dispatch, timeout=timeout)
+
+    def fill(
+        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+    ) -> None:
+        session_input.fill(self, selector, value, timeout=timeout)
+
+    def type(
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        delay_ms: int = 0,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.type(self, selector, value, delay_ms=delay_ms, timeout=timeout)
+
+    def press(
+        self,
+        selector: Selector | None,
+        key: str,
+        *,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.press(self, selector, key, timeout=timeout)
+
+    def select_option(
+        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+    ) -> None:
+        session_input.select_option(self, selector, value, timeout=timeout)
+
+    def set_checked(
+        self,
+        selector: Selector,
+        checked: bool,
+        *,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.set_checked(self, selector, checked, timeout=timeout)
 
     def pick(self, selector: Selector, value: str) -> None:
         """Click the element matching text from a list of elements."""
@@ -475,7 +542,7 @@ class BrowserSession:
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 
-    def frame(self, selector: Selector, timeout: int = 10_000) -> Any:
+    def frame(self, selector: Selector, timeout: int = DEFAULT_FIND_TIMEOUT_MS) -> Any:
         """Enter an iframe, returning the Frame."""
         element = self.find(selector, state="attached", timeout=timeout)
         return self.driver.enter_frame(element)
