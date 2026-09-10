@@ -12,7 +12,10 @@
   and hands it to the runner. `FlowSource.from_path` picks the format from the
   suffix, so `--flow flow.json` and `build_flow(FlowSource.from_path(...))` load
   JSON flows; `FlowSource.from_text` defaults to YAML with no `base_dir`, which
-  keeps flow text off the filesystem as before.
+  keeps flow text off the filesystem as before. A `run-flow` child is parsed
+  the same way: text from `subflows`/`subflow_loader` in the parent's format,
+  a child file by its own suffix — so a tab-indented `child.json` under a JSON
+  parent loads instead of dying in the YAML scanner.
 - `llm-browser run --flow-json TEXT` and `llm-browser validate --flow-json TEXT`
   — a JSON flow as a string, alongside `--flow-yaml`. The two commands now build
   a `FlowSource` through one helper (`cli.flow_source_from_options`) and run the

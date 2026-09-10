@@ -84,6 +84,7 @@ def build_flow(
             "selector_map": selector_map,
             "subflows": subflows,
             "base_dir": source.base_dir,
+            "flow_format": source.format,
         },
     )
 

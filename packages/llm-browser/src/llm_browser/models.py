@@ -231,7 +231,7 @@ class RunFlowStep(BaseStep):
 
     ``subflow`` can be supplied directly (tests, programmatic construction)
     or resolved from ``flow`` by an after-validator, per the validation
-    context — see :func:`llm_browser.subflows.subflow_text`.
+    context — see :func:`llm_browser.subflows.subflow_source`.
     """
 
     action: Literal["run-flow"]
@@ -246,9 +246,8 @@ class RunFlowStep(BaseStep):
         # names work for the retry hint. Otherwise load + validate the
         # referenced child YAML.
         if self.subflow is None:
-            import yaml
-
-            from llm_browser.subflows import subflow_text
+            from llm_browser.flow_pipeline import parse_flow_document
+            from llm_browser.subflows import subflow_source
 
             ctx = info.context if info is not None else None
             if not ctx or ctx.get("in_subflow"):
@@ -256,11 +255,12 @@ class RunFlowStep(BaseStep):
                 # leaf-only validator reports the nesting instead of recursing
                 # into (possibly cyclic) grandchildren.
                 return self
-            text = subflow_text(self.flow, ctx)
-            if text is None:
+            source = subflow_source(self.flow, ctx)
+            if source is None:
                 return self
             self.subflow = SubFlow.model_validate(
-                yaml.safe_load(text), context={**ctx, "in_subflow": True}
+                parse_flow_document(source),
+                context={**ctx, "in_subflow": True, "flow_format": source.format},
             )
         for child in self.subflow.steps:
             child._parent = self.name

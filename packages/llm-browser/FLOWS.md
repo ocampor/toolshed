@@ -84,7 +84,7 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. A child supplied as text is parsed in the parent's format; a child file is parsed by its own suffix. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
@@ -163,10 +163,13 @@ consumer walks them itself — the runner only ever sees a `Flow`:
 2. **Validate** — `build_flow(source, *, subflows=None,
    subflow_loader=None, selector_map=None)` parses the source per its
    format and returns a validated `Flow`. A `run-flow` reference is
-   looked up in the `subflows` mapping (ref → child YAML text) first,
+   looked up in the `subflows` mapping (ref → child flow text) first,
    then handed to `subflow_loader`, and only then read from the source's
-   `base_dir`. Unparsable text raises `ValueError("invalid flow yaml:
-   ...")` / `ValueError("invalid flow json: ...")`.
+   `base_dir`. A child handed in as text is parsed in the parent's
+   format; a child read from disk is parsed by its own suffix.
+   Unparsable text raises `ValueError("invalid flow yaml: ...")` /
+   `ValueError("invalid flow json: ...")`, naming the format that
+   failed.
    `subflow_refs(source)` lists a flow's references without validating
    it, so an async caller can fetch every child up front and pass them
    as `subflows=`.

@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Literal
 
 DEFAULT_STATE_DIR = Path("/tmp/llm-browser")
 
@@ -81,8 +81,6 @@ DEFAULT_EXTRACT_FIELD = "text"
 # --- Flow sources ---
 
 FlowFormat = Literal["yaml", "json"]
-
-FLOW_FORMATS: tuple[FlowFormat, ...] = get_args(FlowFormat)
 
 DEFAULT_FLOW_FORMAT: FlowFormat = "yaml"
 

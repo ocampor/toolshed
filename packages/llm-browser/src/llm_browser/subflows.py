@@ -1,27 +1,33 @@
-"""Resolve a ``run-flow`` step's ``flow:`` reference to YAML text."""
+"""Resolve a ``run-flow`` step's ``flow:`` reference to a flow source."""
 
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from llm_browser.constants import DEFAULT_FLOW_FORMAT
+from llm_browser.flow_pipeline import FlowSource
 
-def subflow_text(ref: str, ctx: Mapping[str, Any]) -> str | None:
+
+def subflow_source(ref: str, ctx: Mapping[str, Any]) -> FlowSource | None:
     """Mapping, then loader, then ``base_dir``: only a file-loaded flow has a
     ``base_dir``, so flow text never reaches the filesystem. ``None`` means the
-    context asked for no resolution at all."""
+    context asked for no resolution at all.
+
+    Text handed in by the caller is parsed in the parent's format; a child read
+    from disk gets its own format, from its suffix.
+    """
     if not {"subflows", "subflow_loader", "base_dir"} & ctx.keys():
         return None
+    format = ctx.get("flow_format") or DEFAULT_FLOW_FORMAT
     subflows = ctx.get("subflows")
     if subflows is not None and ref in subflows:
-        from_mapping: str = subflows[ref]
-        return from_mapping
+        return FlowSource.from_text(subflows[ref], format)
     loader = ctx.get("subflow_loader")
     if loader is not None:
-        loaded: str = loader(ref)
-        return loaded
+        return FlowSource.from_text(loader(ref), format)
     base_dir = ctx.get("base_dir")
     if base_dir is not None:
-        return resolve_path(ref, base_dir).read_text()
+        return FlowSource.from_path(resolve_path(ref, base_dir))
     raise ValueError(
         f"run-flow reference {ref!r}: not in subflows, "
         "no subflow_loader, and no base_dir"

@@ -198,6 +198,12 @@ def test_file_path_is_none_for_text_sources(flow_path: str | None) -> None:
     assert file_path(flow_path) is None
 
 
+def test_an_empty_flow_path_is_a_usage_error() -> None:
+    result = CliRunner().invoke(main, ["validate", "--flow", ""])
+    assert result.exit_code == 2
+    assert "--flow needs a path" in result.output
+
+
 # --- cwd-relative sub-flow refs ---
 
 

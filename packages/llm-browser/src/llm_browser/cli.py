@@ -352,6 +352,8 @@ def flow_source_from_options(
     """
     if sum(option is not None for option in (flow_path, flow_yaml, flow_json)) != 1:
         raise click.UsageError("pass exactly one of --flow, --flow-yaml or --flow-json")
+    if flow_path == "":
+        raise click.UsageError("--flow needs a path, or - for stdin")
     if flow_yaml is not None:
         return FlowSource.from_text(flow_yaml, base_dir=Path.cwd())
     if flow_json is not None:
@@ -464,7 +466,7 @@ def validate(
     import yaml as _yaml
     from pydantic import ValidationError
 
-    label = flow_path if file_path(flow_path) else "<inline>"
+    label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
         selector_map = (
             load_selector_map(Path(selector_map_path))
