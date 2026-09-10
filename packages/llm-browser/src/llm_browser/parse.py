@@ -19,7 +19,6 @@ The YAML ``read`` action keeps using the same ``ExtractField`` underneath —
 coerces them through this class.
 """
 
-import typing
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Self
@@ -28,7 +27,7 @@ import yaml
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
-from llm_browser import constants
+from llm_browser import constants, schema_types
 from llm_browser.selectors import Selector
 
 
@@ -118,17 +117,6 @@ class ParseBase(BaseModel):
         return rows[0] if rows else None
 
 
-def _resolve_type(type_str):
-    """Turn a YAML type string into a real Python type.
-
-    ``vars(typing)`` exposes Optional/Union/Annotated/List/Dict/...; ``eval``
-    auto-loads Python builtins (int, str, bool, float, list, dict, tuple,
-    set, ...). That covers the common cases without an allow-list. Schemas
-    that need stdlib types beyond builtins should be written in Python.
-    """
-    return eval(type_str, vars(typing))
-
-
 def build_model(yaml_path):
     """Load a YAML schema and return a Pydantic class equivalent to a
     hand-written ``ParseBase`` subclass.
@@ -153,6 +141,9 @@ def build_model(yaml_path):
             type: str | None
             child_selector: ".desc"
             default: null            # required → omit; optional → must declare
+
+    ``type`` strings are resolved by ``schema_types.resolve_type``, which
+    accepts only the allowlisted names and container forms.
     """
     raw = yaml.safe_load(Path(yaml_path).read_text())
     name = raw["name"]
@@ -161,7 +152,7 @@ def build_model(yaml_path):
         # Copy so we don't mutate the loaded YAML.
         spec = dict(fspec)
         type_str = spec.pop("type")
-        py_type = _resolve_type(type_str)
+        py_type = schema_types.resolve_type(type_str)
         # Remaining keys (child_selector, attribute, default) flow to
         # ExtractField. FieldInfo recognises `default` natively; an absent
         # default leaves the field required (PydanticUndefined sentinel).

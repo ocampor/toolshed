@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Disabled button</title>
+<button id="btn" disabled>Submit</button>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const btn = document.getElementById("btn");
+btn.addEventListener("click", () => {
+  document.getElementById("result").textContent = "clicked";
+});
+
+setTimeout(() => { btn.disabled = false; }, delay);
+</script>

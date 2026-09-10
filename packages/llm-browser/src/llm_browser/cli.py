@@ -6,20 +6,42 @@ import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, cast, get_args
 
 import click
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
-from llm_browser.constants import DRIVER_ENV_VAR
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+    DRIVER_ENV_VAR,
+    SKILL_COMMAND_GROUP,
+)
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
-from llm_browser.models import Flow, FlowResult, RunFlowStep
+from llm_browser.models import (
+    Flow,
+    FlowResult,
+    RunFlowStep,
+    WaitState,
+    check_settle_budget,
+)
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
+from llm_browser.skill_install import install_skill, skill_text
+
+
+@contextmanager
+def budget_argument_errors() -> Iterator[None]:
+    """A settle/timeout mismatch is a bad option pair: exit 2, like --interval 0."""
+    try:
+        yield
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 @contextmanager
@@ -129,6 +151,11 @@ def main(
 ) -> None:
     """LLM-friendly browser automation with YAML flows."""
     ctx.ensure_object(dict)
+    if ctx.invoked_subcommand == SKILL_COMMAND_GROUP:
+        # `skill install|show` only touches the filesystem. Building a session
+        # here would resolve a driver — and fail on a bogus LLM_BROWSER_DRIVER —
+        # for the first command a new consumer repo runs.
+        return
     driver = driver_name or os.environ.get(DRIVER_ENV_VAR)
     behavior = None
     if behavior_config:
@@ -532,6 +559,58 @@ def find_all(ctx: click.Context, selector: str) -> None:
     _find_all_output(session, selector)
 
 
+@main.command("wait-for")
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option(
+    "--state",
+    type=click.Choice(get_args(WaitState)),
+    default="attached",
+    help="State to wait for.",
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=DEFAULT_WAIT_TIMEOUT_MS,
+    help="Total budget (ms); 0 checks exactly once.",
+)
+@click.option(
+    "--interval",
+    type=click.IntRange(min=1),
+    default=DEFAULT_POLL_INTERVAL_MS,
+    help="Nominal gap between polls (ms); jittered, clamped to the budget.",
+)
+@click.option(
+    "--settle",
+    type=click.IntRange(min=1),
+    default=DEFAULT_SETTLE_MS,
+    help="For --state stable: how long the text must hold still (ms).",
+)
+@click.pass_context
+def wait_for(
+    ctx: click.Context,
+    selector: str,
+    state: str,
+    timeout: int,
+    interval: int,
+    settle: int,
+) -> None:
+    """Poll until an element reaches a state; exit non-zero on timeout."""
+    session: BrowserSession = ctx.obj["session"]
+    with budget_argument_errors():
+        check_settle_budget(cast(WaitState, state), settle, timeout)
+    try:
+        session.wait_for_element(
+            selector,
+            state=cast(WaitState, state),
+            timeout=timeout,
+            interval=interval,
+            settle=settle,
+        )
+    except TimeoutError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"selector": selector, "state": state})
+
+
 @main.command("latest-tab")
 @click.pass_context
 def latest_tab(ctx: click.Context) -> None:
@@ -585,3 +664,33 @@ def status(ctx: click.Context) -> None:
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
     _output(result)
+
+
+@main.group(SKILL_COMMAND_GROUP)
+def skill() -> None:
+    """Manage the packaged Claude Code flow-authoring skill."""
+
+
+@skill.command("install")
+@click.option(
+    "--dest",
+    "dest",
+    default=".",
+    help="Repo root to install into; the skill lands under <DEST>/.claude/skills/.",
+)
+@click.option(
+    "--force", is_flag=True, help="Overwrite an existing SKILL.md at that path."
+)
+def skill_install_command(dest: str, force: bool) -> None:
+    """Copy the skill bundle into <DEST>/.claude/skills/llm-browser-flows/."""
+    try:
+        path = install_skill(Path(dest), force=force)
+    except (FileExistsError, NotADirectoryError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"path": str(path)})
+
+
+@skill.command("show")
+def skill_show_command() -> None:
+    """Print the packaged SKILL.md to stdout."""
+    click.echo(skill_text(), nl=False)

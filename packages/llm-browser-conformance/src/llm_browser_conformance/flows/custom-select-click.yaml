@@ -1,0 +1,14 @@
+# A div dropdown has no <select> semantics; clicking through is the only way.
+steps:
+  - name: open
+    action: click
+    selector: "#dropdown-toggle"
+  - name: choose
+    action: click
+    selector: '.option[data-value="b"]'
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

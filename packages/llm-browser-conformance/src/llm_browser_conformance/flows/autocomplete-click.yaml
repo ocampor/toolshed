@@ -1,0 +1,22 @@
+# The list only appears 300ms after the last keystroke.
+steps:
+  - name: type
+    action: type
+    selector: "#search"
+    value: al
+    delay: 20
+  - name: wait-options
+    action: wait_for
+    selector: ".option"
+    state: attached
+    timeout: 8000
+    interval: 200
+  - name: pick-first
+    action: click
+    selector: "#options .option:nth-child(1)"
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

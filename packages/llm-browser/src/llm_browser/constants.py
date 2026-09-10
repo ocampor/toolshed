@@ -1,5 +1,7 @@
 """Shared constants for llm-browser."""
 
+import datetime
+import decimal
 import re
 from pathlib import Path
 
@@ -9,11 +11,35 @@ DRIVER_ENV_VAR = "LLM_BROWSER_DRIVER"
 
 LOGGER_NAME = "llm_browser"
 
+# --- Packaged Claude Code skill ---
+
+SKILL_NAME = "llm-browser-flows"
+
+SKILL_DIR_NAME = "skill"
+
+SKILL_FILENAME = "SKILL.md"
+
+# The one CLI group that needs no browser; `cli.main` skips session setup for it.
+SKILL_COMMAND_GROUP = "skill"
+
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
-# nodriver has no CDP wait for visibility/detachment, so those states are
-# polled; 100ms keeps Runtime traffic low without feeling laggy.
-NODRIVER_POLL_INTERVAL_S = 0.1
+# How long ``find`` and the input methods wait for their element.
+DEFAULT_FIND_TIMEOUT_MS = 10_000
+
+DEFAULT_POLL_INTERVAL_MS = 500
+
+# How long an element's text has to stay put for the ``stable`` wait state.
+DEFAULT_SETTLE_MS = 1_500
+
+# A Playwright read still needs a timeout — `timeout=0` there means *no*
+# timeout — so a now-read gets one long enough for a slow round-trip and short
+# enough not to be a wait.
+READ_TIMEOUT_MS = 250
+
+# An explicit wait sleeps ``interval`` ± this fraction: a fixed 500ms cadence is
+# itself a fingerprint.
+POLL_JITTER_RATIO = 0.3
 
 DEFAULT_URL_SCHEMES = ("http", "https")
 
@@ -76,3 +102,16 @@ INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffi
 EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"
+
+# --- YAML schema types ---
+
+# The only names a schema `type:` string may use; see `schema_types.py`.
+SCHEMA_TYPE_NAMES = {
+    "str": str,
+    "int": int,
+    "float": float,
+    "bool": bool,
+    "Decimal": decimal.Decimal,
+    "date": datetime.date,
+    "datetime": datetime.datetime,
+}

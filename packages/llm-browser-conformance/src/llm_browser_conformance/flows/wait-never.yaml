@@ -1,0 +1,7 @@
+# A wait that cannot succeed: the page never grows a `#never` element.
+steps:
+  - name: wait-never
+    action: wait_for
+    selector: "#never"
+    state: attached
+    timeout: 500

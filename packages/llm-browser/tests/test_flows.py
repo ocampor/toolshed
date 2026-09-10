@@ -127,15 +127,15 @@ def test_execute_step_skipped_by_when(mock_session: MagicMock) -> None:
     )
     result = execute_step(mock_session, step, _flow_data(needed=False))
     assert isinstance(result, SkippedResult)
-    mock_session.driver.evaluate.assert_not_called()
+    mock_session.evaluate.assert_not_called()
 
 
 def test_execute_step_template_substitution(mock_session: MagicMock) -> None:
-    mock_session.driver.evaluate.return_value = "ok"
+    mock_session.evaluate.return_value = "ok"
 
     step = EvalStep(name="t", eval="document.getElementById('{{ fid }}').value")
     execute_step(mock_session, step, _flow_data(fid="myfield"))
-    mock_session.driver.evaluate.assert_called_once_with(
+    mock_session.evaluate.assert_called_once_with(
         mock_session.get_page.return_value,
         "document.getElementById('myfield').value",
     )
@@ -164,9 +164,9 @@ def test_run_from_step_skips_prior_steps(
     path = _write_flow(tmp_path, steps)
     result = run_flow_file(mock_session, path, {}, from_step="step3")
     assert isinstance(result, FlowSuccess)
-    # Only step3's selector hit the driver — step1 and step2 were skipped.
-    assert mock_session.find.call_count == 1
-    selector = mock_session.find.call_args.args[0]
+    # Only step3's selector reached the session — step1 and step2 were skipped.
+    assert mock_session.click.call_count == 1
+    selector = mock_session.click.call_args.args[0]
     assert "c" in str(selector)
 
 
@@ -189,9 +189,7 @@ def test_run_emits_retry_hint_on_failure(
     path = _write_flow(tmp_path, steps)
 
     # First click succeeds; second click raises so the action fails.
-    locator = MagicMock()
-    locator.count.return_value = 1
-    mock_session.find.side_effect = [locator, TimeoutError("element missing")]
+    mock_session.click.side_effect = [None, TimeoutError("element missing")]
 
     result = run_flow_file(mock_session, path, {"k": "v"})
     assert isinstance(result, FlowError)
@@ -209,7 +207,7 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     """When a step inside a sub-flow fails, the hint's `failed_step`
     is the parent's run-flow step name (not the inner step) so
     `--from <hint.failed_step>` resolves against the parent flow."""
-    mock_session.find.side_effect = TimeoutError("element missing")
+    mock_session.click.side_effect = TimeoutError("element missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -242,7 +240,7 @@ def test_run_with_registered_and_inline_params(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    mock_session.driver.evaluate.return_value = "ok"
+    mock_session.evaluate.return_value = "ok"
 
     params: list[str | dict[str, Any]] = [
         "rfc",
@@ -253,7 +251,7 @@ def test_run_with_registered_and_inline_params(
     result = run_flow_file(mock_session, path, {"rfc": "XEXX"})
 
     assert isinstance(result, FlowSuccess)
-    mock_session.driver.evaluate.assert_called_once_with(
+    mock_session.evaluate.assert_called_once_with(
         mock_session.get_page.return_value, "fill('XEXX', 'MX')"
     )
 
@@ -294,7 +292,7 @@ def test_run_flow_dispatches_subflow(tmp_path: Path, mock_session: MagicMock) ->
 
     assert isinstance(result, FlowSuccess)
     # Both child clicks fired against the mock_session.
-    assert mock_session.find.call_count == 2
+    assert mock_session.click.call_count == 2
 
 
 def test_run_flow_param_passthrough(tmp_path: Path, mock_session: MagicMock) -> None:
@@ -318,8 +316,8 @@ def test_run_flow_param_passthrough(tmp_path: Path, mock_session: MagicMock) -> 
         params=["target"],
     )
     run_flow_file(mock_session, parent, {"target": "submit"})
-    # mock_session.find was called with a parsed selector for #submit
-    args, _ = mock_session.find.call_args
+    # mock_session.click was called with a parsed selector for #submit
+    args, _ = mock_session.click.call_args
     assert "submit" in str(args[0])
 
 
@@ -328,7 +326,7 @@ def test_run_flow_optional_swallows_child_failure(
     mock_session: MagicMock,
 ) -> None:
     # Force the click action to raise so the child's first step fails.
-    mock_session.driver.click.side_effect = TimeoutError("button missing")
+    mock_session.click.side_effect = TimeoutError("button missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -348,7 +346,7 @@ def test_run_flow_optional_swallows_child_failure(
         ],
     )
     # The parent's own click must succeed even when the sub-flow swallows.
-    mock_session.driver.click.side_effect = [TimeoutError("button missing"), None]
+    mock_session.click.side_effect = [TimeoutError("button missing"), None]
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
 
@@ -357,7 +355,7 @@ def test_run_flow_required_failure_bubbles(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    mock_session.driver.click.side_effect = TimeoutError("button missing")
+    mock_session.click.side_effect = TimeoutError("button missing")
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -423,7 +421,7 @@ def test_run_flow_resolves_relative_to_parent_dir(
 
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
-    assert mock_session.find.call_count == 1
+    assert mock_session.click.call_count == 1
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
@@ -547,14 +545,14 @@ def test_run_flow_when_skips_subflow(tmp_path: Path, mock_session: MagicMock) ->
     )
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
-    assert mock_session.find.call_count == 0
+    assert mock_session.click.call_count == 0
 
 
 # --- execute_step: human_needed ---
 
 
 def _failing_click(session: MagicMock) -> ClickStep:
-    session.find.side_effect = ValueError("Expected 1 element for '#go', found 0")
+    session.click.side_effect = ValueError("Expected 1 element for '#go', found 0")
     return ClickStep(action="click", name="go", selector="#go")
 
 

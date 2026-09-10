@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Masked input</title>
+<input type="text" id="phone">
+<div id="display"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const format = (digits) => {
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return "(" + digits;
+  if (digits.length <= 6) return "(" + digits.slice(0, 3) + ") " + digits.slice(3);
+  return "(" + digits.slice(0, 3) + ") " + digits.slice(3, 6) + "-" + digits.slice(6);
+};
+
+const input = document.getElementById("phone");
+const display = document.getElementById("display");
+input.addEventListener("input", () => {
+  const formatted = format(input.value.replace(/\D/g, "").slice(0, 10));
+  input.value = formatted;
+  display.textContent = formatted;
+});
+</script>

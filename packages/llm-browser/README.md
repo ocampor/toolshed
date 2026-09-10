@@ -1,6 +1,53 @@
 # llm-browser
 
-Playwright browser automation with declarative YAML flows, designed for LLM-driven agents.
+Playwright-style browser automation with declarative YAML flows, designed for
+LLM-driven agents: a typed Python API and a CLI over the same three drivers
+(`patchright`, `camoufox`, `nodriver`), so an agent can drive a real browser
+without touching Playwright/CDP directly.
+
+## Architecture
+
+A flow is loaded before it is run — every `run-flow` reference gets inlined
+first, so the rest of the pipeline never touches disk or a store again:
+
+```
+source (file | text | store)
+   │  FlowRepository.get(ref)      FileFlowRepository · DictFlowRepository · LayeredFlowRepository
+   ▼
+resolve_flow / resolve_flow_text   inline every run-flow child (async, the only I/O)
+   ▼
+load_flow_document / load_flow_text   pure pydantic validation → Flow
+   ▼
+run_flow(session, flow, data)
+```
+
+Running a flow steps down through four layers, each narrower than the one above:
+
+```
+Flow (pydantic)      steps: [GotoStep, ClickStep, WaitForStep, ReadStep, RunFlowStep(SubFlow)…]
+   │  run_flow → execute_step (capture on failure, redact, outputs)
+   ▼
+actions              registry action name → fn(session, step) -> ActionResult      one per step type
+   │
+   ▼
+BrowserSession       goto · find · wait_for_element · dom · probe · parse_elements · screenshot
+   │  selector resolution, waits (waits.py), sanitization (html.py), probe JS, behavior pacing
+   ▼
+Driver (ABC)         resolve/count/first/is_visible/text_content · click/fill/type/press · goto/wait_for_load · evaluate · screenshot
+   │  contract: no DOM waits (only wait_for_load blocks), trusted input, JS only in evaluate/is_visible/input_value/extract_rows
+   ▼
+patchright | camoufox | nodriver
+```
+
+- **Flow** — pydantic steps; owns templating and `when` conditions; never calls a driver.
+- **actions** — registry mapping each step to session calls, one function per action.
+- **BrowserSession** — selector resolution, waits, sanitization, probes; decides *how* to wait.
+- **Driver (ABC)** — one abstraction over backends; only `wait_for_load` blocks; input must be trusted.
+- **patchright / camoufox / nodriver** — concrete drivers; same five-rule contract, different backend.
+- **session_input.py** — one click/fill/type/press/select_option/set_checked path every action and `BrowserSession` method shares; `tests/test_actions.py` asserts `actions.py`/`steps.py`/`flows.py` never touch `session.driver`.
+
+Waiting: the five `wait_for` states are documented in [FLOWS.md](src/llm_browser/skill/reference/FLOWS.md#waiting).
+Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (details: [DRIVERS.md](src/llm_browser/skill/reference/DRIVERS.md)).
 
 ## Install
 
@@ -9,403 +56,125 @@ cd packages/llm-browser
 uv sync
 ```
 
-## Usage
+| Extra | Install | Adds |
+|---|---|---|
+| *(base)* | `uv sync` | `patchright` driver (Chromium) |
+| `camoufox` | `pip install llm-browser[camoufox]` | `camoufox` driver (Firefox, fingerprint spoofing) |
+| `nodriver` | `pip install llm-browser[nodriver]` | `nodriver` driver (Chromium via raw CDP) |
 
-### Python API
+## Quickstart
 
 ```python
 from llm_browser import BrowserSession
 
 session = BrowserSession()
 session.launch("https://example.com", headed=True)
+# or reuse a browser you already started: session.attach("http://localhost:9222")
 
-# Find and interact
-session.find("#username").fill("admin")
-session.find("#password").fill("secret")
-session.find("button[type=submit]").click()
+session.goto("https://example.com/login")
+session.fill("#username", "admin")
+session.click("button[type=submit]")
 
-# Check element presence
-if session.element_exists("#dashboard"):
-    print("Logged in")
+session.wait_for_element("#results", state="visible", timeout=10_000)
 
-# Read page structure
-html = session.dom("body", max_depth=2)
+html = session.dom("body", max_depth=2, level="medium")
 
-# Extract data
-data = session.parse_elements("tr.row", {
+rows = session.parse_elements("tr.row", {
     "name": {"child_selector": "td.name", "attribute": "textContent"},
-    "email": {"child_selector": "td.email", "attribute": "textContent"},
 })
 
 session.close()
 ```
 
-### Typed extraction
-
-For Python callers who'd rather get coerced typed instances than dicts of
-strings, declare a model with `ExtractField` defaults and use the classmethods
-on `ParseBase`:
-
-```python
-from llm_browser import BrowserSession
-from llm_browser.parse import ExtractField, ParseBase
-
-
-class Repo(ParseBase):
-    name:  str = ExtractField(child_selector="h3 a")
-    stars: int = ExtractField(child_selector=".stars")
-    href:  str = ExtractField(attribute="href")  # off the row itself
-
-
-session = BrowserSession()
-session.launch("https://github.com/trending")
-repos: list[Repo] = Repo.extract_all(session, "article.Box-row")
-top:   Repo | None = Repo.extract_one(session, "article.Box-row")
-
-assert isinstance(repos[0].stars, int)  # coerced from text
-```
-
-Pydantic handles validation and type coercion (`"42"` → `int 42`,
-`"true"` → `bool`, etc.). The YAML `read` action keeps using the dict shape
-shown above — pick whichever fits.
-
-#### From a YAML schema
-
-If you'd rather declare the schema in YAML than in Python, point `build_model`
-at a schema file. The returned class is indistinguishable from a hand-written
-`ParseBase` subclass — same `extract_all` / `extract_one` call site.
-
-```yaml
-# schemas/repo.yaml
-name: Repo
-fields:
-  name:
-    type: str
-    child_selector: "h3 a"
-  stars:
-    type: int
-    child_selector: ".stars"
-  description:
-    type: str | None              # required → omit `default`; optional → declare it
-    child_selector: ".desc"
-    default: null
-```
-
-```python
-from llm_browser.parse import build_model
-
-Repo = build_model("schemas/repo.yaml")
-repos = Repo.extract_all(session, "article.Box-row")
-assert isinstance(repos[0].stars, int)
-```
-
-`type` strings are evaluated against `typing` + Python builtins, so `str`,
-`int`, `int | None`, `Optional[int]`, `list[str]`, etc. all work. A given
-schema lives in *one* place — Python or YAML, not both.
-
-#### From a YAML flow
-
-A YAML flow can use the same schema via the `parse` action — same shape as
-`read`, but rows come back as typed schema instances instead of raw strings:
-
-```yaml
-- name: list_repos
-  action: parse
-  selector: "article.Box-row"
-  schema_path: "schemas/repo.yaml"   # CWD-relative or absolute
-```
-
-The resulting `ParsedResult.rows` are `Repo` instances (built from the
-schema), with values coerced by Pydantic — same outcome as calling
-`Repo.extract_all(session, ...)` from Python. Empty rows (every field
-None) come back as `None`, mirroring `read`'s behavior.
-
-### CLI
-
 ```bash
 llm-browser open --url https://example.com
-llm-browser goto --url https://example.com/page2
 llm-browser find --selector "#form"
-llm-browser find-all --selector "li.item"
+llm-browser wait-for --selector "#results" --state visible --timeout 10000
 llm-browser dom --selector "#content" --max-depth 2
-llm-browser screenshot
+llm-browser run --flow login.yaml --data '{"user": "admin"}'
 llm-browser close
 ```
 
-### YAML Flows
+```yaml
+params:
+  - user
 
-```bash
-llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
-llm-browser run --flow-yaml "$(cat login.yaml)" --data '{}'   # or --flow -
-llm-browser resume --data '{"confirm": true}'
+steps:
+  - name: navigate
+    action: goto
+    url: "https://example.com/login"
+
+  - name: fill user
+    selector: "#username"
+    action: fill
+    value: "{{ user }}"
 ```
 
-Loading a flow is three stages — `resolve_flow` (async, the only stage
-that does I/O: it inlines every `run-flow` reference through a
-`FlowRepository`), `load_flow_document` to validate the result into a
-`Flow`, then `run_flow` to execute it. The repository is the only piece
-that differs between consumers, so a flow never has to exist on disk:
-`FileFlowRepository(base_dir)` reads from a directory,
-`DictFlowRepository(flows)` from flows already in hand, and
-`LayeredFlowRepository(*layers)` takes the first layer that has the
-reference — a service typically layers one request's flows over its own
-store, `LayeredFlowRepository(DictFlowRepository(request_flows), store)`.
-`redact` scrubs the listed values from the retry hint, error payload,
-outputs (a `FlowError` carries the ones collected before the failing
-step), and log records.
+Flow patterns for hard widgets (autocomplete, framework-bound inputs, hidden checkboxes, rotating ids):
+[FLOW_PATTERNS.md](src/llm_browser/skill/reference/FLOW_PATTERNS.md).
 
-```python
-from llm_browser.flow_pipeline import resolve_flow_text
-from llm_browser.flow_repository import FileFlowRepository
-from llm_browser.flows import load_flow_document, run_flow
+Authoring flows with Claude: `llm-browser skill install` drops the flow-authoring skill and the
+three reference docs it links to into `.claude/skills/llm-browser-flows/` of the current repo
+(`--dest DIR` for another one); `llm-browser skill show` prints the skill itself. Those reference
+docs — `FLOWS.md`, `FLOW_PATTERNS.md`, `DRIVERS.md` — live under `src/llm_browser/skill/reference/`
+so they ship in the wheel; `FLOWS.md` and `docs/` keep one-line pointers to them.
 
-document = await resolve_flow_text(yaml_text, FileFlowRepository(Path.cwd()))
-flow = load_flow_document(document)
-result = run_flow(session, flow, {"password": pw}, redact=[pw])
-result.outputs["headlines"]   # every read / parse / dom step's result
-```
+Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
+`run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](src/llm_browser/skill/reference/FLOWS.md) for the full flow
+language, and [docs/API.md](docs/API.md) for typed extraction (pydantic models, YAML-declared
+schemas, the `parse` action) and the full session-method table.
 
-See [FLOWS.md](FLOWS.md) for the complete flow language reference.
+## Waiting
 
-## Anti-bot landscape
-
-`Behavior.human()` is **timing-only** humanization: inter-key gaps, click
-jitter, mouse paths, pre/post action pauses. It only applies to actions
-routed through `execute_action(...)` (i.e. YAML flow steps or
-`session.pick/goto/find`-based interactions). Calls on the raw
-`Page`/`Locator` returned by `session.get_page()` bypass humanization.
-
-Timing humanization does NOT modify runtime JS fingerprints (navigator,
-WebGL, canvas, CDP detection). Those are the driver's job:
-
-- `patchright` removes Playwright automation fingerprints but still runs
-  a freshly-launched Chromium — OK for moderate bot detection.
-- `camoufox` spoofs fingerprints at the C++ level — good for most
-  fingerprint-grade targets (DataDome, PerimeterX).
-- For the hardest targets (Cloudflare JSD on high-traffic sites, Akamai
-  Bot Manager) a launched automation context will often lose no matter
-  how much stealth is applied. The supported path is **attach mode**
-  (below): launch Chromium yourself with a warmed profile and connect
-  to it over CDP.
-
-Generic bot-test pages (bot.sannysoft.com, arh.antoinevastel.com) don't
-predict real-world outcomes against specific vendors — always probe the
-actual target.
-
-### Headless caveat
-
-Chromium-based drivers (`patchright`, `nodriver`) leak `HeadlessChrome`
-in the User-Agent and fall back to SwiftShader for WebGL when run
-headless — both are cheap detection signals. For fingerprint-grade
-targets, run them headed (or under Xvfb). `camoufox` spoofs UA and
-WebGL even in headless mode and is the only viable headless option
-against strict detectors. See `scripts/stealth_probe.py` to reproduce.
-
-## Attach mode
-
-Attach `llm-browser` to a Chromium you launched yourself (e.g. a
-day-to-day profile that's already passed Cloudflare challenges). The
-remote browser is never killed on `close()` — only the tab we opened
-and the CDP connection are released.
-
-```bash
-chromium --remote-debugging-port=9222 \
-         --user-data-dir="$HOME/.cache/llm-browser/attach-profile"
-```
-
-```python
-from llm_browser import BrowserSession
-
-session = BrowserSession(driver="patchright")
-session.attach("http://localhost:9222")
-session.goto("https://chatgpt.com")
-# ... interact ...
-session.close()  # disconnects only — your Chromium keeps running
-```
-
-Only the `patchright` driver supports attach; others raise
-`NotImplementedError`.
-
-### Addressing a tab by CDP target id
-
-`attach` returns the `target_id` of the tab it opened. `(cdp_url,
-target_id)` is the full address of that tab: pass both as global options
-and every command drives it — no `state.json`, so parallel callers each
-own their tab and never land on someone else's.
-
-```bash
-llm-browser --cdp-url http://127.0.0.1:9223 attach          # -> {"target_id": "..."}
-llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC goto --url https://example.com
-llm-browser --cdp-url http://127.0.0.1:9223 --target-id ABC close
-```
-
-`close` here releases only that tab; the Chromium keeps running. If the
-tab was closed meanwhile, commands fail with `Tab ABC not found`.
-
-### One-shot remote run
-
-`run --cdp-url` does the whole cycle in one command: attach to the
-running Chromium in a fresh tab, run the flow, release the tab (the
-browser keeps running). The run is stateless and its tab is addressed by
-target id, so several can run in parallel against the same Chromium.
-
-```bash
-llm-browser run --cdp-url http://127.0.0.1:9223 \
-    --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
-```
-
-### Automated detached spawn (`daemon`)
-
-If you don't want to manage Chromium yourself but still need multi-CLI
-sessions, use the detached-spawn helper. It launches Chromium in a new
-process group (survives Python exit) and attaches over CDP in one step:
-
-```bash
-llm-browser daemon --url https://example.com
-llm-browser goto --url https://example.com/page2
-llm-browser screenshot
-llm-browser stop          # actually kills the detached Chromium
-```
-
-```python
-session = BrowserSession(driver="patchright")
-session.launch_detached(url="https://example.com")
-# ... later, even from another process:
-session = BrowserSession(driver="patchright")
-session.connect()          # reattaches via persisted CDP URL
-# ... eventually:
-session.stop_detached()    # kills the browser we spawned
-```
-
-**Caveat.** Daemon-spawned Chromium runs `connect_over_cdp`, which does
-not activate patchright's stealth patches. Value comes from reusing a
-**warmed** profile across CLI calls — log in / pass Cloudflare once in
-that profile and the browser carries cookies and TLS state forward.
-For strict detectors, prefer the manual attach recipe above against a
-profile you've warmed by hand.
-
-### CLI: single-process vs multi-invocation
-
-The `patchright` driver launches Chromium in-process (required for its
-stealth patches to apply). That has one practical consequence for CLI
-use:
-
-- **Launched mode is single-process.** `llm-browser open --url ...`
-  then a follow-up `llm-browser screenshot` in a separate shell command
-  will fail — Chromium died with the first Python process. Use
-  `llm-browser run --flow x.yaml --url ...` to launch, run, and close
-  end-to-end in one invocation. Or use the Python API.
-- **Attach mode is multi-invocation safe.** Your Chromium keeps running
-  between CLI calls, so `llm-browser attach --cdp-url ...` followed by
-  any number of separate `llm-browser run` / `screenshot` / `close`
-  commands works — each reconnects via the persisted CDP URL.
-
-For long-running interactive sessions, use attach mode.
-
-## Capture modes
-
-`BrowserSession(capture=...)` controls what gets captured when a flow
-step fails (and on the result):
-
-| Mode | Enables | On-disk paths |
-|---|---|---|
-| `"screenshot"` (default) | `session.take_screenshot()` | `<session_dir>/screenshot.png` |
-| `"dom"` | `session.take_dom_snapshot()` | `<session_dir>/dom.html` |
-| `"both"` | both | both |
-
-`<session_dir>` is `<state_dir>/sessions/<session_id>` (default
-`/tmp/llm-browser/sessions/default`) and is logged at INFO on first
-`launch()` / `attach()`. The user-data-dir inside it is never
-auto-removed — call `session.close(cleanup=True)` to remove the
-screenshot/DOM files, or delete the session dir yourself to start fresh.
+`wait_for_element` / the `wait_for` step is the one wait — everything else (`find`, `find_all`,
+`frame`, `element_exists`) goes through it too, so a state means the same thing everywhere. The
+five states and their parameters: [FLOWS.md → Waiting](src/llm_browser/skill/reference/FLOWS.md#waiting).
 
 ## Drivers
 
-Three browser drivers, selected via object injection or a string name:
+| Driver | Stealth model | Notes |
+|---|---|---|
+| `patchright` (default) | removes Playwright automation fingerprints | Chromium; humanization via Playwright's helpers |
+| `camoufox` | C++-level fingerprint spoofing | Firefox; stealth defaults on; the only viable **headless** option against strict detectors |
+| `nodriver` | all writes go through trusted `Input.dispatch*` CDP events | Chromium via raw CDP; a few reads use JS (see src/llm_browser/skill/reference/DRIVERS.md) |
 
-| Driver | Install | Engine | Stealth notes |
-|---|---|---|---|
-| `patchright` (default) | base install | Chromium (patched Playwright) | Removes Playwright automation fingerprints; uses Playwright's humanization helpers. |
-| `camoufox` | `pip install llm-browser[camoufox]` | Firefox (Camoufox) | C++-level fingerprint spoofing. Playwright-compatible API. Stealth defaults on (humanize, block_webrtc, locale→geoip auto-alignment). |
-| `nodriver` | `pip install llm-browser[nodriver]` | Chromium via raw CDP | All writes (click, type, fill, focus) go through real `Input.dispatchMouseEvent` / `dispatchKeyEvent` / `DOM.focus` — events are `isTrusted=true`. |
+Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance
+suite: `packages/llm-browser-conformance` (separate package, in progress). Full anti-bot
+landscape, camoufox defaults and nodriver's detectable surfaces:
+[DRIVERS.md](src/llm_browser/skill/reference/DRIVERS.md). Build-vs-buy investigation of the 2026
+landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
+
+## Attach, daemon, and capture modes
+
+`attach` connects `llm-browser` to a Chromium you launched yourself and never kills it on
+`close()`; `daemon` spawns and manages that Chromium for you. Full details — addressing a tab by
+CDP target id, one-shot remote runs, the daemon caveat, single-process-vs-multi-invocation CLI
+behavior: [docs/ATTACH.md](docs/ATTACH.md).
+
+```bash
+chromium --remote-debugging-port=9222 --user-data-dir="$HOME/.cache/llm-browser/attach-profile"
+llm-browser attach --cdp-url http://localhost:9222
+llm-browser daemon --url https://example.com   # or: manage Chromium yourself, see docs/ATTACH.md
+llm-browser stop
+```
 
 ```python
-# String lookup
-session = BrowserSession(driver="nodriver")
-
-# Object injection (lets you pass driver-specific config)
-from llm_browser.drivers.camoufox import CamoufoxDriver
-session = BrowserSession(driver=CamoufoxDriver(locale="fr-FR", humanize=True))
+session = BrowserSession(driver="patchright")  # only patchright supports attach
+session.attach("http://localhost:9222")
+session.close()  # disconnects only — your Chromium keeps running
 ```
 
-### nodriver — detectable surfaces
+`BrowserSession(capture=...)` controls what's saved when a flow step fails: `"screenshot"`
+(default), `"dom"`, or `"both"`. Paths and cleanup: [docs/API.md](docs/API.md#capture-modes).
 
-Default paths are not synthetic. A small set of reads/polls still use
-`Runtime.callFunctionOn` because CDP exposes no equivalent:
+### Conformance
 
-| Surface | Mechanism | Why it stays |
-|---|---|---|
-| `input_value` | JS read of `.value` | CDP has no live-property accessor; `attrs["value"]` is the HTML attribute and diverges after typing. |
-| `set_checked` | JS read of `.checked` | Same — read before click avoids flipping an already-correct checkbox. |
-| `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
-| `evaluate` / `dom` | User-supplied JS | Intentional. |
+Real-browser check of every driver against a self-served fixture site: `packages/llm-browser-conformance` (separate package).
 
-These are reads — they dispatch no DOM events and don't trip `isTrusted`
-checks. Only a detector that fingerprints Runtime-domain CDP traffic itself
-would catch them.
-
-Opt-in escape hatches that **do** emit `isTrusted=false` (use sparingly):
-
-- `dispatch_event(locator, event)` — fires `new Event(...)`.
-- `click(locator, dispatch=True)` — JS `HTMLElement.click()` for overlay bypass.
-
-### camoufox — stealth defaults
-
-`CamoufoxDriver()` injects these kwargs unless the caller overrides them:
-
-| Default | Why |
-|---|---|
-| `humanize=True` | C++-level Bezier mouse paths; Playwright's linear interpolation is detectable. |
-| `block_webrtc=True` | WebRTC leaks the real IP behind HTTP proxies. |
-| `geoip=True` *(conditional)* | Injected only when `locale` is set without any of `geoip` / `timezone` / `geolocation` — aligns timezone + geolocation with the outgoing IP so locale/tz/IP/Accept-Language triangulate consistently. |
-
-Caveats:
-
-- `persistent_context=True` is always on (required for session reuse). If you rotate proxies between runs but reuse `user_data_dir`, cookies and storage link the sessions across IPs — rotate the user-data dir for fresh identities.
-- Pinning `locale` on an IP that doesn't match its region (e.g. `locale="fr-FR"` on a US IP) still misaligns — caller intent can't be inferred. Pin `timezone` and `geolocation` explicitly or use a matching proxy.
-
-## Known warnings
-
-Every browser launch prints one Node deprecation warning to stderr:
-
-```
-DeprecationWarning: `url.parse()` behavior is not standardized... (DEP0169)
-    at .../patchright/driver/package/lib/utilsBundleImpl/index.js:8:4476
+```bash
+cd packages/llm-browser-conformance && uv sync --all-extras
+uv run llm-browser-check                    # every installed driver
+uv run llm-browser-check --driver nodriver --json
 ```
 
-The call originates from patchright's vendored HTTP bundle (during CDP connect), not llm-browser. It is harmless and upstream-tracked; do not suppress it with `NODE_NO_WARNINGS=1` — it is the kind of signal we want surfaced if a future Node version turns it into an error. Confirmed on patchright 1.58.2 (latest as of writing).
-
-## Session methods
-
-| Method | Description |
-|--------|-------------|
-| `launch(url, headed)` | Launch Chrome and connect |
-| `attach(cdp_url)` | Connect to an already-running Chromium over CDP |
-| `launch_detached(url, headed)` | Spawn detached Chromium + auto-attach (multi-CLI safe) |
-| `stop_detached()` | Kill a detached Chromium spawned by `launch_detached` |
-| `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
-| `wait_until_stable(sel, quiet_ms, timeout_s)` | Wait for textContent to stop changing (streaming replies) |
-| `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
-| `find(selector)` | Find exactly one element (returns Playwright Locator) |
-| `find_all(selector)` | Find all matching elements |
-| `wait_for(selector, state, timeout)` | Wait for `attached` / `detached` / `visible` / `hidden`; returns `True`, or `False` on timeout — never raises |
-| `element_exists(selector)` | Check if element is present — alias for `wait_for(selector, "attached")` |
-| `pick(selector, value)` | Click list item matching text |
-| `dom(selector, max_depth)` | Cleaned HTML snippet |
-| `parse_elements(selector, extract)` | Extract structured data |
-| `take_screenshot()` | Screenshot to file |
-| `screenshot_bytes()` | Screenshot as PNG bytes, no file written |
-| `get_page()` | Raw Playwright Page |
-| `frame(selector)` | Enter iframe |
-| `wait_for_load_state(state)` | Wait for page load |
-| `latest_tab()` | Switch to newest tab |
+Run it after any change below `BrowserSession`. `FAIL` = contract violation, `skip` = API the driver does not implement, `xfail` = known gap listed in that package's README.

@@ -17,6 +17,11 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+)
 from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
 
@@ -25,7 +30,7 @@ from llm_browser.selectors import Selector
 
 CaptureMode = Literal["screenshot", "dom", "both"]
 
-WaitState = Literal["attached", "detached", "visible", "hidden"]
+WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
 
 class BaseStep(BaseModel):
@@ -182,16 +187,43 @@ class PressStep(BaseStep):
     key: str = Field(..., min_length=1)
 
 
-class WaitStep(SelectorStep):
-    """Wait until ``selector``'s text stops changing for ``quiet_ms``.
+def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
+    """A ``stable`` wait needs room for the settle window inside its budget.
 
-    Designed for streaming content (LLM chat replies, progressive lists);
-    page-level load events should use ``goto``'s ``wait_until`` arg instead.
+    ``TextSettled`` cannot confirm "held still for ``settle``" before
+    ``settle`` has passed, so a smaller ``timeout`` times out even on text
+    that never changed — a misleading failure for what is a misconfiguration.
+    """
+    if state == "stable" and settle >= timeout:
+        raise ValueError(
+            f"settle ({settle}ms) must be less than timeout ({timeout}ms) "
+            "for state 'stable'"
+        )
+
+
+class WaitForStep(SelectorStep):
+    """Poll until ``selector`` reaches ``state``, or fail the step.
+
+    The one wait: four states answer "is the element there yet" and ``stable``
+    answers "has its text stopped changing" — for streaming content (LLM chat
+    replies, progressive lists, a recalculating total). ``timeout`` is the
+    whole budget; ``interval`` is the nominal gap between polls, jittered;
+    ``settle`` is how long the text has to hold still, and applies to
+    ``stable`` only.
     """
 
-    action: Literal["wait"]
-    quiet_ms: int = 1500
-    timeout_s: float = 180.0
+    action: Literal["wait_for"]
+    state: WaitState = "attached"
+    timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
+    # Bounded here so a typo fails at flow load with a field-named error,
+    # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
+    interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
+    settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+
+    @model_validator(mode="after")
+    def _check_settle_budget(self) -> "WaitForStep":
+        check_settle_budget(self.state, self.settle, self.timeout)
+        return self
 
 
 class EvalStep(BaseStep):
@@ -229,29 +261,6 @@ class RunFlowStep(BaseStep):
         return self
 
 
-KNOWN_ACTIONS = frozenset(
-    {
-        "click",
-        "fill",
-        "type",
-        "select",
-        "check",
-        "pick",
-        "goto",
-        "wait",
-        "screenshot",
-        "read",
-        "parse",
-        "run-flow",
-        "dom",
-        "download",
-        "think",
-        "scroll",
-        "press",
-    }
-)
-
-
 def _step_discriminator(v: Any) -> str:
     action = v.get("action") if isinstance(v, dict) else getattr(v, "action", None)
     if action is None:
@@ -275,7 +284,7 @@ Step = Annotated[
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
-    | Annotated[WaitStep, Tag("wait")]
+    | Annotated[WaitForStep, Tag("wait_for")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),

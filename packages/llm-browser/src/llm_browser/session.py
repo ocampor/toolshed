@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from llm_browser import session_input, waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -13,6 +14,9 @@ from llm_browser.chrome import (
     spawn_detached_chromium,
 )
 from llm_browser.constants import (
+    DEFAULT_FIND_TIMEOUT_MS,
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
@@ -23,6 +27,7 @@ from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
+    check_settle_budget,
     PageProbe,
     SessionInfo,
     SessionResult,
@@ -79,7 +84,7 @@ class BrowserSession:
         self._info: SessionInfo | None = None
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
-        self._behavior_runtime: BehaviorRuntime = self.behavior.runtime()
+        self.behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
@@ -290,9 +295,9 @@ class BrowserSession:
     def get_page(self) -> Any:
         """Get the current page, connecting if needed.
 
-        Calls on the raw page/locator returned here BYPASS humanization —
-        only actions routed through ``execute_action(...)`` honor
-        ``Behavior.human()`` timing and mouse-path jitter.
+        Calls on the raw page returned here BYPASS humanization — only the
+        ``BrowserSession`` input methods honor ``Behavior.human()`` timing
+        and mouse-path jitter.
         """
         if self._page is None:
             self.connect()
@@ -350,6 +355,14 @@ class BrowserSession:
         self.driver.screenshot(self.get_page(), self._screenshot_path)
         return self._screenshot_path
 
+    def save_screenshot(self, path: Path) -> None:
+        """Screenshot to a caller-chosen path, leaving the session dir alone."""
+        self.driver.screenshot(self.get_page(), path)
+
+    def scroll(self, dx: int, dy: int) -> None:
+        """Scroll the page by a mouse-wheel delta."""
+        self.driver.scroll(self.get_page(), dx, dy)
+
     def screenshot_bytes(self) -> bytes:
         """PNG bytes of the current page, without writing into the session dir."""
         return self.driver.screenshot_bytes(self.get_page())
@@ -368,7 +381,7 @@ class BrowserSession:
         element = self.find(selector)
 
         def trigger() -> None:
-            self.driver.click(element)
+            session_input.click_element(self, element)
 
         return self.driver.expect_download(self.get_page(), trigger, output)
 
@@ -385,76 +398,77 @@ class BrowserSession:
         self.driver.goto(self.get_page(), target, wait_until)
 
     def find(
-        self, selector: Selector, state: str = "visible", timeout: int = 10_000
+        self,
+        selector: Selector,
+        state: WaitState = "visible",
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> Any:
-        """Find exactly one element. Raises ValueError if multiple match."""
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        element = expect_single(self.driver, locator, selector)
-        self.driver.wait_for_state(element, state, timeout)
-        return element
+        """Find exactly one element. Raises ValueError if multiple match.
+
+        Ambiguity is a mistake, not something to wait out, so it is checked
+        before the poll — otherwise a selector matching two elements burns the
+        whole budget and reports a misleading timeout. It is checked again
+        after, because the wait is what makes a match appear, and counting
+        never waits.
+        """
+        page = self.get_page()
+        expect_single(
+            self.driver, resolve_selector(self.driver, page, selector), selector
+        )
+        self.wait_for_element(selector, state=state, timeout=timeout)
+        return expect_single(
+            self.driver, resolve_selector(self.driver, page, selector), selector
+        )
 
     def find_all(
-        self, selector: Selector, state: str = "attached", timeout: int = 10_000
-    ) -> Any:
-        """Find all matching elements, waiting for at least one."""
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        self.driver.wait_for_state(self.driver.first(locator), state, timeout)
-        return locator
-
-    def wait_for(
         self,
         selector: Selector,
         state: WaitState = "attached",
-        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
-    ) -> bool:
-        """Wait for ``selector`` to reach ``state``; False on timeout, never raises."""
-        try:
-            locator = resolve_selector(self.driver, self.get_page(), selector)
-            self.driver.wait_for_state(self.driver.first(locator), state, timeout)
-            return True
-        except TimeoutError:
-            return False
-        except Exception as exc:
-            # patchright raises ``patchright._impl._errors.TimeoutError``, which
-            # does NOT inherit from the builtin, so a bare ``except TimeoutError``
-            # misses it and the "never raises" contract breaks for a missing
-            # element.
-            if type(exc).__name__ == "TimeoutError":
-                return False
-            raise
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> Any:
+        """Find all matching elements, waiting for at least one."""
+        self.wait_for_element(selector, state=state, timeout=timeout)
+        return resolve_selector(self.driver, self.get_page(), selector)
 
     def element_exists(
         self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
     ) -> bool:
-        return self.wait_for(selector, "attached", timeout)
+        """Whether ``selector`` shows up within ``timeout``; never raises."""
+        try:
+            self.wait_for_element(selector, state="attached", timeout=timeout)
+        except TimeoutError:
+            return False
+        return True
 
-    def wait_until_stable(
+    def wait_for_element(
         self,
         selector: Selector,
-        quiet_ms: int = 1500,
-        timeout_s: float = 180.0,
-        find_timeout: int | None = None,
-    ) -> str:
-        """Wait until ``selector``'s textContent stops changing for ``quiet_ms``.
+        *,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        interval: int = DEFAULT_POLL_INTERVAL_MS,
+        settle: int = DEFAULT_SETTLE_MS,
+    ) -> None:
+        """Poll until ``selector`` reaches ``state``; raise ``TimeoutError`` if not.
 
-        Returns the final text. Raises ``TimeoutError`` on timeout. Designed
-        for LLM chat UIs with token-streaming replies. On Playwright-family
-        drivers the stability loop runs in-page (single CDP call); other
-        drivers fall back to a Python poll.
+        The one wait: it polls from Python on a jittered cadence instead of
+        handing the wait to the driver, so no in-page script is injected and
+        the timeout carries the selector and state in its message. ``settle``
+        applies to ``state="stable"`` — how long the element's text has to
+        hold still, and has to fit inside ``timeout``. Use ``element_exists``
+        when you want a bool back.
         """
-        element = (
-            self.find(selector, timeout=find_timeout)
-            if find_timeout is not None
-            else self.find(selector)
+        check_settle_budget(state, settle, timeout)
+        waits.poll_for_state(
+            self.driver,
+            self.get_page(),
+            selector,
+            state,
+            timeout_ms=timeout,
+            interval_ms=interval,
+            rng=self.behavior_runtime.rng,
+            settle_ms=settle,
         )
-        text = self.driver.wait_for_stable_text(
-            element, quiet_ms=quiet_ms, timeout_ms=int(timeout_s * 1000)
-        )
-        if text is None:
-            raise TimeoutError(
-                f"wait_until_stable: {selector!r} did not stabilize within {timeout_s}s"
-            )
-        return text
 
     def wait_for_load_state(
         self, state: str = "domcontentloaded", timeout: int = 10_000
@@ -462,25 +476,75 @@ class BrowserSession:
         """Wait for page load state (domcontentloaded, load, networkidle)."""
         self.driver.wait_for_load(self.get_page(), state, timeout)
 
+    # --- Input ---
+    #
+    # Thin delegations to ``session_input``, which owns the resolve/pace/
+    # humanize decisions. Callers above the session use these, never the driver.
+
+    def click(
+        self,
+        selector: Selector,
+        *,
+        dispatch: bool = False,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.click(self, selector, dispatch=dispatch, timeout=timeout)
+
+    def fill(
+        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+    ) -> None:
+        session_input.fill(self, selector, value, timeout=timeout)
+
+    def type(
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        delay_ms: int = 0,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.type(self, selector, value, delay_ms=delay_ms, timeout=timeout)
+
+    def press(
+        self,
+        selector: Selector | None,
+        key: str,
+        *,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.press(self, selector, key, timeout=timeout)
+
+    def select_option(
+        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+    ) -> None:
+        session_input.select_option(self, selector, value, timeout=timeout)
+
+    def set_checked(
+        self,
+        selector: Selector,
+        checked: bool,
+        *,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        session_input.set_checked(self, selector, checked, timeout=timeout)
+
     def pick(self, selector: Selector, value: str) -> None:
         """Click the element matching text from a list of elements."""
         locator = self.find_all(selector)
         count = self.driver.count(locator)
         if count == 1:
-            self.driver.click(self.driver.first(locator))
+            session_input.click_element(self, self.driver.first(locator))
             return
         for i in range(count):
             item = self.driver.nth(locator, i)
             if self.driver.text_content(item) == value:
-                self.driver.click(item)
+                session_input.click_element(self, item)
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 
-    def frame(self, selector: Selector, timeout: int = 10_000) -> Any:
+    def frame(self, selector: Selector, timeout: int = DEFAULT_FIND_TIMEOUT_MS) -> Any:
         """Enter an iframe, returning the Frame."""
-        locator = resolve_selector(self.driver, self.get_page(), selector)
-        element = expect_single(self.driver, locator, selector)
-        self.driver.wait_for_state(element, "attached", timeout)
+        element = self.find(selector, state="attached", timeout=timeout)
         return self.driver.enter_frame(element)
 
     def parse_elements(

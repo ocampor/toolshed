@@ -1,4 +1,4 @@
-"""NodriverDriver.wait_for_state against hand-written async CDP doubles.
+"""NodriverDriver's DOM reads against hand-written async CDP doubles.
 
 `nodriver` is an optional extra and is NOT installed here — these tests also
 assert the wait paths never import it.
@@ -12,47 +12,11 @@ from typing import Any, Callable, Iterator
 import pytest
 
 from llm_browser.drivers.nodriver import NodriverDriver, NodriverLocator
+from llm_browser.models import WaitState
 from llm_browser.session import BrowserSession
+from tests.driver_fakes import DetachedElement, FakeElement, FakeTab
 
-
-class FakeElement:
-    def __init__(self, visible: bool) -> None:
-        self.visible = visible
-
-    async def apply(self, script: str) -> bool:
-        return self.visible
-
-
-class DetachedElement:
-    """A handle whose node the page already removed: CDP reads on it fail."""
-
-    async def apply(self, script: str) -> bool:
-        raise RuntimeError("Could not find node with given id")
-
-
-class FakeTab:
-    """Serves each queued query result in turn, repeating the last one."""
-
-    def __init__(self, results: list[Any]) -> None:
-        self.results = results
-        self.wait_for_calls: list[tuple[str, float]] = []
-
-    async def wait_for(self, selector: str, timeout: float) -> None:
-        self.wait_for_calls.append((selector, timeout))
-        if self.next_result() is None:
-            raise TimeoutError(selector)
-
-    async def query_selector_all(self, selector: str) -> list[Any]:
-        found = self.next_result()
-        if found is None:
-            return []
-        return found if isinstance(found, list) else [found]
-
-    async def select_all(self, selector: str) -> list[Any]:
-        return await self.query_selector_all(selector)
-
-    def next_result(self) -> Any:
-        return self.results.pop(0) if len(self.results) > 1 else self.results[0]
+POLL_MS = 1
 
 
 @pytest.fixture
@@ -69,74 +33,42 @@ def _locator(results: list[Any], selector: str | None = "#out") -> NodriverLocat
     return NodriverLocator(tab=tab, selector=selector, element=element)
 
 
-def test_attached_delegates_to_tab_wait_for(driver: NodriverDriver) -> None:
-    loc = _locator([FakeElement(True)])
-    driver.wait_for_state(loc, "attached", 50)
-    assert loc.tab.wait_for_calls == [("#out", 0.05)]
+# --- count: one bare query, no retry, no cache ---
 
 
-def test_detached_succeeds_once_element_disappears(driver: NodriverDriver) -> None:
+def test_count_never_reaches_the_retrying_query(driver: NodriverDriver) -> None:
+    loc = _locator([None])
+
+    assert driver.count(loc) == 0
+    assert loc.tab.select_all_calls == []
+    assert loc.tab.query_calls == ["#out"]
+
+
+def test_count_re_queries_instead_of_reading_a_cache(driver: NodriverDriver) -> None:
     loc = _locator([FakeElement(True), None])
-    driver.wait_for_state(loc, "detached", 500)
+    assert driver.count(loc) == 1
+
+    assert driver.count(loc) == 0
 
 
-def test_detached_times_out_while_element_stays(driver: NodriverDriver) -> None:
-    loc = _locator([FakeElement(True)])
-    with pytest.raises(TimeoutError, match="detached"):
-        driver.wait_for_state(loc, "detached", 20)
-
-
-def test_visible_succeeds_once_element_reports_visible(driver: NodriverDriver) -> None:
-    loc = _locator([None, FakeElement(True)])
-    driver.wait_for_state(loc, "visible", 500)
-
-
-def test_visible_times_out_while_element_is_not_rendered(
-    driver: NodriverDriver,
-) -> None:
-    loc = _locator([FakeElement(False)])
-    with pytest.raises(TimeoutError, match="visible"):
-        driver.wait_for_state(loc, "visible", 20)
-
-
-def test_hidden_succeeds_when_element_is_not_rendered(driver: NodriverDriver) -> None:
-    loc = _locator([FakeElement(False)])
-    driver.wait_for_state(loc, "hidden", 20)
-
-
-def test_hidden_succeeds_for_element_locator_without_selector(
-    driver: NodriverDriver,
-) -> None:
-    loc = _locator([FakeElement(False)], selector=None)
-    driver.wait_for_state(loc, "hidden", 20)
-
-
-def test_detached_times_out_for_element_locator_without_selector(
-    driver: NodriverDriver,
-) -> None:
-    """Without a selector there is nothing to re-query, so "gone" is never
-    observable — timing out is the honest answer, not an instant success."""
+def test_count_reads_the_handle_without_a_selector(driver: NodriverDriver) -> None:
     loc = _locator([FakeElement(True)], selector=None)
-    with pytest.raises(TimeoutError, match="element detached"):
-        driver.wait_for_state(loc, "detached", 20)
+
+    assert driver.count(loc) == 1
+    assert loc.tab.query_calls == []
 
 
-def test_hidden_succeeds_once_a_stale_handle_stops_answering(
+# --- is_visible: a single read of the element as it is now ---
+
+
+def test_is_visible_is_false_for_a_missing_selector(driver: NodriverDriver) -> None:
+    assert driver.is_visible(_locator([None])) is False
+
+
+def test_is_visible_is_false_once_a_stale_handle_stops_answering(
     driver: NodriverDriver,
 ) -> None:
-    loc = _locator([DetachedElement()], selector=None)
-    driver.wait_for_state(loc, "hidden", 20)
-
-
-def test_nth_keeps_the_selector_and_polls_its_own_index(
-    driver: NodriverDriver,
-) -> None:
-    shown, hidden = FakeElement(True), FakeElement(False)
-    parent = NodriverLocator(tab=FakeTab([[shown, hidden]]), selector="li")
-    item = driver.nth(parent, 1)
-    assert (item.selector, item.index, item.element) == ("li", 1, hidden)
-    with pytest.raises(TimeoutError, match="visible"):
-        driver.wait_for_state(item, "visible", 20)
+    assert driver.is_visible(_locator([DetachedElement()], selector=None)) is False
 
 
 def test_first_stays_lazy_so_the_selector_survives(driver: NodriverDriver) -> None:
@@ -144,14 +76,16 @@ def test_first_stays_lazy_so_the_selector_survives(driver: NodriverDriver) -> No
     assert driver.first(parent).selector == "#out"
 
 
-def test_wait_paths_never_import_nodriver(driver: NodriverDriver) -> None:
-    for state in ("attached", "detached", "visible", "hidden"):
-        loc = _locator([None])
-        try:
-            driver.wait_for_state(loc, state, 20)
-        except TimeoutError:
-            pass
-    assert sys.modules.get("nodriver") is None
+def test_nth_keeps_the_selector_and_reads_its_own_index(
+    driver: NodriverDriver,
+) -> None:
+    shown, hidden = FakeElement(True), FakeElement(False)
+    parent = NodriverLocator(tab=FakeTab([[shown, hidden]]), selector="li")
+
+    item = driver.nth(parent, 1)
+
+    assert (item.selector, item.index, item.element) == ("li", 1, hidden)
+    assert driver.is_visible(item) is False
 
 
 # --- session -> nodriver seam: no mock driver, the real NodriverDriver ---
@@ -167,29 +101,54 @@ def session(driver: NodriverDriver, tmp_path: Path) -> Callable[[list[Any]], Any
     return open_on
 
 
-def test_wait_for_detached_is_false_while_the_element_stays(
+def _wait(session: BrowserSession, state: WaitState, timeout: int = 500) -> None:
+    session.wait_for_element("#out", state=state, timeout=timeout, interval=POLL_MS)
+
+
+def test_wait_paths_never_import_nodriver(
     session: Callable[[list[Any]], BrowserSession],
 ) -> None:
-    assert session([FakeElement(True)]).wait_for("#out", "detached", 40) is False
+    states: list[WaitState] = ["attached", "detached", "visible", "hidden"]
+    for state in states:
+        try:
+            _wait(session([FakeElement(True)]), state, timeout=20)
+        except TimeoutError:
+            pass
+    assert sys.modules.get("nodriver") is None
 
 
-def test_wait_for_detached_is_true_once_the_node_is_removed(
+def test_detached_times_out_while_the_element_stays(
     session: Callable[[list[Any]], BrowserSession],
 ) -> None:
-    assert session([FakeElement(True), None]).wait_for("#out", "detached", 500) is True
+    with pytest.raises(TimeoutError, match="#out did not become detached"):
+        _wait(session([FakeElement(True)]), "detached", timeout=20)
 
 
-def test_wait_for_hidden_is_true_once_the_node_is_removed(
+def test_detached_returns_once_the_node_is_removed(
     session: Callable[[list[Any]], BrowserSession],
 ) -> None:
-    assert session([FakeElement(True), None]).wait_for("#out", "hidden", 500) is True
+    _wait(session([FakeElement(True), None]), "detached")
 
 
-def test_wait_for_visible_is_true_after_the_node_is_replaced(
+def test_hidden_returns_once_the_node_is_removed(
     session: Callable[[list[Any]], BrowserSession],
 ) -> None:
-    replacement = FakeElement(True)
-    assert session([FakeElement(False), replacement]).wait_for("#out", "visible", 500)
+    _wait(session([FakeElement(True), None]), "hidden")
+
+
+def test_visible_returns_after_the_node_is_replaced(
+    session: Callable[[list[Any]], BrowserSession],
+) -> None:
+    _wait(session([FakeElement(False), FakeElement(True)]), "visible")
+
+
+def test_a_wait_never_reaches_the_retrying_query(
+    session: Callable[[list[Any]], BrowserSession],
+) -> None:
+    s = session([None])
+    with pytest.raises(TimeoutError):
+        _wait(s, "attached", timeout=20)
+    assert s._page.select_all_calls == []
 
 
 def test_element_exists_is_false_for_a_missing_selector(

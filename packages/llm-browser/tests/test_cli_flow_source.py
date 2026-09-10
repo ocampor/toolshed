@@ -47,7 +47,7 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     session = MagicMock(spec=BrowserSession)
     session.session_dir = tmp_path
     session.behavior = Behavior.off()
-    session._behavior_runtime = session.behavior.runtime()
+    session.behavior_runtime = session.behavior.runtime()
     session.capture = "screenshot"
     session.driver = MagicMock()
     session.get_page.return_value = MagicMock()
@@ -193,7 +193,7 @@ def test_run_cli_flow_fills_the_retry_hint_with_the_flow_path(
         yaml.dump({"steps": [{"name": "boom", "action": "click", "selector": "#a"}]})
     )
     session = _mock_session(tmp_path)
-    session.find.side_effect = TimeoutError("element missing")
+    session.click.side_effect = TimeoutError("element missing")
 
     result = run_cli_flow(
         session,

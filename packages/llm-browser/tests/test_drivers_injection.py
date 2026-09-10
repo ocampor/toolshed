@@ -79,9 +79,6 @@ class FakeDriver(Driver):
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
         self._record("wait_for_load", state, timeout_ms)
 
-    def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None:
-        self._record("wait_for_state", state, timeout_ms)
-
     def text_content(self, locator: Any) -> str | None:
         return "txt"
 
@@ -93,6 +90,9 @@ class FakeDriver(Driver):
 
     def count(self, locator: Any) -> int:
         return 1
+
+    def is_visible(self, locator: Any) -> bool:
+        return True
 
     def first(self, locator: Any) -> Any:
         return locator
@@ -152,7 +152,6 @@ def test_find_uses_driver_resolve(tmp_path: Path) -> None:
     session.launch(headed=False)
     session.find("#btn")
     assert any(c[0] == "resolve" for c in driver.calls)
-    assert any(c[0] == "wait_for_state" for c in driver.calls)
 
 
 def test_string_driver_resolves_to_patchright(tmp_path: Path) -> None:

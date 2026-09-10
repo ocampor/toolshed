@@ -1,0 +1,11 @@
+# Negative case: `select` on something that is not a <select> must fail
+# clearly rather than silently doing nothing. The dropdown is opened first so
+# the failure is about the element's kind, not its visibility.
+steps:
+  - name: open
+    action: click
+    selector: "#dropdown-toggle"
+  - name: select
+    action: select
+    selector: "#dropdown"
+    value: b

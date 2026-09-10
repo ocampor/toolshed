@@ -1,12 +1,16 @@
 """Tests for the 12 minimal declarative actions."""
 
+import ast
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
+from llm_browser import actions, flows, steps
+from llm_browser import session as session_module
 from llm_browser.actions import execute_action
-from llm_browser.behavior import Jitter
+from llm_browser.behavior import Behavior, Jitter
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -22,7 +26,6 @@ from llm_browser.models import (
     ScrollStep,
     SelectStep,
     TypeStep,
-    WaitStep,
     validate_step,
 )
 from llm_browser.session import BrowserSession
@@ -43,71 +46,75 @@ def session(tmp_path: object) -> BrowserSession:
     return s
 
 
-# --- click ---
+@pytest.fixture
+def input_session(tmp_path: object) -> MagicMock:
+    """A session mock: input actions must not reach past it to a driver."""
+    s = MagicMock(spec=BrowserSession)
+    s.behavior = Behavior.off()
+    s.behavior_runtime = s.behavior.runtime()
+    return s
 
 
-def test_click(session: BrowserSession) -> None:
-    step = ClickStep(name="s", action="click", selector="#btn")
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.click.assert_called_once()
+# --- input actions ---
+#
+# These are one-liners onto the session, so they are checked against a session
+# mock: what an input step must do is call the right session method with the
+# step's own arguments. How that reaches the driver is
+# ``tests/test_session_input.py``.
 
 
-def test_click_dispatch(session: BrowserSession) -> None:
+def test_click(input_session: MagicMock) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", timeout=5_000)
+    execute_action(input_session, step)
+    input_session.click.assert_called_once_with(
+        step.selector, dispatch=False, timeout=5_000
+    )
+
+
+def test_click_dispatch(input_session: MagicMock) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", dispatch=True)
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.dispatch_event.assert_called_once_with("click")
-    locator.first.click.assert_not_called()
+    execute_action(input_session, step)
+    assert input_session.click.call_args.kwargs["dispatch"] is True
 
 
-# --- fill ---
-
-
-def test_fill(session: BrowserSession) -> None:
+def test_fill(input_session: MagicMock) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.fill.assert_called_once_with("hello")
+    execute_action(input_session, step)
+    input_session.fill.assert_called_once_with(
+        step.selector, "hello", timeout=step.timeout
+    )
 
 
-# --- type ---
-
-
-def test_type(session: BrowserSession) -> None:
+def test_type(input_session: MagicMock) -> None:
     step = TypeStep(
         name="s", action="type", selector="#search", value="query", delay=50
     )
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.type.assert_called_once_with("query", delay=50)
+    execute_action(input_session, step)
+    input_session.type.assert_called_once_with(
+        step.selector, "query", delay_ms=50, timeout=step.timeout
+    )
 
 
-# --- select ---
-
-
-def test_select(session: BrowserSession) -> None:
+def test_select(input_session: MagicMock) -> None:
     step = SelectStep(name="s", action="select", selector="#dropdown", value="opt2")
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.select_option.assert_called_once_with("opt2")
+    execute_action(input_session, step)
+    input_session.select_option.assert_called_once_with(
+        step.selector, "opt2", timeout=step.timeout
+    )
 
 
-# --- check ---
-
-
-def test_check(session: BrowserSession) -> None:
+def test_check(input_session: MagicMock) -> None:
     step = CheckStep(name="s", action="check", selector="#cb")
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.check.assert_called_once()
+    execute_action(input_session, step)
+    input_session.set_checked.assert_called_once_with(
+        step.selector, True, timeout=step.timeout
+    )
 
 
-def test_uncheck(session: BrowserSession) -> None:
+def test_uncheck(input_session: MagicMock) -> None:
     step = CheckStep(name="s", action="check", selector="#cb", checked=False)
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.uncheck.assert_called_once()
+    execute_action(input_session, step)
+    assert input_session.set_checked.call_args.args[1] is False
 
 
 # --- pick ---
@@ -116,7 +123,6 @@ def test_uncheck(session: BrowserSession) -> None:
 def test_pick(session: BrowserSession) -> None:
     locator = MagicMock()
     locator.count.return_value = 2
-    locator.first.wait_for.return_value = None
     item1 = MagicMock()
     item1.text_content.return_value = "Apple"
     item2 = MagicMock()
@@ -370,17 +376,18 @@ def test_download_requires_path() -> None:
 # --- press ---
 
 
-def test_press_on_selector(session: BrowserSession) -> None:
+def test_press_on_selector(input_session: MagicMock) -> None:
     step = PressStep(name="s", action="press", selector="#box", key="Enter")
-    execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.first.press.assert_called_once_with("Enter")
+    execute_action(input_session, step)
+    input_session.press.assert_called_once_with(
+        step.selector, "Enter", timeout=step.timeout
+    )
 
 
-def test_press_focused(session: BrowserSession) -> None:
+def test_press_focused(input_session: MagicMock) -> None:
     step = PressStep(name="s", action="press", key="Enter")
-    execute_action(session, step)
-    session._page.keyboard.press.assert_called_once_with("Enter")  # type: ignore[union-attr]
+    execute_action(input_session, step)
+    assert input_session.press.call_args.args[0] is None
 
 
 def test_press_requires_key() -> None:
@@ -391,22 +398,6 @@ def test_press_requires_key() -> None:
 
 
 # --- wait ---
-
-
-def test_wait(session: BrowserSession) -> None:
-    """``wait`` polls a selector until its text stops changing for ``quiet_ms``."""
-    from llm_browser.actions import TextResult
-
-    # The Playwright-family driver resolves stability in-page via
-    # locator.evaluate(); mock its return.
-    locator = _single_locator()
-    locator.first.evaluate.return_value = "done"
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
-
-    step = WaitStep(name="s", action="wait", selector="#reply", quiet_ms=5, timeout_s=5)
-    result = execute_action(session, step)
-    assert isinstance(result, TextResult)
-    assert result.text == "done"
 
 
 # --- no action ---
@@ -463,10 +454,12 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
 
 def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=30_000)
+    wait = MagicMock()
+    session.wait_for_element = wait  # type: ignore[method-assign]
+
     execute_action(session, step)
-    locator = session._page.locator.return_value  # type: ignore[union-attr]
-    # find() calls wait_for on the first locator with the given timeout
-    locator.first.wait_for.assert_called_with(state="visible", timeout=30_000)
+
+    wait.assert_called_once_with("#btn", state="visible", timeout=30_000)
 
 
 # --- scroll ---
@@ -516,3 +509,59 @@ def test_scroll_pauses_between_ticks(
 def test_unknown_action_raises() -> None:
     with pytest.raises(ValidationError):
         validate_step({"name": "s", "action": "nonexistent"})
+
+
+# --- layering ---
+
+
+# Every driver method that drives the page from a policy decision — humanized
+# or plain, trusted or dispatched. Reading one of these off a driver outside
+# ``session_input`` is a second copy of that decision.
+DRIVER_INPUT_METHODS = frozenset(
+    {
+        "click",
+        "fill",
+        "type",
+        "press",
+        "press_focused",
+        "select_option",
+        "set_checked",
+        "dispatch_event",
+        "humanized_click",
+        "humanized_type",
+    }
+)
+
+
+def driver_attributes(module: object) -> list[ast.Attribute]:
+    tree = ast.parse(Path(module.__file__).read_text())  # type: ignore[attr-defined]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr == "driver"
+    ]
+
+
+@pytest.mark.parametrize("module", [actions, steps, flows])
+def test_the_layers_above_the_session_never_touch_the_driver(module: object) -> None:
+    """steps -> actions -> session -> driver. An action that reaches for
+    ``session.driver`` skips the session's pacing and humanization, so the
+    layering is asserted on the source itself rather than left to review."""
+    reads = driver_attributes(module)
+    assert reads == [], [ast.unparse(node) for node in reads]
+
+
+def test_only_session_input_drives_the_page() -> None:
+    """``session.py`` may hold the driver — it owns the lifecycle — but the
+    input primitives are ``session_input``'s alone. A second call site is a
+    second humanized-vs-plain decision, and it drifts."""
+    tree = ast.parse(Path(session_module.__file__).read_text())
+    calls = [
+        ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in DRIVER_INPUT_METHODS
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "driver"
+    ]
+    assert calls == []

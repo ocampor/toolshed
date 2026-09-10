@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Visible</title>
+<button id="btn" style="display:none">Ready</button>
+<span id="invisible" style="visibility:hidden">invisible</span>
+<span id="transparent" style="opacity:0">transparent</span>
+<!-- #invisible and #transparent are decoys: they must not make a #btn wait succeed -->
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  setTimeout(() => {
+    document.getElementById("btn").style.display = "inline-block";
+  }, delay);
+</script>
