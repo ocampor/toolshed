@@ -91,9 +91,11 @@ VISIBILITY_SCRIPT = "(el) => el.offsetParent !== null || el.getClientRects().len
 class NodriverLocator:
     """Handle for a nodriver selector resolution.
 
-    Carries a `selector` (re-queried on every use, so a removed or replaced
-    node is seen) and/or a pre-resolved `element` (from nth/all). `index`
-    picks the match a re-query refers to.
+    Carries a `selector` and/or a pre-resolved `element` (from nth/all);
+    `index` picks the match a re-query refers to. `query` re-reads the DOM
+    every time and caches nothing, so waits and counts see a removed or
+    replaced node; `resolve_element` caches its lookup in `element`, so the
+    input paths keep driving the handle they first resolved.
     """
 
     tab: Any

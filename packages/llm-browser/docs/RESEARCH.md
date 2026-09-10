@@ -20,7 +20,7 @@ attach" = can it attach to *our* already-running warmed Chrome over LAN.
 
 | Tool | What it is | LLM drive | Stealth model | HITL | CDP attach | License / maturity |
 |---|---|---|---|---|---|---|
-| **llm-browser** (ours) | Python library | Steps (YAML) | Injects JS on `read`/`parse`/`dom`/probe; CDP-synthetic input | `human_needed` flag, no resume | Yes (`connect_over_cdp`) | Private; 606 tests, no real-browser test |
+| **llm-browser** (ours) | Python library | Steps (YAML) | Injects JS on `read`/`parse`/`dom`/probe; CDP-synthetic input | `human_needed` flag, no resume | Yes (`connect_over_cdp`) | Private; test count in CI, no real-browser test |
 | **browser-api** (ours) | FastAPI + MCP | Steps (15 tools, no click/fill/type outside a flow) | Inherits llm-browser | `human_needed` + `vnc_url` + polling | Attach-only, never launches | Private; 104 tests, no live-browser test |
 | [Playwright MCP](https://github.com/microsoft/playwright-mcp) | MCP server + Chrome extension | Steps (~24 tools) | Zero stealth by design; `browser_snapshot` runs an [injected script](https://github.com/microsoft/playwright/blob/main/packages/injected/src/ariaSnapshot.ts) | None first-class | **Yes** — `--cdp-endpoint` | Apache-2.0, $0; 37.0k★, v0.0.80 |
 | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | MCP server, Google-maintained | Steps | None; Puppeteer-based | None | **Yes** — `--browserUrl` | Apache-2.0, $0; 51.6k★, v1.9.0 |

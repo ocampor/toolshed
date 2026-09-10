@@ -120,13 +120,7 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized click — rule 2. Default falls back to plain click(), which
-        is right for a driver whose native click is already humanized —
-        nodriver, whose ``element.click`` moves a real cursor over CDP, is the
-        only one that keeps it. The Playwright family, Camoufox included,
-        overrides this in ``playwright_base`` to draw the path itself; see
-        ``behavior.humanized_click``.
-        """
+        """Humanized click — rule 2; the default fits a natively humanized click."""
         self.click(locator)
 
     def humanized_type(
@@ -137,9 +131,7 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized type — rule 2. Default falls back to plain type().
-        Override to use behavior.humanized_type or a driver-native path.
-        """
+        """Humanized type — rule 2; the default fits a natively humanized type."""
         self.type(locator, text)
 
     @abstractmethod
@@ -156,8 +148,7 @@ class Driver(ABC):
 
     @abstractmethod
     def dispatch_event(self, locator: Any, event: str) -> None:
-        """Fire a synthetic (``isTrusted=false``) DOM event — the opt-in
-        escape hatch from rule 2, for overlays real input cannot reach."""
+        """Fire a synthetic (``isTrusted=false``) DOM event — rule 2's escape hatch."""
 
     # --- Navigation / waiting ---
 
@@ -169,33 +160,22 @@ class Driver(ABC):
         """Block until the page reaches ``state`` — the only page-level wait."""
 
     def scroll(self, page: Any, dx: int, dy: int) -> None:
-        """Scroll the page by a mouse-wheel delta.
-
-        Subclasses backed by a wheel-capable API override this.
-        """
+        """Scroll the page by a mouse-wheel delta."""
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
     @abstractmethod
     def is_visible(self, locator: Any) -> bool:
-        """Whether the first match is rendered right now; False if nothing matches.
+        """Whether the first match is rendered right now; ``False`` for a miss.
 
-        A single read, including for a handle whose node the page already
-        detached. It is what the Python-side explicit wait in
-        ``llm_browser.waits`` polls. Abstract rather than defaulted because
-        there is no honest fallback — a driver that skipped it would raise
-        past ``execute_action``'s timeout-or-ValueError contract and abort the
-        flow instead of failing the step.
+        Abstract rather than defaulted: a driver that skipped it would raise
+        past the step's timeout-or-``ValueError`` contract and abort the flow.
         """
 
     # --- Read / capture ---
 
     @abstractmethod
     def text_content(self, locator: Any) -> str | None:
-        """The first match's text as it reads right now; ``None`` for a miss.
-
-        The ``stable`` wait polls this, so it may not wait for an element to
-        turn up — "nothing there" is an answer, not a reason to block.
-        """
+        """The first match's text as it reads right now; ``None`` for a miss."""
 
     @abstractmethod
     def input_value(self, locator: Any) -> str: ...
@@ -205,13 +185,7 @@ class Driver(ABC):
 
     @abstractmethod
     def count(self, locator: Any) -> int:
-        """How many elements match *right now* — no waiting, no cache.
-
-        A poll tick that blocks inside the driver makes the poll loop's own
-        deadline meaningless, and one that reads a cache never sees the page
-        change. A caller that needs the element to be there waits for it
-        first, through ``BrowserSession.wait_for_element``.
-        """
+        """How many elements match *right now* — no waiting, no cache."""
 
     @abstractmethod
     def first(self, locator: Any) -> Any:
@@ -219,8 +193,7 @@ class Driver(ABC):
 
     @abstractmethod
     def nth(self, locator: Any, index: int) -> Any:
-        """The ``index``-th match, carrying selector and index so a wait can
-        re-resolve this same match after the page swaps the node."""
+        """The ``index``-th match, re-resolvable after the page swaps the node."""
 
     @abstractmethod
     def all(self, locator: Any) -> list[Any]: ...

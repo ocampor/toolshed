@@ -46,7 +46,7 @@ patchright | camoufox | nodriver
 - **patchright / camoufox / nodriver** — concrete drivers; same five-rule contract, different backend.
 - **session_input.py** — one click/fill/type/press/select_option/set_checked path every action and `BrowserSession` method shares; `tests/test_actions.py` asserts `actions.py`/`steps.py`/`flows.py` never touch `session.driver`.
 
-Waiting: the five `wait_for` states are documented [below](#waiting) and in [FLOWS.md](FLOWS.md#waiting).
+Waiting: the five `wait_for` states are documented in [FLOWS.md](FLOWS.md#waiting).
 Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (details: [docs/DRIVERS.md](docs/DRIVERS.md)).
 
 ## Install
@@ -118,15 +118,8 @@ schemas, the `parse` action) and the full session-method table.
 ## Waiting
 
 `wait_for_element` / the `wait_for` step is the one wait — everything else (`find`, `find_all`,
-`frame`, `element_exists`) goes through it too, so a state means the same thing everywhere.
-
-| State | True when | Use for |
-|---|---|---|
-| `attached` (default) | element is in the DOM | element about to appear |
-| `detached` | element is gone from the DOM | a modal/overlay that will close |
-| `visible` | element is rendered | wait before interacting |
-| `hidden` | element is not rendered | wait for a spinner/overlay to hide |
-| `stable` | element's text hasn't changed for `settle` ms | streaming replies, a recalculating total |
+`frame`, `element_exists`) goes through it too, so a state means the same thing everywhere. The
+five states and their parameters: [FLOWS.md → Waiting](FLOWS.md#waiting).
 
 ## Drivers
 
@@ -136,9 +129,10 @@ schemas, the `parse` action) and the full session-method table.
 | `camoufox` | C++-level fingerprint spoofing | Firefox; stealth defaults on; the only viable **headless** option against strict detectors |
 | `nodriver` | all writes go through trusted `Input.dispatch*` CDP events | Chromium via raw CDP; a few reads use JS (see docs/DRIVERS.md) |
 
-Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance: see
-`packages/llm-browser-conformance`. Full anti-bot landscape, camoufox defaults and nodriver's
-detectable surfaces: [docs/DRIVERS.md](docs/DRIVERS.md). Build-vs-buy investigation of the 2026
+Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance
+suite: `packages/llm-browser-conformance` (separate package, in progress). Full anti-bot
+landscape, camoufox defaults and nodriver's detectable surfaces:
+[docs/DRIVERS.md](docs/DRIVERS.md). Build-vs-buy investigation of the 2026
 landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Attach, daemon, and capture modes

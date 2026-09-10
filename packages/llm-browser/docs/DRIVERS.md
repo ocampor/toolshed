@@ -6,9 +6,10 @@ landscape and each driver's fine print.
 ## Anti-bot landscape
 
 `Behavior.human()` is **timing-only** humanization: inter-key gaps, click jitter, mouse paths,
-pre/post action pauses. It only applies to actions routed through `execute_action(...)` (i.e.
-YAML flow steps or `session.pick`/`goto`/`find`-based interactions). Calls on the raw
-`Page`/`Locator` returned by `session.get_page()` bypass humanization.
+pre/post action pauses. It applies to every `BrowserSession` input method — `click`, `fill`,
+`type`, `press`, `select_option`, `set_checked`, `pick`, `download_file` — and so to the flow
+steps built on them: `session.click("#go")` gets the same humanization a `click` step gets.
+Calls on a raw driver locator or page (`session.find(...)`, `session.get_page()`) bypass it.
 
 Timing humanization does NOT modify runtime JS fingerprints (navigator, WebGL, canvas, CDP
 detection). Those are the driver's job:
@@ -46,7 +47,7 @@ are the parts a new backend gets wrong: which methods may block on the DOM (only
 events, which methods may run JS, that `first`/`nth` stay re-resolvable, and that timeouts are
 milliseconds and raise the builtin `TimeoutError`. `tests/test_driver_contract.py` checks the
 read rules against each driver with fakes; add yours to its fixture. Conformance suite:
-`packages/llm-browser-conformance`.
+`packages/llm-browser-conformance` (separate package, in progress).
 
 ## nodriver — detectable surfaces
 

@@ -295,9 +295,9 @@ class BrowserSession:
     def get_page(self) -> Any:
         """Get the current page, connecting if needed.
 
-        Calls on the raw page/locator returned here BYPASS humanization —
-        only actions routed through ``execute_action(...)`` honor
-        ``Behavior.human()`` timing and mouse-path jitter.
+        Calls on the raw page returned here BYPASS humanization — only the
+        ``BrowserSession`` input methods honor ``Behavior.human()`` timing
+        and mouse-path jitter.
         """
         if self._page is None:
             self.connect()

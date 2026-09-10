@@ -107,11 +107,14 @@ the session dir yourself to start fresh.
 |--------|-------------|
 | `launch(url, headed)` | Launch Chrome and connect |
 | `attach(cdp_url)` | Connect to an already-running Chromium over CDP |
+| `attach_to_tab(cdp_url, target_id)` | Attach to one existing tab, addressed by its CDP target id |
 | `launch_detached(url, headed)` | Spawn detached Chromium + auto-attach (multi-CLI safe) |
 | `stop_detached()` | Kill a detached Chromium spawned by `launch_detached` |
 | `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
+| `connect()` | Reconnect to the browser recorded in the session state and return its page |
+| `status()` | Whether a session is `open` or `closed`, with its CDP URL and target id |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
-| `find(selector)` | Find exactly one element (returns Playwright Locator) |
+| `find(selector)` | Find exactly one element (returns the driver's locator: a Playwright `Locator` on patchright/camoufox, a `NodriverLocator` on nodriver) |
 | `click(selector, dispatch=False)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
 | `fill(selector, value)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` |
 | `type(selector, value, delay_ms=0)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter |
@@ -124,12 +127,15 @@ the session dir yourself to start fresh.
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
+| `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
+| `evaluate(target, script)` | Run JS against a page or locator |
 | `download_file(selector, output_path)` | Trigger a download and save it to `output_path` |
 | `take_screenshot()` | Screenshot to file |
 | `save_screenshot(path)` | Screenshot to an explicit path |
 | `screenshot_bytes()` | Screenshot as PNG bytes, no file written |
+| `take_dom_snapshot()` | Sanitized HTML of the current page to `<session_dir>/dom.html` |
 | `scroll(dx, dy)` | Mouse-wheel scroll |
-| `get_page()` | Raw Playwright Page |
+| `get_page()` | Raw driver page (a Playwright `Page` on patchright/camoufox, a nodriver `Tab` on nodriver) |
 | `frame(selector)` | Enter iframe |
 | `wait_for_load_state(state)` | Wait for page load |
 | `latest_tab()` | Switch to newest tab |

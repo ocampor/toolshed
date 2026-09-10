@@ -6,8 +6,8 @@ until the deadline. Deliberately *not* built on a driver-native wait: on the
 Playwright family that runs an injected in-page script, which is the
 fingerprint an explicit wait is meant to avoid. Every primitive it calls
 answers immediately — ``count``, ``is_visible`` and ``text_content`` are
-single reads — because
-a tick that waited inside the driver would blow past this loop's deadline.
+single reads — because a tick that waited inside the driver would blow past
+this loop's deadline.
 """
 
 import random

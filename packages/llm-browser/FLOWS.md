@@ -75,13 +75,6 @@ One step covers both kinds of waiting: element presence and text stability.
   state: stable
   settle: 800
   timeout: 20000
-
-- name: cart total stops animating
-  selector: ".cart .total"
-  action: wait_for
-  state: stable
-  settle: 1500
-  timeout: 30000
 ```
 
 ### Pacing actions (no selector)
