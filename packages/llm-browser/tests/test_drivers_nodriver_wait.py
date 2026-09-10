@@ -36,6 +36,7 @@ class FakeTab:
     def __init__(self, results: list[Any]) -> None:
         self.results = results
         self.wait_for_calls: list[tuple[str, float]] = []
+        self.select_all_timeouts: list[float] = []
 
     async def wait_for(self, selector: str, timeout: float) -> None:
         self.wait_for_calls.append((selector, timeout))
@@ -48,7 +49,8 @@ class FakeTab:
             return []
         return found if isinstance(found, list) else [found]
 
-    async def select_all(self, selector: str) -> list[Any]:
+    async def select_all(self, selector: str, timeout: float = 10) -> list[Any]:
+        self.select_all_timeouts.append(timeout)
         return await self.query_selector_all(selector)
 
     def next_result(self) -> Any:
@@ -196,3 +198,34 @@ def test_element_exists_is_false_for_a_missing_selector(
     session: Callable[[list[Any]], BrowserSession],
 ) -> None:
     assert session([None]).element_exists("#missing", 40) is False
+
+
+def test_count_now_never_lets_select_all_retry(driver: NodriverDriver) -> None:
+    """`select_all`'s default timeout would stall a poll tick for ~10s."""
+    loc = _locator([None])
+
+    assert driver.count_now(loc) == 0
+    assert loc.tab.select_all_timeouts == [0]
+
+
+def test_count_keeps_its_waiting_semantics(driver: NodriverDriver) -> None:
+    loc = _locator([FakeElement(True)])
+
+    assert driver.count(loc) == 1
+    assert loc.tab.select_all_timeouts == [10]
+
+
+def test_count_now_re_queries_instead_of_reading_the_cache(
+    driver: NodriverDriver,
+) -> None:
+    loc = _locator([FakeElement(True), None])
+    assert driver.count(loc) == 1
+
+    assert driver.count_now(loc) == 0
+
+
+def test_count_now_falls_back_without_a_selector(driver: NodriverDriver) -> None:
+    loc = _locator([FakeElement(True)], selector=None)
+
+    assert driver.count_now(loc) == 1
+    assert loc.tab.select_all_timeouts == []

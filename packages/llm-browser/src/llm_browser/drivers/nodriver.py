@@ -34,7 +34,7 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
                             visibility API, and CDP has no visibility
                             predicate either. `is_visible` is the read the
                             Python-side explicit wait polls; `attached` /
-                            `detached` there go through `count`, a plain
+                            `detached` there go through `count_now`, a plain
                             DOM query with no Runtime traffic.
     * `evaluate` / `dom`  — arbitrary user-supplied JS. Inherently JS.
 
@@ -508,6 +508,21 @@ class NodriverDriver(Driver):
 
     def count(self, locator: Any) -> int:
         return len(self.run(self.resolve_all(locator)))
+
+    def count_now(self, locator: Any) -> int:
+        return len(self.run(self.query_now(locator)))
+
+    async def query_now(self, loc: NodriverLocator) -> list[Any]:
+        """``resolve_all`` without the wait or the cache.
+
+        nodriver's `select_all` retries internally until its own timeout
+        (10s by default) before conceding an empty match; `timeout=0` makes
+        "nothing matches yet" an answer rather than a stall. A locator with no
+        selector has nothing to re-query, so it falls back.
+        """
+        if loc.selector is None:
+            return await self.resolve_all(loc)
+        return list(await loc.tab.select_all(loc.selector, timeout=0))
 
     def first(self, locator: Any) -> Any:
         """Lazy while a selector is available, like Playwright's `.first`: the

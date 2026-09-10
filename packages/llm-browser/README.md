@@ -338,7 +338,7 @@ Default paths are not synthetic. A small set of reads/polls still use
 | `input_value` | JS read of `.value` | CDP has no live-property accessor; `attrs["value"]` is the HTML attribute and diverges after typing. |
 | `set_checked` | JS read of `.checked` | Same — read before click avoids flipping an already-correct checkbox. |
 | `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
-| `wait_for_state` / `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only the `visible`/`hidden` states pay this: `wait_for_element(..., state="attached")` goes through `count`, a plain DOM query. |
+| `wait_for_state` / `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only the `visible`/`hidden` states pay this: `wait_for_element(..., state="attached")` goes through `count_now`, a plain DOM query. |
 | `evaluate` / `dom` | User-supplied JS | Intentional. |
 
 These are reads — they dispatch no DOM events and don't trip `isTrusted`

@@ -196,6 +196,16 @@ class Driver(ABC):
     @abstractmethod
     def count(self, locator: Any) -> int: ...
 
+    def count_now(self, locator: Any) -> int:
+        """``count`` with no waiting: how many elements match *right now*.
+
+        A poll tick that blocks inside the driver makes the poll loop's own
+        deadline meaningless, so ``llm_browser.waits`` asks for this instead.
+        Drivers whose ``count`` retries internally override it; for the rest
+        counting is already instantaneous.
+        """
+        return self.count(locator)
+
     @abstractmethod
     def first(self, locator: Any) -> Any: ...
 

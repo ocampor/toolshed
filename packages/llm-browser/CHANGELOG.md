@@ -12,8 +12,8 @@
   <state> within <timeout>ms")` when the deadline passes. It never calls the
   driver's own `wait_for_state`: on the Playwright family that wait runs an
   injected in-page script, and a fixed 500 ms cadence is itself a fingerprint.
-  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
-  `Runtime.evaluate` on nodriver; `visible`/`hidden` by the new
+  `attached`/`detached` are answered by `driver.count_now` — a plain DOM query,
+  no `Runtime.evaluate` on nodriver; `visible`/`hidden` by the new
   `Driver.is_visible`, which is Playwright's `locator.is_visible()` and, on
   nodriver, the same `offsetParent`/`getClientRects` read `wait_for_state`
   already polls. The locator is re-resolved every tick, so a node the page
@@ -28,6 +28,14 @@
   a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
   with the selector/state/timeout message as its `data.message`. `optional:
   true` downgrades a never-appearing element to a skip.
+- `Driver.count_now(locator)` — `count` with no waiting, for callers that own
+  their own deadline. It defaults to `count`, and only `NodriverDriver`
+  overrides it: `count` there goes through `tab.select_all(selector)`, which
+  retries internally until nodriver's own 10s timeout before conceding an
+  empty match, so a poll tick against a never-appearing selector would stall
+  far past the caller's budget. `count_now` passes `timeout=0` and skips the
+  locator's element cache. `count`'s semantics are unchanged for every
+  existing caller.
 - `llm-browser wait-for --selector S [--state] [--timeout] [--interval]` — the
   same wait from the CLI; a timeout exits non-zero with the message, no
   traceback.

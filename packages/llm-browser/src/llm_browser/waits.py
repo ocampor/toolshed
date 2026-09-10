@@ -4,7 +4,9 @@ Shaped like Selenium's ``WebDriverWait.until`` — ask the cheapest driver
 primitive whether the state is reached, sleep a jittered interval, repeat
 until the deadline. Deliberately *not* built on ``Driver.wait_for_state``:
 on the Playwright family that runs an injected in-page script, which is the
-fingerprint an explicit wait is meant to avoid.
+fingerprint an explicit wait is meant to avoid. Every primitive it calls has
+to answer immediately — a tick that waits inside the driver would blow past
+this loop's own deadline — hence ``count_now`` rather than ``count``.
 """
 
 import random
@@ -21,11 +23,11 @@ StatePredicate = Callable[[Driver, Any], bool]
 
 
 def is_attached(driver: Driver, locator: Any) -> bool:
-    return driver.count(locator) > 0
+    return driver.count_now(locator) > 0
 
 
 def is_detached(driver: Driver, locator: Any) -> bool:
-    return driver.count(locator) == 0
+    return driver.count_now(locator) == 0
 
 
 def is_visible(driver: Driver, locator: Any) -> bool:
