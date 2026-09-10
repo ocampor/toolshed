@@ -193,6 +193,8 @@ Attributes: `textContent`, `value`, or any HTML attribute name. Set `path: <file
 
 ## Patterns
 
+Hard widgets — autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating ids — have worked, JavaScript-free YAML in [docs/FLOW_PATTERNS.md](docs/FLOW_PATTERNS.md).
+
 **Autocomplete** — `type` to trigger the dropdown, `pick` to select from it:
 
 ```yaml

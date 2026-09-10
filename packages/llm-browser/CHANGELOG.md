@@ -4,6 +4,7 @@
 
 ### Added
 
+- `docs/FLOW_PATTERNS.md` — JavaScript-free YAML for autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating-prefix ids and same-text controls.
 - `BrowserSession.save_screenshot(path)` and `BrowserSession.scroll(dx, dy)`.
 - `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
 
