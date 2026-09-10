@@ -25,6 +25,9 @@ detection). Those are the driver's job:
 Generic bot-test pages (bot.sannysoft.com, arh.antoinevastel.com) don't predict real-world
 outcomes against specific vendors — always probe the actual target.
 
+The 2026 measurements behind that advice — and the finding that attach mode voids patchright's
+patches — are in [docs/RESEARCH.md](RESEARCH.md).
+
 ## Headless caveat
 
 Chromium-based drivers (`patchright`, `nodriver`) leak `HeadlessChrome` in the User-Agent and

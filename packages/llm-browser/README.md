@@ -138,7 +138,8 @@ schemas, the `parse` action) and the full session-method table.
 
 Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance: see
 `packages/llm-browser-conformance`. Full anti-bot landscape, camoufox defaults and nodriver's
-detectable surfaces: [docs/DRIVERS.md](docs/DRIVERS.md).
+detectable surfaces: [docs/DRIVERS.md](docs/DRIVERS.md). Build-vs-buy investigation of the 2026
+landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Attach, daemon, and capture modes
 
