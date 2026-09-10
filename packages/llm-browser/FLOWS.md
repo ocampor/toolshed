@@ -167,9 +167,23 @@ piece that differs between consumers is the repository:
 
 A repository is anything with `async def get(self, ref: str) -> str`
 returning the flow's YAML text (`llm_browser.flow_repository.FlowRepository`),
-raising `FlowNotFoundError(ref)` when it has none.
-`FileFlowRepository(base_dir)` is the filesystem one: a relative ref reads
-under `base_dir`, an absolute ref is honoured as-is.
+raising `FlowNotFoundError(ref)` when it has none. Three ship with the
+package:
+
+- `FileFlowRepository(base_dir)` — the filesystem: a relative ref reads
+  under `base_dir`, an absolute ref is honoured as-is. Only a missing
+  path is a miss; a permission or I/O error propagates.
+- `DictFlowRepository(flows)` — flows already in hand, keyed by reference.
+- `LayeredFlowRepository(*layers)` — the first layer that has the
+  reference wins; a miss in every layer raises for the reference.
+
+A service that accepts child flows alongside a request layers them over
+its own store:
+
+```python
+repo = LayeredFlowRepository(DictFlowRepository(request.flows), store_repo)
+document = await resolve_flow_text(request.flow, repo)
+```
 
 ```python
 from llm_browser.flow_pipeline import resolve_flow

@@ -144,7 +144,12 @@ Loading a flow is three stages — `resolve_flow` (async, the only stage
 that does I/O: it inlines every `run-flow` reference through a
 `FlowRepository`), `load_flow_document` to validate the result into a
 `Flow`, then `run_flow` to execute it. The repository is the only piece
-that differs between consumers, so a flow never has to exist on disk.
+that differs between consumers, so a flow never has to exist on disk:
+`FileFlowRepository(base_dir)` reads from a directory,
+`DictFlowRepository(flows)` from flows already in hand, and
+`LayeredFlowRepository(*layers)` takes the first layer that has the
+reference — a service typically layers one request's flows over its own
+store, `LayeredFlowRepository(DictFlowRepository(request_flows), store)`.
 `redact` scrubs the listed values from the retry hint, error payload,
 outputs (a `FlowError` carries the ones collected before the failing
 step), and log records.

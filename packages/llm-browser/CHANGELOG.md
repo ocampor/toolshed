@@ -9,6 +9,14 @@
   `FlowNotFoundError(ref)`), plus `FileFlowRepository(base_dir)` which reads
   relative refs under `base_dir` and honours absolute ones. The repository is
   the only part of flow loading that differs between consumers.
+- `DictFlowRepository(flows)` — a mapping of reference → YAML text — and
+  `LayeredFlowRepository(*layers)`, which takes the first layer that has the
+  reference and raises `FlowNotFoundError(ref)` when none does. A consumer
+  that accepts child flows with a request layers them over its own store:
+  `LayeredFlowRepository(DictFlowRepository(request_flows), store)`. Only a
+  `FlowNotFoundError` falls through to the next layer; anything else
+  propagates, and `FileFlowRepository` reports a miss only for a missing path
+  (a permission or I/O error propagates).
 - `flow_pipeline.resolve_flow(ref, repo)` / `resolve_flow_text(text, repo)` —
   stage one, async and the only stage that does I/O. They parse the YAML and
   inline every `run-flow` reference as the child's document, fetching children
