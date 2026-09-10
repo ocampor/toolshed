@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Custom select</title>
+<button id="dropdown-toggle">Choose</button>
+<div id="dropdown" style="display:none"><div class="option" data-value="a">A</div><div class="option" data-value="b">B</div></div>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const dropdown = document.getElementById("dropdown");
+document.getElementById("dropdown-toggle").addEventListener("click", () => {
+  dropdown.style.display = "block";
+});
+dropdown.addEventListener("click", (e) => {
+  const option = e.target.closest(".option");
+  if (!option) return;
+  document.getElementById("result").textContent = option.dataset.value;
+  dropdown.style.display = "none";
+});
+</script>

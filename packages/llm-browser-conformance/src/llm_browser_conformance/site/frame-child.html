@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Frame Child</title>
+<button id="child-btn">Click me</button>
+<script>
+  document.getElementById("child-btn").addEventListener("click", () => {
+    document.getElementById("child-btn").textContent = "clicked";
+  });
+</script>

@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stable</title>
+<div id="total">0</div>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  // A chain rather than setInterval: the final tick has to land exactly on
+  // `delay`, or a browser that drops the last interval fire settles early and
+  // the timing bound below it becomes a lie.
+  const step = 200;
+  const ticks = Math.max(1, Math.round(delay / step));
+  const total = document.getElementById("total");
+  let count = 0;
+  const bump = () => {
+    count += 1;
+    total.textContent = String(count);
+    if (count < ticks) setTimeout(bump, step);
+  };
+  setTimeout(bump, step);
+</script>

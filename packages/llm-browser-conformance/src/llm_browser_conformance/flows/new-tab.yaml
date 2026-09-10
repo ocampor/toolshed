@@ -1,0 +1,5 @@
+# target=_blank: the session must stay on the page it was driving.
+steps:
+  - name: open
+    action: click
+    selector: "#external"

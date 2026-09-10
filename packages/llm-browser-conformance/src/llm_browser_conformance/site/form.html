@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Form</title>
+<input type="text" id="name">
+<input type="password" id="password">
+<select id="choice">
+  <option value="a">A</option>
+  <option value="b">B</option>
+  <option value="c">C</option>
+</select>
+<input type="checkbox" id="agree">
+<input type="hidden" id="secret" value="hidden-value">
+<button id="reveal">Reveal</button>
+<div id="second-form" style="display:none"><input type="text" id="extra"></div>
+<script>
+  document.getElementById("reveal").addEventListener("click", () => {
+    document.getElementById("second-form").style.display = "block";
+  });
+  const recordTrust = (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted", String(e.isTrusted));
+    }
+  };
+  document.addEventListener("click", recordTrust, true);
+  document.addEventListener("keydown", recordTrust, true);
+  document.addEventListener("input", (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted-input", String(e.isTrusted));
+    }
+  }, true);
+</script>

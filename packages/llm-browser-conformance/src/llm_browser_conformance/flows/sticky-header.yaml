@@ -1,0 +1,12 @@
+# The target sits 3000px down, under a fixed header that would swallow a click
+# landing at the top of the viewport.
+steps:
+  - name: click
+    action: click
+    selector: "#btn"
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

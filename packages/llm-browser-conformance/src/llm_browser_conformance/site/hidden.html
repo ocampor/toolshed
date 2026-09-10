@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hidden</title>
+<style>.gone { display: none; }</style>
+<div id="banner">Cookie banner</div>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  setTimeout(() => {
+    document.getElementById("banner").classList.add("gone");
+  }, delay);
+</script>

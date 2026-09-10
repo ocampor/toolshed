@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sticky header</title>
+<header id="header" style="position:fixed; top:0; left:0; right:0; height:80px; z-index:5; background:#ddd">Header</header>
+<div id="spacer" style="height:3000px"></div>
+<button id="btn">Click me</button>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const result = document.getElementById("result");
+document.getElementById("header").addEventListener("click", () => {
+  result.textContent = "header";
+});
+document.getElementById("btn").addEventListener("click", () => {
+  result.textContent = "clicked";
+});
+</script>

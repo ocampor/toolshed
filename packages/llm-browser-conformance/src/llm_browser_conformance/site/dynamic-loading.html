@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dynamic Loading</title>
+<button id="start">Start</button>
+<div id="loading" style="display:none">Loading...</div>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  document.getElementById("start").addEventListener("click", () => {
+    const loading = document.getElementById("loading");
+    loading.style.display = "block";
+    setTimeout(() => {
+      loading.remove();
+      const finish = document.createElement("div");
+      finish.id = "finish";
+      finish.textContent = "Hello World!";
+      document.body.appendChild(finish);
+    }, delay);
+  });
+</script>

@@ -8,6 +8,7 @@ Shared Python packages monorepo · Python 3.13+ · uv · hatchling · ruff · my
 - `packages/fxrates` — Exchange rate client (Frankfurter/ECB API)
 - `packages/llm-browser` — Playwright browser automation with declarative YAML flows
 - `packages/cf-access` — Cloudflare Access JWT validation middleware for Starlette/MCP origins
+- `packages/llm-browser-conformance` — Real-browser conformance suite for llm-browser drivers (`llm-browser-check`)
 
 ## Commands
 

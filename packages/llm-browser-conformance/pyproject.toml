@@ -1,0 +1,62 @@
+[project]
+name = "llm-browser-conformance"
+version = "0.1.0"
+description = "Real-browser conformance suite for llm-browser drivers."
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1",
+    "llm-browser",
+    # The suite answers "did my change break a driver?", so it has to run the
+    # driver versions llm-browser is developed against. These minors mirror
+    # packages/llm-browser/uv.lock; bump them together.
+    "patchright==1.58.*",
+]
+
+[project.optional-dependencies]
+camoufox = ["llm-browser[camoufox]", "camoufox==0.4.*"]
+nodriver = ["llm-browser[nodriver]", "nodriver==0.48.*"]
+
+[project.scripts]
+llm-browser-check = "llm_browser_conformance.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+llm-browser = { path = "../llm-browser", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.11",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_browser_conformance"]
+
+[tool.mypy]
+strict = true
+# llm-browser ships no py.typed, so point mypy at its source tree instead of
+# the editable install.
+mypy_path = "../llm-browser/src"
+
+[[tool.mypy.overrides]]
+module = "yaml_engine.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "patchright.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "camoufox.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nodriver.*"
+ignore_missing_imports = true

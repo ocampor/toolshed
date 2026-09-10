@@ -1,0 +1,7 @@
+params:
+  - path
+steps:
+  - name: download
+    action: download
+    selector: "#download"
+    path: "{{ path }}"

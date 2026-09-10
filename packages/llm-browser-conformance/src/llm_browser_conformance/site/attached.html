@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Attached</title>
+<p id="start">waiting</p>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  setTimeout(() => {
+    const late = document.createElement("div");
+    late.id = "late";
+    late.textContent = "late";
+    document.body.appendChild(late);
+  }, delay);
+</script>

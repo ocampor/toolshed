@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detached</title>
+<div class="modal">Modal <button id="close">Close</button></div>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  document.getElementById("close").addEventListener("click", () => {
+    setTimeout(() => {
+      document.querySelector(".modal").remove();
+    }, delay);
+  });
+</script>
