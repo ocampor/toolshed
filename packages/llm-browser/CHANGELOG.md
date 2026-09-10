@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `BrowserSession.wait_for_element(selector, *, state="attached", timeout=3000,
+  interval=500)` — an explicit wait in the shape of Selenium's
+  `WebDriverWait.until`: a Python poll loop that asks the cheapest driver
+  primitive whether the state is reached, sleeps `interval` ± 30 %
+  (`POLL_JITTER_RATIO`), and raises `TimeoutError("<selector> did not become
+  <state> within <timeout>ms")` when the deadline passes. It never calls the
+  driver's own `wait_for_state`: on the Playwright family that wait runs an
+  injected in-page script, and a fixed 500 ms cadence is itself a fingerprint.
+  `attached`/`detached` are answered by `driver.count` — a plain DOM query, no
+  `Runtime.evaluate` on nodriver; `visible`/`hidden` by the new
+  `Driver.is_visible`, which is Playwright's `locator.is_visible()` and, on
+  nodriver, the same `offsetParent`/`getClientRects` read `wait_for_state`
+  already polls. The locator is re-resolved every tick, so a node the page
+  swapped out is still seen to change state.
+
+  This sits beside `wait_for`, which stays as it was: `wait_for` hands the wait
+  to the driver and returns a `bool`, `wait_for_element` polls from Python and
+  raises with a message naming the selector, the state and the budget.
+- `wait_for` flow step (`state`, `timeout`, `interval`) — the explicit-wait
+  counterpart to `wait`, which waits for an element's *text* to stop changing.
+  A timeout fails the step the same way every other step failure is reported:
+  a `FlowError` carrying the screenshot, the DOM snapshot and `human_needed`,
+  with the selector/state/timeout message as its `data.message`. `optional:
+  true` downgrades a never-appearing element to a skip.
+- `llm-browser wait-for --selector S [--state] [--timeout] [--interval]` — the
+  same wait from the CLI; a timeout exits non-zero with the message, no
+  traceback.
+
+### Fixed
+
+- `FLOWS.md` described `wait` as a page-load-state wait with `state` /
+  `timeout` params and filed it under "Page actions". It has been the
+  text-stability wait (`quiet_ms` / `timeout_s`, selector required) for
+  several releases; the reference now says so and lists it with the other
+  element actions.
+
 ## 0.8.0 — 2026-09-09
 
 ### Added

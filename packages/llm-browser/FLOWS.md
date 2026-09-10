@@ -38,6 +38,8 @@ Require a `selector` to identify the target element.
 | `select` | `value` | Pick a `<select>` dropdown option |
 | `check` | `checked` (bool, default true) | Set checkbox state |
 | `pick` | `value` | Click the list item matching this text |
+| `wait_for` | `state` (`attached` default, `detached`, `visible`, `hidden`), `timeout` (ms, default 3000), `interval` (ms, default 500) | Poll until the element reaches `state`. Distinct from `wait`, which waits for an element's *text* to stabilise. On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip |
+| `wait` | `quiet_ms` (default 1500), `timeout_s` (default 180), `timeout` (ms, element lookup) | Wait until the element's text stops changing for `quiet_ms` — for streaming content (LLM replies, progressive lists). Returns the settled text |
 
 ### Page actions
 
@@ -46,7 +48,6 @@ No selector needed.
 | Action | Params | Description |
 |--------|--------|-------------|
 | `goto` | `url`, `wait_until` (default domcontentloaded) | Navigate to URL. Since 0.8.0 only `http://` and `https://` URLs are accepted: `file://`, `chrome://`, `javascript:` or a schemeless path (`fixtures/page.html`) fails the step with `url must be http or https`. There is no flow-level opt-out — serve the page over HTTP, or call `session.goto(url, allowed_schemes=("file",))` from Python |
-| `wait` | `state` (domcontentloaded, load, networkidle), `timeout` (ms) | Wait for page load state |
 | `screenshot` | `path` (optional) | Take a screenshot. Without `path`, writes to the session's default location and returns the path. With `path`, writes to that path (parent dirs created). |
 
 ### Pacing actions
