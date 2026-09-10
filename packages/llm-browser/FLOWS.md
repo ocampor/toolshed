@@ -84,12 +84,12 @@ disk mid-flow.
 
 | Action | Params | Description |
 |--------|--------|-------------|
-| `run-flow` | `flow` (path or loader key), `data` (dict) | Run another flow inline as one step. Resolved against the `subflows` mapping, then `subflow_loader`, then the source's `base_dir` — so a file-loaded flow resolves `flow` relative to its own directory (or absolute), while text with no `base_dir` never reaches the filesystem. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
+| `run-flow` | `flow` (reference or embedded flow), `data` (dict) | Run another flow inline as one step. `flow:` is either a reference the repository resolves (a path, for the CLI, relative to the parent flow's own directory — or absolute) or the child flow written inline as a mapping with its own `params:` / `steps:`. References are inlined before validation, so a `Flow` model always carries its children. `data` is templated, so the parent can pipe its own params into the child. The child's params are validated independently. |
 
 #### Sub-flow constraints
 
-- **Leaf-only**: a flow referenced by `run-flow` may not itself contain
-  `run-flow` steps. Nested sub-flows are rejected at child-load time.
+- **Leaf-only**: a child flow may not itself contain `run-flow` steps.
+  Nested sub-flows are rejected while resolving, before validation.
 - **`optional: true` on the `run-flow` step** swallows child failures —
   the parent advances to the next step instead of bubbling the error.
 - **`when:`** is honored on the `run-flow` step itself; if the
@@ -149,43 +149,58 @@ A step with `path:` still writes its file.
 
 ## Loading flows
 
-Getting from flow text to a result is three explicit stages, and every
-consumer walks them itself — the runner only ever sees a `Flow`:
+Getting from flow text to a result is three explicit stages, and the only
+piece that differs between consumers is the repository:
 
-1. **Source** — `llm_browser.flow_pipeline.FlowSource`, a pydantic model
-   holding the flow `text` and the `base_dir` a `run-flow` reference
-   resolves against. `FlowSource.from_path(path)` reads a file and takes
-   the file's directory as `base_dir`; `FlowSource.from_text(text,
-   base_dir=None)` takes text as it stands, and with no `base_dir` that
-   text can never reach the filesystem.
-2. **Validate** — `build_flow(source, *, subflows=None,
-   subflow_loader=None, selector_map=None)` parses the source's YAML and
-   returns a validated `Flow`. A `run-flow` reference is looked up in
-   the `subflows` mapping (ref → child YAML text) first, then handed to
-   `subflow_loader`, and only then read from the source's `base_dir`;
-   children are YAML too. Unparsable text — parent or child — raises
-   `ValueError("invalid flow yaml: ...")`.
-   `subflow_refs(source)` lists a flow's references without validating
-   it, so an async caller can fetch every child up front and pass them
-   as `subflows=`.
+1. **Resolve** — `llm_browser.flow_pipeline.resolve_flow(ref, repo)` /
+   `resolve_flow_text(text, repo)` (both `async`). They parse the YAML and
+   replace every `flow: <ref>` with the referenced child's document,
+   fetching the children concurrently and once per distinct reference.
+   This is the only stage that does I/O. Unparsable text — parent or
+   child — raises `ValueError("invalid flow yaml: ...")`; a child that
+   references a flow of its own is rejected here.
+2. **Validate** — `llm_browser.flows.load_flow_document(document, *,
+   selector_map=None)` returns a validated `Flow`. Pure: no I/O, no
+   context. `load_flow_text(text)` is the same stage for a flow that has
+   nothing to resolve; a leftover `flow: <ref>` fails validation.
 3. **Run** — `run_flow(session, flow, data, ...)`.
 
-```python
-from llm_browser.flow_pipeline import FlowSource, build_flow
-from llm_browser.flows import run_flow
+A repository is anything with `async def get(self, ref: str) -> str`
+returning the flow's YAML text (`llm_browser.flow_repository.FlowRepository`),
+raising `FlowNotFoundError(ref)` when it has none.
+`FileFlowRepository(base_dir)` is the filesystem one: a relative ref reads
+under `base_dir`, an absolute ref is honoured as-is.
 
-source = FlowSource.from_text(yaml_text)
-flow = build_flow(source, subflow_loader=flows_by_name.__getitem__)
+```python
+from llm_browser.flow_pipeline import resolve_flow
+from llm_browser.flow_repository import FileFlowRepository
+from llm_browser.flows import load_flow_document, run_flow
+
+document = await resolve_flow("login.yaml", FileFlowRepository(Path("flows")))
+flow = load_flow_document(document)
 result = run_flow(session, flow, {"user": "bot"})
 ```
 
-`llm_browser.flows.load_flow_text(text, ...)` and
-`llm_browser.flow_files.load_flow(path, ...)` are one-line wrappers over
-stages one and two for callers that do not need the source model.
+A flow that needs no repository at all writes its children inline:
+
+```yaml
+steps:
+  - name: sign-in
+    action: run-flow
+    data: {user: "{{ user }}"}
+    flow:
+      params: [user]
+      steps:
+        - name: fill-user
+          action: fill
+          selector: "#user"
+          value: "{{ user }}"
+```
 
 The CLI takes the flow as a file (`--flow PATH`), from stdin (`--flow
 -`), or as a string (`--flow-yaml TEXT`) — exactly one of them, for both
-`run` and `validate`:
+`run` and `validate`. A file resolves its references against its own
+directory; inline text uses the CWD.
 
 ```bash
 llm-browser run --flow-yaml "$(cat flow.yaml)" --data '{}'
@@ -195,11 +210,10 @@ cat flow.yaml | llm-browser validate --flow -
 ## Running flows
 
 `run_flow(session, flow, data, *, from_step=None, redact=())` takes a
-loaded `Flow` and never touches the filesystem;
-`llm_browser.flow_files.run_flow_file(session, path, data, *,
-selector_map=None, from_step=None, redact=())` loads a file and runs it,
-setting `retry_hint.flow_path`. `run_flow` leaves that field empty —
-re-run by passing the same model with `from_step=`.
+loaded `Flow` and never touches the filesystem. It leaves
+`retry_hint.flow_path` empty; a caller that loaded the flow from a file
+fills it in with `llm_browser.flows.with_flow_path(result, path)`. Re-run
+by passing the same model with `from_step=`.
 
 ## Redacting secrets
 

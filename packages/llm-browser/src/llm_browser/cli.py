@@ -1,23 +1,24 @@
 """CLI entry point for llm-browser."""
 
+import asyncio
 import json
 import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 import click
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
-from llm_browser.flow_files import with_flow_path
-from llm_browser.flow_pipeline import FlowSource, build_flow
-from llm_browser.flows import run_flow
+from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
+from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
+from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
-from llm_browser.selector_map import load_selector_map
 from llm_browser.models import Flow, FlowResult, RunFlowStep
+from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
 
 
@@ -319,8 +320,8 @@ def run(
         else None
     )
     data = json.loads(data_json)
-    source = flow_source_from_options(flow_path, flow_yaml)
-    flow = build_flow(source, selector_map=selector_map)
+    document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
+    flow = load_flow_document(document, selector_map=selector_map)
 
     def execute(target: BrowserSession) -> object:
         return run_cli_flow(
@@ -334,24 +335,25 @@ def run(
         _output(execute(session))
 
 
-def flow_source_from_options(
+async def resolve_flow_options(
     flow_path: str | None, flow_yaml: str | None
-) -> FlowSource:
-    """The one place the CLI turns its options into a flow source.
+) -> dict[str, Any]:
+    """The one place the CLI turns its options into a resolved flow document.
 
-    The CLI has a meaningful CWD, so text sources opt into sibling `run-flow`
-    refs; the library default keeps flow text off the filesystem.
+    A file resolves its `run-flow` refs against its own directory; inline text
+    has no directory of its own, so it uses the CWD.
     """
     if (flow_path is None) == (flow_yaml is None):
         raise click.UsageError("pass exactly one of --flow or --flow-yaml")
     if flow_path == "":
         raise click.UsageError("--flow needs a path, or - for stdin")
     if flow_yaml is not None:
-        return FlowSource.from_text(flow_yaml, base_dir=Path.cwd())
+        return await resolve_flow_text(flow_yaml, FileFlowRepository(Path.cwd()))
     if flow_path == "-":
         stdin = click.get_text_stream("stdin").read()
-        return FlowSource.from_text(stdin, base_dir=Path.cwd())
-    return FlowSource.from_path(str(flow_path))
+        return await resolve_flow_text(stdin, FileFlowRepository(Path.cwd()))
+    path = Path(str(flow_path))
+    return await resolve_flow(path.name, FileFlowRepository(path.parent))
 
 
 def file_path(flow_path: str | None) -> str | None:
@@ -455,11 +457,11 @@ def validate(
             if selector_map_path and Path(selector_map_path).exists()
             else None
         )
-        source = flow_source_from_options(flow_path, flow_yaml)
-        flow = build_flow(source, selector_map=selector_map)
+        document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
+        flow = load_flow_document(document, selector_map=selector_map)
     except (
         ValidationError,
-        FileNotFoundError,
+        FlowNotFoundError,
         _yaml.YAMLError,
         ValueError,
     ) as exc:

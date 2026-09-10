@@ -1,4 +1,4 @@
-"""Tests for flow loading, step execution, and the `run_flow_file` entry."""
+"""Tests for flow loading, step execution, and file-backed flow runs."""
 
 from pathlib import Path
 from typing import Any
@@ -6,10 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
-from pydantic import ValidationError
 
 from llm_browser.actions import SkippedResult
-from llm_browser.flow_files import load_flow, run_flow_file
+from llm_browser.flow_repository import FlowNotFoundError
 from llm_browser.flows import run_flow
 from llm_browser.models import (
     ClickStep,
@@ -19,8 +18,11 @@ from llm_browser.models import (
     FlowError,
     FlowSuccess,
     PageProbe,
+    RunFlowStep,
+    SubFlow,
 )
 from llm_browser.steps import execute_step, should_skip
+from tests.flow_helpers import load_flow_file, run_flow_file
 
 
 def _flow_data(**kwargs: object) -> FlowData:
@@ -40,12 +42,12 @@ def _write_flow(
     return path
 
 
-# --- load_flow ---
+# --- loading a flow file ---
 
 
 def test_load_flow(tmp_path: Path) -> None:
     path = _write_flow(tmp_path, [{"name": "step1"}, {"name": "step2"}])
-    flow = load_flow(path)
+    flow = load_flow_file(path)
     assert len(flow.steps) == 2
     assert flow.steps[0].name == "step1"
 
@@ -54,7 +56,7 @@ def test_load_flow_rejects_bad_yaml(tmp_path: Path) -> None:
     path = tmp_path / "flow.yaml"
     path.write_text("steps: [\n  - name: x\n")
     with pytest.raises(ValueError, match="invalid flow yaml"):
-        load_flow(path)
+        load_flow_file(path)
 
 
 # --- should_skip ---
@@ -139,7 +141,7 @@ def test_execute_step_template_substitution(mock_session: MagicMock) -> None:
     )
 
 
-# --- run_flow_file ---
+# --- running a flow file ---
 
 
 def test_run_completes_to_end(tmp_path: Path, mock_session: MagicMock) -> None:
@@ -390,7 +392,7 @@ def test_run_flow_rejects_nested_subflow(
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
+    with pytest.raises(ValueError, match="nested sub-flows are not allowed"):
         run_flow_file(mock_session, parent, {})
 
 
@@ -425,7 +427,7 @@ def test_run_flow_resolves_relative_to_parent_dir(
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
-    """`load_flow` resolves every `run-flow` reference at load time,
+    """Resolving pulls in every `run-flow` reference up front,
     so a child that itself contains a `run-flow` step is rejected
     before the browser ever launches."""
     _write_named_flow(
@@ -443,14 +445,12 @@ def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "bad.yaml"}],
     )
-    with pytest.raises(ValidationError, match="nested sub-flows are not allowed"):
-        load_flow(parent)
+    with pytest.raises(ValueError, match="nested sub-flows are not allowed"):
+        load_flow_file(parent)
 
 
 def test_load_flow_attaches_subflow_to_runflow_step(tmp_path: Path) -> None:
-    """After `load_flow`, every RunFlowStep has its child attached."""
-    from llm_browser.models import RunFlowStep, SubFlow
-
+    """After loading, every RunFlowStep carries its child as a model."""
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -461,11 +461,11 @@ def test_load_flow_attaches_subflow_to_runflow_step(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    flow = load_flow(parent)
+    flow = load_flow_file(parent)
     step = flow.steps[0]
     assert isinstance(step, RunFlowStep)
-    assert isinstance(step.subflow, SubFlow)
-    assert step.subflow.steps[0].name == "c1"
+    assert isinstance(step.flow, SubFlow)
+    assert step.flow.steps[0].name == "c1"
 
 
 def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
@@ -475,12 +475,12 @@ def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "oops", "action": "run-flow", "flow": "nonexistent.yaml"}],
     )
-    with pytest.raises(FileNotFoundError):
-        load_flow(parent)
+    with pytest.raises(FlowNotFoundError, match="nonexistent.yaml"):
+        load_flow_file(parent)
 
 
 def test_load_flow_resolves_refs_with_selector_map(tmp_path: Path) -> None:
-    """`load_flow(path, selector_map=...)` expands `ref:` into
+    """`load_flow_file(path, selector_map=...)` expands `ref:` into
     concrete `selector:` via pydantic's before-validator."""
     flow_file = _write_named_flow(
         tmp_path,
@@ -488,29 +488,26 @@ def test_load_flow_resolves_refs_with_selector_map(tmp_path: Path) -> None:
         [{"name": "click-x", "action": "click", "ref": "ui.button"}],
     )
     selector_map = {"ui.button": {"id": "the-button"}}
-    flow = load_flow(flow_file, selector_map=selector_map)
+    flow = load_flow_file(flow_file, selector_map=selector_map)
     step = flow.steps[0]
     # Selector survived validation as the resolved spec.
     assert step.selector.id == "the-button"  # type: ignore[union-attr]
 
 
 def test_load_flow_unknown_ref_fails(tmp_path: Path) -> None:
-    """Unknown ref raises ValidationError — caught at load time, not
-    deferred into a 'selector required' cascade."""
+    """Unknown ref raises at load time, not deferred into a
+    'selector required' cascade."""
     flow_file = _write_named_flow(
         tmp_path,
         "f.yaml",
         [{"name": "click-x", "action": "click", "ref": "ui.missing"}],
     )
-    with pytest.raises(ValidationError, match="not found in selector_map"):
-        load_flow(flow_file, selector_map={"ui.button": {"id": "x"}})
+    with pytest.raises(ValueError, match="not found in selector_map"):
+        load_flow_file(flow_file, selector_map={"ui.button": {"id": "x"}})
 
 
 def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
-    """Selector map reaches sub-flow children via the validation
-    context that RunFlowStep's after-validator threads through."""
-    from llm_browser.models import RunFlowStep
-
+    """The selector map expands refs in the embedded child too."""
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -521,11 +518,11 @@ def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    flow = load_flow(parent, selector_map={"ui.button": {"id": "the-button"}})
+    flow = load_flow_file(parent, selector_map={"ui.button": {"id": "the-button"}})
     runflow = flow.steps[0]
     assert isinstance(runflow, RunFlowStep)
-    assert runflow.subflow is not None
-    child_step = runflow.subflow.steps[0]
+    assert isinstance(runflow.flow, SubFlow)
+    child_step = runflow.flow.steps[0]
     assert child_step.selector.id == "the-button"  # type: ignore[union-attr]
 
 

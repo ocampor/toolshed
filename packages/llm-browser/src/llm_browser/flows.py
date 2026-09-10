@@ -1,16 +1,13 @@
-"""Stage three of the flow pipeline: execute a validated ``Flow``."""
+"""Stage two of the flow pipeline (a resolved document in, a validated ``Flow``
+out) and stage three (run it). Neither stage touches the filesystem — every
+``run-flow`` reference is inlined by :mod:`llm_browser.flow_pipeline` first."""
 
 from collections.abc import Iterable, Mapping
-from pathlib import Path
+from typing import Any
 
 from llm_browser.actions import ActionResult, ParsedResult, TextResult
 from llm_browser.constants import OUTPUT_ACTIONS
-from llm_browser.flow_pipeline import (
-    FlowSource,
-    SelectorMap,
-    SubflowLoader,
-    build_flow,
-)
+from llm_browser.flow_pipeline import parse_flow_yaml
 from llm_browser.models import (
     Flow,
     FlowData,
@@ -20,27 +17,56 @@ from llm_browser.models import (
     RetryHint,
     RunFlowStep,
     Step,
+    SubFlow,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
+from llm_browser.selector_map import SelectorMap, resolve_refs
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, resolve_step, should_skip
 
 
-def load_flow_text(
-    text: str,
+def load_flow_text(text: str) -> Flow:
+    return load_flow_document(parse_flow_yaml(text))
+
+
+def load_flow_document(
+    document: Mapping[str, Any],
     *,
-    subflow_loader: SubflowLoader | None = None,
     selector_map: SelectorMap | None = None,
-    subflows: Mapping[str, str] | None = None,
-    base_dir: Path | None = None,
 ) -> Flow:
-    """``build_flow`` over a text source; see :mod:`llm_browser.flow_pipeline`."""
-    return build_flow(
-        FlowSource.from_text(text, base_dir=base_dir),
-        subflows=subflows,
-        subflow_loader=subflow_loader,
-        selector_map=selector_map,
-    )
+    """``selector_map`` expands every ``ref:`` in the document — the parent's
+    steps and any embedded sub-flow's — before validation."""
+    if selector_map is not None:
+        document = expand_selector_refs(document, selector_map)
+    return Flow.model_validate(document)
+
+
+def expand_selector_refs(
+    document: Mapping[str, Any], selector_map: SelectorMap
+) -> dict[str, Any]:
+    steps = document.get("steps")
+    if not isinstance(steps, list):
+        return dict(document)
+    expanded = [expand_step_selector_refs(step, selector_map) for step in steps]
+    return {**document, "steps": expanded}
+
+
+def expand_step_selector_refs(step: Any, selector_map: SelectorMap) -> Any:
+    if not isinstance(step, dict):
+        return step
+    resolved = resolve_refs(step, selector_map)
+    child = resolved.get("flow")
+    if isinstance(child, Mapping):
+        resolved["flow"] = expand_selector_refs(child, selector_map)
+    return resolved
+
+
+def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:
+    """Fill ``retry_hint.flow_path`` for a flow that came from a file."""
+    if not isinstance(result, FlowError) or result.retry_hint is None:
+        return result
+    hint = result.retry_hint.model_copy(update={"flow_path": flow_path})
+    return result.model_copy(update={"retry_hint": hint})
 
 
 def run_flow(
@@ -149,14 +175,11 @@ def run_subflow(
     ``optional:`` failure comes back as a success carrying the child's
     partial outputs, so the parent advances without losing that work."""
     resolved = resolve_step(step, flow_data)
-    if not isinstance(resolved, RunFlowStep) or resolved.subflow is None:
-        raise RuntimeError(
-            f"RunFlowStep {resolved.name!r} has no `subflow` attached; "
-            "load the parent with `load_flow_text` or `load_flow`"
-        )
+    if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
+        raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
         return FlowSuccess(step=resolved.name)
-    result = run_loaded_flow(session, resolved.subflow, resolved.data)
+    result = run_loaded_flow(session, resolved.flow, resolved.data)
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(step=resolved.name, outputs=result.outputs)
     return result
