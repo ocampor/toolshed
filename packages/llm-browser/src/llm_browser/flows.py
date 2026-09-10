@@ -1,13 +1,16 @@
-"""Parse YAML flow text and execute the steps end-to-end."""
+"""Stage three of the flow pipeline: execute a validated ``Flow``."""
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
-
-import yaml
 
 from llm_browser.actions import ActionResult, ParsedResult, TextResult
 from llm_browser.constants import OUTPUT_ACTIONS
+from llm_browser.flow_pipeline import (
+    FlowSource,
+    SelectorMap,
+    SubflowLoader,
+    build_flow,
+)
 from llm_browser.models import (
     Flow,
     FlowData,
@@ -22,18 +25,6 @@ from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, resolve_step, should_skip
 
-SelectorMap = dict[str, dict[str, Any]]
-
-#: Maps a ``run-flow`` reference to the sub-flow's YAML text.
-SubflowLoader = Callable[[str], str]
-
-
-def parse_flow_yaml(text: str) -> Any:
-    try:
-        return yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise ValueError(f"invalid flow YAML: {exc}") from exc
-
 
 def load_flow_text(
     text: str,
@@ -43,37 +34,13 @@ def load_flow_text(
     subflows: Mapping[str, str] | None = None,
     base_dir: Path | None = None,
 ) -> Flow:
-    """``run-flow`` refs resolve eagerly against ``subflows``, then
-    ``subflow_loader``, then ``base_dir`` (``ValueError`` with none of them).
-    ``base_dir`` defaults to ``None``, so flow text never reads a child off
-    disk unless the caller opts in by naming a directory."""
-    return Flow.model_validate(
-        parse_flow_yaml(text),
-        context={
-            "subflow_loader": subflow_loader,
-            "selector_map": selector_map,
-            "subflows": subflows,
-            "base_dir": base_dir,
-        },
+    """``build_flow`` over a text source; see :mod:`llm_browser.flow_pipeline`."""
+    return build_flow(
+        FlowSource.from_text(text, base_dir=base_dir),
+        subflows=subflows,
+        subflow_loader=subflow_loader,
+        selector_map=selector_map,
     )
-
-
-def subflow_refs(text: str) -> list[str]:
-    """Refs without validating the steps, so a caller can fetch every child up
-    front and hand them to ``load_flow_text(..., subflows=...)``."""
-    document = parse_flow_yaml(text)
-    steps = document.get("steps") if isinstance(document, Mapping) else None
-    if not isinstance(steps, list):
-        return []
-    refs = (run_flow_ref(entry) for entry in steps)
-    return list(dict.fromkeys(ref for ref in refs if ref is not None))
-
-
-def run_flow_ref(entry: object) -> str | None:
-    if not isinstance(entry, Mapping) or entry.get("action") != "run-flow":
-        return None
-    ref = entry.get("flow")
-    return ref if isinstance(ref, str) and ref else None
 
 
 def run_flow(

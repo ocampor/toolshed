@@ -3,7 +3,8 @@
 from collections.abc import Iterable
 from pathlib import Path
 
-from llm_browser.flows import SelectorMap, parse_flow_yaml, run_flow
+from llm_browser.flow_pipeline import FlowSource, SelectorMap, build_flow
+from llm_browser.flows import run_flow
 from llm_browser.models import Flow, FlowError, FlowResult
 from llm_browser.session import BrowserSession
 
@@ -13,13 +14,10 @@ def load_flow(
     *,
     selector_map: SelectorMap | None = None,
 ) -> Flow:
-    """Every load-time error — missing file, bad YAML, unknown ref, illegal
-    sub-flow — surfaces from this one ``model_validate`` call."""
-    path = Path(flow_path).resolve()
-    return Flow.model_validate(
-        parse_flow_yaml(path.read_text()),
-        context={"base_dir": path.parent, "selector_map": selector_map},
-    )
+    """``build_flow`` over a path source; see :mod:`llm_browser.flow_pipeline`.
+    Every load-time error — missing file, bad text, unknown ref, illegal
+    sub-flow — surfaces from this one call."""
+    return build_flow(FlowSource.from_path(flow_path), selector_map=selector_map)
 
 
 def run_flow_file(

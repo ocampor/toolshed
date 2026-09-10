@@ -13,7 +13,8 @@ from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import DRIVER_ENV_VAR
 from llm_browser.flow_files import load_flow, run_flow_file
-from llm_browser.flows import SelectorMap, load_flow_text, run_flow
+from llm_browser.flow_pipeline import SelectorMap
+from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.html import SanitizeLevel
 from llm_browser.selector_map import load_selector_map
 from llm_browser.models import FlowResult, RunFlowStep

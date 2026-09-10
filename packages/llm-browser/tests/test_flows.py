@@ -53,7 +53,7 @@ def test_load_flow(tmp_path: Path) -> None:
 def test_load_flow_rejects_bad_yaml(tmp_path: Path) -> None:
     path = tmp_path / "flow.yaml"
     path.write_text("steps: [\n  - name: x\n")
-    with pytest.raises(ValueError, match="invalid flow YAML"):
+    with pytest.raises(ValueError, match="invalid flow yaml"):
         load_flow(path)
 
 

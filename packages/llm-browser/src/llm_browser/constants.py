@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from typing import Literal, get_args
 
 DEFAULT_STATE_DIR = Path("/tmp/llm-browser")
 
@@ -76,3 +77,14 @@ INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffi
 EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"
+
+# --- Flow sources ---
+
+FlowFormat = Literal["yaml", "json"]
+
+FLOW_FORMATS: tuple[FlowFormat, ...] = get_args(FlowFormat)
+
+DEFAULT_FLOW_FORMAT: FlowFormat = "yaml"
+
+#: Suffixes that pick a non-default format; anything else is YAML.
+FLOW_FORMAT_BY_SUFFIX: dict[str, FlowFormat] = {".json": "json"}

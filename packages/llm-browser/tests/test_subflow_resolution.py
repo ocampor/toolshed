@@ -7,7 +7,8 @@ import pytest
 import yaml
 
 from llm_browser.flow_files import load_flow
-from llm_browser.flows import load_flow_text, subflow_refs
+from llm_browser.flow_pipeline import FlowSource, subflow_refs
+from llm_browser.flows import load_flow_text
 from llm_browser.models import RunFlowStep
 
 CHILD_YAML = """
@@ -151,7 +152,7 @@ def test_rejects_nested_subflow() -> None:
 
 
 def test_bad_yaml_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="invalid flow YAML"):
+    with pytest.raises(ValueError, match="invalid flow yaml"):
         load_flow_text("steps: [\n  - name: x\n")
 
 
@@ -193,9 +194,9 @@ def test_bad_yaml_raises_value_error() -> None:
     ],
 )
 def test_subflow_refs_cases(document: object, expected: list[str]) -> None:
-    assert subflow_refs(yaml.dump(document)) == expected
+    assert subflow_refs(FlowSource.from_text(yaml.dump(document))) == expected
 
 
 def test_subflow_refs_rejects_bad_yaml() -> None:
-    with pytest.raises(ValueError, match="invalid flow YAML"):
-        subflow_refs("steps: [\n  - name: x\n")
+    with pytest.raises(ValueError, match="invalid flow yaml"):
+        subflow_refs(FlowSource.from_text("steps: [\n  - name: x\n"))
