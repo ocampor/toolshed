@@ -8,6 +8,8 @@ timing fields through the pure helpers (`enforce_gap`, `post_pause`).
 
 import random
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -35,6 +37,7 @@ class BehaviorRuntime:
     def __init__(self, rng: random.Random) -> None:
         self.rng = rng
         self.last_action_monotonic: float | None = None
+        self.pacing = False
 
 
 class Behavior(BaseModel):
@@ -110,6 +113,27 @@ def post_pause(behavior: Behavior, runtime: BehaviorRuntime) -> None:
 
 def mark_action_done(runtime: BehaviorRuntime) -> None:
     runtime.last_action_monotonic = time.monotonic()
+
+
+@contextmanager
+def paced(behavior: Behavior, runtime: BehaviorRuntime) -> Iterator[None]:
+    """Bracket one action with its gap and post-action pause.
+
+    A raise skips the post-pause, so a failed step does not sit out a pause it
+    never earned. Nested scopes defer to the outermost one: a session input
+    method called from an action handler must not pause twice.
+    """
+    if runtime.pacing:
+        yield
+        return
+    runtime.pacing = True
+    try:
+        enforce_gap(behavior, runtime)
+        yield
+        post_pause(behavior, runtime)
+        mark_action_done(runtime)
+    finally:
+        runtime.pacing = False
 
 
 def jittered_sleep(jitter: Jitter, rng: random.Random) -> None:

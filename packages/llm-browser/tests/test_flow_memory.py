@@ -60,7 +60,7 @@ def test_run_flow_accepts_flow_model(mock_session: MagicMock) -> None:
 
 
 def test_run_flow_model_failure_hint_has_empty_path(mock_session: MagicMock) -> None:
-    mock_session.find.side_effect = TimeoutError("element missing")
+    mock_session.click.side_effect = TimeoutError("element missing")
     flow = load_flow_text(
         _flow_yaml([{"name": "boom", "action": "click", "selector": "#a"}])
     )
@@ -74,7 +74,7 @@ def test_run_flow_model_failure_hint_has_empty_path(mock_session: MagicMock) -> 
 def test_run_flow_model_runs_subflow(mock_session: MagicMock) -> None:
     flow = load_flow_text(_flow_yaml([_run_flow_step(CHILD)]))
     assert isinstance(run_flow(mock_session, flow, {}), FlowSuccess)
-    assert mock_session.find.call_count == 1
+    assert mock_session.click.call_count == 1
 
 
 # --- outputs ---
@@ -203,7 +203,7 @@ def test_redact_secrets_preserves_model_type() -> None:
 
 
 def test_redact_hides_secret_in_retry_hint_and_error(mock_session: MagicMock) -> None:
-    mock_session.find.side_effect = ValueError("login failed for s3cret")
+    mock_session.fill.side_effect = ValueError("login failed for s3cret")
     flow = load_flow_text(
         _flow_yaml(
             [{"name": "login", "action": "fill", "selector": "#p", "value": "x"}]

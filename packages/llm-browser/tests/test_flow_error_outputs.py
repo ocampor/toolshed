@@ -26,7 +26,7 @@ def _run_flow_step(child_steps: list[dict[str, Any]], **extra: Any) -> dict[str,
 
 
 def _failing_run(session: MagicMock, flow_text: str) -> FlowError:
-    session.find.side_effect = TimeoutError("element missing")
+    session.click.side_effect = TimeoutError("element missing")
     result = run_flow(session, load_flow_text(flow_text), {})
     assert isinstance(result, FlowError)
     return result
@@ -40,7 +40,7 @@ def test_outputs_before_the_failure_are_returned(mock_session: MagicMock) -> Non
 
 def test_partial_outputs_are_redacted(mock_session: MagicMock) -> None:
     mock_session.dom.return_value = "<input value='s3cret'>"
-    mock_session.find.side_effect = TimeoutError("element missing")
+    mock_session.click.side_effect = TimeoutError("element missing")
     flow = load_flow_text(_flow_yaml([DOM_STEP, FAILING_STEP]))
     result = run_flow(mock_session, flow, {}, redact=["s3cret"])
     assert isinstance(result, FlowError)
@@ -63,7 +63,7 @@ def test_optional_subflow_outputs_survive_its_own_failure(
 ) -> None:
     child_steps = [{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP]
     parent = _flow_yaml([_run_flow_step(child_steps, optional=True)])
-    mock_session.find.side_effect = TimeoutError("element missing")
+    mock_session.click.side_effect = TimeoutError("element missing")
     result = run_flow(mock_session, load_flow_text(parent), {})
     assert isinstance(result, FlowSuccess)
     assert result.outputs == {"child/inner_snap": "<p>hello</p>"}

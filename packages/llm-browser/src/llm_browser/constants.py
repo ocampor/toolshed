@@ -11,6 +11,9 @@ LOGGER_NAME = "llm_browser"
 
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
+# How long ``find`` and the input methods wait for their element.
+DEFAULT_FIND_TIMEOUT_MS = 10_000
+
 DEFAULT_POLL_INTERVAL_MS = 500
 
 # How long an element's text has to stay put for the ``stable`` wait state.
