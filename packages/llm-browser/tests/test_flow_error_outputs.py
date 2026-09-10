@@ -16,9 +16,18 @@ def _flow_yaml(steps: list[dict[str, Any]]) -> str:
     return yaml.dump({"steps": steps})
 
 
-def _failing_run(session: MagicMock, flow_text: str, **kwargs: Any) -> FlowError:
+def _run_flow_step(child_steps: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    return {
+        "name": "child",
+        "action": "run-flow",
+        "flow": {"steps": child_steps},
+        **extra,
+    }
+
+
+def _failing_run(session: MagicMock, flow_text: str) -> FlowError:
     session.find.side_effect = TimeoutError("element missing")
-    result = run_flow(session, load_flow_text(flow_text, **kwargs), {})
+    result = run_flow(session, load_flow_text(flow_text), {})
     assert isinstance(result, FlowError)
     return result
 
@@ -39,11 +48,9 @@ def test_partial_outputs_are_redacted(mock_session: MagicMock) -> None:
 
 
 def test_parent_outputs_survive_a_failing_subflow(mock_session: MagicMock) -> None:
-    child = _flow_yaml([{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP])
-    parent = _flow_yaml(
-        [DOM_STEP, {"name": "child", "action": "run-flow", "flow": "c"}]
-    )
-    result = _failing_run(mock_session, parent, subflow_loader=lambda ref: child)
+    child_steps = [{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP]
+    parent = _flow_yaml([DOM_STEP, _run_flow_step(child_steps)])
+    result = _failing_run(mock_session, parent)
     assert result.step == "child/boom"
     assert result.outputs == {
         "snap": "<p>hello</p>",
@@ -54,23 +61,10 @@ def test_parent_outputs_survive_a_failing_subflow(mock_session: MagicMock) -> No
 def test_optional_subflow_outputs_survive_its_own_failure(
     mock_session: MagicMock,
 ) -> None:
-    child = _flow_yaml([{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP])
-    parent = _flow_yaml(
-        [
-            {
-                "name": "child",
-                "action": "run-flow",
-                "flow": "c",
-                "optional": True,
-            }
-        ]
-    )
+    child_steps = [{**DOM_STEP, "name": "inner_snap"}, FAILING_STEP]
+    parent = _flow_yaml([_run_flow_step(child_steps, optional=True)])
     mock_session.find.side_effect = TimeoutError("element missing")
-    result = run_flow(
-        mock_session,
-        load_flow_text(parent, subflow_loader=lambda ref: child),
-        {},
-    )
+    result = run_flow(mock_session, load_flow_text(parent), {})
     assert isinstance(result, FlowSuccess)
     assert result.outputs == {"child/inner_snap": "<p>hello</p>"}
 

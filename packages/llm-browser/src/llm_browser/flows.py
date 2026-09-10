@@ -1,13 +1,13 @@
-"""Parse YAML flow text and execute the steps end-to-end."""
+"""Stage two of the flow pipeline (a resolved document in, a validated ``Flow``
+out) and stage three (run it). Neither stage touches the filesystem — every
+``run-flow`` reference is inlined by :mod:`llm_browser.flow_pipeline` first."""
 
-from collections.abc import Callable, Iterable, Mapping
-from pathlib import Path
+from collections.abc import Iterable, Mapping
 from typing import Any
-
-import yaml
 
 from llm_browser.actions import ActionResult, ParsedResult, TextResult
 from llm_browser.constants import OUTPUT_ACTIONS
+from llm_browser.flow_pipeline import parse_flow_yaml
 from llm_browser.models import (
     Flow,
     FlowData,
@@ -17,63 +17,56 @@ from llm_browser.models import (
     RetryHint,
     RunFlowStep,
     Step,
+    SubFlow,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
+from llm_browser.selector_map import SelectorMap, resolve_refs
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, resolve_step, should_skip
 
-SelectorMap = dict[str, dict[str, Any]]
 
-#: Maps a ``run-flow`` reference to the sub-flow's YAML text.
-SubflowLoader = Callable[[str], str]
-
-
-def parse_flow_yaml(text: str) -> Any:
-    try:
-        return yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise ValueError(f"invalid flow YAML: {exc}") from exc
+def load_flow_text(text: str) -> Flow:
+    return load_flow_document(parse_flow_yaml(text))
 
 
-def load_flow_text(
-    text: str,
+def load_flow_document(
+    document: Mapping[str, Any],
     *,
-    subflow_loader: SubflowLoader | None = None,
     selector_map: SelectorMap | None = None,
-    subflows: Mapping[str, str] | None = None,
-    base_dir: Path | None = None,
 ) -> Flow:
-    """``run-flow`` refs resolve eagerly against ``subflows``, then
-    ``subflow_loader``, then ``base_dir`` (``ValueError`` with none of them).
-    ``base_dir`` defaults to ``None``, so flow text never reads a child off
-    disk unless the caller opts in by naming a directory."""
-    return Flow.model_validate(
-        parse_flow_yaml(text),
-        context={
-            "subflow_loader": subflow_loader,
-            "selector_map": selector_map,
-            "subflows": subflows,
-            "base_dir": base_dir,
-        },
-    )
+    """``selector_map`` expands every ``ref:`` in the document — the parent's
+    steps and any embedded sub-flow's — before validation."""
+    if selector_map is not None:
+        document = expand_selector_refs(document, selector_map)
+    return Flow.model_validate(document)
 
 
-def subflow_refs(text: str) -> list[str]:
-    """Refs without validating the steps, so a caller can fetch every child up
-    front and hand them to ``load_flow_text(..., subflows=...)``."""
-    document = parse_flow_yaml(text)
-    steps = document.get("steps") if isinstance(document, Mapping) else None
+def expand_selector_refs(
+    document: Mapping[str, Any], selector_map: SelectorMap
+) -> dict[str, Any]:
+    steps = document.get("steps")
     if not isinstance(steps, list):
-        return []
-    refs = (run_flow_ref(entry) for entry in steps)
-    return list(dict.fromkeys(ref for ref in refs if ref is not None))
+        return dict(document)
+    expanded = [expand_step_selector_refs(step, selector_map) for step in steps]
+    return {**document, "steps": expanded}
 
 
-def run_flow_ref(entry: object) -> str | None:
-    if not isinstance(entry, Mapping) or entry.get("action") != "run-flow":
-        return None
-    ref = entry.get("flow")
-    return ref if isinstance(ref, str) and ref else None
+def expand_step_selector_refs(step: Any, selector_map: SelectorMap) -> Any:
+    if not isinstance(step, dict):
+        return step
+    resolved = resolve_refs(step, selector_map)
+    child = resolved.get("flow")
+    if isinstance(child, Mapping):
+        resolved["flow"] = expand_selector_refs(child, selector_map)
+    return resolved
+
+
+def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:
+    """Fill ``retry_hint.flow_path`` for a flow that came from a file."""
+    if not isinstance(result, FlowError) or result.retry_hint is None:
+        return result
+    hint = result.retry_hint.model_copy(update={"flow_path": flow_path})
+    return result.model_copy(update={"retry_hint": hint})
 
 
 def run_flow(
@@ -182,14 +175,11 @@ def run_subflow(
     ``optional:`` failure comes back as a success carrying the child's
     partial outputs, so the parent advances without losing that work."""
     resolved = resolve_step(step, flow_data)
-    if not isinstance(resolved, RunFlowStep) or resolved.subflow is None:
-        raise RuntimeError(
-            f"RunFlowStep {resolved.name!r} has no `subflow` attached; "
-            "load the parent with `load_flow_text` or `load_flow`"
-        )
+    if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
+        raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
         return FlowSuccess(step=resolved.name)
-    result = run_loaded_flow(session, resolved.subflow, resolved.data)
+    result = run_loaded_flow(session, resolved.flow, resolved.data)
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(step=resolved.name, outputs=result.outputs)
     return result

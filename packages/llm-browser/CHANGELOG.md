@@ -120,6 +120,34 @@
   through the driver's own `screenshot()` and reads it back, so drivers whose
   screenshot API only writes files (nodriver) get a working implementation
   without an override. `take_screenshot()` is unchanged.
+- `llm_browser.flow_repository` — `FlowRepository`, a protocol with a single
+  `async def get(ref) -> str` returning a flow's YAML text (or raising
+  `FlowNotFoundError(ref)`), plus `FileFlowRepository(base_dir)` which reads
+  relative refs under `base_dir` and honours absolute ones. The repository is
+  the only part of flow loading that differs between consumers.
+- `DictFlowRepository(flows)` — a mapping of reference → YAML text — and
+  `LayeredFlowRepository(*layers)`, which takes the first layer that has the
+  reference and raises `FlowNotFoundError(ref)` when none does. A consumer
+  that accepts child flows with a request layers them over its own store:
+  `LayeredFlowRepository(DictFlowRepository(request_flows), store)`. Only a
+  `FlowNotFoundError` falls through to the next layer; anything else
+  propagates, and `FileFlowRepository` reports a miss only for a missing path
+  (a permission or I/O error propagates).
+- `flow_pipeline.resolve_flow(ref, repo)` / `resolve_flow_text(text, repo)` —
+  stage one, async and the only stage that does I/O. They parse the YAML and
+  inline every `run-flow` reference as the child's document, fetching children
+  concurrently and once per distinct reference. A child that references a flow
+  of its own is rejected here, so leaf-only no longer depends on validation
+  context.
+- `flows.load_flow_document(document, *, selector_map=None)` — stage two, pure:
+  it validates an already-resolved document into a `Flow`. The selector map is
+  a parameter applied to the document (parent steps and any embedded child),
+  not a validation-context key.
+- `run-flow` steps take the child flow inline: `flow:` accepts the child's own
+  mapping (`params:` / `steps:`), so a flow with embedded children needs no
+  repository at all.
+- `flows.with_flow_path(result, path)` — fills `retry_hint.flow_path` for a
+  flow that came from a file (moved from the deleted `flow_files`).
 
 ### Changed
 
@@ -160,6 +188,33 @@
   orphaned detached Chromium behind; `url=None` stays legal for both. Pass
   `allowed_schemes=` to opt a specific call back in, e.g.
   `allowed_schemes=("file",)` for local fixture pages.
+- **Breaking:** `RunFlowStep.flow` is now `SubFlow | str` and `RunFlowStep.subflow`
+  is gone — the child lives in `flow`. A `flow:` that is still a string fails
+  validation with `unresolved sub-flow <ref>: resolve it through a
+  FlowRepository first`.
+- **Breaking:** `flows.load_flow_text(text)` no longer takes `subflow_loader`,
+  `subflows`, `base_dir` or `selector_map`; it validates text that has nothing
+  left to resolve. Sub-flow resolution goes through a `FlowRepository`, and
+  selector maps through `load_flow_document(..., selector_map=...)`.
+- **Breaking:** removed `llm_browser.flow_files` (`load_flow`, `run_flow_file`),
+  `llm_browser.subflows` (`subflow_source`), `flow_pipeline.FlowSource`,
+  `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document` and the
+  `SubflowLoader` alias. `parse_flow_yaml(text)` is the one parser both stages
+  use, and `SelectorMap` now lives in `llm_browser.selector_map`.
+- **Breaking:** validation takes no context at all — the `subflows`,
+  `subflow_loader`, `base_dir`, `selector_map` and `in_subflow` keys are gone.
+- A flow document that is not a mapping raises
+  `ValueError("invalid flow yaml: expected a mapping, got ...")`.
+- An unknown selector `ref:` now raises `ValueError` instead of a pydantic
+  `ValidationError` (it is expanded before validation), and a missing flow file
+  raises `FlowNotFoundError` instead of `FileNotFoundError`.
+- The `run` and `validate` commands resolve their flow through
+  `cli.resolve_flow_options` (replacing `flow_source_from_options`) and run it
+  under `asyncio.run`. A file resolves its references against its own
+  directory; `--flow -` and `--flow-yaml` use the CWD. An empty `--flow ''` is
+  a usage error rather than a silent cwd lookup.
+- Parse errors read `ValueError("invalid flow yaml: ...")`, replacing
+  `"invalid flow YAML: ..."`.
 
 ## 0.7.0 — 2026-09-09
 

@@ -1,4 +1,4 @@
-"""Tests for `load_flow_text`, `run_flow` on a Flow, outputs, redaction."""
+"""Tests for stage two (`load_flow_text`), `run_flow`, outputs, redaction."""
 
 import logging
 from pathlib import Path
@@ -8,20 +8,19 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flows import load_flow_text, run_flow
+from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.redact import redact_secrets
 
-CHILD_YAML = """
-steps:
-  - name: c1
-    action: click
-    selector: "#child"
-"""
+CHILD = {"steps": [{"name": "c1", "action": "click", "selector": "#child"}]}
 
 
 def _flow_yaml(steps: list[dict[str, Any]], **extra: Any) -> str:
     return yaml.dump({"steps": steps, **extra})
+
+
+def _run_flow_step(child: dict[str, Any], name: str = "c") -> dict[str, Any]:
+    return {"name": name, "action": "run-flow", "flow": child}
 
 
 # --- load_flow_text ---
@@ -33,12 +32,19 @@ def test_load_flow_text_parses_steps() -> None:
     assert flow.steps[0].name == "s1"
 
 
-def test_load_flow_text_expands_selector_refs() -> None:
-    flow = load_flow_text(
-        _flow_yaml([{"name": "s", "action": "click", "ref": "ui.button"}]),
+def test_load_flow_document_expands_selector_refs() -> None:
+    flow = load_flow_document(
+        {"steps": [{"name": "s", "action": "click", "ref": "ui.button"}]},
         selector_map={"ui.button": {"id": "the-button"}},
     )
     assert "the-button" in str(flow.steps[0])
+
+
+def test_load_flow_text_rejects_an_unresolved_reference() -> None:
+    with pytest.raises(ValueError, match="unresolved sub-flow child"):
+        load_flow_text(
+            _flow_yaml([{"name": "c", "action": "run-flow", "flow": "child"}])
+        )
 
 
 # --- run_flow on a Flow model ---
@@ -66,10 +72,7 @@ def test_run_flow_model_failure_hint_has_empty_path(mock_session: MagicMock) -> 
 
 
 def test_run_flow_model_runs_subflow(mock_session: MagicMock) -> None:
-    flow = load_flow_text(
-        _flow_yaml([{"name": "c", "action": "run-flow", "flow": "child"}]),
-        subflow_loader=lambda ref: CHILD_YAML,
-    )
+    flow = load_flow_text(_flow_yaml([_run_flow_step(CHILD)]))
     assert isinstance(run_flow(mock_session, flow, {}), FlowSuccess)
     assert mock_session.find.call_count == 1
 
@@ -160,10 +163,8 @@ def test_outputs_exclude_screenshots(mock_session: MagicMock) -> None:
 
 
 def test_outputs_from_subflow_are_qualified(mock_session: MagicMock) -> None:
-    child = _flow_yaml([_dom_step()])
     flow = load_flow_text(
-        _flow_yaml([{"name": "inner", "action": "run-flow", "flow": "child"}]),
-        subflow_loader=lambda ref: child,
+        _flow_yaml([_run_flow_step({"steps": [_dom_step()]}, name="inner")])
     )
     result = run_flow(mock_session, flow, {})
     assert isinstance(result, FlowSuccess)
