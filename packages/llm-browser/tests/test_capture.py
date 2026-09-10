@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flow_files import run_flow_file
 from llm_browser.html import sanitize_page_html
 from llm_browser.session import BrowserSession
+from tests.flow_helpers import run_flow_file
 
 
 def _wrap(body: str) -> str:

@@ -49,28 +49,6 @@ class BaseStep(BaseModel):
     # and retry-hint targeting.
     _parent: str | None = PrivateAttr(default=None)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _resolve_selector_refs(cls, data: Any, info: Any) -> Any:
-        """Replace ``ref:`` with ``selector:`` (and the field/read
-        variants) from ``info.context["selector_map"]`` before pydantic
-        does field-level validation. Without this, ``ref:`` is an
-        unknown field that pydantic silently drops, leaving SelectorStep
-        subtypes to fail with "selector required".
-
-        No-op when the input isn't a dict (programmatic construction
-        from a Step instance) or when no selector map is in context.
-        """
-        if not isinstance(data, dict):
-            return data
-        ctx = info.context if info is not None else None
-        selector_map = ctx.get("selector_map") if ctx else None
-        if selector_map is None:
-            return data
-        from llm_browser.selector_map import resolve_refs
-
-        return resolve_refs(data, selector_map)
-
     @property
     def qualified_name(self) -> str:
         """Slash-separated path from the parent flow's run-flow step
@@ -225,44 +203,28 @@ class EvalStep(BaseStep):
 class RunFlowStep(BaseStep):
     """Compose another flow inline as a single step.
 
-    Sub-flows are leaf-only: a flow referenced by ``run-flow`` may
-    not itself contain ``run-flow`` steps. ``SubFlow``'s validators
-    enforce this at parse time.
+    ``flow`` is the child flow itself. A reference string is inlined by
+    :func:`llm_browser.flow_pipeline.resolve_flow` before validation, so an
+    unresolved reference is a validation error.
 
-    ``subflow`` can be supplied directly (tests, programmatic construction)
-    or resolved from ``flow`` by an after-validator, per the validation
-    context — see :func:`llm_browser.subflows.subflow_text`.
+    Sub-flows are leaf-only: a child may not itself contain ``run-flow``
+    steps — ``SubFlow``'s validator enforces that.
     """
 
     action: Literal["run-flow"]
-    flow: str = Field(..., min_length=1)
+    flow: SubFlow | str
     data: dict[str, Any] = {}
-    subflow: SubFlow | None = None
 
     @model_validator(mode="after")
-    def _resolve_subflow_from_context(self, info: Any) -> RunFlowStep:
-        # Already resolved (programmatic construction, explicit `subflow:`
-        # in the YAML) — still tag children with our name so qualified
-        # names work for the retry hint. Otherwise load + validate the
-        # referenced child YAML.
-        if self.subflow is None:
-            import yaml
-
-            from llm_browser.subflows import subflow_text
-
-            ctx = info.context if info is not None else None
-            if not ctx or ctx.get("in_subflow"):
-                # One level deep already: leave it unresolved so ``SubFlow``'s
-                # leaf-only validator reports the nesting instead of recursing
-                # into (possibly cyclic) grandchildren.
-                return self
-            text = subflow_text(self.flow, ctx)
-            if text is None:
-                return self
-            self.subflow = SubFlow.model_validate(
-                yaml.safe_load(text), context={**ctx, "in_subflow": True}
+    def _reject_unresolved_reference(self) -> RunFlowStep:
+        if isinstance(self.flow, str):
+            raise ValueError(
+                f"unresolved sub-flow {self.flow}: "
+                "resolve it through a FlowRepository first"
             )
-        for child in self.subflow.steps:
+        # Qualified names (diagnostics, retry hints) need every child step to
+        # know which run-flow step it came from.
+        for child in self.flow.steps:
             child._parent = self.name
         return self
 

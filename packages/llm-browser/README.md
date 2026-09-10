@@ -140,16 +140,27 @@ llm-browser run --flow-yaml "$(cat login.yaml)" --data '{}'   # or --flow -
 llm-browser resume --data '{"confirm": true}'
 ```
 
-`run_flow` takes a loaded `Flow`, so nothing has to exist on disk;
+Loading a flow is three stages — `resolve_flow` (async, the only stage
+that does I/O: it inlines every `run-flow` reference through a
+`FlowRepository`), `load_flow_document` to validate the result into a
+`Flow`, then `run_flow` to execute it. The repository is the only piece
+that differs between consumers, so a flow never has to exist on disk:
+`FileFlowRepository(base_dir)` reads from a directory,
+`DictFlowRepository(flows)` from flows already in hand, and
+`LayeredFlowRepository(*layers)` takes the first layer that has the
+reference — a service typically layers one request's flows over its own
+store, `LayeredFlowRepository(DictFlowRepository(request_flows), store)`.
 `redact` scrubs the listed values from the retry hint, error payload,
 outputs (a `FlowError` carries the ones collected before the failing
-step), and log records. Use `llm_browser.flow_files.run_flow_file` to
-run a flow file in one call.
+step), and log records.
 
 ```python
-from llm_browser.flows import load_flow_text, run_flow
+from llm_browser.flow_pipeline import resolve_flow_text
+from llm_browser.flow_repository import FileFlowRepository
+from llm_browser.flows import load_flow_document, run_flow
 
-flow = load_flow_text(yaml_text, subflow_loader=flows_by_name.__getitem__)
+document = await resolve_flow_text(yaml_text, FileFlowRepository(Path.cwd()))
+flow = load_flow_document(document)
 result = run_flow(session, flow, {"password": pw}, redact=[pw])
 result.outputs["headlines"]   # every read / parse / dom step's result
 ```
