@@ -128,6 +128,14 @@ def test_one_line_names_the_assertion_that_raised() -> None:
     assert "test_runner.py:" in message
 
 
+def test_one_line_carries_the_notes_the_failure_was_given() -> None:
+    """A cleanup that failed after the real failure attaches itself with
+    ``add_note``, and the table is the only place anyone would read it."""
+    error = AssertionError("new-tab.html not in current")
+    error.add_note("cleanup failed too: the opened tab never closed")
+    assert "cleanup failed too: the opened tab never closed" in one_line(error)
+
+
 def test_one_line_falls_back_to_the_exception_type() -> None:
     assert one_line(RuntimeError()) == "RuntimeError"
 

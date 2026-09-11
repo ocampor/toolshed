@@ -48,9 +48,16 @@ class Result:
 
 def one_line(error: BaseException) -> str:
     """The message plus the line that raised it — a bare ``assert`` says
-    nothing on its own, and the table is all the reader gets."""
+    nothing on its own, and the table is all the reader gets.
+
+    Notes ride along: a cleanup that failed after the real failure attaches
+    itself with ``add_note``, and the table is the only place it would ever
+    be read.
+    """
     text = str(error) or type(error).__name__
     summary = text.strip().splitlines()[0][:160]
+    for note in getattr(error, "__notes__", []):
+        summary += f" ({note.strip().splitlines()[0][:160]})"
     frames = traceback.extract_tb(error.__traceback__)
     if not frames:
         return summary

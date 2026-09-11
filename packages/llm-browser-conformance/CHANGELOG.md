@@ -36,3 +36,7 @@
 - Scenario renames, so every name is reachable on its own through `--only`:
   `scroll ticks` → `wheel ticks` (`scroll` selected both) and
   `templating miss` → `unresolved placeholder` (`templating` selected both).
+- The tab scenarios close their popup through `tabs_closed_after`, which lets
+  the scenario's own exception win: a cleanup that fails on the way out is
+  attached to it with `add_note` instead of replacing it in the table. Run
+  details carry an exception's notes for that reason.
