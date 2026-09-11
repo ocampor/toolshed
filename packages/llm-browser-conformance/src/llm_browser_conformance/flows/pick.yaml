@@ -1,0 +1,12 @@
+# `pick` chooses one of several matches by its exact text.
+steps:
+  - name: pick
+    action: pick
+    selector: ".item"
+    value: Beta
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

@@ -1,0 +1,6 @@
+# A short `timeout:` on an element that never appears: the budget is the failure.
+steps:
+  - name: click-missing
+    action: click
+    selector: "#absent"
+    timeout: 1000

@@ -1,0 +1,12 @@
+# `option-plain` plus a `fields:` block, which validates and is then ignored.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    fields:
+      - name: text
+        selector: "#absent"
+        attribute: nonsense
+    extract:
+      text:
+        attribute: textContent

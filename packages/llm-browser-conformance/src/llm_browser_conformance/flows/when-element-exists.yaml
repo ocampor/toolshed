@@ -1,0 +1,13 @@
+# `element_exists` asks the page; the selector it asks about is templated.
+params:
+  - target
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - element_exists:
+          selector: "{{ target }}"
+    extract:
+      text:
+        attribute: textContent

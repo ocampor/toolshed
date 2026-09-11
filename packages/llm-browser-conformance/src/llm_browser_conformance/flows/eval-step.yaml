@@ -1,0 +1,10 @@
+# A step with no action at all: the `eval` runs and the page keeps the change.
+steps:
+  - name: mutate
+    eval: "document.querySelector('#result').textContent = 'mutated'"
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

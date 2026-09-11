@@ -1,0 +1,10 @@
+# The child half of `run-flow-ref.yaml`: reads whatever row it is handed.
+params:
+  - row
+steps:
+  - name: read
+    action: read
+    selector: "{{ row }}"
+    extract:
+      text:
+        attribute: textContent

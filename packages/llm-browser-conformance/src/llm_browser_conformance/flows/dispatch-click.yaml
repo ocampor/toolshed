@@ -1,0 +1,6 @@
+# `dispatch: true` is rule 2's opt-out: the page must see an untrusted click.
+steps:
+  - name: click
+    action: click
+    selector: "#reveal"
+    dispatch: true

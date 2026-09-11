@@ -10,7 +10,11 @@ from llm_browser_conformance.checks import (
     flows,
     frames,
     inputs,
+    options,
+    results,
+    session_api,
     stealth,
+    step_types,
     steps,
     waits,
 )
@@ -23,6 +27,10 @@ ALL_SCENARIOS: list[Scenario] = [
     *frames.SCENARIOS,
     *steps.SCENARIOS,
     *controls.SCENARIOS,
+    *step_types.SCENARIOS,
+    *options.SCENARIOS,
+    *results.SCENARIOS,
+    *session_api.SCENARIOS,
     *stealth.SCENARIOS,
 ]
 

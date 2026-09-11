@@ -1,0 +1,14 @@
+# Two reads, so that starting at the second one is visible as a missing key.
+steps:
+  - name: panel
+    action: read
+    selector: "#panel"
+    extract:
+      text:
+        attribute: textContent
+  - name: rows
+    action: read
+    selector: "#list li"
+    extract:
+      code:
+        attribute: data-code

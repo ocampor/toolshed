@@ -1,0 +1,15 @@
+# `goto` returns at the load state it was asked for, and not before.
+params:
+  - url
+  - wait_until
+steps:
+  - name: goto
+    action: goto
+    url: "{{ url }}"
+    wait_until: "{{ wait_until }}"
+  - name: marker
+    action: read
+    selector: "#loaded"
+    extract:
+      text:
+        attribute: textContent

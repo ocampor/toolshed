@@ -1,0 +1,8 @@
+# `option-plain` under a different step name, which is the outputs key.
+steps:
+  - name: readout
+    action: read
+    selector: "#present"
+    extract:
+      text:
+        attribute: textContent

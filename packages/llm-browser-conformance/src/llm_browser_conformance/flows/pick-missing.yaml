@@ -1,0 +1,6 @@
+# Negative case: text no item carries must fail the step, not click a guess.
+steps:
+  - name: pick
+    action: pick
+    selector: ".item"
+    value: Delta

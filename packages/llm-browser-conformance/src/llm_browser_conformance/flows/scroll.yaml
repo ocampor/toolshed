@@ -1,0 +1,9 @@
+# Three wheel ticks of a fixed delta, paced by a pause between them.
+steps:
+  - name: scroll
+    action: scroll
+    delta: 300
+    times: 3
+    pause:
+      min_ms: 150
+      max_ms: 250

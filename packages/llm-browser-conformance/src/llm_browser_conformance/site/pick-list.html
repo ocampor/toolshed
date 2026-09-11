@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pick list</title>
+<ul id="items">
+  <li class="item">Alpha</li>
+  <li class="item">Beta</li>
+  <li class="item">Gamma</li>
+</ul>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+for (const item of document.querySelectorAll(".item")) {
+  item.addEventListener("click", () => {
+    document.getElementById("result").textContent = item.textContent;
+  });
+}
+</script>
