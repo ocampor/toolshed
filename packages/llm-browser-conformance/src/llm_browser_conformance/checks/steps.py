@@ -130,11 +130,6 @@ SCENARIOS = [
         "sticky header",
         Section.STEPS,
         a_click_lands_under_a_sticky_header,
-        known_gaps={
-            "nodriver": "click does not scroll the target into view, so the "
-            "CDP mouse event is dispatched at viewport coordinates the button "
-            "is not at and nothing is clicked"
-        },
     ),
     Scenario(
         "disabled button",

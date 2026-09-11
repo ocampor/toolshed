@@ -94,3 +94,31 @@ def test_a_page_expression_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(nodriver_driver, "_evaluate_by_value", record)
     driver_with_loop().evaluate(object(), "document.readyState")
     assert seen == ["document.readyState"]
+
+
+class ClickableElement:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def scroll_into_view(self) -> None:
+        self.calls.append("scroll_into_view")
+
+    async def mouse_click(self) -> None:
+        self.calls.append("mouse_click")
+
+    async def click(self) -> None:
+        self.calls.append("click")
+
+
+def test_a_click_scrolls_the_target_into_view_first() -> None:
+    """The CDP mouse event carries viewport coordinates, so a target below
+    the fold is otherwise clicked where it is not."""
+    element = ClickableElement()
+    driver_with_loop().click(NodriverLocator(tab=None, element=element))
+    assert element.calls == ["scroll_into_view", "mouse_click"]
+
+
+def test_a_dispatched_click_needs_no_coordinates() -> None:
+    element = ClickableElement()
+    driver_with_loop().click(NodriverLocator(tab=None, element=element), dispatch=True)
+    assert element.calls == ["click"]

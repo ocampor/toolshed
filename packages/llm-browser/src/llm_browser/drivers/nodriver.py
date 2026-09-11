@@ -275,8 +275,13 @@ class NodriverDriver(Driver):
         el = await self.resolve_element(loc)
         if dispatch:
             await el.click()
-        else:
-            await el.mouse_click()
+            return
+        # The mouse event is dispatched at viewport coordinates, so a target
+        # below the fold is clicked where it is not. `DOM.scrollIntoViewIfNeeded`
+        # is the browser's own minimal scroll, which leaves a target under a
+        # fixed header alone rather than parking it beneath one.
+        await el.scroll_into_view()
+        await el.mouse_click()
 
     def fill(self, locator: Any, text: str) -> None:
         self.run(self.do_fill(locator, text))
