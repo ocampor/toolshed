@@ -250,14 +250,13 @@ class WaitForStep(SelectorStep):
 class SolveCaptchaStep(BaseStep):
     """Read an image captcha and type the answer back.
 
-    ``image`` is cropped and handed to the reader the host process registered
-    with :func:`llm_browser.captcha.set_reader`; the reply is typed into
-    ``input`` and, if ``submit`` is set, submitted. The page's own verdict
+    ``image`` is cropped and handed to the session's ``captcha_reader``; the
+    reply is typed into ``input`` and, if ``submit`` is set, submitted. The page's own verdict
     decides the attempt: ``error`` becoming visible is a rejection, ``input``
     leaving the DOM and staying gone is acceptance, and ``timeout`` bounds how
     long that verdict is waited for.
 
-    With no reader registered the step fails asking for a human before it
+    With no reader on the session the step fails asking for a human before it
     touches the page. The answer is never put in the result.
     """
 

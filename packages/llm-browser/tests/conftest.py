@@ -26,6 +26,7 @@ def mock_session(tmp_path: Path) -> MagicMock:
         name="download.bin", content=b"payload"
     )
     session.element_exists.return_value = True
+    session.captcha_reader = None
     session.probe.return_value = PageProbe()
     locator = MagicMock()
     locator.count.return_value = 1

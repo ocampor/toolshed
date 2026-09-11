@@ -1,6 +1,6 @@
 """llm-browser — Playwright browser automation with declarative YAML flows."""
 
-from llm_browser.captcha import CaptchaReader, ReaderUnavailable, set_reader
+from llm_browser.captcha import CaptchaReader, ReaderUnavailable
 from llm_browser.selectors import (
     CssSelector,
     FallbackSelector,
@@ -19,5 +19,4 @@ __all__ = [
     "ReaderUnavailable",
     "Selector",
     "XpathSelector",
-    "set_reader",
 ]

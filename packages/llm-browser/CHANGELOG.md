@@ -11,11 +11,11 @@
   acceptance. `timeout:` is the whole budget for one verdict, `prompt:` is
   passed through to the reader, and the step's row in `outputs` is
   `{"attempts": n}` — never the answer.
-- `llm_browser.set_reader(reader)` and `llm_browser.CaptchaReader`
-  (`(png_bytes, prompt) -> reply`) — the host process registers one reading
-  function process-wide and every `solve_captcha` step uses it. Nothing is
-  registered by default and the CLI registers nothing, so an unconfigured
-  process fails the step with `human_needed` before touching the page.
+- `BrowserSession(captcha_reader=)` and `llm_browser.CaptchaReader`
+  (`(png_bytes, prompt) -> reply`) — the host hands the session one reading
+  function and every `solve_captcha` step on it uses that. The default is
+  `None` and the CLI passes none, so an unconfigured session fails the step
+  with `human_needed` before touching the page.
 - `llm_browser.ReaderUnavailable` — raise it from a reader to say no reading is
   possible in this run (a host with a reader wired but no client attached to
   ask). The step stops after that first crop with `human_needed`, rather than

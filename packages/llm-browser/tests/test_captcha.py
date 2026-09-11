@@ -1,7 +1,7 @@
-"""The ``solve_captcha`` step: the loop around the registered reader."""
+"""The ``solve_captcha`` step: the loop around the session's reader."""
 
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,16 +13,10 @@ from llm_browser.constants import CAPTCHA_SETTLE_MS
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowSuccess, SolveCaptchaStep
 from llm_browser.results import CaptchaResult, ErrorResult
+from llm_browser.session import BrowserSession
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
 ANSWER = "7fkq2"
-
-
-@pytest.fixture(autouse=True)
-def no_reader_left_registered() -> Iterator[None]:
-    """The reader is process-wide, so every test puts it back."""
-    yield
-    captcha.set_reader(None)
 
 
 def captcha_step(**overrides: Any) -> SolveCaptchaStep:
@@ -119,7 +113,7 @@ def page(
 
 
 def solved(session: MagicMock, step: SolveCaptchaStep, read: CaptchaReader) -> Any:
-    captcha.set_reader(read)
+    session.captcha_reader = read
     return execute_action(session, step)
 
 
@@ -204,7 +198,7 @@ def test_an_unreadable_reply_spends_the_attempt_without_typing(
     mock_session.fill.assert_not_called()
 
 
-def test_no_registered_reader_asks_for_a_human_without_touching_the_page(
+def test_a_session_with_no_reader_asks_for_a_human_without_touching_the_page(
     mock_session: MagicMock,
 ) -> None:
     """Nothing here can succeed, and a crop nobody will look at is wasted work
@@ -219,20 +213,23 @@ def test_no_registered_reader_asks_for_a_human_without_touching_the_page(
     mock_session.element_exists.assert_not_called()
 
 
-def test_the_registered_reader_is_the_one_that_gets_called(
-    mock_session: MagicMock,
+def test_each_session_reads_with_its_own_reader(
+    mock_session: MagicMock, tmp_path: Any
 ) -> None:
+    """The reader belongs to the session, so two sessions in one process do
+    not read each other's captchas."""
     step = captcha_step()
     page(mock_session, step, input_attached=[False])
-    stale, _ = replying("stale")
-    fresh, seen = replying(ANSWER)
-    captcha.set_reader(stale)
-    captcha.set_reader(fresh)
+    mine, seen = replying(ANSWER)
+    theirs, unused = replying(ANSWER)
+    mock_session.captcha_reader = mine
+    BrowserSession(state_dir=tmp_path, stateless=True, captcha_reader=theirs)
 
     result = execute_action(mock_session, step)
 
     assert isinstance(result, CaptchaResult)
     assert seen == [PNG]
+    assert unused == []
 
 
 def test_a_reader_that_says_it_cannot_look_stops_after_one_crop(
@@ -418,7 +415,7 @@ def test_a_flow_run_uses_the_registered_reader(mock_session: MagicMock) -> None:
     # The input is already gone, so the first poll reads as accepted.
     mock_session.element_exists.return_value = False
     read, seen = replying(ANSWER)
-    captcha.set_reader(read)
+    mock_session.captcha_reader = read
 
     result = run_flow(mock_session, load_flow_text(FLOW), {})
 

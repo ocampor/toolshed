@@ -1,11 +1,12 @@
 """The image captcha step: crop it, read it, type it back.
 
-The library never reads the image itself. The host process registers one
-:data:`CaptchaReader` with :func:`set_reader` — a model sampling call, a
-prompt to a person, whatever it has — and this module owns the loop around it:
-one crop per attempt, a normalized answer, and the page's own verdict read back
-off the DOM. One step, one reader: a different way of reading an image is a
-different step, not a parameter on this one.
+The library never reads the image itself. The host process hands one
+:data:`CaptchaReader` to the session it builds
+(``BrowserSession(captcha_reader=...)``) — a model sampling call, a prompt to a
+person, whatever it has — and this module owns the loop around it: one crop per
+attempt, a normalized answer, and the page's own verdict read back off the DOM.
+One session, one reader: a different way of reading an image is a different
+step, not a parameter on this one.
 
 The answer never leaves the step. It is typed into the page and dropped: not
 in the result, not in a log line, not in an error message.
@@ -37,10 +38,6 @@ logger = logging.getLogger(LOGGER_NAME)
 # decides whether it is an answer at all.
 CaptchaReader = Callable[[bytes, str | None], str]
 
-# Process-wide on purpose: reading a captcha is a capability the host either
-# has or does not, not something one flow run can differ on.
-_reader: CaptchaReader | None = None
-
 
 class ReaderUnavailable(Exception):
     """Raise from a reader when no reading is possible in this run."""
@@ -53,21 +50,6 @@ ANSWER_PATTERN = re.compile(r"^[A-Za-z0-9]{3,12}$")
 
 # The one word a reader says instead of guessing.
 UNREADABLE = "unreadable"
-
-
-def set_reader(new_reader: CaptchaReader | None) -> None:
-    """Register the function ``solve_captcha`` reads images with, or clear it.
-
-    Nothing is registered by default — ``llm-browser`` the CLI registers
-    nothing at all — so an unconfigured process reports every captcha as
-    needing a human instead of guessing at one.
-    """
-    global _reader
-    _reader = new_reader
-
-
-def reader() -> CaptchaReader | None:
-    return _reader
 
 
 def normalize_answer(reply: str) -> str | None:
@@ -189,7 +171,7 @@ def one_attempt(
 
 
 def solve(session: BrowserSession, step: SolveCaptchaStep) -> ActionResult:
-    read = reader()
+    read = session.captcha_reader
     if read is None:
         # Before the page is touched: nothing here can succeed, and a crop
         # nobody will look at is wasted work on a site watching for it.

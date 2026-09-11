@@ -41,7 +41,7 @@ steps:
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
 | `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
-| `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `prompt`, `timeout` | Crops `image`, hands the PNG to the reader the host process registered, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
+| `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `prompt`, `timeout` | Crops `image`, hands the PNG to the session's `captcha_reader`, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
 
 ### Waiting
 
@@ -81,15 +81,14 @@ One step covers both kinds of waiting: element presence and text stability.
 ### Captchas
 
 `solve_captcha` is the one step that needs something outside the browser to
-look at a picture. The library never reads the image: the host process
-registers one reading function — `llm_browser.captcha.set_reader(fn)`, where
+look at a picture. The library never reads the image: the host process passes a
+reader when it builds the session — `BrowserSession(captcha_reader=fn)`, where
 `fn` is `(png_bytes, prompt) -> reply` — and the step owns the loop around it.
-There is no per-flow or per-step choice of reader: one step, one way of
+There is no per-flow or per-step choice of reader: one session, one way of
 reading, and a different mechanism would be a different step.
 
-**`llm-browser` the CLI registers no reader**, so a `solve_captcha` step run
-from the command line always fails with `human_needed` before it touches the
-page. It is a step for an embedding process that has something that can read
+**`llm-browser` the CLI passes none**, so a `solve_captcha` step run from the
+command line always fails with `human_needed` before it touches the page. It is a step for an embedding process that has something that can read
 an image.
 
 One attempt is: crop `image`, ask the reader, then strip everything that is
@@ -104,8 +103,8 @@ banner it never cleared is not a verdict on the answer that follows it.
 `timeout` is the whole budget for one attempt's verdict, confirmation
 included; set it tight and the confirmation shrinks rather than overrunning.
 
-Three paths end in a `FlowError` with `human_needed: true`: no reader
-registered, a reader that raised `llm_browser.ReaderUnavailable` to say
+Three paths end in a `FlowError` with `human_needed: true`: no reader on the
+session, a reader that raised `llm_browser.ReaderUnavailable` to say
 nothing can read in this run (that one stops after the first crop rather than
 spending the remaining retries), and `retries` exhausted. `optional: true`
 does not skip any of them — a run nobody can read is a fact about the run,

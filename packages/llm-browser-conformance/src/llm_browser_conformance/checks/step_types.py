@@ -24,6 +24,7 @@ from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import FlowSuccess
 from llm_browser.results import BytesResult
+from llm_browser.session import BrowserSession
 from pydantic import ValidationError
 
 from llm_browser_conformance.checks.support import (
@@ -316,13 +317,16 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
 
 
 @contextlib.contextmanager
-def reading_captchas_with(read: captcha.CaptchaReader) -> Iterator[None]:
-    """The reader is process-wide, so a scenario puts it back."""
-    captcha.set_reader(read)
+def reading_captchas_with(
+    session: BrowserSession, read: captcha.CaptchaReader
+) -> Iterator[None]:
+    """The whole suite shares one session, so a scenario puts its reader back."""
+    previous = session.captcha_reader
+    session.captcha_reader = read
     try:
         yield
     finally:
-        captcha.set_reader(None)
+        session.captcha_reader = previous
 
 
 def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> None:
@@ -344,7 +348,7 @@ def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> Non
     ctx.visit("captcha.html")
     page = ctx.session.screenshot_bytes()
     try:
-        with reading_captchas_with(read):
+        with reading_captchas_with(ctx.session, read):
             result = run_flow(ctx.session, ctx.flow("solve-captcha"), {})
     except NotImplementedError as exc:
         raise ctx.skip(str(exc)) from exc

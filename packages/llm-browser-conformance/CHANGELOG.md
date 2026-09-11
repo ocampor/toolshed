@@ -8,8 +8,8 @@ Tracks `llm-browser` 0.10.0.
 
 - `solve captcha` scenario: `site/captcha.html` plus `flows/solve-captcha.yaml`
   drive a whole image captcha — a wrong answer, the page's error left on screen,
-  a fresh crop, the right answer — against a stub reader registered with
-  `captcha.set_reader`, and assert the crop is smaller than the page.
+  a fresh crop, the right answer — against a stub reader put on
+  the session as `captcha_reader`, and assert the crop is smaller than the page.
 - `screenshot step` also claims `field:screenshot.selector`, asserting the
   element capture is smaller than the page capture.
 
