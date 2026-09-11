@@ -132,6 +132,17 @@ def _is_timeout(exc: BaseException) -> bool:
     return type(exc).__name__ == "TimeoutError"
 
 
+def is_step_failure(exc: BaseException) -> bool:
+    """Whether ``exc`` is a step result rather than a library bug.
+
+    ``TypeError`` is in the set because writing a step's output is part of the
+    step: a row ``json.dumps`` cannot represent has to come back as an
+    ``ErrorResult`` like any other failure, not escape ``run_flow`` as a raw
+    exception no caller can act on.
+    """
+    return _is_timeout(exc) or isinstance(exc, (ValueError, TypeError))
+
+
 def execute_action(session: BrowserSession, step: Step) -> ActionResult:
     if step.action is None:
         return VoidResult()
@@ -139,7 +150,7 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
         with paced(session.behavior, session.behavior_runtime):
             return get_registry().get(step.action)(session, step)
     except Exception as exc:
-        if not (_is_timeout(exc) or isinstance(exc, ValueError)):
+        if not is_step_failure(exc):
             raise
         if step.optional:
             return SkippedResult(reason=f"{type(exc).__name__}: {str(exc)[:200]}")
@@ -270,10 +281,17 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
 def _write_rows(path: str, result: ParsedResult) -> None:
     """JSON-dump ``ParsedResult.rows`` to ``path``. Rows are Pydantic models
     (or ``None``); use ``model_dump`` so dynamic-field ``ExtractedRow`` and
-    typed ``ParseBase`` instances both serialize uniformly."""
+    typed ``ParseBase`` instances both serialize uniformly.
+
+    ``mode="json"`` because a ``parse`` schema may declare ``Decimal``,
+    ``date`` or ``datetime``: python mode hands those straight to
+    ``json.dumps``, which cannot represent them.
+    """
     import json
 
-    payload = [r.model_dump() if r is not None else None for r in result.rows]
+    payload = [
+        r.model_dump(mode="json") if r is not None else None for r in result.rows
+    ]
     prepare_output_path(path).write_text(json.dumps(payload, ensure_ascii=False))
 
 

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Parse rows</title>
+<table id="invoices"><tbody>
+  <tr class="row"><td class="name">alpha</td><td class="total">10.25</td><td class="due">2024-03-01</td></tr>
+  <tr class="row"><td class="name">beta</td><td class="total">7.50</td><td class="due">2024-04-15</td></tr>
+</tbody></table>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+</script>

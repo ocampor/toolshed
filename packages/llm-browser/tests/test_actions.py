@@ -565,3 +565,74 @@ def test_only_session_input_drives_the_page() -> None:
         and node.value.attr == "driver"
     ]
     assert calls == []
+
+
+def test_parse_writes_decimal_and_date_rows(
+    session: BrowserSession, tmp_path: object
+) -> None:
+    """A schema may declare types ``json.dumps`` cannot represent; the dump
+    has to be JSON-mode or the whole flow dies on the write."""
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from llm_browser.models import ParseStep
+
+    schema = Path(str(tmp_path)) / "invoice.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Invoice",
+                "fields": {
+                    "total": {"type": "Decimal", "child_selector": "td.total"},
+                    "due": {"type": "date", "child_selector": "td.due"},
+                },
+            }
+        )
+    )
+
+    _rows_locator(session, [{"total": "10.25", "due": "2024-03-01"}])
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ParseStep(
+        name="s",
+        action="parse",
+        selector="tr.row",
+        schema_path=str(schema),
+        path=str(target),
+    )
+    execute_action(session, step)
+    assert json.loads(target.read_text()) == [{"total": "10.25", "due": "2024-03-01"}]
+
+
+def test_a_type_error_from_writing_output_is_an_error_result(
+    session: BrowserSession, tmp_path: object
+) -> None:
+    """Nothing from a step escapes ``execute_action`` as a raw exception."""
+    from pathlib import Path
+
+    from llm_browser.actions import ErrorResult
+
+    _rows_locator(session, [{"name": "Alice"}])
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ReadStep(
+        name="s",
+        action="read",
+        selector="tr",
+        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
+        path=str(target),
+    )
+    original = actions._write_rows
+
+    def exploding_write(path: str, result: object) -> None:
+        raise TypeError("Object of type object is not JSON serializable")
+
+    actions._write_rows = exploding_write  # type: ignore[assignment]
+    try:
+        result = execute_action(session, step)
+    finally:
+        actions._write_rows = original  # type: ignore[assignment]
+    assert isinstance(result, ErrorResult)
+    assert result.error == "TypeError"
