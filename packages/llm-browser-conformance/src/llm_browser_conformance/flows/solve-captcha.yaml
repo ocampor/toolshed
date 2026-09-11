@@ -1,0 +1,18 @@
+# An image captcha: crop, answer, submit, read the page's own verdict.
+steps:
+  - name: captcha
+    action: solve_captcha
+    image: "#captcha-image"
+    input: "#captcha-answer"
+    submit: "#captcha-submit"
+    error: "#captcha-error"
+    retries: 2
+    prompt: "Five characters, letters and digits."
+    timeout: 8000
+
+  - name: verified
+    action: read
+    selector: "#captcha-done"
+    extract:
+      text:
+        attribute: textContent

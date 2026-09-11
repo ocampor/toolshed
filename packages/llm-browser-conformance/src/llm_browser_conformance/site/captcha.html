@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Captcha</title>
+<style>
+  #captcha-image { border: 1px solid #333; background: #cfc8b0; }
+  #captcha-error { color: #a00; }
+</style>
+<form id="captcha-form">
+  <img id="captcha-image" width="120" height="40" alt="captcha"
+       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==">
+  <input type="text" id="captcha-answer" autocomplete="off">
+  <button type="button" id="captcha-submit">Verify</button>
+</form>
+<div id="captcha-error" hidden>Wrong code</div>
+<div id="captcha-done" hidden>Verified</div>
+<script>
+  // The answer the fixture solver is expected to produce.
+  const CODE = "7fkq2";
+  document.getElementById("captcha-submit").addEventListener("click", () => {
+    // Clearing the error first: a rejection left visible would be read as the
+    // verdict on the *next* attempt.
+    document.getElementById("captcha-error").hidden = true;
+    if (document.getElementById("captcha-answer").value === CODE) {
+      document.getElementById("captcha-form").remove();
+      document.getElementById("captcha-done").hidden = false;
+    } else {
+      document.getElementById("captcha-error").hidden = false;
+    }
+  });
+</script>

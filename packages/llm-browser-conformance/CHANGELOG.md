@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — 2026-09-11
+
+Tracks `llm-browser` 0.10.0.
+
+### Added
+
+- `solve captcha` scenario: `site/captcha.html` plus `flows/solve-captcha.yaml`
+  drive a whole image captcha — a wrong answer, the page's error, a fresh crop,
+  the right answer — against a stub solver, and assert the crop is smaller than
+  the page.
+- `captcha solver mode` scenario: `solver: human` fails with `human_needed` and
+  never calls the injected solver.
+- `screenshot step` also claims `field:screenshot.selector`, asserting the
+  element capture is smaller than the page capture.
+
 ## 0.2.1 — 2026-09-10
 
 ### Fixed

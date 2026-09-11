@@ -1,0 +1,8 @@
+# `solver: human` never calls the injected solver — it fails asking for one.
+steps:
+  - name: captcha
+    action: solve_captcha
+    solver: human
+    image: "#captcha-image"
+    input: "#captcha-answer"
+    timeout: 0
