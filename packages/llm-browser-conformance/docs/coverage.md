@@ -28,7 +28,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:read` | overlay intercepts click, slow xhr rows |
 | `step:run-flow` | run-flow embedded |
 | `step:screenshot` | screenshot step |
-| `step:scroll` | scroll ticks |
+| `step:scroll` | wheel ticks |
 | `step:select` | custom select rejects select, native select optgroup |
 | `step:think` | think pauses |
 | `step:type` | controlled input, masked input |
@@ -64,9 +64,9 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:run-flow.flow` | run-flow embedded |
 | `field:run-flow.data` | run-flow embedded |
 | `field:screenshot.path` | screenshot step |
-| `field:scroll.delta` | scroll ticks |
-| `field:scroll.times` | scroll ticks |
-| `field:scroll.pause` | scroll ticks |
+| `field:scroll.delta` | wheel ticks |
+| `field:scroll.times` | wheel ticks |
+| `field:scroll.pause` | wheel ticks |
 | `field:select.selector` | custom select rejects select |
 | `field:select.value` | custom select rejects select, native select optgroup |
 | `field:think.min_ms` | think pauses |
@@ -129,7 +129,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:probe` | flow failure flags a login wall, probe sees a password |
 | `session:save_screenshot` | screenshot step |
 | `session:screenshot_bytes` | screenshot is a png, screenshot bytes |
-| `session:scroll` | scroll, scroll ticks |
+| `session:scroll` | scroll, wheel ticks |
 | `session:select_option` | select_option, custom select rejects select |
 | `session:set_checked` | fill/type/check, checkbox and radio |
 | `session:status` | attach over cdp |

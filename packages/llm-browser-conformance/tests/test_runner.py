@@ -139,6 +139,20 @@ def test_select_filters_by_substring() -> None:
     assert select(("no-such-scenario",)) == []
 
 
+def test_every_scenario_name_can_be_run_on_its_own() -> None:
+    """``--only`` filters by substring, so a name that is contained in another
+    one has no argument that selects just it."""
+    names = [s.name for s in ALL_SCENARIOS]
+    assert sorted(set(names)) == sorted(names), "two scenarios share a name"
+    swallowed = [
+        f"--only {name!r} also runs {other!r}"
+        for name in names
+        for other in names
+        if name != other and name in other
+    ]
+    assert swallowed == []
+
+
 def test_run_scenario_maps_each_shape_to_a_verdict() -> None:
     ctx = fake_context()
     verdicts = {s.name: run_scenario(s, ctx).outcome for s in FAKE_SCENARIOS}

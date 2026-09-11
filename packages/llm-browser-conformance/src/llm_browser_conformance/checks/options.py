@@ -11,6 +11,7 @@ about the page.
 
 import time
 
+from llm_browser.constants import DEFAULT_POLL_INTERVAL_MS
 from llm_browser.flows import run_flow
 from llm_browser.models import FlowError, FlowSuccess
 
@@ -35,7 +36,7 @@ STEP_TIMEOUT_MS = 1_000
 
 # ``find`` polls on the library's own cadence, so a budget is spent plus at
 # most one more check; the rest is the machine.
-BUDGET_MS = STEP_TIMEOUT_MS + 2 * 500 + SLACK_MS
+BUDGET_MS = STEP_TIMEOUT_MS + 2 * DEFAULT_POLL_INTERVAL_MS + SLACK_MS
 
 
 def ran(ctx: Context, flow: str, **data: object) -> bool:
@@ -229,7 +230,7 @@ SCENARIOS = [
         covers=frozenset({"api:templating.selector", "api:templating.value"}),
     ),
     Scenario(
-        "templating miss",
+        "unresolved placeholder",
         Section.OPTIONS,
         an_unresolved_name_stays_a_literal_placeholder,
     ),

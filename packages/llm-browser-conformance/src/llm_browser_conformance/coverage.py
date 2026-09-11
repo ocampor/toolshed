@@ -15,7 +15,7 @@ kind prefix:
 | ``field:goto.wait_until`` | a field declared by one step type |
 | ``option:optional`` | a ``BaseStep`` field, i.e. an option every step has |
 | ``when:eq`` | a ``when:`` condition |
-| ``session:find_all`` | a public ``BrowserSession`` method |
+| ``session:find_all`` | a public ``BrowserSession`` member |
 | ``api:redact`` | library surface that is not a model field or a method |
 
 Only ``api:`` keys are hand-listed, because there is nothing to introspect:
@@ -23,6 +23,7 @@ they name behaviour (``redact=``, partial outputs, a sanitize level) rather
 than an attribute.
 """
 
+import functools
 import inspect
 import typing
 from collections.abc import Iterable
@@ -86,12 +87,16 @@ def step_arms() -> list[tuple[str, type[BaseStep]]]:
 
 
 def own_fields(step_class: type[BaseStep]) -> list[str]:
-    """Fields this step declares itself.
+    """Fields this step has below ``BaseStep``.
 
-    ``action`` is the discriminator, not an option, and the inherited
-    ``selector`` cannot go unexercised — a selector step has nothing to act on
-    without it. ``PressStep`` re-declares ``selector`` because it is optional
-    there, and that *is* a question worth a scenario, so it stays.
+    ``action`` is the discriminator, not an option, and the ``BaseStep``
+    fields are counted once as options rather than once per step type.
+    Everything under it is per-step, ``SelectorStep.selector`` included: what
+    a selector means is the step's own question, so every selector step keeps
+    the row.
+
+    The one thing this misses is a step that re-declares a ``BaseStep``
+    option to narrow it: the subtraction goes by name, not by semantics.
     """
     return [
         name
@@ -101,11 +106,21 @@ def own_fields(step_class: type[BaseStep]) -> list[str]:
 
 
 def session_methods() -> list[str]:
-    return sorted(
-        name
-        for name, member in inspect.getmembers(BrowserSession, inspect.isfunction)
-        if not name.startswith("_")
-    )
+    """Every public member of ``BrowserSession``, however it is declared.
+
+    Walking the MRO rather than ``inspect.getmembers``: a ``property`` or a
+    ``classmethod`` is not a function once the class body is done with it, so
+    a session attribute declared as one would otherwise never be required.
+    """
+    descriptors = (staticmethod, classmethod, property, functools.cached_property)
+    names = set()
+    for klass in BrowserSession.__mro__:
+        for name, member in vars(klass).items():
+            if name.startswith("_"):
+                continue
+            if inspect.isfunction(member) or isinstance(member, descriptors):
+                names.add(name)
+    return sorted(names)
 
 
 def required_keys() -> dict[str, list[str]]:

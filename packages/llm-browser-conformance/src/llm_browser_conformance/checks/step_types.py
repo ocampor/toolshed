@@ -347,7 +347,7 @@ SCENARIOS = [
         covers=frozenset({"step:think", "field:think.min_ms", "field:think.max_ms"}),
     ),
     Scenario(
-        "scroll ticks",
+        "wheel ticks",
         Section.STEPS,
         scroll_moves_the_page_one_tick_at_a_time,
         covers=frozenset(

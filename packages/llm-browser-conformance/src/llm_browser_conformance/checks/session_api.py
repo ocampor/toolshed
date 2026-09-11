@@ -136,13 +136,23 @@ def latest_tab_url(ctx: Context, expected: str, timeout_s: float = 5.0) -> str:
     """
     deadline = time.monotonic() + timeout_s
     while True:
-        try:
-            url = str(ctx.session.evaluate(ctx.session.latest_tab(), "location.href"))
-        except NotImplementedError as exc:
-            raise ctx.skip(str(exc)) from exc
+        url = str(ctx.session.evaluate(ctx.session.latest_tab(), "location.href"))
         if expected in url or time.monotonic() >= deadline:
             return url
         time.sleep(0.2)
+
+
+def require_latest_tab(ctx: Context) -> None:
+    """Skip before opening a tab this driver would give no way to close again.
+
+    Decided up front, never from the cleanup: a skip raised once the scenario
+    has already passed its assertions reports the wrong outcome, and one
+    raised from a ``finally`` swallows the failure it was cleaning up after.
+    """
+    try:
+        ctx.session.latest_tab()
+    except NotImplementedError as exc:
+        raise ctx.skip(str(exc)) from exc
 
 
 def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
@@ -165,11 +175,9 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
 def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
     """Put the browser back to the single tab ``opener``.
 
-    Not hygiene: the popup takes the foreground, and Chrome stops producing
-    compositor frames for the tab behind it — so on nodriver, which captures
-    without bringing its target to the front first, the next screenshot of the
-    opener blocks for minutes. One browser is shared by every row and a failing
-    step screenshots, so one stray tab is worth a whole column.
+    Test isolation: one browser drives every row of a driver's column, so a
+    tab left open is shared state each later scenario inherits — it holds the
+    foreground, and a failing step screenshots whatever is in front of it.
 
     ``opened`` names the page the click opened, because a popup is not in the
     driver's tab list the instant the click returns — the same lag
@@ -178,6 +186,10 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
     latest_tab_url(ctx, opened)
     deadline = time.monotonic() + TAB_CLOSE_TIMEOUT_S
     while (extra := ctx.session.latest_tab()) is not opener:
+        # The inner wait has its own deadline, but it is skipped whenever
+        # ``latest_tab`` hands back something other than the tab just asked to
+        # close — without this, that turns into an unbounded retry loop.
+        assert time.monotonic() < deadline, "the opened tab never closed"
         close_tab(ctx, extra, opener, deadline)
 
 
@@ -185,6 +197,7 @@ def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
     """The ``new tab`` scenario pins that the session stays on the opener; this
     pins the way back — and then puts the browser back to one tab, since every
     later row inherits whatever this one leaves open."""
+    require_latest_tab(ctx)
     ctx.visit("new-tab.html")
     opener = ctx.session.get_page()
     try:

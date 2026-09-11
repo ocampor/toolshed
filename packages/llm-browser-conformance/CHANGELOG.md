@@ -30,3 +30,9 @@
 - Ten known gaps closed by the fixes in `llm-browser` 0.8.0 — see
   [`docs/known-gaps.md`](docs/known-gaps.md) for what is left. The camoufox
   `dispatch is untrusted` row now says it is not closable from this side.
+- Coverage introspection reads `BrowserSession` off its MRO instead of
+  `inspect.isfunction`, so a `property`, `cached_property` or `classmethod`
+  the library grows is required like any other public member.
+- Scenario renames, so every name is reachable on its own through `--only`:
+  `scroll ticks` → `wheel ticks` (`scroll` selected both) and
+  `templating miss` → `unresolved placeholder` (`templating` selected both).
