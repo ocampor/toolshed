@@ -120,12 +120,28 @@ class SkippedResult(ActionResult):
     reason: str
 
 
+class CaptchaResult(ActionResult):
+    """A captcha the step got past, and what got past it.
+
+    ``attempts`` counts the crops the solver was shown, ``solver`` is the mode
+    the step ran in. The answer itself is deliberately absent: it is typed
+    into the page and dropped there.
+    """
+
+    attempts: int
+    solver: str
+
+
 class ErrorResult(ActionResult):
     """Action failed with an expected runtime error (Timeout/Value).
 
     Returned (not raised) so the flow runner can short-circuit cleanly and
     the CLI can emit structured JSON without unwinding through Python's
     exception machinery. Truly unexpected exceptions still propagate.
+
+    ``human_needed`` is the action's own verdict that retrying will not help
+    until a person steps in; ``execute_step`` ORs it into the ``FlowError``
+    alongside what the page probe saw.
     """
 
     ok: bool = False
@@ -134,3 +150,4 @@ class ErrorResult(ActionResult):
     step_name: str
     selector: str | None = None
     hint: str | None = None
+    human_needed: bool = False

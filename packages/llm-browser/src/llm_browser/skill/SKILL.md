@@ -105,6 +105,7 @@ llm-browser --cdp-url http://localhost:9222 --target-id <target_id> screenshot
 - Failure capture is automatic: `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `FlowError` carries `step`, `screenshot` (PNG bytes) and `dom` (HTML text) in memory, the `outputs` collected so far, and a `retry_hint` naming the failed step. `llm-browser run` writes those two to `--capture-dir` (default: the session dir). `--capture-level` (`low`/`medium`/`high`/`xhigh`, default `high`) decides how hard the DOM snapshot is sanitized — reach for `medium` when you need the `href` the page would have followed.
 - `FlowError.human_needed` true means a password prompt, a live captcha or an interstitial — retrying is useless. Tell the user which screen it is, that they must log in or clear the challenge in the attached browser, and the exact `run --from <step>` to resume with.
 - There is no in-flow pause. A flow that needs a human ends before the human's step; the caller prints the instruction and is re-invoked afterwards against the same session.
+- An *image* captcha is the one challenge a flow can answer itself: `solve_captcha` crops the image and hands the PNG to a solver the caller passed as `run_flow(..., solver=)` — the library never reads it. With no solver, `solver: human`, or `retries` exhausted, the step fails with `human_needed` and the paragraph above applies. It is not for reCAPTCHA or Turnstile: those are widgets, not pictures, and still need the person. See FLOWS → Captchas.
 
 ## Anti-detection
 

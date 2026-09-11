@@ -85,6 +85,29 @@ schema instances instead of raw strings:
 schema, values coerced by Pydantic — same outcome as `Repo.extract_all(session, ...)`. Empty
 rows (every field `None`) come back as `None`, mirroring `read`'s behavior.
 
+## Solving a captcha
+
+`run_flow(session, flow, data, *, from_step=None, redact=(), solver=None)` takes a
+`solver` — `llm_browser.CaptchaSolver`, i.e. `(png_bytes, prompt) -> reply` — and hands it
+to every `solve_captcha` step in the flow, sub-flows included. The library never reads the
+image; sampling a model, queueing a person, or calling a paid service is all the caller's
+side of the line.
+
+```python
+from llm_browser import BrowserSession, CaptchaSolver
+
+def read_it(png: bytes, prompt: str | None) -> str:
+    return my_model.answer(png, prompt)   # or "UNREADABLE"
+
+result = run_flow(session, flow, data, solver=read_it)
+```
+
+Anything the solver raises becomes a failed step, never an unwound run. With no solver — or
+with `solver: human` in the step — the step fails with `FlowError.human_needed` set, which is
+also what happens when `retries` runs out. The step's row in `outputs` is
+`{"attempts": n, "solver": mode}`: the answer typed into the page is never carried out of the
+step.
+
 ## Capture modes
 
 `BrowserSession(capture=...)` controls what a failing flow step carries back on its

@@ -5,9 +5,11 @@ out) and stage three (run it). Neither stage touches the filesystem — every
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from llm_browser.captcha import CaptchaSolver
 from llm_browser.results import (
     ActionResult,
     BytesResult,
+    CaptchaResult,
     ParsedResult,
     TextResult,
 )
@@ -81,13 +83,18 @@ def run_flow(
     *,
     from_step: str | None = None,
     redact: Iterable[str] = (),
+    solver: CaptchaSolver | None = None,
 ) -> FlowResult:
     """``from_step`` does not propagate into sub-flows; children always run
     top-to-bottom. ``redact`` scrubs every text the result carries — outputs,
-    the error, and the failure DOM; binary payloads are left as they are."""
+    the error, and the failure DOM; binary payloads are left as they are.
+    ``solver`` is what a ``solve_captcha`` step calls to read the image; with
+    none, such a step fails asking for a human."""
     secrets = clean_secrets(redact)
     with redacting_logs(secrets):
-        result = run_loaded_flow(session, flow, data, from_step=from_step)
+        result = run_loaded_flow(
+            session, flow, data, from_step=from_step, solver=solver
+        )
     if isinstance(result, FlowSuccess):
         return FlowSuccess(
             step=result.step,
@@ -138,6 +145,8 @@ def step_output(step: Step, result: ActionResult) -> object | None:
             return result.text
         case BytesResult():
             return result
+        case CaptchaResult():
+            return {"attempts": result.attempts, "solver": result.solver}
         case _:
             return None
 
@@ -148,15 +157,16 @@ def run_loaded_flow(
     data: dict[str, object],
     *,
     from_step: str | None = None,
+    solver: CaptchaSolver | None = None,
 ) -> FlowSuccess | FlowError:
     """``SubFlow``'s leaf-only constraint bounds the recursion at depth one."""
     flow_data = flow.validate_data(data)
     outputs: dict[str, object] = {}
     for step in select_steps(flow.steps, from_step):
         outcome: ActionResult | FlowSuccess | FlowError = (
-            run_subflow(session, step, flow_data)
+            run_subflow(session, step, flow_data, solver=solver)
             if isinstance(step, RunFlowStep)
-            else execute_step(session, step, flow_data)
+            else execute_step(session, step, flow_data, solver=solver)
         )
         match outcome:
             case FlowError():
@@ -179,6 +189,8 @@ def run_subflow(
     session: BrowserSession,
     step: RunFlowStep,
     flow_data: FlowData,
+    *,
+    solver: CaptchaSolver | None = None,
 ) -> FlowSuccess | FlowError:
     """A skipped step comes back as an empty success; a swallowed
     ``optional:`` failure comes back as a success carrying the child's
@@ -188,7 +200,7 @@ def run_subflow(
         raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
         return FlowSuccess(step=resolved.name)
-    result = run_loaded_flow(session, resolved.flow, resolved.data)
+    result = run_loaded_flow(session, resolved.flow, resolved.data, solver=solver)
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(step=resolved.name, outputs=result.outputs)
     return result

@@ -79,3 +79,28 @@ def test_resolve_refs_unknown_ref_raises() -> None:
     step = {"name": "s", "ref": "unknown.ref"}
     with pytest.raises(ValueError, match="selector ref 'unknown.ref' not found"):
         resolve_refs(step, {})
+
+
+def test_resolve_refs_expands_every_selector_valued_key() -> None:
+    """A step with more than one selector names each of them, so a `ref:`
+    standing in for a selector is expanded wherever it appears."""
+    selector_map = {
+        "login.captcha": {"id": "captchaImg"},
+        "login.captcha_answer": {"css": "#answer"},
+    }
+    step = {
+        "name": "captcha",
+        "action": "solve_captcha",
+        "image": {"ref": "login.captcha"},
+        "input": {"ref": "login.captcha_answer"},
+        "submit": "#go",
+    }
+    result = resolve_refs(step, selector_map)
+    assert result["image"] == {"id": "captchaImg"}
+    assert result["input"] == {"css": "#answer"}
+    assert result["submit"] == "#go"
+
+
+def test_resolve_refs_leaves_a_mapping_that_is_not_a_ref_alone() -> None:
+    step = {"name": "s", "selector": {"css": "#a"}, "data": {"ref": "x", "n": 1}}
+    assert resolve_refs(step, {}) == step

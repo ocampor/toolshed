@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
+from llm_browser.captcha import SolverMode
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
@@ -25,6 +26,9 @@ from llm_browser.constants import (
 from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
+
+if TYPE_CHECKING:
+    from llm_browser.captcha import CaptchaSolver
 
 # --- Step types ---
 
@@ -246,6 +250,35 @@ class WaitForStep(SelectorStep):
         return self
 
 
+class SolveCaptchaStep(BaseStep):
+    """Read an image captcha and type the answer back.
+
+    ``image`` is cropped and handed to the solver the caller injected through
+    ``run_flow(..., solver=)``; the reply is typed into ``input`` and, if
+    ``submit`` is set, submitted. The page's own verdict decides the attempt:
+    ``error`` becoming visible is a rejection, ``input`` leaving the DOM is
+    acceptance, and ``timeout`` bounds how long that verdict is waited for.
+
+    ``solver`` says who may read the image — ``human`` never calls the
+    injected solver and fails asking for a person, ``sampling`` insists there
+    is one, ``auto`` uses one if the caller wired it. The answer is never put
+    in the result.
+    """
+
+    action: Literal["solve_captcha"]
+    image: Selector
+    input: Selector
+    submit: Selector | None = None
+    error: Selector | None = None
+    retries: int = Field(3, ge=1)
+    solver: SolverMode = SolverMode.AUTO
+    prompt: str | None = None
+    # Injected by ``steps.execute_step`` after templating, because
+    # ``resolve_step`` round-trips the step through model_dump/validate and a
+    # callable is not flow data.
+    _solver: CaptchaSolver | None = PrivateAttr(default=None)
+
+
 class EvalStep(BaseStep):
     """Step with no browser action (eval-only, wait)."""
 
@@ -305,6 +338,7 @@ Step = Annotated[
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[WaitForStep, Tag("wait_for")]
+    | Annotated[SolveCaptchaStep, Tag("solve_captcha")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),

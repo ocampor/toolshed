@@ -438,11 +438,20 @@ class BrowserSession:
         return resolve_selector(self.driver, self.get_page(), selector)
 
     def element_exists(
-        self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
+        self,
+        selector: Selector,
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        *,
+        state: WaitState = "attached",
     ) -> bool:
-        """Whether ``selector`` shows up within ``timeout``; never raises."""
+        """Whether ``selector`` reaches ``state`` within ``timeout``; never raises.
+
+        The bool half of ``wait_for_element``: ``state`` is there so "is the
+        error visible" and "is the input gone" are answerable without an
+        exception, the way a racing poll needs them.
+        """
         try:
-            self.wait_for_element(selector, state="attached", timeout=timeout)
+            self.wait_for_element(selector, state=state, timeout=timeout)
         except TimeoutError:
             return False
         return True
