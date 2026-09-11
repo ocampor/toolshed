@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from yaml_engine.registry import Registry
 
 from llm_browser.behavior import Jitter, jittered_sleep, paced
+from llm_browser.captcha import solve as solve_captcha
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -23,6 +24,7 @@ from llm_browser.models import (
     ScreenshotStep,
     ScrollStep,
     SelectStep,
+    SolveCaptchaStep,
     Step,
     ThinkStep,
     TypeStep,
@@ -180,9 +182,16 @@ def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesRes
     is what writes it."""
     return BytesResult(
         name=f"{step.name}.png",
-        content=session.screenshot_bytes(),
+        content=session.screenshot_bytes(step.selector),
         media_type="image/png",
     )
+
+
+@_registry.register("solve_captcha")
+def action_solve_captcha(
+    session: BrowserSession, step: SolveCaptchaStep
+) -> ActionResult:
+    return solve_captcha(session, step)
 
 
 # --- Data actions ---

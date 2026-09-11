@@ -1,9 +1,11 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Collection
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from llm_browser import session_input, waits
@@ -44,6 +46,9 @@ from llm_browser.selectors import (
     resolve_selector,
 )
 
+if TYPE_CHECKING:
+    from llm_browser.captcha import CaptchaReader
+
 logger = logging.getLogger(LOGGER_NAME)
 
 
@@ -73,6 +78,7 @@ class BrowserSession:
         driver: Driver | str | None = None,
         executable_path: str | Path | None = None,
         stateless: bool = False,
+        captcha_reader: CaptchaReader | None = None,
     ) -> None:
         self.session_id = session_id
         self.state_dir = state_dir
@@ -92,6 +98,10 @@ class BrowserSession:
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
         )
+        # What a ``solve_captcha`` step reads an image with. None — the
+        # default, and what the CLI builds — makes every captcha a human
+        # handoff rather than a guess.
+        self.captcha_reader: CaptchaReader | None = captcha_reader
 
     # --- Lifecycle ---
 
@@ -356,9 +366,14 @@ class BrowserSession:
         locator = self.find(selector) if selector is not None else None
         self.driver.scroll(self.get_page(), dx, dy, locator)
 
-    def screenshot_bytes(self) -> bytes:
-        """PNG bytes of the current page, without writing into the session dir."""
-        return self.driver.screenshot_bytes(self.get_page())
+    def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
+        """PNG bytes of the current page, or of ``selector`` alone when given.
+
+        Nothing is written into the session dir either way.
+        """
+        if selector is None:
+            return self.driver.screenshot_bytes(self.get_page())
+        return self.driver.screenshot_element_bytes(self.find(selector))
 
     def dom_snapshot(self, level: SanitizeLevel | None = None) -> str:
         """Sanitized HTML of the whole current page, as text.
@@ -433,11 +448,20 @@ class BrowserSession:
         return resolve_selector(self.driver, self.get_page(), selector)
 
     def element_exists(
-        self, selector: Selector, timeout: int = DEFAULT_WAIT_TIMEOUT_MS
+        self,
+        selector: Selector,
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        *,
+        state: WaitState = "attached",
     ) -> bool:
-        """Whether ``selector`` shows up within ``timeout``; never raises."""
+        """Whether ``selector`` reaches ``state`` within ``timeout``; never raises.
+
+        The bool half of ``wait_for_element``: ``state`` is there so "is the
+        error visible" and "is the input gone" are answerable without an
+        exception, the way a racing poll needs them.
+        """
         try:
-            self.wait_for_element(selector, state="attached", timeout=timeout)
+            self.wait_for_element(selector, state=state, timeout=timeout)
         except TimeoutError:
             return False
         return True

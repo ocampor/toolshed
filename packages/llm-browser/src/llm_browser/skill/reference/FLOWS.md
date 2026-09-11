@@ -40,7 +40,8 @@ steps:
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
-| `screenshot` | — | `path` | The PNG bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
+| `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
+| `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `prompt`, `timeout` | Crops `image`, hands the PNG to the session's `captcha_reader`, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
 
 ### Waiting
 
@@ -75,6 +76,64 @@ One step covers both kinds of waiting: element presence and text stability.
   state: stable
   settle: 800
   timeout: 20000
+```
+
+### Captchas
+
+`solve_captcha` is the one step that needs something outside the browser to
+look at a picture. The library never reads the image: the host process passes a
+reader when it builds the session — `BrowserSession(captcha_reader=fn)`, where
+`fn` is `(png_bytes, prompt) -> reply` — and the step owns the loop around it.
+There is no per-flow or per-step choice of reader: one session, one way of
+reading, and a different mechanism would be a different step.
+
+**`llm-browser` the CLI passes none**, so a `solve_captcha` step run from the
+command line always fails with `human_needed` before it touches the page. It is a step for an embedding process that has something that can read
+an image.
+
+One attempt is: crop `image`, ask the reader, then strip everything that is
+not a letter or a digit from the whole reply and keep the result only if it is
+3-12 characters and not `UNREADABLE`. Nothing is extracted from a sentence: a
+reader that explains itself has spent the attempt without typing, which is why
+the prompt should ask for the characters alone. The answer goes into `input`, `submit` is clicked if set, and then the
+page's own verdict decides: `error` becoming visible is a rejection and the
+next attempt crops the image again, `input` leaving the DOM *and staying gone*
+is acceptance — a reloading form takes its input away on the way back, and a
+banner it never cleared is not a verdict on the answer that follows it.
+`timeout` is the whole budget for one attempt's verdict, confirmation
+included; set it tight and the confirmation shrinks rather than overrunning.
+
+Three paths end in a `FlowError` with `human_needed: true`: no reader on the
+session, a reader that raised `llm_browser.ReaderUnavailable` to say
+nothing can read in this run (that one stops after the first crop rather than
+spending the remaining retries), and `retries` exhausted. `optional: true`
+does not skip any of them — a run nobody can read is a fact about the run,
+not about the page. A reader that raised anything else is an ordinary failed
+step, carrying the exception's message and worth retrying; that one
+`optional: true` does turn into a skip. The answer is never put in the result
+or in a log line; the step's row in `outputs` is `{"attempts": 2}`.
+
+```yaml
+steps:
+  - name: user
+    selector: "#username"
+    action: fill
+    value: "{{ user }}"
+
+  - name: captcha
+    action: solve_captcha
+    image: "#captcha-image"
+    input: "#captcha-answer"
+    submit: "button[type=submit]"
+    error: ".captcha-error"
+    retries: 3
+    timeout: 10000
+    prompt: "Five characters, letters and digits, on a noisy background."
+
+  - name: signed in
+    selector: "#account-menu"
+    action: wait_for
+    state: visible
 ```
 
 ### Pacing actions (no selector)
@@ -140,7 +199,7 @@ run_flow(session, flow, data)
 
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, and a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
+`run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`, and `{"attempts": n}` for `solve_captcha`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
 
 A failing run also carries the page itself: `FlowError.screenshot` is PNG bytes and `FlowError.dom` is sanitized HTML text, both in memory and controlled by `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `model_dump(mode="json")` base64-encodes the bytes and validating that back decodes them, so the result round-trips; `llm-browser run` instead writes both to `--capture-dir` and prints the paths.
 

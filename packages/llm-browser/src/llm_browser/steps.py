@@ -8,7 +8,7 @@ from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
-from llm_browser.results import ActionResult, SkippedResult
+from llm_browser.results import ActionResult, ErrorResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME
 from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.probe import human_needed
@@ -96,7 +96,8 @@ def execute_step(
                 else None
             ),
             dom=session.dom_snapshot() if capture in ("dom", "both") else None,
-            human_needed=page_needs_human(session),
+            human_needed=page_needs_human(session)
+            or (isinstance(action_result, ErrorResult) and action_result.human_needed),
         )
     if resolved.eval:
         session.evaluate(session.get_page(), resolved.eval)

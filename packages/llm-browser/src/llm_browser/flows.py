@@ -8,6 +8,7 @@ from typing import Any
 from llm_browser.results import (
     ActionResult,
     BytesResult,
+    CaptchaResult,
     ParsedResult,
     TextResult,
 )
@@ -138,6 +139,8 @@ def step_output(step: Step, result: ActionResult) -> object | None:
             return result.text
         case BytesResult():
             return result
+        case CaptchaResult():
+            return {"attempts": result.attempts}
         case _:
             return None
 

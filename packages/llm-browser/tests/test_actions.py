@@ -176,6 +176,21 @@ def test_screenshot_path_is_ignored_by_the_runner(
     assert not target.parent.exists()
 
 
+def test_screenshot_selector_captures_only_that_element(
+    session: BrowserSession,
+) -> None:
+    element = session._page.locator.return_value.first  # type: ignore[union-attr]
+    element.screenshot.return_value = PNG
+    step = ScreenshotStep(name="s", action="screenshot", selector="#logo")
+
+    result = execute_action(session, step)
+
+    assert isinstance(result, BytesResult)
+    assert result.content == PNG
+    element.screenshot.assert_called_once_with()
+    session._page.screenshot.assert_not_called()  # type: ignore[union-attr]
+
+
 def test_screenshot_bytes_are_base64_in_json_mode(session: BrowserSession) -> None:
     session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
     result = execute_action(session, ScreenshotStep(name="s", action="screenshot"))

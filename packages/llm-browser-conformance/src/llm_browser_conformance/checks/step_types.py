@@ -9,18 +9,22 @@ driven as a flow, because that is the surface a caller writes.
 
 import asyncio
 import concurrent.futures
+import contextlib
 import datetime
 import decimal
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from llm_browser import captcha
 from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import FlowSuccess
 from llm_browser.results import BytesResult
+from llm_browser.session import BrowserSession
 from pydantic import ValidationError
 
 from llm_browser_conformance.checks.support import (
@@ -70,6 +74,18 @@ OFF_PAGE_MARGIN_PX = 50
 TYPED_TEXT = "abcde"
 TYPE_DELAY_MS = 60
 
+# What `site/captcha.html` accepts, and what `flows/solve-captcha.yaml` asks.
+CAPTCHA_CODE = "7fkq2"
+CAPTCHA_PROMPT = "Five characters, letters and digits."
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    """Width and height off a PNG's IHDR — enough to tell a crop from a page."""
+    return (
+        int.from_bytes(data[16:20], "big"),
+        int.from_bytes(data[20:24], "big"),
+    )
+
 
 def resolved_document(text: str, repository: FlowRepository) -> dict[str, Any]:
     """Resolution is async, and Playwright's sync API already owns a running
@@ -111,22 +127,35 @@ def goto_refuses_a_url_that_is_not_http(ctx: Context) -> None:
     assert "http or https" in message, message
 
 
-def both_screenshot_steps_return_png_bytes(ctx: Context) -> None:
-    """With a ``path:`` or without one, a screenshot step returns the PNG.
+def every_screenshot_step_returns_png_bytes(ctx: Context) -> None:
+    """With a ``path:`` or without one, a screenshot step returns the PNG, and
+    a ``selector:`` crops it to that element.
 
     ``path:`` is an instruction to the CLI — the runner has to leave it alone.
     """
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "shot.png"
         with wrote_nothing(ctx):
-            outputs = expect_success(ctx, "form.html", "screenshot", path=str(target))
+            try:
+                outputs = expect_success(
+                    ctx, "form.html", "screenshot", path=str(target)
+                )
+            except NotImplementedError as exc:
+                raise ctx.skip(str(exc)) from exc
         assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
-    for step in ("explicit", "session"):
+    for step in ("explicit", "session", "element"):
         shot = outputs[step]
         assert isinstance(shot, BytesResult), shot
         assert shot.content.startswith(PNG_MAGIC), shot.content[:16]
         assert shot.media_type == "image/png"
         assert shot.name == f"{step}.png"
+    page = outputs["session"]
+    element = outputs["element"]
+    assert isinstance(page, BytesResult) and isinstance(element, BytesResult)
+    assert png_size(element.content) < png_size(page.content), (
+        f"`selector:` captured {png_size(element.content)}, "
+        f"the page is {png_size(page.content)}"
+    )
 
 
 def read_pulls_a_different_attribute_per_field(ctx: Context) -> None:
@@ -287,6 +316,51 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
     assert result.outputs["child/read"] == [{"text": "Gamma"}]
 
 
+@contextlib.contextmanager
+def reading_captchas_with(
+    session: BrowserSession, read: captcha.CaptchaReader
+) -> Iterator[None]:
+    """The whole suite shares one session, so a scenario puts its reader back."""
+    previous = session.captcha_reader
+    session.captcha_reader = read
+    try:
+        yield
+    finally:
+        session.captcha_reader = previous
+
+
+def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> None:
+    """The first answer is wrong on purpose: the page shows its error, and the
+    step has to read that as a rejection and come back with a fresh crop.
+
+    The fixture never clears that banner, which is what most real forms do, so
+    the second attempt also proves a *stale* rejection is not read as the
+    verdict on the answer that follows it.
+    """
+    crops: list[bytes] = []
+    prompts: list[str | None] = []
+
+    def read(png: bytes, prompt: str | None) -> str:
+        crops.append(png)
+        prompts.append(prompt)
+        return "wrong" if len(crops) == 1 else CAPTCHA_CODE
+
+    ctx.visit("captcha.html")
+    page = ctx.session.screenshot_bytes()
+    try:
+        with reading_captchas_with(ctx.session, read):
+            result = run_flow(ctx.session, ctx.flow("solve-captcha"), {})
+    except NotImplementedError as exc:
+        raise ctx.skip(str(exc)) from exc
+    assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
+    assert result.outputs["captcha"] == {"attempts": 2}
+    assert one_text(result.outputs, "verified") == "Verified"
+    assert prompts == [CAPTCHA_PROMPT, CAPTCHA_PROMPT], prompts
+    for crop in crops:
+        assert crop.startswith(PNG_MAGIC), crop[:16]
+        assert png_size(crop) < png_size(page), "the reader was shown the whole page"
+
+
 SCENARIOS = [
     Scenario(
         "goto wait_until",
@@ -308,12 +382,29 @@ SCENARIOS = [
     Scenario(
         "screenshot step",
         Section.STEPS,
-        both_screenshot_steps_return_png_bytes,
+        every_screenshot_step_returns_png_bytes,
         covers=frozenset(
             {
                 "step:screenshot",
                 "field:screenshot.path",
+                "field:screenshot.selector",
                 "session:screenshot_bytes",
+            }
+        ),
+    ),
+    Scenario(
+        "solve captcha",
+        Section.STEPS,
+        solve_captcha_answers_the_image_and_retries_a_rejection,
+        covers=frozenset(
+            {
+                "step:solve_captcha",
+                "field:solve_captcha.image",
+                "field:solve_captcha.input",
+                "field:solve_captcha.submit",
+                "field:solve_captcha.error",
+                "field:solve_captcha.retries",
+                "field:solve_captcha.prompt",
             }
         ),
     ),

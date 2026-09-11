@@ -29,6 +29,16 @@ def _lookup(selector_map: SelectorMap, ref: str) -> dict[str, Any]:
     return selector_map[ref]
 
 
+# A ``run-flow`` step's ``data:`` is flow arguments, not selectors: a child
+# param that happens to be called ``ref`` is a literal value.
+LITERAL_KEYS = frozenset({"data"})
+
+
+def is_ref(key: str, value: Any) -> bool:
+    """A ``{ref: name}`` mapping standing in for a selector."""
+    return key not in LITERAL_KEYS and isinstance(value, dict) and set(value) == {"ref"}
+
+
 def resolve_refs(
     step_dict: dict[str, Any],
     selector_map: SelectorMap,
@@ -42,11 +52,18 @@ def resolve_refs(
 
     Handles:
       - step-level: ``{"ref": "invoice.rfc"} -> {"selector": {"id": "135..."}}``
+      - any selector-valued key: ``{"image": {"ref": "login.captcha"}}`` ->
+        the selector itself, which is how a step with more than one selector
+        (``solve_captcha``) names each of them. ``data:`` is exempt — a
+        sub-flow's arguments are values, not selectors.
       - field-level: ``fields[i]["ref"]`` -> resolved selector as
         ``id`` (when the map entry is an id) or ``selector`` otherwise.
       - read-level: ``read[key]["ref"]`` -> resolved as ``selector``.
     """
-    result = dict(step_dict)
+    result: dict[str, Any] = {
+        key: _lookup(selector_map, str(value["ref"])) if is_ref(key, value) else value
+        for key, value in step_dict.items()
+    }
 
     if "ref" in result:
         ref = str(result.pop("ref"))

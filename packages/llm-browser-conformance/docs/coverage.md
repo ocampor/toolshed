@@ -30,6 +30,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:screenshot` | screenshot step |
 | `step:scroll` | wheel ticks |
 | `step:select` | custom select rejects select, native select optgroup |
+| `step:solve_captcha` | solve captcha |
 | `step:think` | think pauses |
 | `step:type` | controlled input, masked input |
 | `step:wait_for` | flow failure captures artifacts, enter and escape, slow xhr rows |
@@ -64,11 +65,18 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:run-flow.flow` | run-flow embedded |
 | `field:run-flow.data` | run-flow embedded |
 | `field:screenshot.path` | screenshot step |
+| `field:screenshot.selector` | screenshot step |
 | `field:scroll.delta` | wheel ticks |
 | `field:scroll.times` | wheel ticks |
 | `field:scroll.pause` | wheel ticks |
 | `field:select.selector` | custom select rejects select |
 | `field:select.value` | custom select rejects select, native select optgroup |
+| `field:solve_captcha.image` | solve captcha |
+| `field:solve_captcha.input` | solve captcha |
+| `field:solve_captcha.submit` | solve captcha |
+| `field:solve_captcha.error` | solve captcha |
+| `field:solve_captcha.retries` | solve captcha |
+| `field:solve_captcha.prompt` | solve captcha |
 | `field:think.min_ms` | think pauses |
 | `field:think.max_ms` | think pauses |
 | `field:type.selector` | controlled input, type delay |

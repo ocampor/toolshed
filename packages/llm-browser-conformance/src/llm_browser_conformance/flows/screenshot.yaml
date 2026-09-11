@@ -7,3 +7,6 @@ steps:
     path: "{{ path }}"
   - name: session
     action: screenshot
+  - name: element
+    action: screenshot
+    selector: "#reveal"

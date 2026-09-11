@@ -15,7 +15,11 @@ import time
 from typing import Any, Callable
 
 from llm_browser.behavior import Jitter
-from llm_browser.constants import DEFAULT_SETTLE_MS, POLL_JITTER_RATIO
+from llm_browser.constants import (
+    DEFAULT_SETTLE_MS,
+    DESTROYED_CONTEXT_MESSAGE,
+    POLL_JITTER_RATIO,
+)
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState
 from llm_browser.selectors import Selector, describe_selector, resolve_selector
@@ -28,7 +32,14 @@ def is_attached(driver: Driver, locator: Any) -> bool:
 
 
 def is_detached(driver: Driver, locator: Any) -> bool:
-    return driver.count(locator) == 0
+    try:
+        return driver.count(locator) == 0
+    except Exception as exc:
+        # The navigation that tore the context down is the very thing this
+        # wait is watching for; answer "not yet" and re-ask next tick.
+        if DESTROYED_CONTEXT_MESSAGE not in str(exc):
+            raise
+        return False
 
 
 def is_visible(driver: Driver, locator: Any) -> bool:
