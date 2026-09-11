@@ -5,10 +5,14 @@ launched session — so the assertions are about ``FlowSuccess.outputs`` and
 ``FlowError.step``, not about driver primitives.
 """
 
+import contextlib
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from llm_browser.flows import run_flow
 from llm_browser.models import FlowError, FlowSuccess
+from llm_browser.session import BrowserSession
 
 from llm_browser_conformance.scenario import Context
 
@@ -49,3 +53,31 @@ def one_text(outputs: dict[str, object], step: str) -> str | None:
     values = texts(outputs, step)
     assert len(values) == 1, f"{step} matched {len(values)} elements"
     return values[0]
+
+
+def artifact_snapshot(session: BrowserSession) -> list[tuple[str, int, int]]:
+    """The files the session has in its own dir, with their stats.
+
+    Only the top level: ``user-data/`` is the live profile and the browser
+    writes into it constantly.
+    """
+    return sorted(
+        (path.name, path.stat().st_size, path.stat().st_mtime_ns)
+        for path in session.session_dir.iterdir()
+        if path.is_file()
+    )
+
+
+def cwd_snapshot() -> list[str]:
+    return sorted(path.name for path in Path.cwd().iterdir())
+
+
+@contextlib.contextmanager
+def wrote_nothing(ctx: Context) -> Iterator[None]:
+    """The library never writes output files, so neither the session dir nor
+    the working directory may gain or change one while the body runs."""
+    before_session = artifact_snapshot(ctx.session)
+    before_cwd = cwd_snapshot()
+    yield
+    assert artifact_snapshot(ctx.session) == before_session, "wrote into session dir"
+    assert cwd_snapshot() == before_cwd, "wrote into the working directory"

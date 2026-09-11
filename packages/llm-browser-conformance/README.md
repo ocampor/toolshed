@@ -69,7 +69,7 @@ Prefer pytest when you want a full assertion traceback; prefer
 | `pass`  | the scenario held, with its wall-clock cost |
 | `xfail` | a **known gap** for that driver: it failed, and the reason is in the details below the table |
 | `XPASS` | a known gap has closed — fix the table, this is a failure |
-| `skip`  | the driver has no API for what the scenario needs (`enter_frame`, `expect_download`), or the driver is not installed |
+| `skip`  | the driver has no API for what the scenario needs (`enter_frame`, `download_bytes`), or the driver is not installed |
 | `FAIL`  | a real regression |
 | `-`     | the scenario does not apply to that driver (the stealth rows are nodriver-only) |
 

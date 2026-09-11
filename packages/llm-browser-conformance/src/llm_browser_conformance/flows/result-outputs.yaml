@@ -1,5 +1,5 @@
-# Every output kind in one flow: read rows, a dom string, and a screenshot
-# whose path stays on disk instead of landing in `outputs`.
+# Every output kind in one flow: read rows, a dom string, and a screenshot's
+# bytes — all of them in `outputs`, none of them a path.
 steps:
   - name: rows
     action: read

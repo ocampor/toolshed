@@ -1,4 +1,5 @@
-# `max_depth` truncates the snippet; 0 leaves the tree whole.
+# `max_depth` truncates the snippet; 0 leaves the tree whole. `path:` is for
+# the CLI and the runner has to ignore it.
 params:
   - path
 steps:

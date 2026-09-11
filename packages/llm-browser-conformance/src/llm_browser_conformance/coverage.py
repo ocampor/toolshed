@@ -56,6 +56,7 @@ REQUIRED_API = (
     "goto.scheme_guard",
     "human_needed.challenge",
     "human_needed.password",
+    "outputs.json",
     "outputs.qualified_name",
     "outputs.shape",
     "params.default",

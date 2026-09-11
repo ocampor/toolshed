@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.0 — 2026-09-10
+
+Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
+
+### Changed
+
+- `download`, `screenshot`, `read`, `parse` and `dom` scenarios assert what
+  comes back in `FlowSuccess.outputs` — a `BytesResult` for the first two —
+  and that the step's `path:` left the filesystem alone. `path:` is an
+  instruction to the CLI now, and a runner that honoured it would pass every
+  assertion about the output while quietly putting the old design back.
+- `flow failure captures artifacts` asserts PNG bytes and sanitized HTML text
+  on `FlowError`, not two paths that exist.
+- `support.wrote_nothing(ctx)` brackets a scenario body and fails if the
+  session directory or the working directory gained or changed a file;
+  `artifact_snapshot` moved there from `checks/session_api.py` to back it.
+- Coverage follows the session API: `session:dom_snapshot` in,
+  `session:take_screenshot`, `session:save_screenshot` and
+  `session:take_dom_snapshot` out.
+
+### Added
+
+- `outputs json dump` (`api:outputs.json`): `outputs` holds real bytes for a
+  Python caller, and `model_dump(mode="json")` base64-encodes them rather than
+  crashing the serializer.
+
 ## 0.1.1 — 2026-09-10
 
 ### Added

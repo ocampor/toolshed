@@ -466,7 +466,7 @@ wheels = [
 
 [[package]]
 name = "llm-browser"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "../llm-browser" }
 dependencies = [
     { name = "click" },
@@ -509,7 +509,7 @@ dev = [
 
 [[package]]
 name = "llm-browser-conformance"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

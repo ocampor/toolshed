@@ -1,4 +1,4 @@
-# Two screenshots: one to a path the caller chose, one to the session's own.
+# Two screenshots: one with a `path:` the runner must ignore, one without.
 params:
   - path
 steps:
