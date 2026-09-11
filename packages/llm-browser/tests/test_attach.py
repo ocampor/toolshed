@@ -110,7 +110,8 @@ class AttachStubDriver(Driver):
     def page_url(self, page: Any) -> str:
         return "about:blank"
 
-    def screenshot(self, page: Any, path: Path) -> None: ...
+    def screenshot_bytes(self, page: Any) -> bytes:
+        return b""
 
     def download_bytes(self, page: Any, trigger: Any) -> BytesResult:
         return BytesResult(name="x.bin", content=b"")
@@ -142,18 +143,6 @@ def test_attach_close_never_kills_pid(tmp_path: Path) -> None:
     handle = driver.close_calls[0]
     assert handle.pid is None
     assert handle.extra.get("attached") == "1"
-
-
-def test_attach_close_cleanup_removes_capture_files(tmp_path: Path) -> None:
-    driver = AttachStubDriver()
-    session = BrowserSession(state_dir=tmp_path, driver=driver)
-    session.attach("http://localhost:9222")
-    session._screenshot_path.parent.mkdir(parents=True, exist_ok=True)
-    session._screenshot_path.write_text("x")
-    session._dom_path.write_text("y")
-    session.close(cleanup=True)
-    assert not session._screenshot_path.exists()
-    assert not session._dom_path.exists()
 
 
 def test_patchright_reattaches_from_cdp_endpoint(

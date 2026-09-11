@@ -121,7 +121,7 @@ def probe_one(
         (out_dir / "fingerprint.json").write_text(
             json.dumps(fingerprint, indent=2, default=str)
         )
-        session.driver.screenshot(page, out_dir / "screenshot.png")
+        (out_dir / "screenshot.png").write_bytes(session.driver.screenshot_bytes(page))
         content = session.driver.content(page)
         (out_dir / "page.html").write_text(content)
         # Match against rendered text, not the HTML: the source carries the

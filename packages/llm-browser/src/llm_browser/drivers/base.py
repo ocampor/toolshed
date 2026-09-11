@@ -5,7 +5,6 @@ A Driver owns both lifecycle (launch/connect/close) and interactions
 plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
-import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, ClassVar
@@ -253,15 +252,13 @@ class Driver(ABC):
     def page_url(self, page: Any) -> str: ...
 
     @abstractmethod
-    def screenshot(self, page: Any, path: Path) -> None: ...
-
     def screenshot_bytes(self, page: Any) -> bytes:
-        """The page as PNG bytes. The default writes a temp file and reads it
-        back, for drivers whose screenshot API can only write one."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            path = Path(tmp_dir) / "screenshot.png"
-            self.screenshot(page, path)
-            return path.read_bytes()
+        """The page as PNG bytes.
+
+        Nothing is left on disk: a backend whose capture API can only write a
+        file spools it to a temporary directory and removes it on the way
+        out.
+        """
 
     @abstractmethod
     def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:

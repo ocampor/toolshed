@@ -582,7 +582,7 @@ def test_execute_step_keeps_the_original_error_when_the_probe_fails(
     assert isinstance(error, FlowError)
     assert error.human_needed is False
     assert "found 0" in str(error.data)
-    mock_session.take_screenshot.assert_called_once()
+    mock_session.screenshot_bytes.assert_called_once()
 
 
 def test_run_flow_carries_human_needed_through_to_the_caller(

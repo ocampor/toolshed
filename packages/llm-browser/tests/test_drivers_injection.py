@@ -117,8 +117,8 @@ class FakeDriver(Driver):
     def page_url(self, page: Any) -> str:
         return "https://example.com"
 
-    def screenshot(self, page: Any, path: Path) -> None:
-        path.write_bytes(b"png")
+    def screenshot_bytes(self, page: Any) -> bytes:
+        return b"png"
 
     def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
         trigger()

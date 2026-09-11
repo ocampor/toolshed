@@ -20,8 +20,8 @@ def mock_session(tmp_path: Path) -> MagicMock:
     session.capture = "screenshot"
     session.driver = MagicMock()
     session.get_page.return_value = MagicMock()
-    session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.screenshot_bytes.return_value = PNG
+    session.dom_snapshot.return_value = "<html><body>hi</body></html>"
     session.download_file.return_value = BytesResult(
         name="download.bin", content=b"payload"
     )

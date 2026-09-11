@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -12,6 +13,7 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -28,7 +30,7 @@ from llm_browser.selectors import Selector
 # --- Step types ---
 
 
-CaptureMode = Literal["screenshot", "dom", "both"]
+CaptureMode = Literal["screenshot", "dom", "both", "none"]
 
 WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
@@ -410,7 +412,6 @@ class SessionResult(BaseModel):
     url: str | None = None
     cdp_url: str | None = None
     target_id: str | None = None
-    screenshot: str | None = None
 
 
 class SessionInfo(BaseModel):
@@ -469,15 +470,24 @@ class FlowError(BaseModel):
 
     ``outputs`` holds the results collected before the failing step, keyed
     the same way as :attr:`FlowSuccess.outputs`.
+
+    ``screenshot`` and ``dom`` are the failing page itself, in memory: PNG
+    bytes and sanitized HTML text, controlled by ``BrowserSession(capture=)``.
+    Nothing is written — ``model_dump(mode="json")`` base64-encodes the PNG,
+    and a caller that wants files writes them.
     """
 
     step: str
     data: object = None
-    screenshot: str | None = None
+    screenshot: bytes | None = None
     dom: str | None = None
     human_needed: bool = False
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
+
+    @field_serializer("screenshot", when_used="json-unless-none")
+    def serialize_screenshot(self, screenshot: bytes) -> str:
+        return base64.b64encode(screenshot).decode("ascii")
 
 
 # Public type alias: callers that don't care which arm they got can use

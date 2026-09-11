@@ -527,12 +527,22 @@ def validate(
 
 
 @main.command()
+@click.option(
+    "--path",
+    default=None,
+    help="Destination PNG path; defaults to <session dir>/screenshot.png.",
+)
 @click.pass_context
-def screenshot(ctx: click.Context) -> None:
-    """Take a screenshot of the current page."""
+def screenshot(ctx: click.Context, path: str | None) -> None:
+    """Take a screenshot of the current page and write it out.
+
+    The library hands back the PNG bytes; writing them is this command's job.
+    """
     session: BrowserSession = ctx.obj["session"]
-    path = session.take_screenshot()
-    _output({"screenshot": str(path)})
+    content = session.screenshot_bytes()
+    target = prepare_output_path(path or session.session_dir / "screenshot.png")
+    target.write_bytes(content)
+    _output({"screenshot": str(target)})
 
 
 def _find_all_output(session: BrowserSession, selector: str) -> None:

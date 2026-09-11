@@ -56,6 +56,7 @@ DOM event `isTrusted` (common) will only flag the opt-in escape hatches.
 
 import asyncio
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Coroutine, TypeVar
@@ -689,12 +690,18 @@ class NodriverDriver(Driver):
     def page_url(self, page: Any) -> str:
         return str(page.url)
 
-    def screenshot(self, page: Any, path: Path) -> None:
-        """`format` is explicit: nodriver defaults to jpeg and would write
-        JPEG bytes into the `.png` file every caller here asks for. The
-        activate is what keeps the capture from stalling on a background tab.
+    def screenshot_bytes(self, page: Any) -> bytes:
+        """nodriver can only capture to a file, so the capture is spooled to a
+        temporary directory and read back; the directory goes with it.
+
+        `format` is explicit: nodriver defaults to jpeg and would write JPEG
+        bytes into the `.png` file every caller here asks for. The activate is
+        what keeps the capture from stalling on a background tab.
         """
-        self.run(self.do_screenshot(page, path))
+        with tempfile.TemporaryDirectory() as spool:
+            path = Path(spool) / "screenshot.png"
+            self.run(self.do_screenshot(page, path))
+            return path.read_bytes()
 
     async def do_screenshot(self, page: Any, path: Path) -> None:
         await page.activate()

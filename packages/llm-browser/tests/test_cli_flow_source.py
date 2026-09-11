@@ -14,6 +14,7 @@ from llm_browser.cli import file_path, main, resolve_flow_options, run_cli_flow
 from llm_browser.flows import load_flow_document
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
+from tests.conftest import PNG
 
 FLOW_DOCUMENT = {
     "steps": [{"name": "s1", "action": "goto", "url": "https://example.com"}]
@@ -51,6 +52,7 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     session.capture = "screenshot"
     session.driver = MagicMock()
     session.get_page.return_value = MagicMock()
+    session.screenshot_bytes.return_value = PNG
     return session
 
 

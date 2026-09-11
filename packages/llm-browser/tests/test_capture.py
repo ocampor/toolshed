@@ -9,7 +9,11 @@ import yaml
 
 from llm_browser.html import sanitize_page_html
 from llm_browser.session import BrowserSession
+from tests.conftest import PNG
 from tests.flow_helpers import run_flow_file
+
+
+DOM = "<html><body>captured</body></html>"
 
 
 def _wrap(body: str) -> str:
@@ -91,51 +95,66 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     session.behavior_runtime = session.behavior.runtime()
     session.capture = capture
     session.driver = MagicMock()
-    session.take_screenshot.return_value = tmp_path / "screenshot.png"
-    session.take_dom_snapshot.return_value = tmp_path / "dom.html"
+    session.screenshot_bytes.return_value = PNG
+    session.dom_snapshot.return_value = DOM
     session.get_page.return_value = MagicMock()
     session.element_exists.return_value = True
     session.click.side_effect = TimeoutError("element not found")
     return session
 
 
-def test_failure_captures_screenshot(tmp_path: Path, failing_flow: Path) -> None:
+@pytest.mark.parametrize(
+    "capture, wants_screenshot, wants_dom",
+    [
+        ("screenshot", True, False),
+        ("dom", False, True),
+        ("both", True, True),
+        ("none", False, False),
+    ],
+)
+def test_failure_capture_modes(
+    tmp_path: Path,
+    failing_flow: Path,
+    capture: str,
+    wants_screenshot: bool,
+    wants_dom: bool,
+) -> None:
+    """Captures come back in memory: PNG bytes and sanitized HTML text."""
+    session = _mock_failing_session(tmp_path, capture)
+    result = run_flow_file(session, failing_flow, {})
+    assert not result.data.ok  # type: ignore[union-attr]
+    assert result.screenshot == (PNG if wants_screenshot else None)
+    assert result.dom == (DOM if wants_dom else None)
+    assert session.screenshot_bytes.call_count == int(wants_screenshot)
+    assert session.dom_snapshot.call_count == int(wants_dom)
+    assert list(tmp_path.iterdir()) == [failing_flow]
+
+
+def test_failure_screenshot_is_base64_in_json_mode(
+    tmp_path: Path, failing_flow: Path
+) -> None:
+    import base64
+
     session = _mock_failing_session(tmp_path, "screenshot")
     result = run_flow_file(session, failing_flow, {})
-    assert not result.data.ok  # type: ignore[union-attr]
-    assert result.screenshot is not None
-    assert result.dom is None
-    session.take_screenshot.assert_called_once()
-    session.take_dom_snapshot.assert_not_called()
+    assert (
+        result.model_dump(mode="json")["screenshot"] == base64.b64encode(PNG).decode()
+    )
 
 
-def test_failure_captures_dom(tmp_path: Path, failing_flow: Path) -> None:
+def test_failure_dom_is_redacted(tmp_path: Path, failing_flow: Path) -> None:
     session = _mock_failing_session(tmp_path, "dom")
-    result = run_flow_file(session, failing_flow, {})
-    assert not result.data.ok  # type: ignore[union-attr]
-    assert result.screenshot is None
-    assert result.dom is not None
-    session.take_screenshot.assert_not_called()
-    session.take_dom_snapshot.assert_called_once()
+    session.dom_snapshot.return_value = "<p>token=s3cret</p>"
+    result = run_flow_file(session, failing_flow, {}, redact=["s3cret"])
+    assert result.dom == "<p>token=***</p>"
 
 
-def test_failure_captures_both(tmp_path: Path, failing_flow: Path) -> None:
-    session = _mock_failing_session(tmp_path, "both")
-    result = run_flow_file(session, failing_flow, {})
-    assert not result.data.ok  # type: ignore[union-attr]
-    assert result.screenshot is not None
-    assert result.dom is not None
-    session.take_screenshot.assert_called_once()
-    session.take_dom_snapshot.assert_called_once()
-
-
-def test_take_dom_snapshot_writes_file(tmp_path: Path) -> None:
+def test_dom_snapshot_sanitizes_the_page(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path, capture="dom")
     mock_page = MagicMock()
     mock_page.content.return_value = _wrap("<p>hello</p><script>x()</script>")
     session._page = mock_page
-    path = session.take_dom_snapshot()
-    assert path.exists()
-    content = path.read_text()
+    content = session.dom_snapshot()
     assert "hello" in content
     assert "script" not in content
+    assert not session.session_dir.exists()

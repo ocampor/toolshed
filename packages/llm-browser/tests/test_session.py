@@ -151,4 +151,4 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
     session._page = MagicMock()
 
     session.screenshot_bytes()
-    assert not session._screenshot_path.exists()
+    assert not session.session_dir.exists()

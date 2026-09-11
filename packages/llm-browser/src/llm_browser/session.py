@@ -78,8 +78,6 @@ class BrowserSession:
         self.session_dir = state_dir / "sessions" / session_id
         self._state_file = self.session_dir / "state.json"
         self._user_data_dir = self.session_dir / "user-data"
-        self._screenshot_path = self.session_dir / "screenshot.png"
-        self._dom_path = self.session_dir / "dom.html"
         self.driver: Driver = resolve_driver(driver)
         self._info: SessionInfo | None = None
         self._page: Any | None = None
@@ -164,11 +162,9 @@ class BrowserSession:
         )
         self._save_state(info)
         self._page = self.driver.page(handle)
-        screenshot = str(self.take_screenshot()) if url else None
         return SessionResult(
             status="open",
             url=self.driver.page_url(self._page) if self._page else None,
-            screenshot=screenshot,
         )
 
     def attach(self, cdp_url: str) -> SessionResult:
@@ -342,25 +338,21 @@ class BrowserSession:
         self._page = self.driver.latest_tab(self._handle_from_state(info))
         return self._page
 
-    def close(self, cleanup: bool = False) -> SessionResult:
+    def close(self) -> SessionResult:
         """Close the browser and clean up.
 
         In attached mode, the remote Chromium process is NEVER killed —
         only our tab and the CDP connection are released.
 
-        The user-data-dir is never auto-removed (profile reuse is intentional).
-        Set ``cleanup=True`` to also delete screenshot.png and dom.html
-        captured during this session.
+        The user-data-dir is never auto-removed (profile reuse is
+        intentional). Nothing else is left behind to remove: the session
+        directory holds state, never captures.
         """
         info = self._load_state()
         if info is not None:
             self.driver.close(self._handle_from_state(info))
         self._page = None
         self._clear_state()
-        if cleanup:
-            for path in (self._screenshot_path, self._dom_path):
-                if path.exists():
-                    path.unlink()
         return SessionResult(status="closed")
 
     def status(self) -> SessionResult:
@@ -377,12 +369,6 @@ class BrowserSession:
         self._clear_state()
         return SessionResult(status="closed")
 
-    def take_screenshot(self) -> Path:
-        """Take a screenshot and return the file path."""
-        self._ensure_dirs()
-        self.driver.screenshot(self.get_page(), self._screenshot_path)
-        return self._screenshot_path
-
     def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
         """Scroll by a mouse-wheel delta, over ``selector`` when one is given.
 
@@ -396,13 +382,9 @@ class BrowserSession:
         """PNG bytes of the current page, without writing into the session dir."""
         return self.driver.screenshot_bytes(self.get_page())
 
-    def take_dom_snapshot(self) -> Path:
-        """Capture a sanitized HTML snapshot of the current page."""
-        self._ensure_dirs()
-        self._dom_path.write_text(
-            sanitize_page_html(self.driver.content(self.get_page()))
-        )
-        return self._dom_path
+    def dom_snapshot(self) -> str:
+        """Sanitized HTML of the whole current page, as text."""
+        return sanitize_page_html(self.driver.content(self.get_page()))
 
     def download_file(self, selector: Selector) -> BytesResult:
         """Click ``selector`` and return what the browser downloaded.

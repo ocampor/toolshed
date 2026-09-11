@@ -1,36 +1,14 @@
 """Tests for in-memory screenshots across the driver layer."""
 
+import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from llm_browser.drivers.nodriver import NodriverDriver
 from llm_browser.drivers.patchright import PatchrightDriver
-from tests.test_drivers_injection import FakeDriver
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
-
-
-class FileOnlyScreenshotDriver(FakeDriver):
-    """Driver whose screenshot API can only write a file — the base fallback case."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.paths: list[Path] = []
-
-    def screenshot(self, page: Any, path: Path) -> None:
-        self.paths.append(path)
-        path.write_bytes(PNG)
-
-
-def test_base_fallback_returns_file_bytes() -> None:
-    assert FileOnlyScreenshotDriver().screenshot_bytes(MagicMock()) == PNG
-
-
-def test_base_fallback_removes_temp_file() -> None:
-    driver = FileOnlyScreenshotDriver()
-    driver.screenshot_bytes(MagicMock())
-    assert len(driver.paths) == 1
-    assert not driver.paths[0].exists()
 
 
 def test_playwright_returns_bytes_without_writing_a_file() -> None:
@@ -40,24 +18,15 @@ def test_playwright_returns_bytes_without_writing_a_file() -> None:
     page.screenshot.assert_called_once_with(full_page=False)
 
 
-def test_playwright_file_screenshot_still_writes(tmp_path: Path) -> None:
+def _nodriver_page() -> tuple[NodriverDriver, MagicMock]:
+    """nodriver can only capture to a file, so the fake writes one."""
     page = MagicMock()
-    target = tmp_path / "shot.png"
-    PatchrightDriver().screenshot(page, target)
-    page.screenshot.assert_called_once_with(path=str(target), full_page=False)
-
-
-def test_nodriver_asks_for_png() -> None:
-    """nodriver's `save_screenshot` defaults to jpeg, so it would write JPEG
-    bytes into the `.png` file every caller above it asks for."""
-    import asyncio
-
-    from llm_browser.drivers.nodriver import NodriverDriver
-
-    page = MagicMock()
+    page.spooled = []
 
     async def save_screenshot(**kwargs: Any) -> str:
         page.saved = kwargs
+        page.spooled.append(Path(kwargs["filename"]))
+        Path(kwargs["filename"]).write_bytes(PNG)
         return kwargs["filename"]
 
     async def activate() -> None:
@@ -67,5 +36,23 @@ def test_nodriver_asks_for_png() -> None:
     page.activate = activate
     driver = NodriverDriver()
     driver.loop = asyncio.new_event_loop()
-    driver.screenshot(page, Path("/tmp/shot.png"))
-    assert page.saved == {"filename": "/tmp/shot.png", "format": "png"}
+    return driver, page
+
+
+def test_nodriver_reads_back_its_spooled_capture() -> None:
+    driver, page = _nodriver_page()
+    assert driver.screenshot_bytes(page) == PNG
+
+
+def test_nodriver_removes_the_spool_file() -> None:
+    driver, page = _nodriver_page()
+    driver.screenshot_bytes(page)
+    assert page.spooled and not page.spooled[0].exists()
+
+
+def test_nodriver_asks_for_png() -> None:
+    """nodriver's `save_screenshot` defaults to jpeg, so it would hand back
+    JPEG bytes from the `.png` file every caller here asks for."""
+    driver, page = _nodriver_page()
+    driver.screenshot_bytes(page)
+    assert page.saved["format"] == "png"

@@ -100,7 +100,7 @@ def run_flow(
         data=redact_secrets(result.data, secrets),
         outputs=redact_secrets(result.outputs, secrets),
         screenshot=result.screenshot,
-        dom=result.dom,
+        dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
         retry_hint=RetryHint(
             data=redact_secrets(data, secrets),

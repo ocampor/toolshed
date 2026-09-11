@@ -24,6 +24,7 @@ def _session(tmp_path: Path) -> BrowserSession:
     session.driver.launch.return_value = handle
     session.driver.attach.return_value = handle
     session.driver.page_url.return_value = None
+    session.driver.screenshot_bytes.return_value = b"png"
     return session
 
 
