@@ -25,7 +25,7 @@ from patchright.sync_api import (
     sync_playwright,
 )
 
-from llm_browser.drivers.base import DriverHandle
+from llm_browser.drivers.handle import DriverHandle
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 
 

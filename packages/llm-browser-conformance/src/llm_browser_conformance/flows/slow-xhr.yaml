@@ -1,0 +1,19 @@
+# Rows trickle in over the whole delay; `stable` is what says "done".
+steps:
+  - name: load
+    action: click
+    selector: "#load"
+  - name: wait-settled
+    action: wait_for
+    selector: "#table"
+    state: stable
+    settle: 600
+    timeout: 12000
+    interval: 200
+  - name: rows
+    action: read
+    selector: ".row"
+    extract:
+      text:
+        child_selector: ".cell"
+        attribute: textContent

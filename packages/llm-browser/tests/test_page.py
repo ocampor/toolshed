@@ -54,7 +54,7 @@ def test_goto_custom_wait_until(session: BrowserSession, page: MagicMock) -> Non
 def test_find(session: BrowserSession, page: MagicMock) -> None:
     locator = page.locator.return_value
     result = session.find("#btn")
-    locator.first.wait_for.assert_called_once_with(state="visible", timeout=10_000)
+    locator.first.is_visible.assert_called()
     assert result is locator.first
 
 
@@ -69,7 +69,7 @@ def test_find_raises_on_multiple(session: BrowserSession, page: MagicMock) -> No
 def test_find_all(session: BrowserSession, page: MagicMock) -> None:
     locator = page.locator.return_value
     result = session.find_all("li.item")
-    locator.first.wait_for.assert_called_once_with(state="attached", timeout=10_000)
+    locator.count.assert_called()
     assert result is locator
 
 
@@ -79,9 +79,9 @@ def test_element_exists_true(session: BrowserSession) -> None:
 
 def test_element_exists_false(session: BrowserSession, page: MagicMock) -> None:
     locator = _single_locator()
-    locator.first.wait_for.side_effect = TimeoutError
+    locator.count.return_value = 0
     page.locator.return_value = locator
-    assert session.element_exists("#missing") is False
+    assert session.element_exists("#missing", timeout=0) is False
 
 
 # --- pick ---
@@ -95,7 +95,6 @@ def test_pick(session: BrowserSession, page: MagicMock) -> None:
     item2 = MagicMock()
     item2.text_content.return_value = "Banana"
     locator.nth.side_effect = lambda i: [item1, item2][i]
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     session.pick(".option", "Banana")
     item2.click.assert_called_once()
@@ -104,7 +103,6 @@ def test_pick(session: BrowserSession, page: MagicMock) -> None:
 def test_pick_single_clicks_first(session: BrowserSession, page: MagicMock) -> None:
     locator = MagicMock()
     locator.count.return_value = 1
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     session.pick(".option", "anything")
     locator.first.click.assert_called_once()
@@ -116,7 +114,6 @@ def test_pick_no_match_raises(session: BrowserSession, page: MagicMock) -> None:
     item = MagicMock()
     item.text_content.return_value = "Other"
     locator.nth.return_value = item
-    locator.first.wait_for.return_value = None
     page.locator.return_value = locator
     with pytest.raises(ValueError, match="No element with text"):
         session.pick(".option", "Missing")

@@ -1,0 +1,18 @@
+name: TableRow
+fields:
+  name:
+    type: str
+    child_selector: "td.name"
+  qty:
+    type: int
+    child_selector: "td.qty"
+  price:
+    type: Decimal
+    child_selector: "td.price"
+  due:
+    type: date
+    child_selector: "td.due"
+  note:
+    type: str | None
+    child_selector: "td.note"
+    default: null

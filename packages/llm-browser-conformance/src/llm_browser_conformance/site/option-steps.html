@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Step options</title>
+<p id="present">present</p>
+<input type="text" id="field">
+<script>
+  // #absent is never created: the `when:` element predicates and the step
+  // timeout budget all need a selector that stays unmatched for good.
+  const recordTrust = (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted", String(e.isTrusted));
+    }
+  };
+  document.addEventListener("click", recordTrust, true);
+  document.addEventListener("keydown", recordTrust, true);
+  document.addEventListener("input", (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted-input", String(e.isTrusted));
+    }
+  }, true);
+</script>

@@ -1,13 +1,17 @@
-"""Humanization config for action handlers (opt-in).
+"""Humanization config for browser input (opt-in).
 
-Driver-agnostic timing knobs live here. Playwright-family drivers invoke
-`humanized_click` / `humanized_type` directly; non-Playwright drivers
-(e.g. nodriver) use their own native humanization and honor only the
-timing fields through the pure helpers (`enforce_gap`, `post_pause`).
+Driver-agnostic timing knobs live here. `paced` is the entry point every
+caller uses: it brackets one interaction with its inter-action gap and its
+post-action pause (`enforce_gap` / `post_pause` are its pieces).
+Playwright-family drivers invoke `humanized_click` / `humanized_type`
+directly; non-Playwright drivers (e.g. nodriver) use their own native
+humanization and honor only the timing fields.
 """
 
 import random
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -35,6 +39,7 @@ class BehaviorRuntime:
     def __init__(self, rng: random.Random) -> None:
         self.rng = rng
         self.last_action_monotonic: float | None = None
+        self.pacing = False
 
 
 class Behavior(BaseModel):
@@ -64,13 +69,13 @@ class Behavior(BaseModel):
     def human(cls) -> Self:
         """Timing-level humanization only.
 
-        Covers inter-key gaps, click jitter, mouse paths, pre-click pauses,
-        and post-action pauses for actions routed through
-        ``execute_action(...)``. Does NOT modify runtime JS fingerprints
-        (navigator properties, WebGL, canvas, CDP detection) — use the
-        ``patchright`` or ``camoufox`` drivers for those. Calls on the raw
-        ``Page`` / ``Locator`` returned by ``session.get_page()`` bypass
-        this entirely.
+        Covers inter-key gaps, click jitter, mouse paths, pre-click pauses
+        and post-action pauses for every ``BrowserSession`` input method, and
+        so for the flow steps built on them. Does NOT modify runtime JS
+        fingerprints (navigator properties, WebGL, canvas, CDP detection) —
+        use the ``patchright`` or ``camoufox`` drivers for those. Calls on a
+        raw driver locator or page (``session.find``, ``session.get_page``)
+        bypass this entirely.
         """
         # Never set `seed` — deterministic jitter is what detectors look for.
         return cls()
@@ -110,6 +115,27 @@ def post_pause(behavior: Behavior, runtime: BehaviorRuntime) -> None:
 
 def mark_action_done(runtime: BehaviorRuntime) -> None:
     runtime.last_action_monotonic = time.monotonic()
+
+
+@contextmanager
+def paced(behavior: Behavior, runtime: BehaviorRuntime) -> Iterator[None]:
+    """Bracket one action with its gap and post-action pause.
+
+    A raise skips the post-pause, so a failed step does not sit out a pause it
+    never earned. Nested scopes defer to the outermost one: a session input
+    method called from an action handler must not pause twice.
+    """
+    if runtime.pacing:
+        yield
+        return
+    runtime.pacing = True
+    try:
+        enforce_gap(behavior, runtime)
+        yield
+        post_pause(behavior, runtime)
+        mark_action_done(runtime)
+    finally:
+        runtime.pacing = False
 
 
 def jittered_sleep(jitter: Jitter, rng: random.Random) -> None:

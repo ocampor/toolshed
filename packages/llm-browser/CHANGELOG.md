@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.8.0 — 2026-09-09
+
+### Added
+
+- `BrowserSession.wait_for_element(selector, state=, timeout=, interval=, settle=)`, the `wait_for` flow step and the `llm-browser wait-for` CLI command — the one wait for `attached`/`detached`/`visible`/`hidden`/`stable` (text unchanged for `settle` ms), backed by `Driver.is_visible(locator)`; `find`, `find_all`, `frame` and `element_exists` all go through it.
+- `FlowError.outputs` — outputs collected before a failing step (including inside a sub-flow) are no longer thrown away.
+- `BrowserSession.screenshot_bytes()`, `save_screenshot(path)` and `scroll(dx, dy)`; `Driver.screenshot_bytes` has a non-abstract default.
+- `llm_browser.flow_repository` (`FlowRepository` protocol, `FileFlowRepository`, `DictFlowRepository`, `LayeredFlowRepository`), `flow_pipeline.resolve_flow`/`resolve_flow_text` and `flows.load_flow_document(document, *, selector_map=None)` — the reference-resolution and validation stages split out of the old loader.
+- `RunFlowStep.flow` accepts an inline child flow (`SubFlow`), so a flow needs no repository when its children are embedded; `flows.with_flow_path(result, path)`.
+- `behavior.paced(behavior, runtime)` — brackets one interaction with its gap and post-action pause; nested scopes defer to the outermost one.
+- `Driver.press` / `BrowserSession.press` accept a chord on nodriver (`Control+a`, `Shift+Tab`); the modifiers get their own key events around the key.
+- `BrowserSession.scroll(dx, dy, selector=None)` and `Driver.scroll(page, dx, dy, locator=None)` — name the element when the thing you mean to scroll is not the document.
+- Packaged Claude Code skill for authoring flows (`llm-browser skill install [--dest DIR] [--force]`, `llm-browser skill show`), plus `FLOWS.md`, `FLOW_PATTERNS.md` and `DRIVERS.md` reference docs shipped in the wheel.
+
+### Changed
+
+- `load_flow_text` raises `ValueError("invalid flow yaml: ...")` instead of leaking `yaml.YAMLError`; `run`/`validate` resolve their flow through `cli.resolve_flow_options` under `asyncio.run`, and an empty `--flow ''` is now a usage error.
+- `Driver`'s class docstring is now the five-rule driver contract; `DriverHandle`, `DriverNotInstalledError`, `load_optional_module` moved to `llm_browser.drivers.handle` (still re-exported from `llm_browser.drivers`); `_resolve_with_fallback` probes the primary branch with the now non-waiting `count`.
+- `BrowserSession` owns input: `click`, `fill`, `type`, `press`, `select_option` and `set_checked` each wait for the element, apply `Behavior` pacing and pick the humanized or plain driver primitive; `actions.py`, `steps.py` and `flows.py` no longer touch `session.driver`.
+- `BehaviorRuntime` is reachable as `session.behavior_runtime` (was `session._behavior_runtime`); `behavior.paced` replaces the `enforce_gap` / `post_pause` / `mark_action_done` sequence callers spelled out.
+
+### Breaking
+
+- nodriver screenshots are PNG. They were JPEG bytes written into a file named `.png` — `FlowError.screenshot`, `take_screenshot()` and `screenshot_bytes()` all change format.
+- `select` on something that is not a `<select>` raises `ValueError` before reaching the driver, so it comes back as a `FlowError` (and an `optional:` step can swallow it) instead of the driver's own exception unwinding out of `run_flow`. A `<label>` is resolved to the control it labels first, so a target the Playwright family accepted still works.
+- nodriver's `select_option` sets the value through the select rather than clicking the `<option>`, matches a value **or** a label like Playwright, and refuses a disabled option, a disabled `<optgroup>` and a disabled `<select>` with a message naming which.
+- nodriver activates the tab it drives in `goto` and before a capture. A tab Chromium has backgrounded has throttled timers and stalls `Page.captureScreenshot`, so any session that had opened a second tab was reading half-rendered pages.
+- `Driver.count(locator)` and `Driver.text_content(locator)` never wait — they answer "right now"; on nodriver, `count`/`find_all` no longer block up to 10s for a late element.
+- `flows.load_flow_text(text)` drops `subflow_loader`, `subflows`, `base_dir` and `selector_map`; validation itself takes no context at all.
+- `RunFlowStep.flow` is now `SubFlow | str`; `RunFlowStep.subflow` is gone — the child lives in `flow`.
+- `BrowserSession.goto` / `launch` / `launch_detached` reject non-`http(s)` URLs by default; pass `allowed_schemes=` to opt back in.
+- `run-flow` references are resolved by a `FlowRepository` (`flow_pipeline.resolve_flow`) before validation, so a flow loaded from text no longer resolves siblings from the filesystem; an unknown selector `ref:` raises `ValueError` instead of pydantic `ValidationError`, and a missing flow file raises `FlowNotFoundError` instead of `FileNotFoundError`.
+
+### Removed
+
+- `wait` step, `BrowserSession.wait_until_stable`, `Driver.wait_for_stable_text`, `Driver.wait_for_state`, `Driver.count_now`.
+- `llm_browser.flow_files` (`load_flow`, `run_flow_file`), `llm_browser.subflows` (`subflow_source`); `flow_pipeline.FlowSource`, `build_flow`, `subflow_refs`, `run_flow_ref`, `parse_flow_document`, the `SubflowLoader` alias; `SelectorMap` moved to `llm_browser.selector_map`.
+
+### Fixed
+
+- `read` / `parse` steps with a `path:` dump rows in JSON mode, so a schema declaring `Decimal`, `date` or `datetime` no longer kills the flow on its own output; a row that still cannot be written fails the step, naming the file.
+- nodriver: `evaluate` invokes a script that is a function literal instead of evaluating it — `session.dom` returned nothing and `human_needed` never fired; `extract_rows` reads each row inside that row rather than answering every row with the page's first match; `click` scrolls its target into view; `is_visible` honours `visibility: hidden` via `checkVisibility`; typing emits a real `keyDown`/`keyUp` per character rather than `char` alone, which fired no keydown at all.
+- camoufox: `scroll` parks the cursor over the content before turning the wheel — Gecko delivers a wheel event to whatever is under the pointer, and Playwright's starts off the page, so the scroll was a silent no-op.
+- `launch_detached` records the pid before attaching and kills the browser it spawned if the attach fails, so a failed attach leaves neither an unrecorded Chromium nor a stranded earlier session.
+- A YAML schema's `type:` string is parsed against an allowlist (`schema_types.resolve_type`) instead of `eval`-ed against `typing`.
+
+### Migration
+
+- `wait` step → `wait_for` with `state: stable` (`quiet_ms`→`settle`, `timeout_s`→`timeout` ms)
+- `session.wait_for` → `wait_for_element`
+- `load_flow` / `load_flow_text(subflows=…)` → `resolve_flow` + `load_flow_document`
+- `count` no longer waits on nodriver — use `wait_for_element` instead
+- `goto` accepts `http`/`https` only by default — pass `allowed_schemes=` to opt out
+- `Driver.wait_for_state`, `count_now` and `wait_for_stable_text` are removed with no replacement
+
 ## 0.7.0 — 2026-09-09
 
 ### Added

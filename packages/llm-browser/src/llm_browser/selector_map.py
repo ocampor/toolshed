@@ -5,18 +5,20 @@ from typing import Any
 
 import yaml
 
+SelectorMap = dict[str, dict[str, Any]]
 
-def load_selector_map(path: Path) -> dict[str, dict[str, Any]]:
+
+def load_selector_map(path: Path) -> SelectorMap:
     """Load a selector_map.yaml into a flat lookup: 'group.name' -> selector dict."""
     raw = yaml.safe_load(path.read_text())
-    flat: dict[str, dict[str, Any]] = {}
+    flat: SelectorMap = {}
     for group_name, fields in raw.items():
         for field_name, selector_spec in fields.items():
             flat[f"{group_name}.{field_name}"] = selector_spec
     return flat
 
 
-def _lookup(selector_map: dict[str, dict[str, Any]], ref: str) -> dict[str, Any]:
+def _lookup(selector_map: SelectorMap, ref: str) -> dict[str, Any]:
     """Look up ``ref`` in the selector map; raise ``ValueError`` with a
     helpful message if it isn't there."""
     if ref not in selector_map:
@@ -29,7 +31,7 @@ def _lookup(selector_map: dict[str, dict[str, Any]], ref: str) -> dict[str, Any]
 
 def resolve_refs(
     step_dict: dict[str, Any],
-    selector_map: dict[str, dict[str, Any]],
+    selector_map: SelectorMap,
 ) -> dict[str, Any]:
     """Replace ``ref`` keys with actual selectors from the map.
 

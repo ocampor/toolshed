@@ -73,6 +73,19 @@ def _selector_string(selector: Selector) -> str:
     raise ValueError(f"Unknown selector: {selector!r}")
 
 
+def describe_selector(selector: Selector) -> str:
+    """The selector as a user would have written it, for error messages.
+
+    Total, unlike ``css_string`` and ``_selector_string``: an XPath renders as
+    ``xpath=...`` and a fallback chain as ``primary or fallback``, so no
+    caller has to fall back to a pydantic repr.
+    """
+    if isinstance(selector, FallbackSelector):
+        primary = describe_selector(selector.primary)
+        return f"{primary} or {describe_selector(selector.fallback)}"
+    return _selector_string(selector)
+
+
 def css_string(selector: Selector) -> str:
     """CSS text for an in-page ``querySelector`` call.
 
@@ -106,6 +119,8 @@ def _resolve_with_fallback(
     fallback: SelectorSpec,
 ) -> Any:
     result = resolve_selector(driver, page, primary)
+    # Resolution asks "does the primary match right now"; every caller waits
+    # for the state it wants afterwards.
     if driver.count(result) > 0:
         return result
     return resolve_selector(driver, page, fallback)

@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Redirect target</title>
+<h1>Target</h1>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+setTimeout(() => {
+  const late = document.createElement("div");
+  late.id = "late";
+  late.textContent = "arrived";
+  document.body.appendChild(late);
+}, delay);
+</script>

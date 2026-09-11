@@ -184,10 +184,10 @@ def test_build_model_unknown_type_raises(tmp_path: Path) -> None:
         tmp_path,
         {
             "name": "Bad",
-            "fields": {"x": {"type": "Decimal", "child_selector": "td.x"}},
+            "fields": {"x": {"type": "Fraction", "child_selector": "td.x"}},
         },
     )
-    with pytest.raises(NameError, match="Decimal"):
+    with pytest.raises(ValueError, match="unsupported schema type"):
         build_model(path)
 
 

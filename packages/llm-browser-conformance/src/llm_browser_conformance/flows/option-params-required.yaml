@@ -1,0 +1,8 @@
+# A required param with no default: the flow cannot start without it.
+params:
+  - needed
+steps:
+  - name: fill
+    action: fill
+    selector: "#field"
+    value: "{{ needed }}"

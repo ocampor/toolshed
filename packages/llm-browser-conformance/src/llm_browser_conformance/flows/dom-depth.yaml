@@ -1,0 +1,13 @@
+# `max_depth` truncates the snippet; 0 leaves the tree whole.
+params:
+  - path
+steps:
+  - name: shallow
+    action: dom
+    selector: "#tree"
+    max_depth: 1
+  - name: whole
+    action: dom
+    selector: "#tree"
+    max_depth: 0
+    path: "{{ path }}"

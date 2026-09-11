@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Autocomplete</title>
+<input type="text" id="search">
+<ul id="options"></ul>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const search = document.getElementById("search");
+const options = document.getElementById("options");
+const result = document.getElementById("result");
+
+const select = (option) => {
+  search.value = option.dataset.value;
+  result.textContent = option.dataset.value;
+  options.replaceChildren();
+};
+
+const render = (query) => {
+  options.replaceChildren();
+  if (query === "") return;
+  for (const suffix of ["one", "two", "three"]) {
+    const li = document.createElement("li");
+    li.className = "option";
+    li.dataset.value = query + "-" + suffix;
+    li.textContent = li.dataset.value;
+    options.appendChild(li);
+  }
+};
+
+let debounce;
+search.addEventListener("input", () => {
+  options.replaceChildren();
+  clearTimeout(debounce);
+  const query = search.value;
+  debounce = setTimeout(() => render(query), 300);
+});
+
+options.addEventListener("click", (e) => {
+  const option = e.target.closest(".option");
+  if (option) select(option);
+});
+
+search.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const first = options.querySelector(".option");
+  if (first) select(first);
+});
+</script>

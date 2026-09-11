@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dynamic Controls</title>
+<div id="checkbox-example"><input type="checkbox" id="checkbox"></div>
+<button id="toggle">Remove</button>
+<input type="text" id="input" disabled>
+<button id="enable">Enable</button>
+<script>
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  document.getElementById("toggle").addEventListener("click", () => {
+    setTimeout(() => {
+      const checkbox = document.getElementById("checkbox");
+      if (checkbox) {
+        checkbox.remove();
+      } else {
+        const replacement = document.createElement("input");
+        replacement.type = "checkbox";
+        replacement.id = "checkbox";
+        document.getElementById("checkbox-example").appendChild(replacement);
+      }
+    }, delay);
+  });
+  document.getElementById("enable").addEventListener("click", () => {
+    setTimeout(() => {
+      document.getElementById("input").disabled = false;
+      const message = document.createElement("p");
+      message.id = "message";
+      message.textContent = "It's enabled!";
+      document.body.appendChild(message);
+    }, delay);
+  });
+</script>

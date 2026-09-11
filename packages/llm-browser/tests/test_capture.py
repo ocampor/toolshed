@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flow_files import run_flow_file
 from llm_browser.html import sanitize_page_html
 from llm_browser.session import BrowserSession
+from tests.flow_helpers import run_flow_file
 
 
 def _wrap(body: str) -> str:
@@ -88,14 +88,14 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     session = MagicMock(spec=BrowserSession)
     session.session_dir = tmp_path
     session.behavior = Behavior.off()
-    session._behavior_runtime = session.behavior.runtime()
+    session.behavior_runtime = session.behavior.runtime()
     session.capture = capture
     session.driver = MagicMock()
     session.take_screenshot.return_value = tmp_path / "screenshot.png"
     session.take_dom_snapshot.return_value = tmp_path / "dom.html"
     session.get_page.return_value = MagicMock()
     session.element_exists.return_value = True
-    session.find.side_effect = TimeoutError("element not found")
+    session.click.side_effect = TimeoutError("element not found")
     return session
 
 

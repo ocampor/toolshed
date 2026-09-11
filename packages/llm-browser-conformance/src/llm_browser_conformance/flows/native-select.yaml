@@ -1,0 +1,12 @@
+# A real <select>, with the option behind an <optgroup>.
+steps:
+  - name: select
+    action: select
+    selector: "#choice"
+    value: c
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

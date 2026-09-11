@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Slow XHR</title>
+<button id="load">Load</button>
+<table id="table"><tbody id="body"></tbody></table>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const body = document.getElementById("body");
+
+const appendRow = (label) => {
+  const tr = document.createElement("tr");
+  tr.className = "row";
+  const td = document.createElement("td");
+  td.className = "cell";
+  td.textContent = label;
+  tr.appendChild(td);
+  body.appendChild(tr);
+};
+
+document.getElementById("load").addEventListener("click", async () => {
+  const rows = await (await fetch("rows.json")).json();
+  const spacing = delay / 5;
+  rows.forEach((label, i) => {
+    setTimeout(() => {
+      appendRow(label);
+      if (i === rows.length - 1) document.getElementById("result").textContent = "done";
+    }, spacing * (i + 1));
+  });
+});
+</script>

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Slow image</title>
+<h1>A page whose load event waits on one slow image</h1>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+// Written by the parser rather than appended from script: a parser-inserted
+// <img> is guaranteed to hold the load event open until the bytes arrive,
+// which is the whole point of the page.
+document.write(`<img id="slow" alt="slow" src="/slow-resource?delay=${delay}">`);
+</script>
+<script>
+window.addEventListener("load", () => {
+  const marker = document.createElement("div");
+  marker.id = "loaded";
+  marker.textContent = "loaded";
+  document.body.appendChild(marker);
+});
+</script>

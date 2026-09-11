@@ -1,0 +1,19 @@
+# The button is disabled until the delay expires. Drivers disagree about
+# whether a click waits for it or lands on the floor.
+steps:
+  - name: wait-visible
+    action: wait_for
+    selector: "#btn"
+    state: visible
+    timeout: 8000
+    interval: 200
+  - name: click
+    action: click
+    selector: "#btn"
+    timeout: 5000
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

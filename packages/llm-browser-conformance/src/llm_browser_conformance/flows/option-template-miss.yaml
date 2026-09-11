@@ -1,0 +1,10 @@
+# Nothing declares `nowhere`, so the placeholder survives into both strings.
+steps:
+  - name: fill-literal
+    action: fill
+    selector: "#field"
+    value: "{{ nowhere }}"
+  - name: click-missing
+    action: click
+    selector: "[data-name='{{ nowhere }}']"
+    timeout: 1000

@@ -1,0 +1,16 @@
+# Every output kind in one flow: read rows, a dom string, and a screenshot
+# whose path stays on disk instead of landing in `outputs`.
+steps:
+  - name: rows
+    action: read
+    selector: "#list li"
+    extract:
+      code:
+        attribute: data-code
+      label:
+        attribute: data-label
+  - name: panel
+    action: dom
+    selector: "#panel"
+  - name: shot
+    action: screenshot

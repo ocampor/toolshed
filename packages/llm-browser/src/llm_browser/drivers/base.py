@@ -1,48 +1,57 @@
-"""Driver abstract base class, handle model, and errors.
+"""The driver contract: one abstract base every browser backend implements.
 
 A Driver owns both lifecycle (launch/connect/close) and interactions
 (click/fill/type/navigate/read). Splitting these onto one class keeps
 plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
-import importlib
-import time
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Callable, ClassVar
 
-from pydantic import BaseModel
-
 from llm_browser.behavior import Behavior, BehaviorRuntime
-
-
-class DriverHandle(BaseModel):
-    """Per-driver connection/lifecycle state persisted to disk."""
-
-    driver: str
-    pid: int | None = None
-    endpoint: str | None = None
-    user_data_dir: str
-    extra: dict[str, str] = {}
-
-
-class DriverNotInstalledError(RuntimeError):
-    """Raised when a driver's optional extra is missing."""
-
-
-def load_optional_module(module: str, extra: str) -> ModuleType:
-    """Import an optional driver dependency or raise DriverNotInstalledError."""
-    try:
-        return importlib.import_module(module)
-    except ImportError as e:
-        raise DriverNotInstalledError(
-            f"{extra} is not installed. Run: pip install llm-browser[{extra}]"
-        ) from e
+from llm_browser.drivers.handle import DriverHandle
 
 
 class Driver(ABC):
-    """Base class for browser drivers. Owns lifecycle + interactions."""
+    """Base class for browser drivers. Owns lifecycle + interactions.
+
+    Everything above a driver — ``llm_browser.waits``, ``BrowserSession``, the
+    flow actions — is written against these rules rather than any one browser
+    API, so a new driver holds to them:
+
+    1. Only ``wait_for_load`` may block on the DOM. ``resolve``, ``count``,
+       ``first``, ``nth``, ``all``, ``is_visible`` and ``text_content``
+       answer about the page as it is right now and report a miss as empty,
+       ``False`` or ``None`` — never a retry, never a raise for "not there
+       yet". Waiting is ``llm_browser.waits``' job, on a deadline the caller
+       owns.
+    2. Input must be trusted events — OS-level or CDP ``Input.*`` — never
+       synthetic DOM events. ``dispatch_event`` is the one explicit opt-in.
+       ``humanized_click`` and ``humanized_type`` are that same trusted input
+       paced like a person's, and they stay on the driver because the how is
+       backend-specific: the Playwright family draws a jittered mouse path
+       through ``page.mouse``, while nodriver leaves both defaulted because
+       its native CDP click already moves a real cursor. Whether to reach for
+       them is ``BrowserSession``'s call, not a caller's.
+    3. JS runs in ``evaluate``, ``is_visible``, ``input_value`` and
+       ``extract_rows``, nowhere else. The rest stays on the DOM, Input and
+       Page domains, so a detector watching Runtime traffic sees none of it
+       on the common path.
+    4. Locators are opaque handles and may be lazy; ``first`` and ``nth``
+       carry enough (selector plus index) to be re-resolved, or a node the
+       page replaced is never seen to change.
+    5. Timeouts are milliseconds, and an expired one raises the builtin
+       ``TimeoutError``.
+
+    Run ``llm-browser-check`` from ``packages/llm-browser-conformance`` to
+    validate an implementation: it drives a new driver through every rule
+    above against a real headless browser and a fixture site it serves
+    itself, and names what it got wrong. Anything the driver deliberately
+    does not support should raise ``NotImplementedError`` so the suite
+    reports it as a skip rather than a failure.
+    """
 
     name: ClassVar[str]
     supports_reconnect: ClassVar[bool] = False
@@ -97,7 +106,8 @@ class Driver(ABC):
     # --- Selector resolution ---
 
     @abstractmethod
-    def resolve(self, page: Any, selector: str) -> Any: ...
+    def resolve(self, page: Any, selector: str) -> Any:
+        """A locator for ``selector``; matching nothing yet is not an error."""
 
     # --- Interactions ---
 
@@ -117,12 +127,7 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized click. Default falls back to plain click().
-
-        Drivers with native humanization (e.g. nodriver's element.click,
-        Camoufox with humanize=True) or Playwright-level helpers (see
-        behavior.humanized_click) should override this.
-        """
+        """Humanized click — rule 2; the default fits a natively humanized click."""
         self.click(locator)
 
     def humanized_type(
@@ -133,10 +138,7 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized type. Default falls back to plain type().
-
-        Override to use behavior.humanized_type or a driver-native path.
-        """
+        """Humanized type — rule 2; the default fits a natively humanized type."""
         self.type(locator, text)
 
     @abstractmethod
@@ -152,7 +154,8 @@ class Driver(ABC):
     def set_checked(self, locator: Any, checked: bool) -> None: ...
 
     @abstractmethod
-    def dispatch_event(self, locator: Any, event: str) -> None: ...
+    def dispatch_event(self, locator: Any, event: str) -> None:
+        """Fire a synthetic (``isTrusted=false``) DOM event — rule 2's escape hatch."""
 
     # --- Navigation / waiting ---
 
@@ -160,22 +163,31 @@ class Driver(ABC):
     def goto(self, page: Any, url: str, wait_until: str) -> None: ...
 
     @abstractmethod
-    def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None: ...
+    def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
+        """Block until the page reaches ``state`` — the only page-level wait."""
 
-    def scroll(self, page: Any, dx: int, dy: int) -> None:
-        """Scroll the page by a mouse-wheel delta.
+    def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
+        """Scroll by a mouse-wheel delta, over ``locator`` when one is given.
 
-        Subclasses backed by a wheel-capable API override this.
+        A wheel event goes to whatever is under the pointer, so a page whose
+        centre holds an inner scroller (a transcript, a virtualised table, a
+        map) scrolls *that* unless the caller says what it meant.
         """
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
     @abstractmethod
-    def wait_for_state(self, locator: Any, state: str, timeout_ms: int) -> None: ...
+    def is_visible(self, locator: Any) -> bool:
+        """Whether the first match is rendered right now; ``False`` for a miss.
+
+        Abstract rather than defaulted: a driver that skipped it would raise
+        past the step's timeout-or-``ValueError`` contract and abort the flow.
+        """
 
     # --- Read / capture ---
 
     @abstractmethod
-    def text_content(self, locator: Any) -> str | None: ...
+    def text_content(self, locator: Any) -> str | None:
+        """The first match's text as it reads right now; ``None`` for a miss."""
 
     @abstractmethod
     def input_value(self, locator: Any) -> str: ...
@@ -184,13 +196,16 @@ class Driver(ABC):
     def get_attribute(self, locator: Any, name: str) -> str | None: ...
 
     @abstractmethod
-    def count(self, locator: Any) -> int: ...
+    def count(self, locator: Any) -> int:
+        """How many elements match *right now* — no waiting, no cache."""
 
     @abstractmethod
-    def first(self, locator: Any) -> Any: ...
+    def first(self, locator: Any) -> Any:
+        """The first match, lazily: it must survive the element going away."""
 
     @abstractmethod
-    def nth(self, locator: Any, index: int) -> Any: ...
+    def nth(self, locator: Any, index: int) -> Any:
+        """The ``index``-th match, re-resolvable after the page swaps the node."""
 
     @abstractmethod
     def all(self, locator: Any) -> list[Any]: ...
@@ -226,7 +241,9 @@ class Driver(ABC):
         return self.get_attribute(target, attribute)
 
     @abstractmethod
-    def evaluate(self, target: Any, script: str) -> Any: ...
+    def evaluate(self, target: Any, script: str) -> Any:
+        """Run user-supplied JS against a page or element — the JS touchpoint
+        of rule 3, and the only one that is arbitrary."""
 
     @abstractmethod
     def content(self, page: Any) -> str: ...
@@ -237,6 +254,14 @@ class Driver(ABC):
     @abstractmethod
     def screenshot(self, page: Any, path: Path) -> None: ...
 
+    def screenshot_bytes(self, page: Any) -> bytes:
+        """The page as PNG bytes. The default writes a temp file and reads it
+        back, for drivers whose screenshot API can only write one."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "screenshot.png"
+            self.screenshot(page, path)
+            return path.read_bytes()
+
     @abstractmethod
     def expect_download(
         self, page: Any, trigger: Callable[[], None], output: Path
@@ -244,33 +269,3 @@ class Driver(ABC):
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...
-
-    # --- Composite waits ---
-
-    def wait_for_stable_text(
-        self, locator: Any, quiet_ms: int, timeout_ms: int
-    ) -> str | None:
-        """Wait until textContent stops changing for ``quiet_ms``.
-
-        Returns the final text, or ``None`` on timeout.
-
-        Default implementation polls from Python — each iteration crosses
-        the transport. On Chromium/CDP this is a distinctive repeated
-        ``Runtime.callFunctionOn`` pattern that Runtime-traffic detectors
-        can fingerprint. Drivers with an in-page runtime should override
-        so the stability detection runs inside the page.
-        """
-        poll_s = 0.25
-        quiet_s = quiet_ms / 1000.0
-        deadline = time.monotonic() + timeout_ms / 1000.0
-        last_text = self.text_content(locator) or ""
-        last_change = time.monotonic()
-        while time.monotonic() < deadline:
-            time.sleep(poll_s)
-            text = self.text_content(locator) or ""
-            now = time.monotonic()
-            if text != last_text:
-                last_text, last_change = text, now
-            elif now - last_change >= quiet_s:
-                return text
-        return None

@@ -1,0 +1,8 @@
+# The same impossible wait, marked optional: the step is skipped, not failed.
+steps:
+  - name: wait-never
+    action: wait_for
+    selector: "#never"
+    state: attached
+    timeout: 500
+    optional: true

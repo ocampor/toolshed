@@ -1,21 +1,57 @@
 """CLI entry point for llm-browser."""
 
+import asyncio
 import json
 import os
 import uuid
-from typing import Callable
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Iterator, cast, get_args
 
 import click
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
-from llm_browser.constants import DRIVER_ENV_VAR
-from llm_browser.flow_files import load_flow, run_flow_file
-from llm_browser.flows import SelectorMap, load_flow_text, run_flow
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+    DRIVER_ENV_VAR,
+    SKILL_COMMAND_GROUP,
+)
+from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
+from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
+from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
+from llm_browser.models import (
+    Flow,
+    FlowResult,
+    RunFlowStep,
+    WaitState,
+    check_settle_budget,
+)
 from llm_browser.selector_map import load_selector_map
-from llm_browser.models import FlowResult, RunFlowStep
 from llm_browser.session import BrowserSession
+from llm_browser.skill_install import install_skill, skill_text
+
+
+@contextmanager
+def budget_argument_errors() -> Iterator[None]:
+    """A settle/timeout mismatch is a bad option pair: exit 2, like --interval 0."""
+    try:
+        yield
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+
+@contextmanager
+def url_argument_errors() -> Iterator[None]:
+    """A rejected `--url` (non-http scheme) is a bad argument, so report it as
+    one — a clean message and exit 2, not a JSON line plus a traceback."""
+    try:
+        yield
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 def _output(data: object) -> None:
@@ -115,6 +151,11 @@ def main(
 ) -> None:
     """LLM-friendly browser automation with YAML flows."""
     ctx.ensure_object(dict)
+    if ctx.invoked_subcommand == SKILL_COMMAND_GROUP:
+        # `skill install|show` only touches the filesystem. Building a session
+        # here would resolve a driver — and fail on a bogus LLM_BROWSER_DRIVER —
+        # for the first command a new consumer repo runs.
+        return
     driver = driver_name or os.environ.get(DRIVER_ENV_VAR)
     behavior = None
     if behavior_config:
@@ -165,7 +206,8 @@ def build_session(
 def open(ctx: click.Context, url: str, headed: bool) -> None:
     """Launch browser and navigate to URL."""
     session: BrowserSession = ctx.obj["session"]
-    result = session.launch(url=url, headed=headed)
+    with url_argument_errors():
+        result = session.launch(url=url, headed=headed)
     _output(result)
 
 
@@ -215,9 +257,10 @@ def daemon(
 ) -> None:
     """Spawn a detached Chromium that survives this CLI invocation."""
     session: BrowserSession = ctx.obj["session"]
-    result = session.launch_detached(
-        url=url, headed=headed, executable_path=executable, user_data_dir=profile
-    )
+    with url_argument_errors():
+        result = session.launch_detached(
+            url=url, headed=headed, executable_path=executable, user_data_dir=profile
+        )
     _output(result)
 
 
@@ -236,7 +279,8 @@ def stop(ctx: click.Context) -> None:
 def goto(ctx: click.Context, url: str) -> None:
     """Navigate to a URL on the current session."""
     session: BrowserSession = ctx.obj["session"]
-    session.goto(url)
+    with url_argument_errors():
+        session.goto(url)
     _output({"url": session.driver.page_url(session.get_page())})
 
 
@@ -295,7 +339,6 @@ def run(
         llm-browser run --cdp-url http://127.0.0.1:9223 \
             --flow flows/warm-site.yml --data '{"url":"https://en.wikipedia.org"}'
     """
-    from pathlib import Path
 
     session: BrowserSession = ctx.obj["session"]
     selector_map = (
@@ -304,16 +347,12 @@ def run(
         else None
     )
     data = json.loads(data_json)
-    yaml_text = flow_yaml_text(flow_path, flow_yaml)
+    document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
+    flow = load_flow_document(document, selector_map=selector_map)
 
     def execute(target: BrowserSession) -> object:
         return run_cli_flow(
-            target,
-            str(flow_path),
-            yaml_text,
-            data,
-            selector_map=selector_map,
-            from_step=from_step,
+            target, flow, data, from_step=from_step, flow_path=file_path(flow_path)
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
@@ -323,32 +362,48 @@ def run(
         _output(execute(session))
 
 
-def flow_yaml_text(flow_path: str | None, flow_yaml: str | None) -> str | None:
-    """``None`` means ``--flow`` names a file to load."""
+async def resolve_flow_options(
+    flow_path: str | None, flow_yaml: str | None
+) -> dict[str, Any]:
+    """The one place the CLI turns its options into a resolved flow document.
+
+    A file resolves its `run-flow` refs against its own directory; inline text
+    has no directory of its own, so it uses the CWD.
+    """
     if (flow_path is None) == (flow_yaml is None):
         raise click.UsageError("pass exactly one of --flow or --flow-yaml")
+    if flow_path == "":
+        raise click.UsageError("--flow needs a path, or - for stdin")
     if flow_yaml is not None:
-        return flow_yaml
+        return await resolve_flow_text(flow_yaml, FileFlowRepository(Path.cwd()))
     if flow_path == "-":
-        return click.get_text_stream("stdin").read()
-    return None
+        stdin = click.get_text_stream("stdin").read()
+        return await resolve_flow_text(stdin, FileFlowRepository(Path.cwd()))
+    path = Path(str(flow_path))
+    return await resolve_flow(path.name, FileFlowRepository(path.parent))
+
+
+def file_path(flow_path: str | None) -> str | None:
+    """``None`` for stdin and text sources, which have no file to retry from."""
+    if flow_path is None or flow_path == "-":
+        return None
+    return str(Path(flow_path).resolve())
 
 
 def run_cli_flow(
     session: BrowserSession,
-    flow_path: str,
-    yaml_text: str | None,
+    flow: Flow,
     data: dict[str, object],
     *,
-    selector_map: SelectorMap | None,
     from_step: str | None,
+    flow_path: str | None = None,
 ) -> FlowResult:
-    if yaml_text is None:
-        return run_flow_file(
-            session, flow_path, data, selector_map=selector_map, from_step=from_step
-        )
-    flow = load_flow_text(yaml_text, selector_map=selector_map)
-    return run_flow(session, flow, data, from_step=from_step)
+    """``flow_path`` only fills ``retry_hint.flow_path``; the flow is already
+    built."""
+    result = run_flow(session, flow, data, from_step=from_step)
+    if flow_path is None:
+        return result
+    return with_flow_path(result, flow_path)
 
 
 def run_attached(
@@ -418,27 +473,22 @@ def validate(
     Suitable for pre-commit hooks and CI — no browser session is
     created or used.
     """
-    from pathlib import Path
 
     import yaml as _yaml
     from pydantic import ValidationError
 
-    yaml_text = flow_yaml_text(flow_path, flow_yaml)
-    source = str(flow_path) if yaml_text is None else "<inline>"
+    label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
         selector_map = (
             load_selector_map(Path(selector_map_path))
             if selector_map_path and Path(selector_map_path).exists()
             else None
         )
-        flow = (
-            load_flow(str(flow_path), selector_map=selector_map)
-            if yaml_text is None
-            else load_flow_text(yaml_text, selector_map=selector_map)
-        )
+        document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
+        flow = load_flow_document(document, selector_map=selector_map)
     except (
         ValidationError,
-        FileNotFoundError,
+        FlowNotFoundError,
         _yaml.YAMLError,
         ValueError,
     ) as exc:
@@ -446,7 +496,7 @@ def validate(
             json.dumps(
                 {
                     "ok": False,
-                    "flow": source,
+                    "flow": label,
                     "error": type(exc).__name__,
                     "message": str(exc).split("\n", 1)[0][:500],
                 }
@@ -458,7 +508,7 @@ def validate(
     _output(
         {
             "ok": True,
-            "flow": source,
+            "flow": label,
             "step_count": len(flow.steps),
             "subflow_count": subflow_count,
         }
@@ -507,6 +557,58 @@ def find_all(ctx: click.Context, selector: str) -> None:
     """Find all matching elements and output their outer HTML (alias for `find --all`)."""
     session: BrowserSession = ctx.obj["session"]
     _find_all_output(session, selector)
+
+
+@main.command("wait-for")
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option(
+    "--state",
+    type=click.Choice(get_args(WaitState)),
+    default="attached",
+    help="State to wait for.",
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=DEFAULT_WAIT_TIMEOUT_MS,
+    help="Total budget (ms); 0 checks exactly once.",
+)
+@click.option(
+    "--interval",
+    type=click.IntRange(min=1),
+    default=DEFAULT_POLL_INTERVAL_MS,
+    help="Nominal gap between polls (ms); jittered, clamped to the budget.",
+)
+@click.option(
+    "--settle",
+    type=click.IntRange(min=1),
+    default=DEFAULT_SETTLE_MS,
+    help="For --state stable: how long the text must hold still (ms).",
+)
+@click.pass_context
+def wait_for(
+    ctx: click.Context,
+    selector: str,
+    state: str,
+    timeout: int,
+    interval: int,
+    settle: int,
+) -> None:
+    """Poll until an element reaches a state; exit non-zero on timeout."""
+    session: BrowserSession = ctx.obj["session"]
+    with budget_argument_errors():
+        check_settle_budget(cast(WaitState, state), settle, timeout)
+    try:
+        session.wait_for_element(
+            selector,
+            state=cast(WaitState, state),
+            timeout=timeout,
+            interval=interval,
+            settle=settle,
+        )
+    except TimeoutError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"selector": selector, "state": state})
 
 
 @main.command("latest-tab")
@@ -562,3 +664,33 @@ def status(ctx: click.Context) -> None:
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
     _output(result)
+
+
+@main.group(SKILL_COMMAND_GROUP)
+def skill() -> None:
+    """Manage the packaged Claude Code flow-authoring skill."""
+
+
+@skill.command("install")
+@click.option(
+    "--dest",
+    "dest",
+    default=".",
+    help="Repo root to install into; the skill lands under <DEST>/.claude/skills/.",
+)
+@click.option(
+    "--force", is_flag=True, help="Overwrite an existing SKILL.md at that path."
+)
+def skill_install_command(dest: str, force: bool) -> None:
+    """Copy the skill bundle into <DEST>/.claude/skills/llm-browser-flows/."""
+    try:
+        path = install_skill(Path(dest), force=force)
+    except (FileExistsError, NotADirectoryError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    _output({"path": str(path)})
+
+
+@skill.command("show")
+def skill_show_command() -> None:
+    """Print the packaged SKILL.md to stdout."""
+    click.echo(skill_text(), nl=False)

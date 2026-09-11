@@ -1,0 +1,19 @@
+# An explicit per-key delay: one keydown per character, paced by `delay`.
+steps:
+  - name: type
+    action: type
+    selector: "#typed"
+    value: abcde
+    delay: 60
+  - name: value
+    action: read
+    selector: "#typed"
+    extract:
+      text:
+        attribute: value
+  - name: keydowns
+    action: read
+    selector: "#keydowns"
+    extract:
+      text:
+        attribute: textContent

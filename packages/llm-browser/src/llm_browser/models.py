@@ -17,6 +17,11 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    DEFAULT_WAIT_TIMEOUT_MS,
+)
 from llm_browser.parse import ExtractField
 from llm_browser.selectors import Selector
 
@@ -24,6 +29,8 @@ from llm_browser.selectors import Selector
 
 
 CaptureMode = Literal["screenshot", "dom", "both"]
+
+WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
 
 class BaseStep(BaseModel):
@@ -46,28 +53,6 @@ class BaseStep(BaseModel):
     # top-level steps. Drives ``qualified_name`` for diagnostic output
     # and retry-hint targeting.
     _parent: str | None = PrivateAttr(default=None)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _resolve_selector_refs(cls, data: Any, info: Any) -> Any:
-        """Replace ``ref:`` with ``selector:`` (and the field/read
-        variants) from ``info.context["selector_map"]`` before pydantic
-        does field-level validation. Without this, ``ref:`` is an
-        unknown field that pydantic silently drops, leaving SelectorStep
-        subtypes to fail with "selector required".
-
-        No-op when the input isn't a dict (programmatic construction
-        from a Step instance) or when no selector map is in context.
-        """
-        if not isinstance(data, dict):
-            return data
-        ctx = info.context if info is not None else None
-        selector_map = ctx.get("selector_map") if ctx else None
-        if selector_map is None:
-            return data
-        from llm_browser.selector_map import resolve_refs
-
-        return resolve_refs(data, selector_map)
 
     @property
     def qualified_name(self) -> str:
@@ -202,16 +187,43 @@ class PressStep(BaseStep):
     key: str = Field(..., min_length=1)
 
 
-class WaitStep(SelectorStep):
-    """Wait until ``selector``'s text stops changing for ``quiet_ms``.
+def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
+    """A ``stable`` wait needs room for the settle window inside its budget.
 
-    Designed for streaming content (LLM chat replies, progressive lists);
-    page-level load events should use ``goto``'s ``wait_until`` arg instead.
+    ``TextSettled`` cannot confirm "held still for ``settle``" before
+    ``settle`` has passed, so a smaller ``timeout`` times out even on text
+    that never changed — a misleading failure for what is a misconfiguration.
+    """
+    if state == "stable" and settle >= timeout:
+        raise ValueError(
+            f"settle ({settle}ms) must be less than timeout ({timeout}ms) "
+            "for state 'stable'"
+        )
+
+
+class WaitForStep(SelectorStep):
+    """Poll until ``selector`` reaches ``state``, or fail the step.
+
+    The one wait: four states answer "is the element there yet" and ``stable``
+    answers "has its text stopped changing" — for streaming content (LLM chat
+    replies, progressive lists, a recalculating total). ``timeout`` is the
+    whole budget; ``interval`` is the nominal gap between polls, jittered;
+    ``settle`` is how long the text has to hold still, and applies to
+    ``stable`` only.
     """
 
-    action: Literal["wait"]
-    quiet_ms: int = 1500
-    timeout_s: float = 180.0
+    action: Literal["wait_for"]
+    state: WaitState = "attached"
+    timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
+    # Bounded here so a typo fails at flow load with a field-named error,
+    # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
+    interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
+    settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+
+    @model_validator(mode="after")
+    def _check_settle_budget(self) -> "WaitForStep":
+        check_settle_budget(self.state, self.settle, self.timeout)
+        return self
 
 
 class EvalStep(BaseStep):
@@ -223,69 +235,30 @@ class EvalStep(BaseStep):
 class RunFlowStep(BaseStep):
     """Compose another flow inline as a single step.
 
-    Sub-flows are leaf-only: a flow referenced by ``run-flow`` may
-    not itself contain ``run-flow`` steps. ``SubFlow``'s validators
-    enforce this at parse time.
+    ``flow`` is the child flow itself. A reference string is inlined by
+    :func:`llm_browser.flow_pipeline.resolve_flow` before validation, so an
+    unresolved reference is a validation error.
 
-    ``subflow`` can be supplied directly (tests, programmatic construction)
-    or resolved from ``flow`` by an after-validator, per the validation
-    context — see :func:`llm_browser.subflows.subflow_text`.
+    Sub-flows are leaf-only: a child may not itself contain ``run-flow``
+    steps — ``SubFlow``'s validator enforces that.
     """
 
     action: Literal["run-flow"]
-    flow: str = Field(..., min_length=1)
+    flow: SubFlow | str
     data: dict[str, Any] = {}
-    subflow: SubFlow | None = None
 
     @model_validator(mode="after")
-    def _resolve_subflow_from_context(self, info: Any) -> RunFlowStep:
-        # Already resolved (programmatic construction, explicit `subflow:`
-        # in the YAML) — still tag children with our name so qualified
-        # names work for the retry hint. Otherwise load + validate the
-        # referenced child YAML.
-        if self.subflow is None:
-            import yaml
-
-            from llm_browser.subflows import subflow_text
-
-            ctx = info.context if info is not None else None
-            if not ctx or ctx.get("in_subflow"):
-                # One level deep already: leave it unresolved so ``SubFlow``'s
-                # leaf-only validator reports the nesting instead of recursing
-                # into (possibly cyclic) grandchildren.
-                return self
-            text = subflow_text(self.flow, ctx)
-            if text is None:
-                return self
-            self.subflow = SubFlow.model_validate(
-                yaml.safe_load(text), context={**ctx, "in_subflow": True}
+    def _reject_unresolved_reference(self) -> RunFlowStep:
+        if isinstance(self.flow, str):
+            raise ValueError(
+                f"unresolved sub-flow {self.flow}: "
+                "resolve it through a FlowRepository first"
             )
-        for child in self.subflow.steps:
+        # Qualified names (diagnostics, retry hints) need every child step to
+        # know which run-flow step it came from.
+        for child in self.flow.steps:
             child._parent = self.name
         return self
-
-
-KNOWN_ACTIONS = frozenset(
-    {
-        "click",
-        "fill",
-        "type",
-        "select",
-        "check",
-        "pick",
-        "goto",
-        "wait",
-        "screenshot",
-        "read",
-        "parse",
-        "run-flow",
-        "dom",
-        "download",
-        "think",
-        "scroll",
-        "press",
-    }
-)
 
 
 def _step_discriminator(v: Any) -> str:
@@ -311,7 +284,7 @@ Step = Annotated[
     | Annotated[ThinkStep, Tag("think")]
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
-    | Annotated[WaitStep, Tag("wait")]
+    | Annotated[WaitForStep, Tag("wait_for")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
@@ -476,6 +449,9 @@ class FlowError(BaseModel):
     ``human_needed`` is the failing page's verdict from
     :func:`llm_browser.probe.human_needed` — retrying won't help until
     someone logs in or clears the challenge.
+
+    ``outputs`` holds the results collected before the failing step, keyed
+    the same way as :attr:`FlowSuccess.outputs`.
     """
 
     step: str
@@ -484,6 +460,7 @@ class FlowError(BaseModel):
     dom: str | None = None
     human_needed: bool = False
     retry_hint: RetryHint | None = None
+    outputs: dict[str, object] = {}
 
 
 # Public type alias: callers that don't care which arm they got can use

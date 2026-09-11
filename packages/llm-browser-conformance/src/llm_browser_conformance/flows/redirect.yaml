@@ -1,0 +1,19 @@
+# A 302 followed by content that only appears after the delay.
+params:
+  - url
+steps:
+  - name: goto
+    action: goto
+    url: "{{ url }}"
+  - name: wait-late
+    action: wait_for
+    selector: "#late"
+    state: attached
+    timeout: 8000
+    interval: 200
+  - name: result
+    action: read
+    selector: "#late"
+    extract:
+      text:
+        attribute: textContent

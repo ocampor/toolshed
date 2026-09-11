@@ -1,0 +1,8 @@
+# `parse` coerces every cell to the type its schema declares.
+params:
+  - schema_path
+steps:
+  - name: typed
+    action: parse
+    selector: "tr.item"
+    schema_path: "{{ schema_path }}"

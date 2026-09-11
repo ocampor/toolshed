@@ -1,0 +1,7 @@
+# `parse` coerces each row to the schema, then writes the rows to `path`.
+steps:
+  - name: rows
+    action: parse
+    selector: "tr.row"
+    schema_path: "{{ schema }}"
+    path: "{{ out }}"

@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Controlled input</title>
+<input type="text" id="controlled">
+<div id="display"></div>
+<div id="events">0</div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const input = document.getElementById("controlled");
+const display = document.getElementById("display");
+const events = document.getElementById("events");
+let state = "";
+let count = 0;
+
+input.addEventListener("input", () => {
+  state = input.value;
+  count += 1;
+  events.textContent = String(count);
+  display.textContent = state;
+});
+
+setInterval(() => {
+  if (input.value !== state) input.value = state;
+}, 50);
+</script>

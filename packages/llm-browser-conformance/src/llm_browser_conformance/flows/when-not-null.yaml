@@ -1,0 +1,14 @@
+# `not_null` on a param the caller may leave out entirely.
+params:
+  - token:
+      required: false
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - field: token
+        op: not_null
+    extract:
+      text:
+        attribute: textContent

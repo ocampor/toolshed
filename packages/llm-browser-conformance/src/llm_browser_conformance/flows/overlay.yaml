@@ -1,0 +1,17 @@
+# A full-screen overlay eats every click until it is removed.
+steps:
+  - name: wait-overlay-gone
+    action: wait_for
+    selector: "#overlay"
+    state: detached
+    timeout: 8000
+    interval: 200
+  - name: click
+    action: click
+    selector: "#btn"
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

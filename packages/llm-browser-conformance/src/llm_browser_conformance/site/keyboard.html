@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Keyboard</title>
+<input type="text" id="first">
+<input type="text" id="second">
+<div id="modal">Modal</div>
+<div id="result"></div>
+<div id="chord"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("result").textContent = "submitted";
+  if (e.key === "Escape") document.getElementById("modal")?.remove();
+  if (e.key === "a" && e.ctrlKey) document.getElementById("chord").textContent = "ctrl+a";
+});
+</script>

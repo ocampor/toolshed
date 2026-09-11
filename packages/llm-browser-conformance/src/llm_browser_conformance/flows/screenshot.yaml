@@ -1,0 +1,9 @@
+# Two screenshots: one to a path the caller chose, one to the session's own.
+params:
+  - path
+steps:
+  - name: explicit
+    action: screenshot
+    path: "{{ path }}"
+  - name: session
+    action: screenshot

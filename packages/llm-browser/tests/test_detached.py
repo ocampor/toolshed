@@ -124,3 +124,74 @@ def test_close_does_not_kill_detached_pid(tmp_path: Path) -> None:
     with patch("llm_browser.session.kill_detached_chromium") as kill:
         session.close()
         kill.assert_not_called()
+
+
+class RefusingDriver(AttachStubDriver):
+    """A driver whose attach fails — the shape that used to orphan Chromium."""
+
+    def attach(self, cdp_url: str) -> Any:
+        raise RuntimeError("connect_over_cdp failed")
+
+
+def test_launch_detached_kills_the_browser_when_attach_fails(tmp_path: Path) -> None:
+    session = BrowserSession(state_dir=tmp_path, driver=RefusingDriver())
+    with (
+        patch(
+            "llm_browser.session.spawn_detached_chromium",
+            return_value=(9999, "http://127.0.0.1:54321"),
+        ),
+        patch("llm_browser.session.kill_detached_chromium") as kill,
+        pytest.raises(RuntimeError, match="connect_over_cdp failed"),
+    ):
+        session.launch_detached(headed=True)
+
+    kill.assert_called_once_with(9999)
+    assert session._load_state() is None
+
+
+def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> None:
+    """Even if the process dies between spawn and attach, the pid is on disk
+    for `stop_detached` to use."""
+    seen: list[int | None] = []
+
+    class RecordingDriver(AttachStubDriver):
+        def attach(self, cdp_url: str) -> Any:
+            state = BrowserSession(state_dir=tmp_path)._load_state()
+            seen.append(state.pid if state else None)
+            return super().attach(cdp_url)
+
+    session = BrowserSession(state_dir=tmp_path, driver=RecordingDriver())
+    with patch(
+        "llm_browser.session.spawn_detached_chromium",
+        return_value=(9999, "http://127.0.0.1:54321"),
+    ):
+        session.launch_detached(headed=True)
+
+    assert seen == [9999]
+
+
+def test_a_failed_attach_leaves_an_earlier_session_stoppable(tmp_path: Path) -> None:
+    """The spawn we just made is killed; the browser already recorded is not
+    ours to forget — clearing the file would strand it with no pid anywhere."""
+    live = BrowserSession(state_dir=tmp_path, driver=AttachStubDriver())
+    with patch(
+        "llm_browser.session.spawn_detached_chromium",
+        return_value=(100, "http://127.0.0.1:1111"),
+    ):
+        live.launch_detached(headed=True)
+
+    second = BrowserSession(state_dir=tmp_path, driver=RefusingDriver())
+    with (
+        patch(
+            "llm_browser.session.spawn_detached_chromium",
+            return_value=(200, "http://127.0.0.1:2222"),
+        ),
+        patch("llm_browser.session.kill_detached_chromium") as kill,
+        pytest.raises(RuntimeError, match="connect_over_cdp failed"),
+    ):
+        second.launch_detached(headed=True)
+
+    kill.assert_called_once_with(200)
+    still_recorded = BrowserSession(state_dir=tmp_path)._load_state()
+    assert still_recorded is not None
+    assert still_recorded.pid == 100
