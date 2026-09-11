@@ -8,16 +8,9 @@ from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
-from llm_browser.captcha import CaptchaSolver
 from llm_browser.results import ActionResult, ErrorResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME
-from llm_browser.models import (
-    FlowData,
-    FlowError,
-    SolveCaptchaStep,
-    Step,
-    validate_step,
-)
+from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.probe import human_needed
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
@@ -85,14 +78,10 @@ def execute_step(
     session: BrowserSession,
     step: Step,
     data: FlowData,
-    *,
-    solver: CaptchaSolver | None = None,
 ) -> ActionResult | FlowError:
     """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
     ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it."""
     resolved = resolve_step(step, data)
-    if isinstance(resolved, SolveCaptchaStep):
-        resolved._solver = solver
     if should_skip(session, resolved, data):
         return SkippedResult(reason="when condition not satisfied")
     action_result = execute_action(session, resolved)

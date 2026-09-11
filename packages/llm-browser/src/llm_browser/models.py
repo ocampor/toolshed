@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -27,21 +26,10 @@ from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
 
-if TYPE_CHECKING:
-    from llm_browser.captcha import CaptchaSolver
-
 # --- Step types ---
 
 
 CaptureMode = Literal["screenshot", "dom", "both", "none"]
-
-
-class SolverMode(StrEnum):
-    """Who is allowed to read a captcha image."""
-
-    AUTO = "auto"
-    SAMPLING = "sampling"
-    HUMAN = "human"
 
 
 WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
@@ -262,16 +250,15 @@ class WaitForStep(SelectorStep):
 class SolveCaptchaStep(BaseStep):
     """Read an image captcha and type the answer back.
 
-    ``image`` is cropped and handed to the solver the caller injected through
-    ``run_flow(..., solver=)``; the reply is typed into ``input`` and, if
-    ``submit`` is set, submitted. The page's own verdict decides the attempt:
-    ``error`` becoming visible is a rejection, ``input`` leaving the DOM is
-    acceptance, and ``timeout`` bounds how long that verdict is waited for.
+    ``image`` is cropped and handed to the reader the host process registered
+    with :func:`llm_browser.captcha.set_reader`; the reply is typed into
+    ``input`` and, if ``submit`` is set, submitted. The page's own verdict
+    decides the attempt: ``error`` becoming visible is a rejection, ``input``
+    leaving the DOM and staying gone is acceptance, and ``timeout`` bounds how
+    long that verdict is waited for.
 
-    ``solver`` says who may read the image — ``human`` never calls the
-    injected solver and fails asking for a person, ``sampling`` insists there
-    is one, ``auto`` uses one if the caller wired it. The answer is never put
-    in the result.
+    With no reader registered the step fails asking for a human before it
+    touches the page. The answer is never put in the result.
     """
 
     action: Literal["solve_captcha"]
@@ -280,12 +267,7 @@ class SolveCaptchaStep(BaseStep):
     submit: Selector | None = None
     error: Selector | None = None
     retries: int = Field(3, ge=1)
-    solver: SolverMode = SolverMode.AUTO
     prompt: str | None = None
-    # Injected by ``steps.execute_step`` after templating, because
-    # ``resolve_step`` round-trips the step through model_dump/validate and a
-    # callable is not flow data.
-    _solver: CaptchaSolver | None = PrivateAttr(default=None)
 
 
 class EvalStep(BaseStep):

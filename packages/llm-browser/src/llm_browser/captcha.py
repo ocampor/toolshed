@@ -1,10 +1,11 @@
-"""The image captcha step: crop it, ask something that can read, type it back.
+"""The image captcha step: crop it, read it, type it back.
 
-The library never reads the image itself. A caller injects a
-:data:`CaptchaSolver` — a model sampling call, a human-in-the-loop prompt,
-whatever it has — through ``run_flow(..., solver=)``, and this module owns the
-loop around it: one crop per attempt, a normalized answer, and the page's own
-verdict read back off the DOM.
+The library never reads the image itself. The host process registers one
+:data:`CaptchaReader` with :func:`set_reader` — a model sampling call, a
+prompt to a person, whatever it has — and this module owns the loop around it:
+one crop per attempt, a normalized answer, and the page's own verdict read back
+off the DOM. One step, one reader: a different way of reading an image is a
+different step, not a parameter on this one.
 
 The answer never leaves the step. It is typed into the page and dropped: not
 in the result, not in a log line, not in an error message.
@@ -23,7 +24,6 @@ from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     LOGGER_NAME,
 )
-from llm_browser.models import SolverMode
 from llm_browser.results import ActionResult, CaptchaResult, ErrorResult
 from llm_browser.waits import poll_jitter
 
@@ -35,15 +35,34 @@ logger = logging.getLogger(LOGGER_NAME)
 
 # ``(png_bytes, prompt) -> reply``. The reply is free text; ``normalize_answer``
 # decides whether it is an answer at all.
-CaptchaSolver = Callable[[bytes, str | None], str]
+CaptchaReader = Callable[[bytes, str | None], str]
+
+# Process-wide on purpose: reading a captcha is a capability the host either
+# has or does not, not something one flow run can differ on.
+_reader: CaptchaReader | None = None
 
 # What a captcha answer may look like once the punctuation is gone. The bounds
 # are what real image captchas use, and they are also the guard that keeps a
 # chatty model reply from being typed into the page.
 ANSWER_PATTERN = re.compile(r"^[A-Za-z0-9]{3,12}$")
 
-# The one word a solver says instead of guessing.
+# The one word a reader says instead of guessing.
 UNREADABLE = "unreadable"
+
+
+def set_reader(new_reader: CaptchaReader | None) -> None:
+    """Register the function ``solve_captcha`` reads images with, or clear it.
+
+    Nothing is registered by default — ``llm-browser`` the CLI registers
+    nothing at all — so an unconfigured process reports every captcha as
+    needing a human instead of guessing at one.
+    """
+    global _reader
+    _reader = new_reader
+
+
+def reader() -> CaptchaReader | None:
+    return _reader
 
 
 def normalize_answer(reply: str) -> str | None:
@@ -51,7 +70,7 @@ def normalize_answer(reply: str) -> str | None:
 
     One rule, applied to the whole reply: drop everything that is not a letter
     or a digit, and keep the result only if it is 3-12 characters and not
-    ``UNREADABLE``. Nothing is *extracted* — a solver that explains itself has
+    ``UNREADABLE``. Nothing is *extracted* — a reader that explains itself has
     failed the attempt, which is why the prompt asks for the characters alone.
     """
     stripped = re.sub(r"[^A-Za-z0-9]", "", reply)
@@ -72,28 +91,14 @@ def failed(
     )
 
 
-def missing_solver_error(step: SolveCaptchaStep) -> ErrorResult:
-    """Why this step has no solver to call.
-
-    ``sampling`` asked for one and the client wired none, which is a caller
-    bug. ``human`` and a solverless ``auto`` are the same answer: a person has
-    to look at the page.
-    """
-    if step.solver is SolverMode.SAMPLING:
-        return failed(
-            step, "solver mode 'sampling': the client did not provide a solver"
-        )
-    return failed(step, "no captcha solver available", human_needed=True)
-
-
-def ask(solver: CaptchaSolver, png: bytes, prompt: str | None) -> str:
-    """A solver is the caller's code; anything it raises is this step failing
+def ask(read: CaptchaReader, png: bytes, prompt: str | None) -> str:
+    """A reader is the host's code; anything it raises is this step failing
     rather than the run unwinding."""
     try:
-        return solver(png, prompt)
+        return read(png, prompt)
     except Exception as exc:
         raise ValueError(
-            f"captcha solver raised {type(exc).__name__}: "
+            f"captcha reader raised {type(exc).__name__}: "
             f"{' '.join(str(exc).split())[:200]}"
         ) from exc
 
@@ -156,7 +161,7 @@ def accepted(
 
 
 def one_attempt(
-    session: BrowserSession, step: SolveCaptchaStep, solver: CaptchaSolver
+    session: BrowserSession, step: SolveCaptchaStep, read: CaptchaReader
 ) -> bool:
     """One crop, one answer, one verdict.
 
@@ -165,7 +170,7 @@ def one_attempt(
     the form.
     """
     answer = normalize_answer(
-        ask(solver, session.screenshot_bytes(step.image), step.prompt)
+        ask(read, session.screenshot_bytes(step.image), step.prompt)
     )
     if answer is None:
         return False
@@ -177,12 +182,14 @@ def one_attempt(
 
 
 def solve(session: BrowserSession, step: SolveCaptchaStep) -> ActionResult:
-    solver = None if step.solver is SolverMode.HUMAN else step._solver
-    if solver is None:
-        return missing_solver_error(step)
+    read = reader()
+    if read is None:
+        # Before the page is touched: nothing here can succeed, and a crop
+        # nobody will look at is wasted work on a site watching for it.
+        return failed(step, "no captcha reader is configured", human_needed=True)
     for attempt in range(1, step.retries + 1):
-        if one_attempt(session, step, solver):
-            return CaptchaResult(attempts=attempt, solver=step.solver.value)
+        if one_attempt(session, step, read):
+            return CaptchaResult(attempts=attempt)
         logger.debug("captcha attempt %d of %d rejected", attempt, step.retries)
     return failed(
         step,

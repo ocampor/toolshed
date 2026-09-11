@@ -41,7 +41,7 @@ steps:
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
 | `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
-| `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `solver` (`auto`/`sampling`/`human`, default `auto`), `prompt`, `timeout` | Crops `image`, hands the PNG to the solver the caller passed to `run_flow(..., solver=)`, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
+| `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `prompt`, `timeout` | Crops `image`, hands the PNG to the reader the host process registered, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
 
 ### Waiting
 
@@ -81,14 +81,21 @@ One step covers both kinds of waiting: element presence and text stability.
 ### Captchas
 
 `solve_captcha` is the one step that needs something outside the browser to
-look at a picture. The library never reads the image: the caller passes a
-`solver` — `(png_bytes, prompt) -> reply` — to `run_flow`, and the step owns
-the loop around it.
+look at a picture. The library never reads the image: the host process
+registers one reading function — `llm_browser.captcha.set_reader(fn)`, where
+`fn` is `(png_bytes, prompt) -> reply` — and the step owns the loop around it.
+There is no per-flow or per-step choice of reader: one step, one way of
+reading, and a different mechanism would be a different step.
 
-One attempt is: crop `image`, ask the solver, then strip everything that is
+**`llm-browser` the CLI registers no reader**, so a `solve_captcha` step run
+from the command line always fails with `human_needed` before it touches the
+page. It is a step for an embedding process that has something that can read
+an image.
+
+One attempt is: crop `image`, ask the reader, then strip everything that is
 not a letter or a digit from the whole reply and keep the result only if it is
 3-12 characters and not `UNREADABLE`. Nothing is extracted from a sentence: a
-solver that explains itself has spent the attempt without typing, which is why
+reader that explains itself has spent the attempt without typing, which is why
 the prompt should ask for the characters alone. The answer goes into `input`, `submit` is clicked if set, and then the
 page's own verdict decides: `error` becoming visible is a rejection and the
 next attempt crops the image again, `input` leaving the DOM *and staying gone*
@@ -97,16 +104,13 @@ banner it never cleared is not a verdict on the answer that follows it.
 `timeout` is the whole budget for one attempt's verdict, confirmation
 included; set it tight and the confirmation shrinks rather than overrunning.
 
-`solver:` says who may read the image — `human` never calls the solver and
-fails immediately, `sampling` fails if the caller wired none, `auto` uses one
-when it is there. Every failure path — no solver, `retries` exhausted — comes
-back as a `FlowError` with `human_needed: true`, with three exceptions: a
-`sampling` step with no solver (a caller bug, not a page needing a person), a
-solver that raised (an ordinary failed step, carrying the exception's message),
-and `optional: true`, which turns a raising solver into a skip and lets the
-flow carry on. The
+Every failure path — no reader registered, `retries` exhausted — comes back as
+a `FlowError` with `human_needed: true`, with two exceptions: a reader that
+raised (an ordinary failed step, carrying the exception's message), and
+`optional: true`, which turns a raising reader into a skip and lets the flow
+carry on. The
 answer is never put in the result or in a log line; the step's row in
-`outputs` is `{"attempts": 2, "solver": "auto"}`.
+`outputs` is `{"attempts": 2}`.
 
 ```yaml
 steps:
@@ -194,7 +198,7 @@ run_flow(session, flow, data)
 
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=(), solver=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through and `solver=` to give a `solve_captcha` step something that can read an image. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`, and `{"attempts": n, "solver": mode}` for `solve_captcha`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
+`run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`, and `{"attempts": n}` for `solve_captcha`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
 
 A failing run also carries the page itself: `FlowError.screenshot` is PNG bytes and `FlowError.dom` is sanitized HTML text, both in memory and controlled by `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `model_dump(mode="json")` base64-encodes the bytes and validating that back decodes them, so the result round-trips; `llm-browser run` instead writes both to `--capture-dir` and prints the paths.
 

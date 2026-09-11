@@ -121,15 +121,13 @@ class SkippedResult(ActionResult):
 
 
 class CaptchaResult(ActionResult):
-    """A captcha the step got past, and what got past it.
+    """A captcha the step got past, and what it took.
 
-    ``attempts`` counts the crops the solver was shown, ``solver`` is the mode
-    the step ran in. The answer itself is deliberately absent: it is typed
-    into the page and dropped there.
+    ``attempts`` counts the crops the reader was shown. The answer itself is
+    deliberately absent: it is typed into the page and dropped there.
     """
 
     attempts: int
-    solver: str
 
 
 class ErrorResult(ActionResult):

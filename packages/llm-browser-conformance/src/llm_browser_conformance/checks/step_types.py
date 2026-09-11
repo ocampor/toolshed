@@ -9,17 +9,20 @@ driven as a flow, because that is the surface a caller writes.
 
 import asyncio
 import concurrent.futures
+import contextlib
 import datetime
 import decimal
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from llm_browser import captcha
 from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
-from llm_browser.models import FlowError, FlowSuccess
+from llm_browser.models import FlowSuccess
 from llm_browser.results import BytesResult
 from pydantic import ValidationError
 
@@ -312,6 +315,16 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
     assert result.outputs["child/read"] == [{"text": "Gamma"}]
 
 
+@contextlib.contextmanager
+def reading_captchas_with(read: captcha.CaptchaReader) -> Iterator[None]:
+    """The reader is process-wide, so a scenario puts it back."""
+    captcha.set_reader(read)
+    try:
+        yield
+    finally:
+        captcha.set_reader(None)
+
+
 def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> None:
     """The first answer is wrong on purpose: the page shows its error, and the
     step has to read that as a rejection and come back with a fresh crop.
@@ -323,7 +336,7 @@ def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> Non
     crops: list[bytes] = []
     prompts: list[str | None] = []
 
-    def solver(png: bytes, prompt: str | None) -> str:
+    def read(png: bytes, prompt: str | None) -> str:
         crops.append(png)
         prompts.append(prompt)
         return "wrong" if len(crops) == 1 else CAPTCHA_CODE
@@ -331,30 +344,17 @@ def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> Non
     ctx.visit("captcha.html")
     page = ctx.session.screenshot_bytes()
     try:
-        result = run_flow(ctx.session, ctx.flow("solve-captcha"), {}, solver=solver)
+        with reading_captchas_with(read):
+            result = run_flow(ctx.session, ctx.flow("solve-captcha"), {})
     except NotImplementedError as exc:
         raise ctx.skip(str(exc)) from exc
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
-    assert result.outputs["captcha"] == {"attempts": 2, "solver": "auto"}
+    assert result.outputs["captcha"] == {"attempts": 2}
     assert one_text(result.outputs, "verified") == "Verified"
     assert prompts == [CAPTCHA_PROMPT, CAPTCHA_PROMPT], prompts
     for crop in crops:
         assert crop.startswith(PNG_MAGIC), crop[:16]
-        assert png_size(crop) < png_size(page), "the solver was shown the whole page"
-
-
-def solver_mode_human_refuses_to_read_the_image(ctx: Context) -> None:
-    called: list[bytes] = []
-
-    def solver(png: bytes, prompt: str | None) -> str:
-        called.append(png)
-        return CAPTCHA_CODE
-
-    ctx.visit("captcha.html")
-    result = run_flow(ctx.session, ctx.flow("solve-captcha-human"), {}, solver=solver)
-    assert isinstance(result, FlowError), f"expected a failure, got {result.outputs}"
-    assert result.human_needed is True
-    assert called == [], "`solver: human` sampled anyway"
+        assert png_size(crop) < png_size(page), "the reader was shown the whole page"
 
 
 SCENARIOS = [
@@ -403,12 +403,6 @@ SCENARIOS = [
                 "field:solve_captcha.prompt",
             }
         ),
-    ),
-    Scenario(
-        "captcha solver mode",
-        Section.STEPS,
-        solver_mode_human_refuses_to_read_the_image,
-        covers=frozenset({"field:solve_captcha.solver"}),
     ),
     Scenario(
         "read attributes",

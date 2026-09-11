@@ -76,7 +76,6 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:solve_captcha.submit` | solve captcha |
 | `field:solve_captcha.error` | solve captcha |
 | `field:solve_captcha.retries` | solve captcha |
-| `field:solve_captcha.solver` | captcha solver mode |
 | `field:solve_captcha.prompt` | solve captcha |
 | `field:think.min_ms` | think pauses |
 | `field:think.max_ms` | think pauses |

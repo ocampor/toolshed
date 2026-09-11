@@ -4,21 +4,22 @@
 
 ### Added
 
-- `solve_captcha` step — crops `image:`, hands the PNG to a solver the caller
-  injects, types the normalized answer into `input:`, clicks `submit:` if set,
+- `solve_captcha` step — crops `image:`, hands the PNG to the registered
+  reader, types the normalized answer into `input:`, clicks `submit:` if set,
   and reads the page's verdict: `error:` visible is a rejection and the next of
   `retries:` attempts crops again, `input:` detached and staying gone is
-  acceptance. `timeout:` is the whole budget for one verdict. `solver:`
-  is `auto` / `sampling` / `human`, `prompt:` is passed through to the solver,
-  and the step's row in `outputs` is `{"attempts": n, "solver": mode}` — never
-  the answer.
-- `llm_browser.CaptchaSolver` — `(png_bytes, prompt) -> reply`, and
-  `run_flow(..., solver=)` / `run_loaded_flow` / `run_subflow` / `execute_step`
-  thread one down to every `solve_captcha` step, sub-flows included.
+  acceptance. `timeout:` is the whole budget for one verdict, `prompt:` is
+  passed through to the reader, and the step's row in `outputs` is
+  `{"attempts": n}` — never the answer.
+- `llm_browser.set_reader(reader)` and `llm_browser.CaptchaReader`
+  (`(png_bytes, prompt) -> reply`) — the host process registers one reading
+  function process-wide and every `solve_captcha` step uses it. Nothing is
+  registered by default and the CLI registers nothing, so an unconfigured
+  process fails the step with `human_needed` before touching the page.
 - `llm_browser.captcha.normalize_answer` — strips everything but letters and
   digits, accepts 3-12 alphanumeric characters, and reads `UNREADABLE` as
   "no answer".
-- `results.CaptchaResult(attempts, solver)`.
+- `results.CaptchaResult(attempts)`.
 - `ErrorResult.human_needed` — an action's own verdict that retrying will not
   help; `execute_step` ORs it into `FlowError.human_needed`.
 - `screenshot: selector:` and `BrowserSession.screenshot_bytes(selector)` —

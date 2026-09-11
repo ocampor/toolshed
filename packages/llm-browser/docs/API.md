@@ -85,28 +85,33 @@ schema instances instead of raw strings:
 schema, values coerced by Pydantic — same outcome as `Repo.extract_all(session, ...)`. Empty
 rows (every field `None`) come back as `None`, mirroring `read`'s behavior.
 
-## Solving a captcha
+## Reading a captcha
 
-`run_flow(session, flow, data, *, from_step=None, redact=(), solver=None)` takes a
-`solver` — `llm_browser.CaptchaSolver`, i.e. `(png_bytes, prompt) -> reply` — and hands it
-to every `solve_captcha` step in the flow, sub-flows included. The library never reads the
-image; sampling a model, queueing a person, or calling a paid service is all the caller's
-side of the line.
+`solve_captcha` needs something that can look at an image, and the library is not it. The
+host process registers one reading function and every `solve_captcha` step uses it:
 
 ```python
-from llm_browser import BrowserSession, CaptchaSolver
+from llm_browser import CaptchaReader, set_reader
 
 def read_it(png: bytes, prompt: str | None) -> str:
     return my_model.answer(png, prompt)   # or "UNREADABLE"
 
-result = run_flow(session, flow, data, solver=read_it)
+set_reader(read_it)          # process-wide; set_reader(None) clears it
 ```
 
-Anything the solver raises becomes a failed step, never an unwound run. With no solver — or
-with `solver: human` in the step — the step fails with `FlowError.human_needed` set, which is
-also what happens when `retries` runs out. The step's row in `outputs` is
-`{"attempts": n, "solver": mode}`: the answer typed into the page is never carried out of the
-step.
+| Name | Signature | What it is |
+| --- | --- | --- |
+| `llm_browser.CaptchaReader` | `Callable[[bytes, str \| None], str]` | `(png_bytes, prompt) -> reply` |
+| `llm_browser.set_reader` | `(reader: CaptchaReader \| None) -> None` | Register the reader, or clear it |
+| `llm_browser.captcha.reader` | `() -> CaptchaReader \| None` | What is registered right now |
+
+There is no per-run or per-step override: one step, one way of reading an image, and a
+different mechanism would be a different step. Nothing is registered by default — the
+`llm-browser` CLI registers nothing — so an unconfigured process fails every `solve_captcha`
+step with `FlowError.human_needed` *before* it touches the page, which is also what happens
+when `retries` runs out. Anything the reader raises becomes a failed step, never an unwound
+run. The step's row in `outputs` is `{"attempts": n}`: the answer typed into the page is
+never carried out of the step.
 
 ## Capture modes
 
