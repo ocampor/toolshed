@@ -58,6 +58,15 @@ def an_open_shadow_root_is_reachable(ctx: Context) -> None:
     assert one_text(outputs, "result") == "shadow value"
 
 
+def dom_returns_the_elements_own_markup(ctx: Context) -> None:
+    """``session.dom`` reads ``el => el.outerHTML``: a driver that runs that
+    string as anything but a function gets ``None`` and says nothing."""
+    ctx.visit("form.html")
+    markup = ctx.session.dom("#choice")
+    assert 'id="choice"' in markup, markup
+    assert 'value="b"' in markup, markup
+
+
 def a_form_inside_an_iframe_is_filled_and_submitted(ctx: Context) -> None:
     ctx.visit("iframe-form.html")
     frame = enter_frame_or_skip(ctx)
@@ -140,6 +149,11 @@ SCENARIOS = [
             "nodriver": "selectors do not pierce an open shadow root, so the "
             "input inside it is never found"
         },
+    ),
+    Scenario(
+        "dom snippet",
+        Section.STEPS,
+        dom_returns_the_elements_own_markup,
     ),
     Scenario(
         "iframe form",

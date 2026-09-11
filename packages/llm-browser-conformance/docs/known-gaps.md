@@ -14,7 +14,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | scenario | driver | gap |
 | --- | --- | --- |
 | visibility:hidden is hidden | nodriver | is_visible tests offsetParent/getClientRects, neither of which notices visibility:hidden |
-| flow failure flags a login wall | nodriver | page_probe.js is a function literal and nodriver's evaluate runs it as an expression, so PageProbe comes back empty and human_needed is always False |
 | parse writes typed rows | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
 | select_option | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
 | typing fires trusted keydown | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |

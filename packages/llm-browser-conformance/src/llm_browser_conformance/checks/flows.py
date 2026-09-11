@@ -70,11 +70,6 @@ SCENARIOS = [
         "flow failure flags a login wall",
         Section.FLOWS,
         a_failure_behind_a_login_wall_asks_for_a_human,
-        known_gaps={
-            "nodriver": "page_probe.js is a function literal and nodriver's "
-            "evaluate runs it as an expression, so PageProbe comes back empty "
-            "and human_needed is always False"
-        },
     ),
     Scenario(
         "parse writes typed rows",

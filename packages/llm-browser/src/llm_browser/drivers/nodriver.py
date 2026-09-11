@@ -46,6 +46,7 @@ DOM event `isTrusted` (common) will only flag the opt-in escape hatches.
 """
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Coroutine, TypeVar
@@ -85,6 +86,24 @@ READY_STATES: dict[str, set[str]] = {
 # The standard "is it rendered" read: `offsetParent` is null for
 # display:none (and for position:fixed, which getClientRects still covers).
 VISIBILITY_SCRIPT = "(el) => el.offsetParent !== null || el.getClientRects().length > 0"
+
+# A script that *is* a function has to be invoked, not evaluated. The library
+# writes its page scripts the way Playwright takes them — `el => el.outerHTML`,
+# `page_probe.js`'s `() => {...}` — and CDP does neither by itself:
+# `Runtime.evaluate` hands back the function object, and `callFunctionOn` runs
+# the text as a function *body*. Both come back as `None`, silently.
+FUNCTION_LITERAL = re.compile(
+    r"^\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
+)
+
+
+def is_function_literal(script: str) -> bool:
+    """Whether ``script`` reads as a function rather than an expression.
+
+    Anchored on the arrow or the ``function`` keyword, so a parenthesised
+    expression like ``(document.title)`` is still an expression.
+    """
+    return FUNCTION_LITERAL.match(script) is not None
 
 
 @dataclass
@@ -476,13 +495,19 @@ class NodriverDriver(Driver):
         return NodriverLocator(tab=locator.tab, selector=combined)
 
     def evaluate(self, target: Any, script: str) -> Any:
+        """A function literal is invoked; anything else is a body or an
+        expression, the way the Playwright family reads the same string."""
         if isinstance(target, NodriverLocator):
-            return self.run(self.apply_script(target, f"(el) => {{ {script} }}"))
+            declaration = (
+                script if is_function_literal(script) else f"(el) => {{ {script} }}"
+            )
+            return self.run(self.apply_script(target, declaration))
+        expression = f"({script})()" if is_function_literal(script) else script
         # nodriver's tab.evaluate applies deep-serialization options that
         # override return_by_value for non-primitives, so we end up with CDP
         # RemoteObjects instead of plain data. Bypass it and call
         # Runtime.evaluate directly with plain returnByValue semantics.
-        return self.run(_evaluate_by_value(target, script))
+        return self.run(_evaluate_by_value(target, expression))
 
     def content(self, page: Any) -> str:
         return self.run(self.read_content(page))
