@@ -111,6 +111,13 @@ class BrowserSession:
             return None
         return SessionInfo.model_validate_json(self._state_file.read_text())
 
+    def _restore_state(self, recorded: SessionInfo | None) -> None:
+        """Put back what was on disk before a launch that did not complete."""
+        if recorded is None:
+            self._clear_state()
+            return
+        self._save_state(recorded)
+
     def _clear_state(self) -> None:
         self._info = None
         if not self.stateless and self._state_file.exists():
@@ -229,6 +236,10 @@ class BrowserSession:
             if executable_path is not None
             else self.executable_path
         )
+        # Whatever was already recorded, so a failed attach can put it back:
+        # clearing the file would strand an *earlier* detached browser with no
+        # pid anywhere for `stop_detached` to kill.
+        recorded = self._load_state()
         pid, cdp_url = spawn_detached_chromium(
             resolved_profile, headed=headed, executable_path=resolved_exe
         )
@@ -254,7 +265,7 @@ class BrowserSession:
             handle = self.driver.attach(cdp_url)
         except BaseException:
             kill_detached_chromium(pid)
-            self._clear_state()
+            self._restore_state(recorded)
             raise
         info = SessionInfo(
             pid=pid,
@@ -376,9 +387,14 @@ class BrowserSession:
         """Screenshot to a caller-chosen path, leaving the session dir alone."""
         self.driver.screenshot(self.get_page(), path)
 
-    def scroll(self, dx: int, dy: int) -> None:
-        """Scroll the page by a mouse-wheel delta."""
-        self.driver.scroll(self.get_page(), dx, dy)
+    def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
+        """Scroll by a mouse-wheel delta, over ``selector`` when one is given.
+
+        A wheel event goes to whatever is under the pointer, so name the
+        element when the thing you mean to scroll is not the document.
+        """
+        locator = self.find(selector) if selector is not None else None
+        self.driver.scroll(self.get_page(), dx, dy, locator)
 
     def screenshot_bytes(self) -> bytes:
         """PNG bytes of the current page, without writing into the session dir."""

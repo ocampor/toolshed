@@ -29,12 +29,12 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
                             hook (`tab.wait()` is a plain sleep).
     * `is_visible`        — Runtime.callFunctionOn `checkVisibility`, or a
                             box read where that is missing. Required: nodriver
-                            exposes no
-                            visibility API, and CDP has no visibility
-                            predicate either. It is the read the Python-side
-                            explicit wait polls for `visible` / `hidden`;
-                            `attached` / `detached` go through `count`, a
-                            plain DOM query with no Runtime traffic.
+                            exposes no visibility API, and CDP has no
+                            visibility predicate either. It is the read the
+                            Python-side explicit wait polls for `visible` /
+                            `hidden`; `attached` / `detached` go through
+                            `count`, a plain DOM query with no Runtime
+                            traffic.
     * `do_select_option`  — Runtime.callFunctionOn `js/select_option.js`,
                             which writes `selectedIndex` and fires
                             input/change. Unavoidable: a closed native select
@@ -93,10 +93,12 @@ T = TypeVar("T")
 
 SELECT_FAILURES = {
     "not-a-select": "select_option needs a <select>, got another element",
-    "missing": "no <option value={value!r}> in the select",
-    "disabled": "<option value={value!r}> is disabled",
+    "select-disabled": "the <select> is disabled, so {value!r} cannot be chosen",
+    "missing": "no <option> matching {value!r} by value or label in the select",
+    "option-disabled": "the <option> matching {value!r} is disabled",
+    "group-disabled": "the <optgroup> holding {value!r} is disabled",
 }
-UNKNOWN_SELECT_FAILURE = "could not select <option value={value!r}>"
+UNKNOWN_SELECT_FAILURE = "could not select the <option> matching {value!r}"
 
 READY_STATES: dict[str, set[str]] = {
     "load": {"complete"},
@@ -124,6 +126,11 @@ FUNCTION_LITERAL = re.compile(
     r"^\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
 )
 
+# `// what this reads\nel => el.value` is a function too, and the cost of not
+# knowing it is a silent `undefined` rather than an error. Block comments are
+# not handled: the same caveat applies to `/* ... */ el => ...`.
+LEADING_LINE_COMMENTS = re.compile(r"^(?:\s*//[^\n]*\n)+")
+
 
 def is_function_literal(script: str) -> bool:
     """Whether ``script`` reads as a function rather than an expression.
@@ -131,7 +138,7 @@ def is_function_literal(script: str) -> bool:
     Anchored on the arrow or the ``function`` keyword, so a parenthesised
     expression like ``(document.title)`` is still an expression.
     """
-    return FUNCTION_LITERAL.match(script) is not None
+    return FUNCTION_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
 def key_triplet(key: str) -> tuple[str, str, int]:
@@ -342,6 +349,20 @@ class NodriverDriver(Driver):
     def resolve(self, page: Any, selector: str) -> Any:
         return NodriverLocator(tab=page, selector=selector)
 
+    async def require_element(self, loc: NodriverLocator) -> Any:
+        """The handle a write path is about to drive — never `None`.
+
+        The read paths are allowed a miss (rule 1); a write to an element that
+        is not there is the step failing, and a `ValueError` is what
+        `execute_action` turns into an `ErrorResult`. Without this the write
+        paths raise `AttributeError` on `None`, which escapes `run_flow` as a
+        raw traceback.
+        """
+        el = await self.resolve_element(loc)
+        if el is None:
+            raise ValueError(f"no element matched {loc.selector!r}")
+        return el
+
     async def resolve_element(self, loc: NodriverLocator) -> Any:
         """The handle `loc` drives, or `None` when nothing matches.
 
@@ -396,7 +417,7 @@ class NodriverDriver(Driver):
         `dispatch=True` opts into the JS click as an overlay-bypass escape
         hatch (detectable; use sparingly).
         """
-        el = await self.resolve_element(loc)
+        el = await self.require_element(loc)
         if dispatch:
             await el.click()
             return
@@ -433,7 +454,7 @@ class NodriverDriver(Driver):
 
     async def focus_trusted(self, loc: NodriverLocator) -> Any:
         """CDP `DOM.focus`, not the JS `el.focus()` nodriver reaches for."""
-        el = await self.resolve_element(loc)
+        el = await self.require_element(loc)
         nodriver = load_optional_module("nodriver", "nodriver")
         await loc.tab.send(nodriver.cdp.dom.focus(backend_node_id=el.backend_node_id))
         return el
@@ -490,7 +511,7 @@ class NodriverDriver(Driver):
         """Read current state, then native-click if mismatched. The read uses
         Runtime.callFunctionOn (unavoidable to know .checked) but the write is
         a real CDP Input event, so event.isTrusted stays true."""
-        el = await self.resolve_element(loc)
+        el = await self.require_element(loc)
         current = await el.apply("(el) => el.checked")
         if bool(current) != checked:
             await el.click()

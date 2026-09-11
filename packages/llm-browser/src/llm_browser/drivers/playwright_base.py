@@ -48,6 +48,7 @@ class PwLocator(Protocol):
     def locator(self, selector: str) -> "PwLocator": ...
     def evaluate(self, script: str) -> Any: ...
     def evaluate_all(self, script: str, arg: Any = ...) -> Any: ...
+    def bounding_box(self) -> "PwBoundingBox | None": ...
     def element_handle(self) -> "PwElementHandle | None": ...
 
 
@@ -76,6 +77,10 @@ class PwKeyboard(Protocol):
 class PwMouse(Protocol):
     def move(self, x: float, y: float) -> None: ...
     def wheel(self, delta_x: int, delta_y: int) -> None: ...
+
+
+class PwBoundingBox(Protocol):
+    def __getitem__(self, key: str) -> float: ...
 
 
 class PwPage(Protocol):
@@ -169,7 +174,9 @@ class PlaywrightDriverBase(Driver):
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
         _pw_page(page).wait_for_load_state(state, timeout=timeout_ms)
 
-    def scroll(self, page: Any, dx: int, dy: int) -> None:
+    def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
+        """Chromium delivers the wheel to the document wherever the pointer
+        is, so there is nothing to aim; ``CamoufoxDriver`` overrides."""
         _pw_page(page).mouse.wheel(dx, dy)
 
     def is_visible(self, locator: Any) -> bool:

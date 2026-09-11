@@ -21,10 +21,15 @@ def extract_rows_js() -> str:
 
 
 def select_option_js(value: str) -> str:
-    """``(el) => "ok" | "missing" | "disabled" | "not-a-select"`` for one value."""
+    """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(
         constants.SELECT_VALUE_PLACEHOLDER, json.dumps(value)
     )
+
+
+def select_control_tag_js() -> str:
+    """``(el) => tagName`` — of the labelled control, if ``el`` is a label."""
+    return load_script("select_control_tag")
 
 
 def page_probe_js(selector: str | None, max_chars: int) -> str:

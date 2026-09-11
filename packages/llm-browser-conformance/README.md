@@ -34,12 +34,21 @@ uv run llm-browser-check                       # every installed driver
 uv run llm-browser-check --driver nodriver     # one driver; repeatable
 uv run llm-browser-check --only "wait" --only "iframe"   # substring filter
 uv run llm-browser-check --failed              # just what broke last run
+
 uv run llm-browser-check --json                # machine-readable, for agents
 uv run llm-browser-check --delay 2500          # slower machine, slower fixtures
 ```
 
 Exit code is non-zero if any scenario **failed** — or if a known gap has
 **closed**, because a stale gap table is a lie about what the drivers do.
+
+Every run merges its outcomes into `.llm-browser-check/last.json`, which
+`--failed` rereads to pick only the scenarios that failed or xfailed, per
+driver. The path is **relative to the working directory**, so run `--failed`
+from wherever you ran the suite; a record this build cannot parse is ignored
+with a warning rather than failing the run. The directory is gitignored here —
+add `.llm-browser-check/` to your own `.gitignore` if you run the suite in
+another project.
 
 The same scenarios also run under pytest, gated so the normal run stays fast
 and browser-free:

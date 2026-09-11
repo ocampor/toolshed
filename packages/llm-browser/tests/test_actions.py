@@ -606,13 +606,13 @@ def test_parse_writes_decimal_and_date_rows(
     assert json.loads(target.read_text()) == [{"total": "10.25", "due": "2024-03-01"}]
 
 
-def test_a_type_error_from_writing_output_is_an_error_result(
+def test_an_unserializable_row_is_an_error_result_naming_the_path(
     session: BrowserSession, tmp_path: object
 ) -> None:
-    """Nothing from a step escapes ``execute_action`` as a raw exception."""
+    """Caught where the write happens, not by a blanket `TypeError` catch in
+    `execute_action`: writing the output is part of the step, a bug in some
+    other action is not."""
     from pathlib import Path
-
-    from llm_browser.actions import ErrorResult
 
     _rows_locator(session, [{"name": "Alice"}])
 
@@ -624,15 +624,24 @@ def test_a_type_error_from_writing_output_is_an_error_result(
         extract={"name": {"child_selector": "td", "attribute": "textContent"}},
         path=str(target),
     )
-    original = actions._write_rows
+    result = execute_action(session, step)
+    assert isinstance(result, actions.ParsedResult)
 
-    def exploding_write(path: str, result: object) -> None:
-        raise TypeError("Object of type object is not JSON serializable")
+    unserializable = actions.ParsedResult(rows=[actions.ExtractedRow(name=object())])
+    with pytest.raises(ValueError, match=f"cannot write rows to {target}"):
+        actions._write_rows(str(target), unserializable)
 
-    actions._write_rows = exploding_write  # type: ignore[assignment]
-    try:
-        result = execute_action(session, step)
-    finally:
-        actions._write_rows = original  # type: ignore[assignment]
-    assert isinstance(result, ErrorResult)
-    assert result.error == "TypeError"
+
+def test_a_type_error_inside_an_optional_step_still_reaches_the_developer(
+    session: BrowserSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The regression the narrow catch exists for: a latent bug in an action
+    must not come back as `SkippedResult` and report the flow a success."""
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise TypeError("len() of unsized object")
+
+    monkeypatch.setattr(session, "click", boom)
+    step = ClickStep(name="s", action="click", selector="#x", optional=True)
+    with pytest.raises(TypeError, match=r"len\(\) of unsized object"):
+        execute_action(session, step)

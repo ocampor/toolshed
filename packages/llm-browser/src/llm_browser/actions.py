@@ -135,12 +135,13 @@ def _is_timeout(exc: BaseException) -> bool:
 def is_step_failure(exc: BaseException) -> bool:
     """Whether ``exc`` is a step result rather than a library bug.
 
-    ``TypeError`` is in the set because writing a step's output is part of the
-    step: a row ``json.dumps`` cannot represent has to come back as an
-    ``ErrorResult`` like any other failure, not escape ``run_flow`` as a raw
-    exception no caller can act on.
+    Deliberately narrow. Anything a step can legitimately hit — a wait that
+    expired, a value the page did not provide, an output it cannot write — is
+    raised as one of these two at the place it happens. A ``TypeError`` or an
+    ``AttributeError`` reaching here is a bug in the library, and it belongs
+    in a traceback rather than in a truncated ``reason=`` on a skipped step.
     """
-    return _is_timeout(exc) or isinstance(exc, (ValueError, TypeError))
+    return _is_timeout(exc) or isinstance(exc, ValueError)
 
 
 def execute_action(session: BrowserSession, step: Step) -> ActionResult:
@@ -285,14 +286,22 @@ def _write_rows(path: str, result: ParsedResult) -> None:
 
     ``mode="json"`` because a ``parse`` schema may declare ``Decimal``,
     ``date`` or ``datetime``: python mode hands those straight to
-    ``json.dumps``, which cannot represent them.
+    ``json.dumps``, which cannot represent them. A row that is still not
+    serializable after that is this step failing, so it is raised as the
+    ``ValueError`` every other step failure is, naming the file it could not
+    write — the alternative, catching ``TypeError`` in ``execute_action``,
+    would swallow every library bug in every action along with it.
     """
     import json
 
-    payload = [
-        r.model_dump(mode="json") if r is not None else None for r in result.rows
-    ]
-    prepare_output_path(path).write_text(json.dumps(payload, ensure_ascii=False))
+    try:
+        payload = [
+            r.model_dump(mode="json") if r is not None else None for r in result.rows
+        ]
+        text = json.dumps(payload, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"cannot write rows to {path}: {exc}") from exc
+    prepare_output_path(path).write_text(text)
 
 
 @_registry.register("dom")

@@ -92,7 +92,10 @@ def main(
         else full_plan(selected, scenarios)
     )
     results = run(plan, delay_ms)
-    history.save(history.merge(previous, results) if only_failed else results)
+    # Always merged, never replaced: `--only` and `--driver` produce a partial
+    # result set too, and a record that forgot the other columns is one
+    # `--failed` cannot pick the work back up from.
+    history.save(history.merge(previous, results))
     columns = list(plan)
     report = (
         as_json(results, columns, delay_ms)

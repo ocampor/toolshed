@@ -159,10 +159,12 @@ def stub_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     ("outcome", "message"),
     [
-        ("missing", "no <option value='z'> in the select"),
-        ("disabled", "<option value='z'> is disabled"),
+        ("missing", "no <option> matching 'z' by value or label in the select"),
+        ("option-disabled", "the <option> matching 'z' is disabled"),
+        ("group-disabled", "the <optgroup> holding 'z' is disabled"),
+        ("select-disabled", "the <select> is disabled, so 'z' cannot be chosen"),
         ("not-a-select", "select_option needs a <select>"),
-        ("something-else", "could not select <option value='z'>"),
+        ("something-else", "could not select the <option> matching 'z'"),
     ],
 )
 def test_a_refused_select_is_a_value_error(
@@ -322,3 +324,46 @@ def test_a_screenshot_activates_the_tab_first() -> None:
     tab = ForegroundTab()
     driver_with_loop().screenshot(tab, Path("/tmp/shot.png"))
     assert tab.calls == ["activate", "save_screenshot png"]
+
+
+# --- a write path never dereferences a miss ---
+
+
+class EmptyScope:
+    """A parent whose child selector matches nothing."""
+
+    async def query_selector_all(self, selector: str) -> list[Any]:
+        return []
+
+
+@pytest.mark.parametrize(
+    ("drive", "args"),
+    [
+        (NodriverDriver.click, ()),
+        (NodriverDriver.press, ("Enter",)),
+        (NodriverDriver.type, ("hello",)),
+        (NodriverDriver.set_checked, (True,)),
+    ],
+)
+def test_a_write_to_a_missing_element_is_a_value_error(
+    drive: Any, args: tuple[Any, ...], stub_cdp: None
+) -> None:
+    """`AttributeError` on `None` would escape `run_flow` as a raw traceback;
+    a `ValueError` is what `execute_action` turns into an `ErrorResult`."""
+    locator = NodriverLocator(tab=None, selector="td.gone", parent=EmptyScope())
+    with pytest.raises(ValueError, match="no element matched 'td.gone'"):
+        drive(driver_with_loop(), locator, *args)
+
+
+def test_a_read_of_a_missing_element_is_still_a_miss() -> None:
+    """Rule 1: the read paths answer a miss, they do not raise."""
+    locator = NodriverLocator(tab=None, selector="td.gone", parent=EmptyScope())
+    driver = driver_with_loop()
+    assert driver.get_attribute(locator, "href") is None
+    assert driver.input_value(locator) == ""
+
+
+def test_a_script_behind_a_comment_is_still_a_function() -> None:
+    """Not detecting it costs a silent `undefined`, not an error."""
+    assert is_function_literal("// what this reads\nel => el.value")
+    assert not is_function_literal("// a note\ndocument.readyState")

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from llm_browser.behavior import jittered_sleep, paced
 from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS
+from llm_browser.scripts import select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
@@ -123,8 +124,12 @@ def expect_select(session: "BrowserSession", element: Any, selector: Selector) -
     `execute_action` does not convert, so the flow died instead of returning
     a `FlowError` an `optional:` step could swallow. Asking the page costs one
     read and gives every driver the same message.
+
+    A `<label>` answers for the control it labels, because the Playwright
+    family resolves one before acting and this check must not reject a target
+    those drivers accept.
     """
-    tag = str(session.driver.evaluate(element, "el => el.tagName")).lower()
+    tag = str(session.driver.evaluate(element, select_control_tag_js())).lower()
     if tag != "select":
         raise ValueError(
             f"select needs a <select>; {describe_selector(selector)} is a <{tag}>"

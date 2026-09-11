@@ -20,11 +20,35 @@ def test_no_file_is_no_history(tmp_path: Path) -> None:
     assert history.load(tmp_path / "absent.json") == []
 
 
-def test_an_unreadable_file_is_no_history(tmp_path: Path) -> None:
-    """A corrupt record must never be the reason a run cannot happen."""
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        ("{not json", "malformed json"),
+        (
+            (
+                '[{"scenario": "a", "section": "gone", "driver": "d", '
+                '"outcome": "pass", "elapsed_s": 1.0}]'
+            ),
+            "a section this build dropped",
+        ),
+        (
+            (
+                '[{"scenario": "a", "section": "waits", "driver": "d", '
+                '"outcome": "flaky", "elapsed_s": 1.0}]'
+            ),
+            "an outcome from a newer build",
+        ),
+        ('[{"scenario": "a", "driver": "d"}]', "a field that has since been added"),
+        ('{"results": []}', "an object where a list used to be"),
+    ],
+)
+def test_a_drifted_record_is_no_history(tmp_path: Path, content: str, why: str) -> None:
+    """The file carries no version, and every run reads it — so a record this
+    build cannot parse must never be why a run cannot happen."""
     path = tmp_path / "last.json"
-    path.write_text("{not json")
-    assert history.load(path) == []
+    path.write_text(content)
+    with pytest.warns(UserWarning, match="ignoring unreadable"):
+        assert history.load(path) == [], why
 
 
 def test_a_saved_run_reads_back_unchanged(tmp_path: Path) -> None:
@@ -131,15 +155,23 @@ def test_failed_with_a_clean_previous_run_says_so_and_succeeds(
     assert "nothing failed in the last run" in result.output
 
 
-def test_a_run_records_its_outcomes(
+def test_a_filtered_run_merges_into_the_record_it_did_not_cover(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """`--only` and `--driver` produce partial results too, so replacing the
+    record would drop the very failures `--failed` exists to find again."""
     from llm_browser_conformance import cli
 
+    history.save(
+        [row("a", "fake", Outcome.FAIL), row("elsewhere", "other", Outcome.FAIL)],
+        tmp_path / history.HISTORY_FILE,
+    )
     monkeypatch.setattr(
         cli, "run", lambda plan, delay: [row("a", "fake", Outcome.PASS)]
     )
     invoke(tmp_path, monkeypatch, "--only", "wait")
-    assert history.load(tmp_path / history.HISTORY_FILE) == [
-        row("a", "fake", Outcome.PASS)
-    ]
+    recorded = history.load(tmp_path / history.HISTORY_FILE)
+    assert {(r.scenario, r.driver): r.outcome for r in recorded} == {
+        ("a", "fake"): Outcome.PASS,
+        ("elsewhere", "other"): Outcome.FAIL,
+    }

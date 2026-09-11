@@ -8,6 +8,7 @@ only the last handful of scenarios.
 """
 
 import json
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -31,13 +32,25 @@ def key(result: Result) -> Key:
 
 
 def load(path: Path = HISTORY_FILE) -> list[Result]:
-    """The last run's rows, or nothing at all — a missing or unreadable file
-    is "no history", never an error that stops a run from happening."""
+    """The last run's rows, or nothing at all.
+
+    The decoding is inside the guard, not just the parse: the file carries no
+    version, so a renamed `Section`, a new `Outcome` or a rollback to an older
+    install all leave rows this build cannot read. Every invocation of the CLI
+    calls this, `--failed` or not, so a record that has drifted has to mean
+    "start fresh" rather than a crash before any browser starts.
+    """
     try:
         rows = json.loads(path.read_text())
-    except (OSError, ValueError):
+        return [as_result(row) for row in rows]
+    except FileNotFoundError:
         return []
-    return [as_result(row) for row in rows]
+    except (OSError, ValueError, TypeError, KeyError) as drift:
+        warnings.warn(
+            f"ignoring unreadable {path}: {type(drift).__name__}: {drift}",
+            stacklevel=2,
+        )
+        return []
 
 
 def as_result(row: Mapping[str, Any]) -> Result:
