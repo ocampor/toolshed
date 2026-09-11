@@ -13,7 +13,7 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 
 | scenario | driver | gap |
 | --- | --- | --- |
-| dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
+| dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox; not closable from this side, and a driver-neutral caller must not rely on the distinction |
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |

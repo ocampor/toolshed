@@ -166,7 +166,9 @@ SCENARIOS = [
         known_gaps={
             "camoufox": "Gecko marks an event dispatched from Playwright's "
             "chrome-privileged agent as trusted, so dispatch=True is "
-            "indistinguishable from real input on Firefox"
+            "indistinguishable from real input on Firefox; not closable from "
+            "this side, and a driver-neutral caller must not rely on the "
+            "distinction"
         },
     ),
     Scenario(
