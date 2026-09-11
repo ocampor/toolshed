@@ -411,7 +411,7 @@ steps:
 """
 
 
-def test_a_flow_run_uses_the_registered_reader(mock_session: MagicMock) -> None:
+def test_a_flow_run_uses_the_session_reader(mock_session: MagicMock) -> None:
     # The input is already gone, so the first poll reads as accepted.
     mock_session.element_exists.return_value = False
     read, seen = replying(ANSWER)

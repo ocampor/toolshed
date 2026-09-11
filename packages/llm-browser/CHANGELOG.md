@@ -4,7 +4,7 @@
 
 ### Added
 
-- `solve_captcha` step — crops `image:`, hands the PNG to the registered
+- `solve_captcha` step — crops `image:`, hands the PNG to the session's
   reader, types the normalized answer into `input:`, clicks `submit:` if set,
   and reads the page's verdict: `error:` visible is a rejection and the next of
   `retries:` attempts crops again, `input:` detached and staying gone is
