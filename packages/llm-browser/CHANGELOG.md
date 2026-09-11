@@ -1,13 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 — 2026-09-11
 
-### Fixed
-
-- `NodriverDriver.close()` calls `Browser.stop()` directly instead of
-  `self.run(Browser.stop())`.
-- `NodriverDriver.close()` cancels and drains any task `Browser.stop()` left
-  pending on the loop before closing it.
+- `NodriverDriver.close()` calls `Browser.stop()` directly instead of `self.run(Browser.stop())`.
+- `NodriverDriver.close()` cancels and drains any task `Browser.stop()` left pending on the loop before closing it.
 
 ## 0.9.0 — 2026-09-10
 
