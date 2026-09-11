@@ -16,6 +16,11 @@
   function process-wide and every `solve_captcha` step uses it. Nothing is
   registered by default and the CLI registers nothing, so an unconfigured
   process fails the step with `human_needed` before touching the page.
+- `llm_browser.ReaderUnavailable` — raise it from a reader to say no reading is
+  possible in this run (a host with a reader wired but no client attached to
+  ask). The step stops after that first crop with `human_needed`, rather than
+  spending its remaining `retries:` on the same refusal; every other exception
+  stays an ordinary retryable failed step.
 - `llm_browser.captcha.normalize_answer` — strips everything but letters and
   digits, accepts 3-12 alphanumeric characters, and reads `UNREADABLE` as
   "no answer".

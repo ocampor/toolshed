@@ -235,6 +235,28 @@ def test_the_registered_reader_is_the_one_that_gets_called(
     assert seen == [PNG]
 
 
+def test_a_reader_that_says_it_cannot_look_stops_after_one_crop(
+    mock_session: MagicMock,
+) -> None:
+    """A host with a reader wired but nothing behind it right now — an HTTP run
+    with no client attached — is a human handoff, not three wrong guesses."""
+    step = captcha_step(retries=3)
+    calls: list[bytes] = []
+
+    def read(png: bytes, prompt: str | None) -> str:
+        calls.append(png)
+        raise captcha.ReaderUnavailable("no client attached to this run")
+
+    result = solved(mock_session, step, read)
+
+    assert isinstance(result, ErrorResult)
+    assert result.human_needed is True
+    assert "no captcha reader available in this run" in result.message
+    assert len(calls) == 1, "spent a retry on a reader that cannot look"
+    mock_session.fill.assert_not_called()
+    mock_session.click.assert_not_called()
+
+
 def test_a_reader_that_raises_fails_the_step_instead_of_the_run(
     mock_session: MagicMock,
 ) -> None:
@@ -247,6 +269,7 @@ def test_a_reader_that_raises_fails_the_step_instead_of_the_run(
 
     assert isinstance(result, ErrorResult)
     assert "sampling API is down" in result.message
+    assert result.human_needed is False, "an ordinary reader fault is retryable"
 
 
 def test_the_answer_never_reaches_the_result(mock_session: MagicMock) -> None:

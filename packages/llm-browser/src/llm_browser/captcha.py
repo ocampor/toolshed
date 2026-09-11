@@ -41,6 +41,11 @@ CaptchaReader = Callable[[bytes, str | None], str]
 # has or does not, not something one flow run can differ on.
 _reader: CaptchaReader | None = None
 
+
+class ReaderUnavailable(Exception):
+    """Raise from a reader when no reading is possible in this run."""
+
+
 # What a captcha answer may look like once the punctuation is gone. The bounds
 # are what real image captchas use, and they are also the guard that keeps a
 # chatty model reply from being typed into the page.
@@ -96,6 +101,8 @@ def ask(read: CaptchaReader, png: bytes, prompt: str | None) -> str:
     rather than the run unwinding."""
     try:
         return read(png, prompt)
+    except ReaderUnavailable:
+        raise
     except Exception as exc:
         raise ValueError(
             f"captcha reader raised {type(exc).__name__}: "
@@ -187,10 +194,17 @@ def solve(session: BrowserSession, step: SolveCaptchaStep) -> ActionResult:
         # Before the page is touched: nothing here can succeed, and a crop
         # nobody will look at is wasted work on a site watching for it.
         return failed(step, "no captcha reader is configured", human_needed=True)
-    for attempt in range(1, step.retries + 1):
-        if one_attempt(session, step, read):
-            return CaptchaResult(attempts=attempt)
-        logger.debug("captcha attempt %d of %d rejected", attempt, step.retries)
+    try:
+        for attempt in range(1, step.retries + 1):
+            if one_attempt(session, step, read):
+                return CaptchaResult(attempts=attempt)
+            logger.debug("captcha attempt %d of %d rejected", attempt, step.retries)
+    except ReaderUnavailable:
+        # Not a wrong answer: the reader has said it cannot look at all, so
+        # the remaining retries would only spend crops on the same refusal.
+        return failed(
+            step, "no captcha reader available in this run", human_needed=True
+        )
     return failed(
         step,
         f"captcha not solved in {step.retries} attempts",

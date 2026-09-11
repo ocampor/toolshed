@@ -104,14 +104,20 @@ set_reader(read_it)          # process-wide; set_reader(None) clears it
 | `llm_browser.CaptchaReader` | `Callable[[bytes, str \| None], str]` | `(png_bytes, prompt) -> reply` |
 | `llm_browser.set_reader` | `(reader: CaptchaReader \| None) -> None` | Register the reader, or clear it |
 | `llm_browser.captcha.reader` | `() -> CaptchaReader \| None` | What is registered right now |
+| `llm_browser.ReaderUnavailable` | `Exception` | Raise it *from* a reader to say nothing can read in this run |
 
 There is no per-run or per-step override: one step, one way of reading an image, and a
 different mechanism would be a different step. Nothing is registered by default — the
 `llm-browser` CLI registers nothing — so an unconfigured process fails every `solve_captcha`
 step with `FlowError.human_needed` *before* it touches the page, which is also what happens
-when `retries` runs out. Anything the reader raises becomes a failed step, never an unwound
-run. The step's row in `outputs` is `{"attempts": n}`: the answer typed into the page is
-never carried out of the step.
+when `retries` runs out.
+
+A registered reader can still be unable to read *right now* — an HTTP run with no client
+attached to ask. Raising `ReaderUnavailable` from it says so: the step gives up after that
+first crop with `human_needed` set, instead of spending the remaining retries on the same
+refusal and reporting a retryable failure. Any *other* exception is an ordinary failed step
+carrying the exception's message, never an unwound run. The step's row in `outputs` is
+`{"attempts": n}`: the answer typed into the page is never carried out of the step.
 
 ## Capture modes
 
