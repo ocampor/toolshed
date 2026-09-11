@@ -109,56 +109,72 @@ SCENARIOS = [
         "wait attached",
         Section.WAITS,
         attached_waits_for_a_late_insert,
+        covers=frozenset({"session:goto", "session:wait_for_element"}),
     ),
-    Scenario("wait detached", Section.WAITS, detached_waits_for_a_removal),
-    Scenario("wait visible", Section.WAITS, visible_waits_for_display_to_flip),
+    Scenario(
+        "wait detached",
+        Section.WAITS,
+        detached_waits_for_a_removal,
+        covers=frozenset({"session:click", "session:wait_for_element"}),
+    ),
+    Scenario(
+        "wait visible",
+        Section.WAITS,
+        visible_waits_for_display_to_flip,
+        covers=frozenset({"session:wait_for_element"}),
+    ),
     Scenario(
         "wait hidden",
         Section.WAITS,
         hidden_waits_for_the_element_to_stop_rendering,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "wait stable",
         Section.WAITS,
         stable_waits_for_the_text_to_stop_moving,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "attached is immediate",
         Section.WAITS,
         attached_returns_at_once_for_an_element_already_there,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "visibility:hidden is hidden",
         Section.WAITS,
         visibility_hidden_counts_as_hidden,
-        known_gaps={
-            "nodriver": "is_visible tests offsetParent/getClientRects, neither "
-            "of which notices visibility:hidden"
-        },
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "opacity:0 is visible",
         Section.WAITS,
         opacity_zero_counts_as_visible,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "timeout message",
         Section.WAITS,
         a_short_timeout_names_selector_and_state,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "detached times out on hidden",
         Section.WAITS,
         detached_times_out_on_an_element_that_only_hides,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "settle must fit timeout",
         Section.WAITS,
         a_settle_that_does_not_fit_the_budget_is_rejected_before_polling,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "find rejects ambiguity",
         Section.WAITS,
         find_rejects_an_ambiguous_selector_at_once,
+        covers=frozenset({"session:find"}),
     ),
 ]

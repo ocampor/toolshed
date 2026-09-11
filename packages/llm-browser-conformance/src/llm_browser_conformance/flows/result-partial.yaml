@@ -1,0 +1,14 @@
+# A read that lands, then a wait that cannot: the failure keeps what the read
+# collected before it.
+steps:
+  - name: rows
+    action: read
+    selector: "#list li"
+    extract:
+      code:
+        attribute: data-code
+  - name: boom
+    action: wait_for
+    selector: "#never"
+    state: attached
+    timeout: 500

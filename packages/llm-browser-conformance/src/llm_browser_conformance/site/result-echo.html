@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Result echo</title>
+<input type="text" id="token">
+<div id="echo"></div>
+<script>
+  const echo = document.getElementById("echo");
+  document.getElementById("token").addEventListener("input", (e) => {
+    echo.textContent = e.target.value;
+  });
+  const recordTrust = (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted", String(e.isTrusted));
+    }
+  };
+  document.addEventListener("click", recordTrust, true);
+  document.addEventListener("keydown", recordTrust, true);
+  document.addEventListener("input", (e) => {
+    if (e.target.setAttribute) {
+      e.target.setAttribute("data-trusted-input", String(e.isTrusted));
+    }
+  }, true);
+</script>

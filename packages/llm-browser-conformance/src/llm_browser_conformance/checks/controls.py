@@ -106,64 +106,80 @@ SCENARIOS = [
         "controlled input",
         Section.STEPS,
         a_controlled_input_keeps_what_fill_and_type_write,
+        covers=frozenset(
+            {
+                "field:fill.value",
+                "field:type.selector",
+                "field:type.value",
+                "step:fill",
+                "step:type",
+            }
+        ),
     ),
     Scenario(
         "masked input",
         Section.STEPS,
         a_mask_reformats_every_keystroke,
+        covers=frozenset({"field:type.delay", "field:type.value", "step:type"}),
     ),
     Scenario(
         "autocomplete click",
         Section.STEPS,
         a_debounced_autocomplete_can_be_clicked,
+        covers=frozenset({"step:click"}),
     ),
     Scenario(
         "autocomplete enter",
         Section.STEPS,
         a_debounced_autocomplete_can_be_chosen_with_enter,
+        covers=frozenset({"field:press.key", "step:press"}),
     ),
     Scenario(
         "custom select click",
         Section.STEPS,
         a_div_dropdown_is_driven_by_clicking,
+        covers=frozenset({"step:click"}),
     ),
     Scenario(
         "custom select rejects select",
         Section.STEPS,
         select_on_a_div_dropdown_fails_clearly,
-        # Not a driver difference: execute_action only converts TimeoutError
-        # and ValueError into an ErrorResult, so a wrong-element select
-        # escapes run_flow as a raw driver exception on every backend --
-        # `optional:` cannot swallow it and the CLI cannot report it.
-        known_gaps=dict.fromkeys(
-            ("patchright", "camoufox", "nodriver"),
-            "select on a non-<select> raises out of run_flow instead of "
-            "returning a FlowError",
+        covers=frozenset(
+            {
+                "field:select.selector",
+                "field:select.value",
+                "session:select_option",
+                "step:select",
+            }
         ),
     ),
     Scenario(
         "native select optgroup",
         Section.STEPS,
         a_native_select_picks_an_option_behind_an_optgroup,
-        known_gaps={
-            "nodriver": "select_option native-clicks the <option>; a closed "
-            "native select ignores it and the value never changes"
-        },
+        covers=frozenset({"field:select.value", "step:select"}),
     ),
     Scenario(
         "native select disabled option",
         Section.STEPS,
         a_disabled_option_cannot_be_selected,
         known_gaps={
-            "nodriver": "clicking a disabled <option> is a no-op, so the step "
-            "reports success instead of failing",
             "patchright": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
             "camoufox": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
         },
+        covers=frozenset({"option:timeout"}),
     ),
     Scenario(
         "checkbox and radio",
         Section.STEPS,
         an_invisible_checkbox_and_a_radio_group_toggle,
+        covers=frozenset(
+            {
+                "field:check.checked",
+                "field:check.selector",
+                "session:set_checked",
+                "step:check",
+            }
+        ),
     ),
 ]

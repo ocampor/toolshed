@@ -565,3 +565,83 @@ def test_only_session_input_drives_the_page() -> None:
         and node.value.attr == "driver"
     ]
     assert calls == []
+
+
+def test_parse_writes_decimal_and_date_rows(
+    session: BrowserSession, tmp_path: object
+) -> None:
+    """A schema may declare types ``json.dumps`` cannot represent; the dump
+    has to be JSON-mode or the whole flow dies on the write."""
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from llm_browser.models import ParseStep
+
+    schema = Path(str(tmp_path)) / "invoice.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Invoice",
+                "fields": {
+                    "total": {"type": "Decimal", "child_selector": "td.total"},
+                    "due": {"type": "date", "child_selector": "td.due"},
+                },
+            }
+        )
+    )
+
+    _rows_locator(session, [{"total": "10.25", "due": "2024-03-01"}])
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ParseStep(
+        name="s",
+        action="parse",
+        selector="tr.row",
+        schema_path=str(schema),
+        path=str(target),
+    )
+    execute_action(session, step)
+    assert json.loads(target.read_text()) == [{"total": "10.25", "due": "2024-03-01"}]
+
+
+def test_an_unserializable_row_is_an_error_result_naming_the_path(
+    session: BrowserSession, tmp_path: object
+) -> None:
+    """Caught where the write happens, not by a blanket `TypeError` catch in
+    `execute_action`: writing the output is part of the step, a bug in some
+    other action is not."""
+    from pathlib import Path
+
+    _rows_locator(session, [{"name": "Alice"}])
+
+    target = Path(str(tmp_path)) / "rows.json"
+    step = ReadStep(
+        name="s",
+        action="read",
+        selector="tr",
+        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
+        path=str(target),
+    )
+    result = execute_action(session, step)
+    assert isinstance(result, actions.ParsedResult)
+
+    unserializable = actions.ParsedResult(rows=[actions.ExtractedRow(name=object())])
+    with pytest.raises(ValueError, match=f"cannot write rows to {target}"):
+        actions._write_rows(str(target), unserializable)
+
+
+def test_a_type_error_inside_an_optional_step_still_reaches_the_developer(
+    session: BrowserSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The regression the narrow catch exists for: a latent bug in an action
+    must not come back as `SkippedResult` and report the flow a success."""
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise TypeError("len() of unsized object")
+
+    monkeypatch.setattr(session, "click", boom)
+    step = ClickStep(name="s", action="click", selector="#x", optional=True)
+    with pytest.raises(TypeError, match=r"len\(\) of unsized object"):
+        execute_action(session, step)

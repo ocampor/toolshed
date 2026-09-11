@@ -88,11 +88,13 @@ SCENARIOS = [
         Section.STEALTH,
         attached_polls_without_touching_the_runtime_domain,
         drivers=NODRIVER,
+        covers=frozenset({"session:wait_for_element"}),
     ),
     Scenario(
         "visible costs one Runtime per poll",
         Section.STEALTH,
         visible_costs_at_most_one_runtime_call_per_poll,
         drivers=NODRIVER,
+        covers=frozenset({"session:wait_for_element"}),
     ),
 ]

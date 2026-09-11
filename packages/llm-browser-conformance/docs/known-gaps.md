@@ -13,18 +13,11 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 
 | scenario | driver | gap |
 | --- | --- | --- |
-| visibility:hidden is hidden | nodriver | is_visible tests offsetParent/getClientRects, neither of which notices visibility:hidden |
-| flow failure flags a login wall | nodriver | page_probe.js is a function literal and nodriver's evaluate runs it as an expression, so PageProbe comes back empty and human_needed is always False |
-| select_option | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
-| typing fires trusted keydown | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |
-| dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
-| sticky header | nodriver | click does not scroll the target into view, so the CDP mouse event is dispatched at viewport coordinates the button is not at and nothing is clicked |
+| dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox; not closable from this side, and a driver-neutral caller must not rely on the distinction |
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
-| slow xhr rows | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
-| custom select rejects select | patchright | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
-| custom select rejects select | camoufox | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
-| custom select rejects select | nodriver | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
-| native select optgroup | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
-| native select disabled option | nodriver | clicking a disabled &lt;option> is a no-op, so the step reports success instead of failing |
+| goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
+| dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
+| behavior human paces input | camoufox | the plain locator.type() path already spends ~70ms a key on Camoufox's patched Firefox, inside Behavior.human()'s own 30-90ms jitter band, so the humanized path is not measurably slower |
+| behavior human paces input | nodriver | NodriverDriver leaves humanized_type defaulted because its native CDP input already types like a person, so Behavior.human() adds paced()'s post-action pause and no per-key delay |

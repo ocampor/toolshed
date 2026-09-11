@@ -1,0 +1,20 @@
+# Control+a selects what is already in the field, so the next type replaces it.
+steps:
+  - name: fill
+    action: fill
+    selector: "#typed"
+    value: old value
+  - name: select-all
+    action: press
+    selector: "#typed"
+    key: Control+a
+  - name: type
+    action: type
+    selector: "#typed"
+    value: new
+  - name: value
+    action: read
+    selector: "#typed"
+    extract:
+      text:
+        attribute: value

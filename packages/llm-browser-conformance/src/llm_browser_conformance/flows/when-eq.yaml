@@ -1,0 +1,14 @@
+# `eq` lowercases both sides, so the gate is case-insensitive.
+params:
+  - mode
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - field: mode
+        op: eq
+        value: Live
+    extract:
+      text:
+        attribute: textContent

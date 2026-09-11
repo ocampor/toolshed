@@ -1,0 +1,14 @@
+# Two steps, one name: rejected at load, because `--from` addresses steps by name.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    extract:
+      text:
+        attribute: textContent
+  - name: gated
+    action: read
+    selector: "#field"
+    extract:
+      text:
+        attribute: textContent

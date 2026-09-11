@@ -108,6 +108,31 @@ class CamoufoxDriver(PlaywrightDriverBase):
             locator.type(ch, delay=0)
             jittered_sleep(DEFAULT_TYPE_CHAR_DELAY, _RNG)
 
+    def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
+        """Park the cursor over what is being scrolled, then turn the wheel.
+
+        Gecko delivers a wheel event to whatever is under the pointer, and
+        Playwright's pointer starts off the page — so the event landed
+        nowhere and the page never moved. Chromium scrolls either way, which
+        is why only this driver needs it.
+
+        Two consequences worth knowing. The wheel goes to whatever is under
+        the cursor, so a page whose centre holds an inner scroller scrolls
+        that and not the document — pass ``locator`` to say what you meant.
+        And the pointer stays where it was put, so hover-triggered UI (a
+        menu, a tooltip, a lazy load) can open as a side effect of a scroll.
+        """
+        page.mouse.move(*self.wheel_target(page, locator))
+        page.mouse.wheel(dx, dy)
+
+    def wheel_target(self, page: Any, locator: Any | None) -> tuple[float, float]:
+        """The element's centre when there is one, else the viewport's."""
+        box = locator.bounding_box() if locator is not None else None
+        if box is not None:
+            return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        width, height = page.evaluate("() => [window.innerWidth, window.innerHeight]")
+        return width / 2, height / 2
+
     def page(self, handle: DriverHandle) -> Any:
         if self._page is None:
             raise RuntimeError(

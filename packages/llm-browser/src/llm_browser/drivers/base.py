@@ -166,8 +166,13 @@ class Driver(ABC):
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
         """Block until the page reaches ``state`` — the only page-level wait."""
 
-    def scroll(self, page: Any, dx: int, dy: int) -> None:
-        """Scroll the page by a mouse-wheel delta."""
+    def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
+        """Scroll by a mouse-wheel delta, over ``locator`` when one is given.
+
+        A wheel event goes to whatever is under the pointer, so a page whose
+        centre holds an inner scroller (a transcript, a virtualised table, a
+        map) scrolls *that* unless the caller says what it meant.
+        """
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
     @abstractmethod

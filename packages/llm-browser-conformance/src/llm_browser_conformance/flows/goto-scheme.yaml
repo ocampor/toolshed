@@ -1,0 +1,5 @@
+# A non-http url is refused before any navigation happens.
+steps:
+  - name: goto
+    action: goto
+    url: "file:///etc/passwd"

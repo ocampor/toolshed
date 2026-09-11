@@ -215,3 +215,14 @@ def test_latest_tab_returns_last_page(
     driver = CamoufoxDriver()
     handle = driver.launch(user_data_dir=tmp_path, url=None, headed=False)
     assert driver.latest_tab(handle) is second
+
+
+def test_scroll_parks_the_cursor_over_the_content_first() -> None:
+    """Gecko delivers a wheel event to whatever is under the pointer, which
+    starts off the page — so the wheel alone moved nothing."""
+    from unittest.mock import call
+
+    page = MagicMock()
+    page.evaluate.return_value = [1000, 800]
+    CamoufoxDriver().scroll(page, 0, 500)
+    assert page.mouse.mock_calls == [call.move(500, 400), call.wheel(0, 500)]

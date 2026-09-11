@@ -1,0 +1,17 @@
+# An inline child flow: `data` templates into it, and its outputs come back
+# keyed by the parent step's name.
+steps:
+  - name: child
+    action: run-flow
+    data:
+      row: "#row-2 .label"
+    flow:
+      params:
+        - row
+      steps:
+        - name: read
+          action: read
+          selector: "{{ row }}"
+          extract:
+            text:
+              attribute: textContent

@@ -1,0 +1,20 @@
+# A secret filled in, echoed back, read out and then quoted by a failing
+# selector: every place `redact=` has to reach.
+params:
+  - secret
+steps:
+  - name: token
+    action: fill
+    selector: "#token"
+    value: "{{ secret }}"
+  - name: echo
+    action: read
+    selector: "#echo"
+    extract:
+      text:
+        attribute: textContent
+  - name: boom
+    action: wait_for
+    selector: '[data-token="{{ secret }}"]'
+    state: attached
+    timeout: 500

@@ -1,0 +1,13 @@
+# Deliberately types that JSON has no native form for: the `parse` step has to
+# dump them in JSON mode or writing its own output kills the flow.
+name: Invoice
+fields:
+  name:
+    type: str
+    child_selector: td.name
+  total:
+    type: Decimal
+    child_selector: td.total
+  due:
+    type: date
+    child_selector: td.due
