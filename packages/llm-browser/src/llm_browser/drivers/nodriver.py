@@ -740,6 +740,17 @@ class NodriverDriver(Driver):
         await page.activate()
         await page.save_screenshot(filename=str(path), format="png")
 
+    def screenshot_element_bytes(self, locator: Any) -> bytes:
+        """Spooled and read back like the page capture, for the same reason."""
+        with tempfile.TemporaryDirectory() as spool:
+            path = Path(spool) / "element.png"
+            self.run(self.do_element_screenshot(locator, path))
+            return path.read_bytes()
+
+    async def do_element_screenshot(self, loc: NodriverLocator, path: Path) -> None:
+        element = await self.require_element(loc)
+        await element.save_screenshot(filename=str(path), format="png")
+
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:

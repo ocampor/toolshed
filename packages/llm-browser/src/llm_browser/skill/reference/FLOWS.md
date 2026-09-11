@@ -40,7 +40,7 @@ steps:
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
-| `screenshot` | — | `path` | The PNG bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
+| `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
 
 ### Waiting
 

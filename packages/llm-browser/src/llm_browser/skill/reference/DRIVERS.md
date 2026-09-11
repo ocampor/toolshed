@@ -67,7 +67,9 @@ events, which methods may run JS, that `first`/`nth` stay re-resolvable, and tha
 milliseconds and raise the builtin `TimeoutError`. Capture returns bytes, never a path:
 `screenshot_bytes(page)` hands back PNG and `download_bytes(page, trigger)` a `BytesResult`, so
 a backend whose API can only write a file spools it to a temporary directory and removes it
-before returning. `tests/test_driver_contract.py` checks the read rules against each driver with
+before returning. `screenshot_element_bytes(locator)` is the same capture cropped to one
+element; it is the one capture method that is not abstract, so a page-only backend leaves it
+raising `NotImplementedError` and the conformance suite reports a skip. `tests/test_driver_contract.py` checks the read rules against each driver with
 fakes; add yours to its fixture. Conformance suite:
 `packages/llm-browser-conformance` (separate package, in progress).
 

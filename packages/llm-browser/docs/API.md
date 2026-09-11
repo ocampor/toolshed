@@ -149,7 +149,7 @@ fresh.
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
 | `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
-| `screenshot_bytes()` | The current page as PNG bytes; nothing is written |
+| `screenshot_bytes(selector=None)` | The current page as PNG bytes, or just `selector`'s element when one is given; nothing is written |
 | `dom_snapshot(level=None)` | Sanitized HTML of the whole current page, as text; `level` defaults to the session's `capture_level` |
 | `scroll(dx, dy)` | Mouse-wheel scroll |
 | `get_page()` | Raw driver page (a Playwright `Page` on patchright/camoufox, a nodriver `Tab` on nodriver) |

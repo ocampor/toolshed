@@ -120,10 +120,14 @@ class ScreenshotStep(BaseStep):
     in ``FlowSuccess.outputs``; the library never writes a file. ``path`` is
     where ``llm-browser run`` puts those bytes — relative to ``--out-dir`` —
     and an embedding caller is free to ignore it.
+
+    ``selector`` crops the capture to one element; left unset, the whole
+    viewport is captured.
     """
 
     action: Literal["screenshot"]
     path: str | None = None
+    selector: Selector | None = None
 
 
 class ReadStep(SelectorStep):

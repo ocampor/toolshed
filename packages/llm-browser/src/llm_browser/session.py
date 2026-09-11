@@ -356,9 +356,14 @@ class BrowserSession:
         locator = self.find(selector) if selector is not None else None
         self.driver.scroll(self.get_page(), dx, dy, locator)
 
-    def screenshot_bytes(self) -> bytes:
-        """PNG bytes of the current page, without writing into the session dir."""
-        return self.driver.screenshot_bytes(self.get_page())
+    def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
+        """PNG bytes of the current page, or of ``selector`` alone when given.
+
+        Nothing is written into the session dir either way.
+        """
+        if selector is None:
+            return self.driver.screenshot_bytes(self.get_page())
+        return self.driver.screenshot_element_bytes(self.find(selector))
 
     def dom_snapshot(self, level: SanitizeLevel | None = None) -> str:
         """Sanitized HTML of the whole current page, as text.

@@ -260,6 +260,17 @@ class Driver(ABC):
         out.
         """
 
+    def screenshot_element_bytes(self, locator: Any) -> bytes:
+        """One element as PNG bytes, cropped to its box.
+
+        Same no-disk rule as :meth:`screenshot_bytes`. Optional: a backend
+        whose capture API is page-only raises, and the conformance suite
+        reports a skip.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support element screenshots"
+        )
+
     @abstractmethod
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int

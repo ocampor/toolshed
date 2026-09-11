@@ -180,7 +180,7 @@ def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesRes
     is what writes it."""
     return BytesResult(
         name=f"{step.name}.png",
-        content=session.screenshot_bytes(),
+        content=session.screenshot_bytes(step.selector),
         media_type="image/png",
     )
 
