@@ -21,6 +21,7 @@ from llm_browser.behavior import (
 )
 from llm_browser.constants import READ_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
+from llm_browser.results import BytesResult, guess_media_type
 from llm_browser.scripts import extract_rows_js
 
 
@@ -62,7 +63,10 @@ class PwDownloadInfo(Protocol):
 
 
 class PwDownload(Protocol):
-    def save_as(self, path: str) -> None: ...
+    @property
+    def suggested_filename(self) -> str: ...
+    def path(self) -> str: ...
+    def delete(self) -> None: ...
 
 
 class PwDownloadContext(Protocol):
@@ -244,13 +248,20 @@ class PlaywrightDriverBase(Driver):
     def screenshot_bytes(self, page: Any) -> bytes:
         return _pw_page(page).screenshot(full_page=False)
 
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path:
+    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
+        """Playwright always spools the download to a temp file of its own;
+        ``delete()`` removes it once the bytes are in memory."""
         with _pw_page(page).expect_download() as info:
             trigger()
-        info.value.save_as(str(output))
-        return output
+        download = info.value
+        try:
+            content = Path(download.path()).read_bytes()
+        finally:
+            download.delete()
+        name = download.suggested_filename
+        return BytesResult(
+            name=name, content=content, media_type=guess_media_type(name)
+        )
 
     def enter_frame(self, locator: Any) -> Any:
         handle = _pw_loc(locator).element_handle()

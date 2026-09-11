@@ -54,6 +54,17 @@ def url_argument_errors() -> Iterator[None]:
         raise click.UsageError(str(exc)) from exc
 
 
+def prepare_output_path(path: str | Path) -> Path:
+    """Coerce ``path`` to a ``Path`` and ensure its parent directory exists,
+    so a caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first.
+
+    Writing is the CLI's job alone; the library returns its output in memory.
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+
 def _output(data: object) -> None:
     """Print JSON to stdout, then exit non-zero if the payload is a
     flow-level error. Supports Pydantic models and plain dicts.
@@ -639,13 +650,22 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
 
 @main.command()
 @click.option("--selector", required=True, help="Download link/button selector.")
-@click.option("--path", required=True, help="Destination file path.")
+@click.option(
+    "--path",
+    default=None,
+    help="Destination file path; defaults to the filename the server suggests.",
+)
 @click.pass_context
-def download(ctx: click.Context, selector: str, path: str) -> None:
-    """Download a file by clicking a link/button."""
+def download(ctx: click.Context, selector: str, path: str | None) -> None:
+    """Download a file by clicking a link/button.
+
+    The library hands back the bytes; writing them is this command's job.
+    """
     session: BrowserSession = ctx.obj["session"]
-    result = session.download_file(selector, path)
-    _output({"path": str(result)})
+    result = session.download_file(selector)
+    target = prepare_output_path(path or result.name)
+    target.write_bytes(result.content)
+    _output({"path": str(target), "name": result.name, "bytes": len(result.content)})
 
 
 @main.command()

@@ -11,6 +11,8 @@ import yaml
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.redact import redact_secrets
+from llm_browser.results import BytesResult
+from tests.conftest import PNG
 
 CHILD = {"steps": [{"name": "c1", "action": "click", "selector": "#child"}]}
 
@@ -112,16 +114,18 @@ def test_outputs_collected_without_path(
     assert result.outputs == {key: expected}
 
 
-def test_outputs_kept_when_path_also_writes_a_file(
+def test_a_step_path_writes_nothing_and_keeps_the_output(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
+    """``path:`` is a CLI instruction; ``run_flow`` returns the rows and
+    leaves the filesystem alone."""
     out = tmp_path / "rows.json"
     flow = load_flow_text(_flow_yaml([_read_step(path=str(out))]))
     result = run_flow(mock_session, flow, {})
     assert isinstance(result, FlowSuccess)
     assert result.outputs == {"grab": [{"title": "hello"}]}
-    assert out.exists()
+    assert not out.exists()
 
 
 def test_outputs_from_parse_step(tmp_path: Path, mock_session: MagicMock) -> None:
@@ -155,11 +159,26 @@ def test_outputs_from_parse_step(tmp_path: Path, mock_session: MagicMock) -> Non
     assert result.outputs == {"rows": [{"title": "hello", "stars": 3}]}
 
 
-def test_outputs_exclude_screenshots(mock_session: MagicMock) -> None:
+def test_screenshot_output_is_bytes(mock_session: MagicMock) -> None:
     flow = load_flow_text(_flow_yaml([{"name": "shot", "action": "screenshot"}]))
     result = run_flow(mock_session, flow, {})
     assert isinstance(result, FlowSuccess)
-    assert result.outputs == {}
+    shot = result.outputs["shot"]
+    assert isinstance(shot, BytesResult)
+    assert shot.content == PNG
+    assert shot.media_type == "image/png"
+
+
+def test_download_output_is_bytes(mock_session: MagicMock) -> None:
+    mock_session.download_file.return_value = BytesResult(
+        name="report.csv", content=b"a,b\n", media_type="text/csv"
+    )
+    flow = load_flow_text(
+        _flow_yaml([{"name": "grab", "action": "download", "selector": "#dl"}])
+    )
+    result = run_flow(mock_session, flow, {})
+    assert isinstance(result, FlowSuccess)
+    assert result.outputs["grab"] == mock_session.download_file.return_value
 
 
 def test_outputs_from_subflow_are_qualified(mock_session: MagicMock) -> None:
@@ -194,7 +213,7 @@ def test_redact_secrets_ignores_empty_secret_list() -> None:
 
 
 def test_redact_secrets_preserves_model_type() -> None:
-    from llm_browser.actions import ErrorResult
+    from llm_browser.results import ErrorResult
 
     result = ErrorResult(error="ValueError", message="bad s3cret", step_name="s")
     redacted = redact_secrets(result, ["s3cret"])

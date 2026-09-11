@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser.drivers.base import Driver, DriverHandle
+from llm_browser.results import BytesResult
 from llm_browser.session import BrowserSession
 
 
@@ -111,8 +112,8 @@ class AttachStubDriver(Driver):
 
     def screenshot(self, page: Any, path: Path) -> None: ...
 
-    def expect_download(self, page: Any, trigger: Any, output: Path) -> Path:
-        return output
+    def download_bytes(self, page: Any, trigger: Any) -> BytesResult:
+        return BytesResult(name="x.bin", content=b"")
 
     def enter_frame(self, locator: Any) -> Any:
         return MagicMock()

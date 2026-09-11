@@ -7,7 +7,8 @@ from yaml_engine.compile import compile_condition
 from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
-from llm_browser.actions import ActionResult, SkippedResult, execute_action
+from llm_browser.actions import execute_action
+from llm_browser.results import ActionResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME
 from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.probe import human_needed

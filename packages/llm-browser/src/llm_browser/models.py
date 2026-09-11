@@ -113,6 +113,14 @@ class GotoStep(BaseStep):
 
 
 class ScreenshotStep(BaseStep):
+    """``path`` is a CLI instruction, not a runner one.
+
+    The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
+    in ``FlowSuccess.outputs``; the library never writes a file. ``path`` is
+    where ``llm-browser run`` puts those bytes — relative to ``--out-dir`` —
+    and an embedding caller is free to ignore it.
+    """
+
     action: Literal["screenshot"]
     path: str | None = None
 
@@ -126,6 +134,7 @@ class ReadStep(SelectorStep):
 
     action: Literal["read"]
     extract: dict[str, ExtractField] = {}
+    # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
     @field_validator("extract", mode="before")
@@ -146,7 +155,7 @@ class ParseStep(SelectorStep):
 
     Like ``read``, but every row is validated against the schema and
     coerced to a Pydantic model. ``schema_path`` is CWD-relative or
-    absolute (same convention as ``download.path``).
+    absolute. ``path`` is CLI-only — see :class:`ScreenshotStep`.
     """
 
     action: Literal["parse"]
@@ -157,12 +166,18 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
 
 class DownloadStep(SelectorStep):
+    """``path`` is a CLI instruction, not a runner one — see
+    :class:`ScreenshotStep`. Left unset, ``llm-browser run`` falls back to the
+    filename the server suggested.
+    """
+
     action: Literal["download"]
-    path: str = Field(..., min_length=1)
+    path: str | None = None
 
 
 class ThinkStep(BaseStep):
@@ -430,8 +445,10 @@ class FlowSuccess(BaseModel):
     Carries the name of the last step run (or ``"end"`` for an empty
     flow) — mostly informational.
 
-    ``outputs`` holds every ``read`` / ``parse`` / ``dom`` result, keyed by
-    qualified step name; screenshots stay on disk and never land here.
+    ``outputs`` holds every step result the flow produced, keyed by qualified
+    step name: rows for ``read`` / ``parse``, text for ``dom``, and a
+    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
+    Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
     """
 
     step: str

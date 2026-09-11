@@ -223,12 +223,12 @@ def test_pick_clicks_the_way_a_click_step_does(session: BrowserSession) -> None:
 
 
 def test_download_arms_the_trigger_with_the_same_click(
-    session: BrowserSession, tmp_path: Path
+    session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
     session.behavior_runtime = session.behavior.runtime()
-    session.download_file("#dl", tmp_path / "out.csv")
-    _page, trigger, _output = driver(session).expect_download.call_args.args
+    session.download_file("#dl")
+    _page, trigger = driver(session).download_bytes.call_args.args
     trigger()
     driver(session).humanized_click.assert_called_once()
     driver(session).click.assert_not_called()

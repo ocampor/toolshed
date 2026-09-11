@@ -62,6 +62,7 @@ from typing import Any, Callable, ClassVar, Coroutine, TypeVar
 
 from llm_browser.drivers.base import Driver
 from llm_browser.drivers.handle import DriverHandle, load_optional_module
+from llm_browser.results import BytesResult
 from llm_browser.scripts import select_option_js
 
 # Named keys → (DOM `key`, DOM `code`, Windows VK code) for dispatch_key_event.
@@ -699,11 +700,9 @@ class NodriverDriver(Driver):
         await page.activate()
         await page.save_screenshot(filename=str(path), format="png")
 
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path:
+    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
         raise NotImplementedError(
-            "NodriverDriver does not support expect_download in this version."
+            "NodriverDriver does not support download_bytes in this version."
         )
 
     def enter_frame(self, locator: Any) -> Any:

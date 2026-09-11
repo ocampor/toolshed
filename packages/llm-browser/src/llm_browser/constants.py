@@ -45,7 +45,8 @@ DEFAULT_URL_SCHEMES = ("http", "https")
 
 REDACTED = "***"
 
-OUTPUT_ACTIONS = frozenset({"read", "parse", "dom"})
+# Every action whose result the flow runner keeps in ``outputs``.
+OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 
 EXTRA_SAFE_ATTRS = frozenset({"href", "src", "title"})
 

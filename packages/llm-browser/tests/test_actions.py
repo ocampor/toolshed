@@ -1,6 +1,7 @@
 """Tests for the 12 minimal declarative actions."""
 
 import ast
+import base64
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 from llm_browser import actions, flows, steps
 from llm_browser import session as session_module
 from llm_browser.actions import execute_action
+from llm_browser.results import BytesResult, ParsedResult, TextResult
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.models import (
     CheckStep,
@@ -149,29 +151,37 @@ def test_goto(session: BrowserSession) -> None:
 # --- screenshot ---
 
 
-def test_screenshot(session: BrowserSession) -> None:
+PNG = b"\x89PNG\r\n\x1a\nfake"
+
+
+def test_screenshot_returns_png_bytes(session: BrowserSession) -> None:
+    session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
     step = ScreenshotStep(name="s", action="screenshot")
     result = execute_action(session, step)
-    assert result is not None
+    assert isinstance(result, BytesResult)
+    assert result.content == PNG
+    assert result.name == "s.png"
+    assert result.media_type == "image/png"
 
 
-def test_screenshot_writes_to_explicit_path(
-    session: BrowserSession, tmp_path: object
+def test_screenshot_path_is_ignored_by_the_runner(
+    session: BrowserSession, tmp_path: Path
 ) -> None:
-    from pathlib import Path
-
-    from llm_browser.actions import PathResult
-
-    target = Path(str(tmp_path)) / "nested" / "shot.png"
+    """``path:`` is an instruction to the CLI; the step itself writes nothing."""
+    session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
+    target = tmp_path / "nested" / "shot.png"
     step = ScreenshotStep(name="s", action="screenshot", path=str(target))
     result = execute_action(session, step)
-    assert isinstance(result, PathResult)
-    assert result.path == str(target)
-    assert target.parent.exists()
-    # driver.screenshot delegates to page.screenshot(path=str(target))
-    session._page.screenshot.assert_called_once_with(  # type: ignore[union-attr]
-        path=str(target), full_page=False
-    )
+    assert isinstance(result, BytesResult)
+    assert not target.parent.exists()
+
+
+def test_screenshot_bytes_are_base64_in_json_mode(session: BrowserSession) -> None:
+    session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
+    result = execute_action(session, ScreenshotStep(name="s", action="screenshot"))
+    dumped = result.model_dump(mode="json")
+    assert dumped["content"] == base64.b64encode(PNG).decode()
+    assert result.model_dump()["content"] == PNG
 
 
 def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> MagicMock:
@@ -188,7 +198,7 @@ def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> Mag
 def test_read(session: BrowserSession) -> None:
     locator = _rows_locator(session, [{"name": "Alice"}])
 
-    from llm_browser.actions import ExtractedRow, ParsedResult
+    from llm_browser.results import ExtractedRow
 
     step = ReadStep(
         name="s",
@@ -210,16 +220,14 @@ def test_read(session: BrowserSession) -> None:
 # --- parse (typed schema action) ---
 
 
-def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: object) -> None:
+def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> None:
     """The parse action loads a YAML schema and emits coerced typed rows."""
-    from pathlib import Path
-
     import yaml
 
     from llm_browser.actions import ParsedResult
     from llm_browser.models import ParseStep
 
-    schema = Path(str(tmp_path)) / "repo.yaml"
+    schema = tmp_path / "repo.yaml"
     schema.write_text(
         yaml.safe_dump(
             {
@@ -249,14 +257,13 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: object) -> 
     assert isinstance(row.stars, int)
 
 
-def test_read_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
-    """``read`` step with ``path`` dumps rows as JSON for the caller."""
-    import json
-    from pathlib import Path
-
+def test_read_path_is_ignored_by_the_runner(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """``path:`` is an instruction to the CLI; the step returns the rows."""
     _rows_locator(session, [{"name": "Alice"}])
 
-    target = Path(str(tmp_path)) / "rows.json"
+    target = tmp_path / "rows.json"
     step = ReadStep(
         name="s",
         action="read",
@@ -264,20 +271,20 @@ def test_read_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
         extract={"name": {"child_selector": "td", "attribute": "textContent"}},
         path=str(target),
     )
-    execute_action(session, step)
-    assert json.loads(target.read_text()) == [{"name": "Alice"}]
+    result = execute_action(session, step)
+    assert isinstance(result, ParsedResult)
+    assert not target.exists()
 
 
-def test_parse_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
-    """``parse`` step with ``path`` dumps typed rows as JSON for the caller."""
-    import json
-    from pathlib import Path
-
+def test_parse_path_is_ignored_by_the_runner(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """``path:`` is an instruction to the CLI; the step returns the rows."""
     import yaml
 
     from llm_browser.models import ParseStep
 
-    schema = Path(str(tmp_path)) / "repo.yaml"
+    schema = tmp_path / "repo.yaml"
     schema.write_text(
         yaml.safe_dump(
             {
@@ -292,7 +299,7 @@ def test_parse_writes_to_path(session: BrowserSession, tmp_path: object) -> None
 
     _rows_locator(session, [{"name": "foo", "stars": "42"}])
 
-    target = Path(str(tmp_path)) / "rows.json"
+    target = tmp_path / "rows.json"
     step = ParseStep(
         name="s",
         action="parse",
@@ -300,16 +307,18 @@ def test_parse_writes_to_path(session: BrowserSession, tmp_path: object) -> None
         schema_path=str(schema),
         path=str(target),
     )
-    execute_action(session, step)
-    assert json.loads(target.read_text()) == [{"name": "foo", "stars": 42}]
+    result = execute_action(session, step)
+    assert isinstance(result, ParsedResult)
+    assert [row.model_dump() for row in result.rows if row] == [
+        {"name": "foo", "stars": 42}
+    ]
+    assert not target.exists()
 
 
 # --- dom ---
 
 
 def test_dom(session: BrowserSession) -> None:
-    from llm_browser.actions import TextResult
-
     locator = _single_locator()
     locator.first.evaluate.return_value = "<div><p>Hello</p></div>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
@@ -320,57 +329,79 @@ def test_dom(session: BrowserSession) -> None:
     assert "Hello" in result.text
 
 
-def test_dom_writes_to_path(session: BrowserSession, tmp_path: object) -> None:
-    from pathlib import Path
-
-    from llm_browser.actions import TextResult
-
+def test_dom_path_is_ignored_by_the_runner(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """``path:`` is an instruction to the CLI; the step returns the text."""
     locator = _single_locator()
     locator.first.evaluate.return_value = "<section><p>Captured</p></section>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
-    target = Path(str(tmp_path)) / "captures" / "snippet.html"
+    target = tmp_path / "captures" / "snippet.html"
     step = DomStep(name="s", action="dom", selector="#content", path=str(target))
     result = execute_action(session, step)
 
     assert isinstance(result, TextResult)
     assert "Captured" in result.text
-    assert target.exists()
-    assert target.read_text() == result.text
+    assert not target.parent.exists()
 
 
 # --- download ---
 
 
-def test_download(session: BrowserSession, tmp_path: object) -> None:
+def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> MagicMock:
+    """A Playwright ``Download`` whose spool file really exists on disk."""
     from contextlib import contextmanager
-    from pathlib import Path
 
-    dest = Path(str(tmp_path)) / "downloads" / "file.pdf"
+    spooled = tmp_path / "spool" / "download.bin"
+    spooled.parent.mkdir()
+    spooled.write_bytes(payload)
+
     mock_download = MagicMock()
+    mock_download.suggested_filename = "report.csv"
+    mock_download.path.return_value = str(spooled)
+    mock_download.delete.side_effect = spooled.unlink
 
     @contextmanager
     def fake_expect_download():  # type: ignore[no-untyped-def]
         yield MagicMock(value=mock_download)
 
     session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
+    return mock_download
 
-    from llm_browser.actions import PathResult
 
+def test_download_returns_bytes(session: BrowserSession, tmp_path: Path) -> None:
+    mock_download = _arm_download(session, tmp_path, b"col\n1\n")
+    step = DownloadStep(name="s", action="download", selector="#dl-link")
+    result = execute_action(session, step)
+    assert isinstance(result, BytesResult)
+    assert result.content == b"col\n1\n"
+    assert result.name == "report.csv"
+    assert result.media_type == "text/csv"
+    mock_download.delete.assert_called_once()
+
+
+def test_download_leaves_no_spool_file_behind(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """Playwright can only spool a download to a file of its own; the driver
+    deletes it before returning."""
+    _arm_download(session, tmp_path, b"payload")
+    execute_action(session, DownloadStep(name="s", action="download", selector="#a"))
+    assert list((tmp_path / "spool").iterdir()) == []
+
+
+def test_download_path_is_ignored_by_the_runner(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    _arm_download(session, tmp_path, b"payload")
+    dest = tmp_path / "downloads" / "file.pdf"
     step = DownloadStep(
         name="s", action="download", selector="#dl-link", path=str(dest)
     )
     result = execute_action(session, step)
-    assert isinstance(result, PathResult)
-    assert result.path == str(dest)
-    mock_download.save_as.assert_called_once_with(str(dest))
-
-
-def test_download_requires_path() -> None:
-    """``path`` is required at construction; bad steps fail before any browser
-    work, surfaced via Pydantic ValidationError."""
-    with pytest.raises(ValidationError):
-        DownloadStep(name="s", action="download", selector="#dl-link")
+    assert isinstance(result, BytesResult)
+    assert not dest.parent.exists()
 
 
 # --- press ---
@@ -567,19 +598,16 @@ def test_only_session_input_drives_the_page() -> None:
     assert calls == []
 
 
-def test_parse_writes_decimal_and_date_rows(
-    session: BrowserSession, tmp_path: object
+def test_parse_coerces_decimal_and_date_rows(
+    session: BrowserSession, tmp_path: Path
 ) -> None:
-    """A schema may declare types ``json.dumps`` cannot represent; the dump
-    has to be JSON-mode or the whole flow dies on the write."""
-    import json
-    from pathlib import Path
-
+    """A schema may declare types ``json.dumps`` cannot represent; the rows
+    have to survive a JSON-mode dump for a caller to serialize them."""
     import yaml
 
     from llm_browser.models import ParseStep
 
-    schema = Path(str(tmp_path)) / "invoice.yaml"
+    schema = tmp_path / "invoice.yaml"
     schema.write_text(
         yaml.safe_dump(
             {
@@ -594,42 +622,14 @@ def test_parse_writes_decimal_and_date_rows(
 
     _rows_locator(session, [{"total": "10.25", "due": "2024-03-01"}])
 
-    target = Path(str(tmp_path)) / "rows.json"
     step = ParseStep(
-        name="s",
-        action="parse",
-        selector="tr.row",
-        schema_path=str(schema),
-        path=str(target),
-    )
-    execute_action(session, step)
-    assert json.loads(target.read_text()) == [{"total": "10.25", "due": "2024-03-01"}]
-
-
-def test_an_unserializable_row_is_an_error_result_naming_the_path(
-    session: BrowserSession, tmp_path: object
-) -> None:
-    """Caught where the write happens, not by a blanket `TypeError` catch in
-    `execute_action`: writing the output is part of the step, a bug in some
-    other action is not."""
-    from pathlib import Path
-
-    _rows_locator(session, [{"name": "Alice"}])
-
-    target = Path(str(tmp_path)) / "rows.json"
-    step = ReadStep(
-        name="s",
-        action="read",
-        selector="tr",
-        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
-        path=str(target),
+        name="s", action="parse", selector="tr.row", schema_path=str(schema)
     )
     result = execute_action(session, step)
-    assert isinstance(result, actions.ParsedResult)
-
-    unserializable = actions.ParsedResult(rows=[actions.ExtractedRow(name=object())])
-    with pytest.raises(ValueError, match=f"cannot write rows to {target}"):
-        actions._write_rows(str(target), unserializable)
+    assert isinstance(result, ParsedResult)
+    assert [row.model_dump(mode="json") for row in result.rows if row] == [
+        {"total": "10.25", "due": "2024-03-01"}
+    ]
 
 
 def test_a_type_error_inside_an_optional_step_still_reaches_the_developer(

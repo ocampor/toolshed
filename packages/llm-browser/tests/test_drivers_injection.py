@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import Any, Callable, ClassVar
 from unittest.mock import MagicMock
 
-from llm_browser.drivers.base import Driver, DriverHandle
+from llm_browser.drivers.base import Driver
+from llm_browser.drivers.handle import DriverHandle
+from llm_browser.results import BytesResult
 from llm_browser.session import BrowserSession
 
 
@@ -118,12 +120,9 @@ class FakeDriver(Driver):
     def screenshot(self, page: Any, path: Path) -> None:
         path.write_bytes(b"png")
 
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path:
+    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
         trigger()
-        output.write_bytes(b"download")
-        return output
+        return BytesResult(name="download.bin", content=b"download")
 
     def enter_frame(self, locator: Any) -> Any:
         return self._page

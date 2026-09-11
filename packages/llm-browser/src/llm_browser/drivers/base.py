@@ -12,6 +12,7 @@ from typing import Any, Callable, ClassVar
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.drivers.handle import DriverHandle
+from llm_browser.results import BytesResult
 
 
 class Driver(ABC):
@@ -263,9 +264,12 @@ class Driver(ABC):
             return path.read_bytes()
 
     @abstractmethod
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path: ...
+    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
+        """Run ``trigger``, wait for the download it starts, return its bytes.
+
+        Nothing is left on disk: a backend whose API can only download to a
+        file reads that file back and removes it before returning.
+        """
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...

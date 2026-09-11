@@ -34,7 +34,7 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField
-from llm_browser.paths import prepare_output_path
+from llm_browser.results import BytesResult
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
     Selector,
@@ -383,10 +383,6 @@ class BrowserSession:
         self.driver.screenshot(self.get_page(), self._screenshot_path)
         return self._screenshot_path
 
-    def save_screenshot(self, path: Path) -> None:
-        """Screenshot to a caller-chosen path, leaving the session dir alone."""
-        self.driver.screenshot(self.get_page(), path)
-
     def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
         """Scroll by a mouse-wheel delta, over ``selector`` when one is given.
 
@@ -408,15 +404,18 @@ class BrowserSession:
         )
         return self._dom_path
 
-    def download_file(self, selector: Selector, output_path: Path | str) -> Path:
-        """Click element to trigger download and save to output_path."""
-        output = prepare_output_path(output_path)
+    def download_file(self, selector: Selector) -> BytesResult:
+        """Click ``selector`` and return what the browser downloaded.
+
+        The bytes come back in memory under the filename the server
+        suggested; writing them anywhere is the caller's decision.
+        """
         element = self.find(selector)
 
         def trigger() -> None:
             session_input.click_element(self, element)
 
-        return self.driver.expect_download(self.get_page(), trigger, output)
+        return self.driver.download_bytes(self.get_page(), trigger)
 
     # --- Interaction ---
 

@@ -4,7 +4,7 @@ import time
 from functools import lru_cache
 from typing import Callable
 
-from pydantic import BaseModel, SerializeAsAny
+from pydantic import BaseModel
 
 from yaml_engine.registry import Registry
 
@@ -29,82 +29,17 @@ from llm_browser.models import (
     WaitForStep,
 )
 from llm_browser.parse import build_model
-from llm_browser.paths import prepare_output_path
+from llm_browser.results import (
+    ActionResult,
+    BytesResult,
+    ErrorResult,
+    ExtractedRow,
+    ParsedResult,
+    SkippedResult,
+    TextResult,
+    VoidResult,
+)
 from llm_browser.session import BrowserSession
-
-
-class ActionResult(BaseModel):
-    """Base for everything ``execute_action`` returns.
-
-    All result subclasses inherit ``ok``: ``True`` for success/skip,
-    ``False`` for ``ErrorResult``. The flow runner short-circuits when it
-    sees a non-ok result.
-    """
-
-    ok: bool = True
-
-
-class VoidResult(ActionResult):
-    """Action succeeded with no payload (click, fill, select, press, ...)."""
-
-
-class PathResult(ActionResult):
-    """Action produced a file path on disk (screenshot, download)."""
-
-    path: str
-
-
-class TextResult(ActionResult):
-    """Action produced inline text (dom, wait)."""
-
-    text: str
-
-
-class ExtractedRow(BaseModel, extra="allow"):
-    """A single row of data extracted by ``read``. Field set is dynamic — keys
-    come from the step's ``extract`` config; values are ``str`` or ``None``.
-    Modeled with ``extra='allow'`` so it serializes uniformly while staying
-    schema-free.
-    """
-
-
-class ParsedResult(ActionResult):
-    """Action extracted structured rows.
-
-    For ``read`` action: rows are ``ExtractedRow`` (dynamic-fields BaseModel),
-    or ``None`` if every field was empty for that row.
-
-    For ``parse`` action: rows are typed instances of the schema model
-    (``ParseBase`` subclass), with values coerced by Pydantic.
-    """
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    rows: list[SerializeAsAny[BaseModel] | None]
-
-
-class SkippedResult(ActionResult):
-    """Optional step was skipped because its action raised an expected error.
-    ``ok`` stays True — a skip is a successful no-op."""
-
-    skipped: bool = True
-    reason: str
-
-
-class ErrorResult(ActionResult):
-    """Action failed with an expected runtime error (Timeout/Value).
-
-    Returned (not raised) so the flow runner can short-circuit cleanly and
-    the CLI can emit structured JSON without unwinding through Python's
-    exception machinery. Truly unexpected exceptions still propagate.
-    """
-
-    ok: bool = False
-    error: str
-    message: str
-    step_name: str
-    selector: str | None = None
-    hint: str | None = None
 
 
 # Param type is loose because each handler accepts a specific Step subclass, and
@@ -240,12 +175,14 @@ def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
 
 
 @_registry.register("screenshot")
-def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> PathResult:
-    if step.path:
-        out = prepare_output_path(step.path)
-        session.save_screenshot(out)
-        return PathResult(path=str(out))
-    return PathResult(path=str(session.take_screenshot()))
+def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesResult:
+    """``step.path`` is not consulted: the runner returns the PNG and the CLI
+    is what writes it."""
+    return BytesResult(
+        name=f"{step.name}.png",
+        content=session.screenshot_bytes(),
+        media_type="image/png",
+    )
 
 
 # --- Data actions ---
@@ -258,66 +195,34 @@ def action_read(session: BrowserSession, step: ReadStep) -> ParsedResult:
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    result = ParsedResult(rows=rows)
-    if step.path:
-        _write_rows(step.path, result)
-    return result
+    return ParsedResult(rows=rows)
 
 
 @_registry.register("parse")
 def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
-    # Schema path is CWD-relative or absolute (same convention as `download.path`).
+    # Schema path is CWD-relative or absolute.
     Model = build_model(step.schema_path)  # type: ignore[no-untyped-call]
     raw = session.parse_elements(step.selector, Model._spec())
     rows: list[BaseModel | None] = [
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    result = ParsedResult(rows=rows)
-    if step.path:
-        _write_rows(step.path, result)
-    return result
-
-
-def _write_rows(path: str, result: ParsedResult) -> None:
-    """JSON-dump ``ParsedResult.rows`` to ``path``. Rows are Pydantic models
-    (or ``None``); use ``model_dump`` so dynamic-field ``ExtractedRow`` and
-    typed ``ParseBase`` instances both serialize uniformly.
-
-    ``mode="json"`` because a ``parse`` schema may declare ``Decimal``,
-    ``date`` or ``datetime``: python mode hands those straight to
-    ``json.dumps``, which cannot represent them. A row that is still not
-    serializable after that is this step failing, so it is raised as the
-    ``ValueError`` every other step failure is, naming the file it could not
-    write — the alternative, catching ``TypeError`` in ``execute_action``,
-    would swallow every library bug in every action along with it.
-    """
-    import json
-
-    try:
-        payload = [
-            r.model_dump(mode="json") if r is not None else None for r in result.rows
-        ]
-        text = json.dumps(payload, ensure_ascii=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"cannot write rows to {path}: {exc}") from exc
-    prepare_output_path(path).write_text(text)
+    return ParsedResult(rows=rows)
 
 
 @_registry.register("dom")
 def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
-    html = session.dom(step.selector, max_depth=step.max_depth)
-    if step.path:
-        prepare_output_path(step.path).write_text(html)
-    return TextResult(text=html)
+    return TextResult(text=session.dom(step.selector, max_depth=step.max_depth))
 
 
 # --- File actions ---
 
 
 @_registry.register("download")
-def action_download(session: BrowserSession, step: DownloadStep) -> PathResult:
-    return PathResult(path=str(session.download_file(step.selector, step.path)))
+def action_download(session: BrowserSession, step: DownloadStep) -> BytesResult:
+    """``step.path`` is not consulted: the runner returns the bytes and the
+    CLI is what writes them."""
+    return session.download_file(step.selector)
 
 
 # --- Pacing actions ---
