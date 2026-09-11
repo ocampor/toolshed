@@ -46,11 +46,24 @@ class Result:
     detail: str = ""
 
 
+def noted(detail: str, error: BaseException) -> str:
+    """``detail`` plus whatever ``error`` was given with ``add_note``.
+
+    A cleanup that failed after the real one attaches itself that way, and the
+    detail column is the only place it is ever read — which is as true of a
+    skip or a known gap as it is of a failure, so every branch of
+    ``run_scenario`` goes through here.
+    """
+    for note in getattr(error, "__notes__", []):
+        detail += f" ({note.strip().splitlines()[0][:160]})"
+    return detail
+
+
 def one_line(error: BaseException) -> str:
     """The message plus the line that raised it — a bare ``assert`` says
     nothing on its own, and the table is all the reader gets."""
     text = str(error) or type(error).__name__
-    summary = text.strip().splitlines()[0][:160]
+    summary = noted(text.strip().splitlines()[0][:160], error)
     frames = traceback.extract_tb(error.__traceback__)
     if not frames:
         return summary
@@ -69,10 +82,14 @@ def run_scenario(scenario: Scenario, ctx: Context) -> Result:
     try:
         note = scenario.check(ctx) or ""
     except ScenarioSkipped as skipped:
-        return outcome_row(scenario, ctx, Outcome.SKIP, start, str(skipped))
+        detail = noted(str(skipped), skipped)
+        return outcome_row(scenario, ctx, Outcome.SKIP, start, detail)
     except Exception as failure:  # noqa: BLE001 - one scenario never ends the run
         verdict = Outcome.XFAIL if gap else Outcome.FAIL
-        return outcome_row(scenario, ctx, verdict, start, gap or one_line(failure))
+        # A known gap says why the row is red already, so the exception only
+        # adds its notes; without one, the exception is the whole story.
+        detail = noted(gap, failure) if gap else one_line(failure)
+        return outcome_row(scenario, ctx, verdict, start, detail)
     verdict = Outcome.XPASS if gap else Outcome.PASS
     detail = f"gap closed: {gap}" if gap else note
     return outcome_row(scenario, ctx, verdict, start, detail)

@@ -14,8 +14,8 @@ from llm_browser.models import FlowSuccess
 from llm_browser_conformance.checks.frames import enter_frame_or_skip
 from llm_browser_conformance.checks.session_api import (
     NEW_TAB_TARGET,
-    close_opened_tabs,
     require_latest_tab,
+    tabs_closed_after,
 )
 from llm_browser_conformance.checks.support import (
     error_message,
@@ -149,11 +149,9 @@ def a_target_blank_link_leaves_the_session_where_it_was(ctx: Context) -> str:
     require_latest_tab(ctx)
     expect_success(ctx, "new-tab.html", "new-tab")
     opener = ctx.session.get_page()
-    try:
+    with tabs_closed_after(ctx, opener, NEW_TAB_TARGET):
         current = ctx.session.driver.page_url(opener)
         assert "new-tab.html" in current, current
-    finally:
-        close_opened_tabs(ctx, opener, NEW_TAB_TARGET)
     return "session stayed on the opener"
 
 

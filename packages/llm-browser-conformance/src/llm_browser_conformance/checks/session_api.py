@@ -8,11 +8,12 @@ session. These scenarios call it directly, and hand the session back exactly
 as they found it — one browser is shared by every row.
 """
 
+import contextlib
 import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent import futures
 from pathlib import Path
 from typing import Any
@@ -193,6 +194,31 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
         close_tab(ctx, extra, opener, deadline)
 
 
+@contextlib.contextmanager
+def tabs_closed_after(ctx: Context, opener: Any, opened: str) -> Iterator[None]:
+    """Run a scenario body, then put the browser back to the one tab ``opener``.
+
+    The cleanup has to run on the failing path — that is the path it exists
+    for — but a plain ``finally`` lets it *replace* what the body raised, and
+    the table only ever shows the newest exception. So a popup that will not
+    close would be reported where the scenario's own assertion belongs. The
+    body's exception wins; the cleanup's rides along as a note.
+    """
+    body_failure: BaseException | None = None
+    try:
+        yield
+    except BaseException as failure:
+        body_failure = failure
+        raise
+    finally:
+        try:
+            close_opened_tabs(ctx, opener, opened)
+        except Exception as cleanup_failure:
+            if body_failure is None:
+                raise
+            body_failure.add_note(f"cleanup failed too: {cleanup_failure}")
+
+
 def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
     """The ``new tab`` scenario pins that the session stays on the opener; this
     pins the way back — and then puts the browser back to one tab, since every
@@ -200,12 +226,10 @@ def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
     require_latest_tab(ctx)
     ctx.visit("new-tab.html")
     opener = ctx.session.get_page()
-    try:
+    with tabs_closed_after(ctx, opener, NEW_TAB_TARGET):
         ctx.session.click("#external")
         url = latest_tab_url(ctx, NEW_TAB_TARGET)
         assert NEW_TAB_TARGET in url, url
-    finally:
-        close_opened_tabs(ctx, opener, NEW_TAB_TARGET)
 
 
 # --- dom sanitize levels ---
