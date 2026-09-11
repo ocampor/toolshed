@@ -1,5 +1,6 @@
 """Driver-level row extraction: one page evaluation, with a per-element fallback."""
 
+import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -92,3 +93,36 @@ def test_fallback_extract_rows_reads_each_attribute_kind(
     spec["missing"] = {"child_selector": "td.gone", "attribute": "textContent"}
     rows = FallbackDriver([row]).extract_rows(MagicMock(), spec)
     assert rows[0][field] == expected
+
+
+# --- nodriver: every row reads its own match ---
+
+
+class ScopedElement:
+    """A node whose `query_selector_all` only sees its own subtree."""
+
+    def __init__(self, text: str | None = None, **children: list["ScopedElement"]):
+        self.text = text
+        self.subtree = children
+
+    async def query_selector_all(self, selector: str) -> list["ScopedElement"]:
+        return self.subtree.get(selector, [])
+
+
+class DocumentTab(ScopedElement):
+    """The document: its `query_selector_all` sees every node on the page."""
+
+
+def test_nodriver_reads_each_row_inside_that_row() -> None:
+    from llm_browser.drivers.nodriver import NodriverDriver, NodriverLocator
+
+    rows = [ScopedElement(cell=[ScopedElement(text=f"row-{n}")]) for n in range(1, 4)]
+    tab = DocumentTab(row=rows, cell=[ScopedElement(text="row-1")])
+    driver = NodriverDriver()
+    driver.loop = asyncio.new_event_loop()
+
+    extracted = driver.extract_rows(
+        NodriverLocator(tab=tab, selector="row"),
+        {"text": {"child_selector": "cell", "attribute": "textContent"}},
+    )
+    assert extracted == [{"text": "row-1"}, {"text": "row-2"}, {"text": "row-3"}]

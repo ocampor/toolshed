@@ -181,10 +181,5 @@ SCENARIOS = [
         "slow xhr rows",
         Section.STEPS,
         rows_that_trickle_in_are_all_read_once_stable,
-        known_gaps={
-            "nodriver": "extract_rows walks rows from Python and NodriverDriver."
-            "all() drops the selector, so child() re-queries the whole document "
-            "and every row reads the first match"
-        },
     ),
 ]

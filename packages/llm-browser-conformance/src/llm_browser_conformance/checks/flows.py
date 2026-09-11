@@ -75,11 +75,6 @@ SCENARIOS = [
         "parse writes typed rows",
         Section.FLOWS,
         a_parse_step_writes_its_typed_rows_to_disk,
-        known_gaps={
-            "nodriver": "extract_rows walks rows from Python and NodriverDriver."
-            "all() drops the selector, so child() re-queries the whole document "
-            "and every row reads the first match"
-        },
     ),
     Scenario(
         "optional step swallows a timeout",

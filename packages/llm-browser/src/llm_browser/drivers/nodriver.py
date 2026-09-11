@@ -115,12 +115,17 @@ class NodriverLocator:
     every time and caches nothing, so waits and counts see a removed or
     replaced node; `resolve_element` caches its lookup in `element`, so the
     input paths keep driving the handle they first resolved.
+
+    `parent` scopes `selector` to one element's subtree. Without it a field
+    read off the third row would run the selector against the whole document
+    and answer with the first row's value.
     """
 
     tab: Any
     selector: str | None = None
     element: Any = None
     index: int = 0
+    parent: Any = None
 
     def __post_init__(self) -> None:
         if self.selector is None and self.element is None:
@@ -214,10 +219,19 @@ class NodriverDriver(Driver):
         return NodriverLocator(tab=page, selector=selector)
 
     async def resolve_element(self, loc: NodriverLocator) -> Any:
+        """The handle `loc` drives, or `None` when nothing matches.
+
+        A scoped lookup goes through `query`: `tab.select` searches the whole
+        document and would walk straight out of the subtree `parent` names.
+        """
         if loc.element is not None:
             return loc.element
         assert loc.selector is not None
-        loc.element = await loc.tab.select(loc.selector)
+        if loc.parent is not None:
+            matches = await self.query(loc)
+            loc.element = matches[loc.index] if loc.index < len(matches) else None
+        else:
+            loc.element = await loc.tab.select(loc.selector)
         return loc.element
 
     async def query(self, loc: NodriverLocator) -> list[Any]:
@@ -233,10 +247,14 @@ class NodriverDriver(Driver):
         """
         if loc.selector is None:
             return [loc.element] if loc.element is not None else []
-        return list(await loc.tab.query_selector_all(loc.selector))
+        scope = loc.parent if loc.parent is not None else loc.tab
+        # nodriver answers a scope whose node has gone with `None`, not `[]`.
+        return list(await scope.query_selector_all(loc.selector) or [])
 
     async def apply_script(self, loc: NodriverLocator, script: str) -> Any:
         el = await self.resolve_element(loc)
+        if el is None:
+            return None
         return await el.apply(script)
 
     # --- Interactions ---
@@ -461,6 +479,8 @@ class NodriverDriver(Driver):
 
     async def read_attribute(self, loc: NodriverLocator, name: str) -> str | None:
         el = await self.resolve_element(loc)
+        if el is None:
+            return None
         value = el.attrs.get(name)
         return str(value) if value is not None else None
 
@@ -473,7 +493,9 @@ class NodriverDriver(Driver):
         for rather than an error (`element_exists` never raises)."""
         if locator.selector is None:
             return NodriverLocator(tab=locator.tab, element=locator.element)
-        return NodriverLocator(tab=locator.tab, selector=locator.selector)
+        return NodriverLocator(
+            tab=locator.tab, selector=locator.selector, parent=locator.parent
+        )
 
     def nth(self, locator: Any, index: int) -> Any:
         """Resolved eagerly — callers iterate indices over one query — but it
@@ -484,15 +506,36 @@ class NodriverDriver(Driver):
             selector=locator.selector,
             element=elements[index],
             index=index,
+            parent=locator.parent,
         )
 
     def all(self, locator: Any) -> list[Any]:
+        """Each match keeps the selector and its own index, so the handle is
+        re-resolvable (rule 4) and a child read off it knows which row it is."""
         elements = self.run(self.query(locator))
-        return [NodriverLocator(tab=locator.tab, element=el) for el in elements]
+        return [
+            NodriverLocator(
+                tab=locator.tab,
+                selector=locator.selector,
+                element=element,
+                index=index,
+                parent=locator.parent,
+            )
+            for index, element in enumerate(elements)
+        ]
 
     def child(self, locator: Any, selector: str) -> Any:
+        """Scoped to the element once one is resolved. A combined
+        document-wide selector would answer every row with the first row's
+        match, which is what `extract_rows` reads off each row."""
+        if locator.element is not None:
+            return NodriverLocator(
+                tab=locator.tab, selector=selector, parent=locator.element
+            )
         combined = f"{locator.selector} {selector}" if locator.selector else selector
-        return NodriverLocator(tab=locator.tab, selector=combined)
+        return NodriverLocator(
+            tab=locator.tab, selector=combined, parent=locator.parent
+        )
 
     def evaluate(self, target: Any, script: str) -> Any:
         """A function literal is invoked; anything else is a body or an

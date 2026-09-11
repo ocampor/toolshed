@@ -14,13 +14,11 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | scenario | driver | gap |
 | --- | --- | --- |
 | visibility:hidden is hidden | nodriver | is_visible tests offsetParent/getClientRects, neither of which notices visibility:hidden |
-| parse writes typed rows | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
 | select_option | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
 | typing fires trusted keydown | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |
 | dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
 | sticky header | nodriver | click does not scroll the target into view, so the CDP mouse event is dispatched at viewport coordinates the button is not at and nothing is clicked |
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
-| slow xhr rows | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
 | custom select rejects select | patchright | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
 | custom select rejects select | camoufox | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
 | custom select rejects select | nodriver | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
