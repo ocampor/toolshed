@@ -343,11 +343,38 @@ class NodriverDriver(Driver):
                 self.browser.stop()
             except Exception:
                 pass
+            # Browser.stop() schedules its own disconnect task on this loop
+            # (see the `create_task` in its first try block) but never runs
+            # it — closing the loop right under a still-pending task prints
+            # "Task was destroyed but it is pending!". Cancel whatever is
+            # left and give the loop one more turn to unwind it quietly.
+            self.drain_pending_tasks()
         if self.loop is not None and not self.loop.is_closed():
             self.loop.close()
         self.browser = None
         self.tab = None
         self.loop = None
+
+    def drain_pending_tasks(self) -> None:
+        """Cancel and await whatever is still pending on ``self.loop``.
+
+        Best-effort: a task's own cancellation can itself raise or the loop
+        can already be unusable, and none of that should stop ``close()``
+        from resetting state.
+        """
+        if self.loop is None or self.loop.is_closed():
+            return
+        pending = [task for task in asyncio.all_tasks(self.loop) if not task.done()]
+        if not pending:
+            return
+        for task in pending:
+            task.cancel()
+        try:
+            self.loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+        except Exception:
+            pass
 
     def status(self, handle: DriverHandle) -> bool:
         return self.tab is not None

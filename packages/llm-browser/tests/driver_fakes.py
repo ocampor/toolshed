@@ -1,5 +1,6 @@
 """Async CDP doubles shared by the nodriver and driver-contract tests."""
 
+import asyncio
 from typing import Any
 
 
@@ -44,13 +45,31 @@ class FakeTab:
 
 
 class FakeBrowser:
-    """A nodriver ``Browser`` double: ``stop()`` is synchronous, like the real one."""
+    """A nodriver ``Browser`` double: ``stop()`` is synchronous, like the real one.
 
-    def __init__(self, *, stop_error: Exception | None = None) -> None:
+    Passing ``loop`` reproduces what the real ``Browser.stop()`` does on the
+    way out — schedule its own disconnect task on the driver's loop without
+    ever running it — so a test can assert the loop drains it instead of
+    warning about a task destroyed while still pending.
+    """
+
+    def __init__(
+        self,
+        *,
+        stop_error: Exception | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ) -> None:
         self.stop_calls = 0
         self._stop_error = stop_error
+        self._loop = loop
+        self.pending_task: asyncio.Task[None] | None = None
 
     def stop(self) -> None:
         self.stop_calls += 1
+        if self._loop is not None:
+            self.pending_task = self._loop.create_task(self._never_finishes())
         if self._stop_error is not None:
             raise self._stop_error
+
+    async def _never_finishes(self) -> None:
+        await asyncio.sleep(10)

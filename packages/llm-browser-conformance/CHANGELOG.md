@@ -5,11 +5,15 @@
 ### Fixed
 
 - `launched_session` registers its browser with `interrupts` while live and
-  unregisters it on a normal `close()`. An `atexit` hook and SIGINT/SIGTERM
-  handlers sweep whatever is still registered, so a worker killed or timed
-  out mid-run no longer strands the Chromium/Firefox it launched — a normal
-  exit already reached `session.close()` in the `finally`; only an abnormal
-  one skipped it.
+  unregisters it on a normal `close()`; an `atexit` hook and chained
+  SIGINT/SIGTERM handlers close whatever is still registered.
+- `close_stranded_sessions` pops and closes sessions one at a time, ignores a
+  re-entrant call instead of restarting the sweep, and defers a
+  `KeyboardInterrupt`/`SystemExit` raised mid-sweep until every session has
+  had its turn.
+- `install_interrupt_handlers` saves the previous SIGINT/SIGTERM handlers,
+  chains to them after the sweep, restores them once no session is
+  registered, and only installs from the main thread.
 
 ## 0.2.0 — 2026-09-10
 

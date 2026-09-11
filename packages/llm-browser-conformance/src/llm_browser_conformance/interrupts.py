@@ -9,15 +9,24 @@ SIGINT/SIGTERM can close what a normal exit already would have.
 """
 
 import atexit
+import logging
 import signal
-import sys
+import threading
+from collections.abc import Callable
 from types import FrameType
 
 from llm_browser.session import BrowserSession
 
+logger = logging.getLogger(__name__)
+
+Handler = Callable[[int, FrameType | None], object] | int | signal.Handlers | None
+
+INTERRUPT_SIGNALS = (signal.SIGINT, signal.SIGTERM)
+
 LIVE_SESSIONS: dict[int, BrowserSession] = {}
 
-_handlers_installed = False
+previous_handlers: dict[int, Handler] = {}
+sweep_in_progress = False
 
 
 def register_session(session: BrowserSession) -> None:
@@ -26,35 +35,92 @@ def register_session(session: BrowserSession) -> None:
 
 def unregister_session(session: BrowserSession) -> None:
     LIVE_SESSIONS.pop(id(session), None)
+    restore_interrupt_handlers_if_idle()
 
 
 def close_stranded_sessions() -> None:
-    """Close every registered session, one at a time.
+    """Close every registered session, one at a time, popped as it closes.
 
-    The atexit hook and the signal handler both call this directly, so a
-    session that fails to close must never stop the rest from getting the
-    same chance — the whole point is a best-effort sweep, not a report.
+    A second signal during the sweep re-enters this function — the flag
+    below turns that into a no-op instead of a second pass that finds an
+    already-cleared registry and abandons whatever the first pass had not
+    reached yet. Each session's ``close()`` is best-effort: an ordinary
+    exception is swallowed so the next session still gets a turn, but a
+    ``KeyboardInterrupt``/``SystemExit`` raised while closing one (the
+    chained previous handler firing mid-sweep) is held until every other
+    session has had its turn, then re-raised.
     """
-    sessions = list(LIVE_SESSIONS.values())
-    LIVE_SESSIONS.clear()
-    for session in sessions:
-        try:
-            session.close()
-        except Exception:  # noqa: BLE001, S110 - best-effort cleanup, never re-raise
-            pass
+    global sweep_in_progress
+    if sweep_in_progress:
+        logger.warning("close_stranded_sessions re-entered; ignoring")
+        return
+    sweep_in_progress = True
+    to_reraise: BaseException | None = None
+    try:
+        while LIVE_SESSIONS:
+            session_id, session = next(iter(LIVE_SESSIONS.items()))
+            del LIVE_SESSIONS[session_id]
+            try:
+                session.close()
+            except (KeyboardInterrupt, SystemExit) as interrupt:
+                to_reraise = interrupt
+            except Exception:  # noqa: BLE001, S110 - one session's failure is not fatal
+                pass
+    finally:
+        sweep_in_progress = False
+    restore_interrupt_handlers_if_idle()
+    if to_reraise is not None:
+        raise to_reraise
 
 
 def install_interrupt_handlers() -> None:
-    """Wire the atexit hook and SIGINT/SIGTERM once per process."""
-    global _handlers_installed
-    if _handlers_installed:
+    """Save and replace SIGINT/SIGTERM with a handler that sweeps first.
+
+    ``signal.signal`` only works from the main thread; called from anywhere
+    else this is a no-op; a background-thread caller has no way to receive
+    these signals anyway.
+    """
+    if threading.current_thread() is not threading.main_thread():
         return
-    atexit.register(close_stranded_sessions)
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, _handle_interrupt)
-    _handlers_installed = True
+    if previous_handlers:
+        return
+    for sig in INTERRUPT_SIGNALS:
+        previous_handlers[sig] = signal.getsignal(sig)
+        signal.signal(sig, handle_interrupt)
 
 
-def _handle_interrupt(signum: int, frame: FrameType | None) -> None:
+def restore_interrupt_handlers_if_idle() -> None:
+    """Put SIGINT/SIGTERM back once nothing is left to protect.
+
+    Lets a pytest run keep its own Ctrl-C behaviour once the last
+    ``launched_session`` in it has closed, instead of staying rewired for
+    every unrelated test that follows.
+    """
+    if LIVE_SESSIONS or not previous_handlers:
+        return
+    if threading.current_thread() is not threading.main_thread():
+        return
+    for sig, previous in previous_handlers.items():
+        signal.signal(sig, previous)
+    previous_handlers.clear()
+
+
+def handle_interrupt(signum: int, frame: FrameType | None) -> None:
+    # Captured before the sweep: closing the last session can itself restore
+    # (and clear) the saved handlers, which would otherwise erase the one
+    # this call is about to chain to.
+    previous = previous_handlers.get(signum)
     close_stranded_sessions()
-    sys.exit(128 + signum)
+    if callable(previous):
+        previous(signum, frame)
+        return
+    if signum == signal.SIGINT:
+        signal.default_int_handler(signum, frame)
+        return
+    raise SystemExit(128 + signum)
+
+
+# Registered once at import: cheap and thread-unrestricted, unlike
+# signal.signal above, and close_stranded_sessions() is a no-op with nothing
+# registered — so this alone is a harmless, always-on fallback.
+atexit.register(close_stranded_sessions)

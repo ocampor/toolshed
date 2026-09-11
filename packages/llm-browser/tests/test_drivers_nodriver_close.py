@@ -6,6 +6,7 @@ synchronous method and ``close()`` must call it as one.
 """
 
 import asyncio
+import warnings
 from collections.abc import Iterator
 
 import pytest
@@ -49,3 +50,23 @@ def test_close_swallows_a_failing_stop(driver: NodriverDriver) -> None:
     assert driver.browser is None
     assert driver.tab is None
     assert driver.loop is None
+
+
+def test_close_drains_a_task_stop_left_pending_without_warning(
+    driver: NodriverDriver,
+) -> None:
+    """Browser.stop() schedules a disconnect task on the loop but never runs
+    it; closing the loop underneath that task is what prints "Task was
+    destroyed but it is pending!" and warns that its coroutine was never
+    awaited."""
+    browser = FakeBrowser(loop=driver.loop)
+    driver.browser = browser
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        driver.close(HANDLE)
+
+    runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert runtime_warnings == []
+    assert browser.pending_task is not None
+    assert browser.pending_task.cancelled()
