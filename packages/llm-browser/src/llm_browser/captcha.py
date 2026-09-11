@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, Callable
 
 from llm_browser.behavior import jittered_sleep
 from llm_browser.constants import (
+    CAPTCHA_SETTLE_MS,
     DEFAULT_POLL_INTERVAL_MS,
-    DEFAULT_SETTLE_MS,
     LOGGER_NAME,
 )
 from llm_browser.models import SolverMode
@@ -104,15 +104,25 @@ def error_showing(session: BrowserSession, step: SolveCaptchaStep) -> bool:
     )
 
 
-def gone_for_good(session: BrowserSession, step: SolveCaptchaStep) -> bool:
+def gone_for_good(
+    session: BrowserSession, step: SolveCaptchaStep, deadline: float
+) -> bool:
     """Whether the input that just left the DOM stays gone.
 
-    A form that reloads takes its input away for a moment on the way back, so
-    a single "not there" read is not the form moving on. Waiting for it to
-    come back is the same question upside down: nothing within ``settle``
-    means it really is gone.
+    A reloading form takes its input away for a moment on the way back, so one
+    "not there" read is not the form moving on. Waiting for it to come back is
+    the same question upside down: nothing within the settle window means it
+    really is gone.
+
+    The window is whatever is left of the verdict's budget, capped at
+    ``CAPTCHA_SETTLE_MS``. ``timeout`` bounds the whole verdict, so a tight one
+    degrades to no confirmation rather than to a late one — with none left, the
+    read that got us here is the answer.
     """
-    return not session.element_exists(step.input, timeout=DEFAULT_SETTLE_MS)
+    settle_ms = min(CAPTCHA_SETTLE_MS, int((deadline - time.monotonic()) * 1000))
+    if settle_ms <= 0:
+        return True
+    return not session.element_exists(step.input, timeout=settle_ms)
 
 
 def accepted(
@@ -135,7 +145,7 @@ def accepted(
     reloaded = False
     while True:
         if not session.element_exists(step.input, timeout=0):
-            if gone_for_good(session, step):
+            if gone_for_good(session, step, deadline):
                 return True
             reloaded = True
         elif error_showing(session, step) and (not stale_error or reloaded):

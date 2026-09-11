@@ -1,5 +1,6 @@
 """The ``solve_captcha`` step: the loop around a solver the caller injects."""
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -8,6 +9,7 @@ import pytest
 from llm_browser import captcha
 from llm_browser.actions import execute_action
 from llm_browser.captcha import CaptchaSolver, normalize_answer
+from llm_browser.constants import CAPTCHA_SETTLE_MS
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowSuccess, SolveCaptchaStep, SolverMode
 from llm_browser.results import CaptchaResult, ErrorResult
@@ -43,10 +45,32 @@ def replying(*replies: str) -> tuple[CaptchaSolver, list[bytes]]:
     return solver, seen
 
 
+class FakeClock:
+    """A monotonic clock that only moves when the code under test waits."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def wait(self, seconds: float) -> None:
+        self.now += seconds
+
+
 @pytest.fixture
-def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The verdict poll's pause between ticks; no test should pay for it."""
-    monkeypatch.setattr(captcha, "jittered_sleep", lambda jitter, rng: None)
+def clock(monkeypatch: pytest.MonkeyPatch) -> FakeClock:
+    """Fake the verdict poll's clock so a test can price its waiting.
+
+    Both things that cost time are routed through it: the pause between ticks
+    (charged at its worst case, which is what a budget claim has to survive)
+    and, via ``page(clock=)``, a wait that saw nothing.
+    """
+    fake = FakeClock()
+    monkeypatch.setattr(captcha, "time", SimpleNamespace(monotonic=lambda: fake.now))
+    monkeypatch.setattr(
+        captcha,
+        "jittered_sleep",
+        lambda jitter, rng: fake.wait(jitter.max_ms / 1000.0),
+    )
+    return fake
 
 
 def page(
@@ -55,24 +79,36 @@ def page(
     *,
     input_attached: list[bool],
     error_visible: list[bool] | None = None,
-) -> None:
+    clock: FakeClock | None = None,
+) -> list[tuple[Any, int]]:
     """Script what the page answers, per selector, read in turn.
 
     Each list is consumed one read at a time and its last value then repeats,
     so a test says only as much about the page as it cares about. ``input`` is
     asked both by the verdict poll and by the settle re-check; ``error`` both
     before the answer goes in (is the banner stale?) and during the poll.
+
+    With a ``clock``, a read that answers ``False`` charges its whole timeout:
+    that is a wait that watched for something and never saw it. Returns the
+    ``(selector, timeout)`` of every read, which is how a test pins the budget
+    a wait was actually given.
     """
     queues = {
         step.input: list(input_attached),
         step.error: list(error_visible or [False]),
     }
+    reads: list[tuple[Any, int]] = []
 
     def exists(selector: Any, timeout: int = 0, *, state: str = "attached") -> bool:
         queue = queues[selector]
-        return queue.pop(0) if len(queue) > 1 else queue[0]
+        answer = queue.pop(0) if len(queue) > 1 else queue[0]
+        reads.append((selector, timeout))
+        if clock is not None and not answer:
+            clock.wait(timeout / 1000.0)
+        return answer
 
     session.element_exists.side_effect = exists
+    return reads
 
 
 def solved(session: MagicMock, step: SolveCaptchaStep, solver: CaptchaSolver) -> Any:
@@ -250,7 +286,7 @@ def test_a_banner_that_appears_after_the_answer_is_a_rejection(
 
 
 def test_a_reload_that_puts_the_banner_back_up_is_a_rejection(
-    mock_session: MagicMock, no_sleep: None
+    mock_session: MagicMock, clock: FakeClock
 ) -> None:
     """A reload takes the input away and brings it back, and the banner it
     renders is a fresh verdict even though one was already showing."""
@@ -261,6 +297,7 @@ def test_a_reload_that_puts_the_banner_back_up_is_a_rejection(
         # gone, back (the reload), then attached for the verdict read.
         input_attached=[False, True, True],
         error_visible=[True],  # stale before, and rendered again after
+        clock=clock,
     )
     solver, _ = replying(ANSWER)
 
@@ -271,16 +308,67 @@ def test_a_reload_that_puts_the_banner_back_up_is_a_rejection(
 
 
 def test_an_input_that_only_flickered_is_not_acceptance(
-    mock_session: MagicMock,
+    mock_session: MagicMock, clock: FakeClock
 ) -> None:
     """Acceptance is the input staying gone, not one lucky read of it."""
-    step = captcha_step(retries=1, timeout=0, error=None)
-    page(mock_session, step, input_attached=[False, True])
+    step = captcha_step(retries=1, timeout=5_000, error=None)
+    page(mock_session, step, input_attached=[False, True], clock=clock)
     solver, _ = replying(ANSWER)
 
     result = solved(mock_session, step, solver)
 
     assert isinstance(result, ErrorResult)
+
+
+def test_the_settle_never_pushes_a_verdict_past_its_budget(
+    mock_session: MagicMock, clock: FakeClock
+) -> None:
+    """`timeout` bounds the whole verdict. A settle window wider than what is
+    left of it has to shrink, not overrun."""
+    step = captcha_step(retries=1, timeout=200, error=None)
+    reads = page(mock_session, step, input_attached=[False], clock=clock)
+    solver, _ = replying(ANSWER)
+    start = clock.now
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, CaptchaResult)
+    assert reads[-1] == (step.input, 200), "the settle ignored the remaining budget"
+    assert round((clock.now - start) * 1000) <= step.timeout
+
+
+def test_a_spent_budget_takes_the_read_it_already_has(
+    mock_session: MagicMock, clock: FakeClock
+) -> None:
+    """With nothing left to spend, "detached right now" is the answer — there
+    is no budget to confirm it with."""
+    step = captcha_step(retries=1, timeout=0, error=None)
+    reads = page(mock_session, step, input_attached=[False], clock=clock)
+    solver, _ = replying(ANSWER)
+    start = clock.now
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, CaptchaResult)
+    assert reads == [(step.input, 0)], "waited anyway with no budget left"
+    assert clock.now == start
+
+
+def test_a_roomy_budget_still_confirms_the_input_stayed_gone(
+    mock_session: MagicMock, clock: FakeClock
+) -> None:
+    """The clamp must not become "never settle": with room, the full window is
+    still spent watching for the input to come back."""
+    step = captcha_step(retries=1, timeout=5_000, error=None)
+    reads = page(mock_session, step, input_attached=[False], clock=clock)
+    solver, _ = replying(ANSWER)
+    start = clock.now
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, CaptchaResult)
+    assert reads[-1] == (step.input, CAPTCHA_SETTLE_MS)
+    assert clock.now - start == pytest.approx(CAPTCHA_SETTLE_MS / 1000.0)
 
 
 FLOW = """

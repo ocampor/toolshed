@@ -7,7 +7,8 @@
 - `solve_captcha` step — crops `image:`, hands the PNG to a solver the caller
   injects, types the normalized answer into `input:`, clicks `submit:` if set,
   and reads the page's verdict: `error:` visible is a rejection and the next of
-  `retries:` attempts crops again, `input:` detached is acceptance. `solver:`
+  `retries:` attempts crops again, `input:` detached and staying gone is
+  acceptance. `timeout:` is the whole budget for one verdict. `solver:`
   is `auto` / `sampling` / `human`, `prompt:` is passed through to the solver,
   and the step's row in `outputs` is `{"attempts": n, "solver": mode}` — never
   the answer.

@@ -41,6 +41,12 @@ READ_TIMEOUT_MS = 250
 # itself a fingerprint.
 POLL_JITTER_RATIO = 0.3
 
+# How long a captcha's input has to stay out of the DOM before the answer counts
+# as accepted: long enough for a reloading form to put its input back, short
+# enough not to dominate a solve. Clamped by the step's own timeout either way,
+# so this is a ceiling and not a floor.
+CAPTCHA_SETTLE_MS = 500
+
 # What a Playwright-family driver says when a read raced a navigation.
 DESTROYED_CONTEXT_MESSAGE = "Execution context was destroyed"
 

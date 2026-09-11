@@ -91,8 +91,11 @@ not a letter or a digit from the whole reply and keep the result only if it is
 solver that explains itself has spent the attempt without typing, which is why
 the prompt should ask for the characters alone. The answer goes into `input`, `submit` is clicked if set, and then the
 page's own verdict decides: `error` becoming visible is a rejection and the
-next attempt crops the image again, `input` leaving the DOM is acceptance.
-`timeout` is how long each attempt waits for that verdict.
+next attempt crops the image again, `input` leaving the DOM *and staying gone*
+is acceptance — a reloading form takes its input away on the way back, and a
+banner it never cleared is not a verdict on the answer that follows it.
+`timeout` is the whole budget for one attempt's verdict, confirmation
+included; set it tight and the confirmation shrinks rather than overrunning.
 
 `solver:` says who may read the image — `human` never calls the solver and
 fails immediately, `sampling` fails if the caller wired none, `auto` uses one
