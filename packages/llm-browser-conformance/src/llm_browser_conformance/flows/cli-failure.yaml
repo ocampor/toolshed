@@ -1,0 +1,11 @@
+# A flow that cannot finish, so `llm-browser run` has a failure to capture.
+params:
+  - url
+steps:
+  - name: open
+    action: goto
+    url: "{{ url }}"
+  - name: never
+    action: wait_for
+    selector: "#never-appears"
+    timeout: 500

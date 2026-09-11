@@ -144,6 +144,8 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `api:behavior.human` | behavior human paces input |
 | `api:behavior.off` | behavior human paces input |
+| `api:cli.capture_dir` | cli run failure captures |
+| `api:cli.out_dir` | cli run writes outputs |
 | `api:error.outputs` | error keeps partial outputs |
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |

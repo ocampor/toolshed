@@ -1,0 +1,14 @@
+# What `llm-browser run` has to write: a step that named a `path:`, and one
+# that named none and so lands under the payload's own name.
+params:
+  - url
+steps:
+  - name: open
+    action: goto
+    url: "{{ url }}"
+  - name: shot
+    action: screenshot
+    path: captures/page.png
+  - name: grab
+    action: download
+    selector: "#download"

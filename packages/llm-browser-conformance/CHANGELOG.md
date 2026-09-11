@@ -25,6 +25,18 @@ Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
 - `outputs json dump` (`api:outputs.json`): `outputs` holds real bytes for a
   Python caller, and `model_dump(mode="json")` base64-encodes them rather than
   crashing the serializer.
+- A `[cli]` section, and the two scenarios in it — `cli run writes outputs`
+  and `cli run failure captures` (`api:cli.out_dir`, `api:cli.capture_dir`).
+  They drive the installed `llm-browser` console script as a subprocess
+  against the fixture site, because the other half of "the library writes
+  nothing" — that `llm-browser run` puts the results where the flow and the
+  flags asked — is only true of the command, and is exactly what an
+  in-process check cannot see. They use `daemon` rather than `open`: a
+  launched patchright session belongs to the process that launched it, so
+  only the detached-over-CDP session survives to the next invocation.
+  patchright only; what the CLI writes is decided above the driver, and a
+  second browser per column would triple the cost of a run to re-check the
+  same code.
 
 ## 0.1.1 — 2026-09-10
 
