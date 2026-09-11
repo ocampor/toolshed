@@ -104,15 +104,15 @@ banner it never cleared is not a verdict on the answer that follows it.
 `timeout` is the whole budget for one attempt's verdict, confirmation
 included; set it tight and the confirmation shrinks rather than overrunning.
 
-Every failure path — no reader registered, a reader that raised
-`llm_browser.ReaderUnavailable` to say nothing can read in this run (that one
-stops after the first crop rather than spending the remaining retries),
-`retries` exhausted — comes back as a `FlowError` with `human_needed: true`,
-with two exceptions: a reader that raised anything else (an ordinary failed
-step, carrying the exception's message, worth retrying), and `optional: true`,
-which turns such a failure into a skip and lets the flow carry on. The
-answer is never put in the result or in a log line; the step's row in
-`outputs` is `{"attempts": 2}`.
+Three paths end in a `FlowError` with `human_needed: true`: no reader
+registered, a reader that raised `llm_browser.ReaderUnavailable` to say
+nothing can read in this run (that one stops after the first crop rather than
+spending the remaining retries), and `retries` exhausted. `optional: true`
+does not skip any of them — a run nobody can read is a fact about the run,
+not about the page. A reader that raised anything else is an ordinary failed
+step, carrying the exception's message and worth retrying; that one
+`optional: true` does turn into a skip. The answer is never put in the result
+or in a log line; the step's row in `outputs` is `{"attempts": 2}`.
 
 ```yaml
 steps:
