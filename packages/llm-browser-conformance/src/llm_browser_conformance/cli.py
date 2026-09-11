@@ -4,10 +4,18 @@ import sys
 
 import click
 
+from llm_browser_conformance import history
 from llm_browser_conformance.drivers import CONFORMANCE_DRIVERS, installed_drivers
 from llm_browser_conformance.gaps import known_gaps_document
-from llm_browser_conformance.runner import as_json, failed, format_table, run
-from llm_browser_conformance.scenario import DEFAULT_DELAY_MS
+from llm_browser_conformance.runner import (
+    Result,
+    as_json,
+    failed,
+    format_table,
+    full_plan,
+    run,
+)
+from llm_browser_conformance.scenario import DEFAULT_DELAY_MS, Scenario
 from llm_browser_conformance.scenarios import select
 
 
@@ -25,6 +33,12 @@ from llm_browser_conformance.scenarios import select
     multiple=True,
     metavar="SUBSTRING",
     help="Run just the scenarios whose name contains SUBSTRING; repeatable.",
+)
+@click.option(
+    "--failed",
+    "only_failed",
+    is_flag=True,
+    help="Rerun only what failed or xfailed last time, per driver.",
 )
 @click.option("--json", "as_json_output", is_flag=True, help="Machine-readable report.")
 @click.option(
@@ -44,6 +58,7 @@ from llm_browser_conformance.scenarios import select
 def main(
     drivers: tuple[str, ...],
     only: tuple[str, ...],
+    only_failed: bool,
     as_json_output: bool,
     print_gaps: bool,
     delay_ms: int,
@@ -54,6 +69,10 @@ def main(
     closed — a stale gap table is a lie about what the drivers do. A selection
     that matches nothing exits 2 before any browser starts: a run that checked
     nothing must never read as success.
+
+    Every run records its outcomes, so ``--failed`` can pick the work back up
+    where it left off; its rows are merged into that record rather than
+    replacing it.
     """
     if print_gaps:
         click.echo(known_gaps_document(), nl=False)
@@ -66,11 +85,34 @@ def main(
     scenarios = select(only)
     if not scenarios:
         raise click.UsageError(f"--only matched no scenarios: {', '.join(only)}")
-    results = run(selected, scenarios, delay_ms)
+    previous = history.load()
+    plan = (
+        rerun_plan_or_exit(previous, selected, scenarios)
+        if only_failed
+        else full_plan(selected, scenarios)
+    )
+    results = run(plan, delay_ms)
+    history.save(history.merge(previous, results) if only_failed else results)
+    columns = list(plan)
     report = (
-        as_json(results, selected, delay_ms)
+        as_json(results, columns, delay_ms)
         if as_json_output
-        else format_table(results, selected)
+        else format_table(results, columns)
     )
     click.echo(report)
     sys.exit(1 if failed(results) else 0)
+
+
+def rerun_plan_or_exit(
+    previous: list[Result], drivers: list[str], scenarios: list[Scenario]
+) -> dict[str, list[Scenario]]:
+    """Nothing to rerun is success; nothing to rerun *from* is a usage error."""
+    if not previous:
+        raise click.UsageError(
+            "no recorded run to reread; run `llm-browser-check` first"
+        )
+    plan = history.rerun_plan(previous, drivers, scenarios)
+    if not plan:
+        click.echo("nothing failed in the last run")
+        sys.exit(0)
+    return plan

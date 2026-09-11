@@ -33,6 +33,7 @@ nodriver drives a real Chrome over CDP and ships no browser: it needs
 uv run llm-browser-check                       # every installed driver
 uv run llm-browser-check --driver nodriver     # one driver; repeatable
 uv run llm-browser-check --only "wait" --only "iframe"   # substring filter
+uv run llm-browser-check --failed              # just what broke last run
 uv run llm-browser-check --json                # machine-readable, for agents
 uv run llm-browser-check --delay 2500          # slower machine, slower fixtures
 ```

@@ -12,6 +12,7 @@ pytest report — so the two can never disagree about the same run.
 import json
 import time
 import traceback
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,11 @@ from llm_browser_conformance.scenario import (
 from llm_browser_conformance.server import serve_site
 
 TEARDOWN_ROW = "session teardown"
+
+# Sections read in the order they are declared. Without this a `--failed`
+# rerun, whose results arrive grouped by driver, would print them in whatever
+# order the first driver happened to fail in.
+SECTION_ORDER = {section: index for index, section in enumerate(Section)}
 
 
 @dataclass(frozen=True)
@@ -127,13 +133,21 @@ def run_driver(
     return results
 
 
+def full_plan(
+    drivers: list[str], scenarios: list[Scenario]
+) -> dict[str, list[Scenario]]:
+    return {driver: scenarios for driver in drivers}
+
+
 def run(
-    drivers: list[str], scenarios: list[Scenario], delay_ms: int = DEFAULT_DELAY_MS
+    plan: Mapping[str, list[Scenario]], delay_ms: int = DEFAULT_DELAY_MS
 ) -> list[Result]:
+    """``plan`` names the scenarios per driver, because ``--failed`` reruns a
+    different set for each: the drivers disagree about what is broken."""
     with serve_site() as site_url:
         return [
             row
-            for driver in drivers
+            for driver, scenarios in plan.items()
             for row in run_driver(driver, site_url, scenarios, delay_ms)
         ]
 
@@ -157,7 +171,9 @@ def cell(row: Result | None) -> str:
 
 def format_table(results: list[Result], drivers: list[str]) -> str:
     by_key = {(r.scenario, r.driver): r for r in results}
-    rows = list(dict.fromkeys((r.section, r.scenario) for r in results))
+    seen = dict.fromkeys((r.section, r.scenario) for r in results)
+    # Stable, so scenarios keep their order within a section.
+    rows = sorted(seen, key=lambda row: SECTION_ORDER[row[0]])
     label_width = max((len(name) for _, name in rows), default=8) + 2
     widths = [max(len(d), 11) + 2 for d in drivers]
     lines = [
