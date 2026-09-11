@@ -314,7 +314,12 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
 
 def solve_captcha_answers_the_image_and_retries_a_rejection(ctx: Context) -> None:
     """The first answer is wrong on purpose: the page shows its error, and the
-    step has to read that as a rejection and come back with a fresh crop."""
+    step has to read that as a rejection and come back with a fresh crop.
+
+    The fixture never clears that banner, which is what most real forms do, so
+    the second attempt also proves a *stale* rejection is not read as the
+    verdict on the answer that follows it.
+    """
     crops: list[bytes] = []
     prompts: list[str | None] = []
 

@@ -16,10 +16,9 @@
 <script>
   // The answer the fixture solver is expected to produce.
   const CODE = "7fkq2";
+  // The banner is never cleared: a real form usually leaves the last rejection
+  // on screen, and the step has to tell that apart from a fresh one.
   document.getElementById("captcha-submit").addEventListener("click", () => {
-    // Clearing the error first: a rejection left visible would be read as the
-    // verdict on the *next* attempt.
-    document.getElementById("captcha-error").hidden = true;
     if (document.getElementById("captcha-answer").value === CODE) {
       document.getElementById("captcha-form").remove();
       document.getElementById("captcha-done").hidden = false;

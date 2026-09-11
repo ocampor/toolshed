@@ -5,10 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from llm_browser import captcha
 from llm_browser.actions import execute_action
-from llm_browser.captcha import CaptchaSolver, SolverMode, normalize_answer
+from llm_browser.captcha import CaptchaSolver, normalize_answer
 from llm_browser.flows import load_flow_text, run_flow
-from llm_browser.models import FlowSuccess, SolveCaptchaStep
+from llm_browser.models import FlowSuccess, SolveCaptchaStep, SolverMode
 from llm_browser.results import CaptchaResult, ErrorResult
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
@@ -42,22 +43,34 @@ def replying(*replies: str) -> tuple[CaptchaSolver, list[bytes]]:
     return solver, seen
 
 
-def verdicts(session: MagicMock, step: SolveCaptchaStep, accepted: list[bool]) -> None:
-    """Make the page accept or reject each attempt in turn.
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The verdict poll's pause between ticks; no test should pay for it."""
+    monkeypatch.setattr(captcha, "jittered_sleep", lambda jitter, rng: None)
 
-    A rejection is the error element becoming visible; an acceptance is the
-    input leaving the DOM — the two things ``captcha.accepted`` polls for.
+
+def page(
+    session: MagicMock,
+    step: SolveCaptchaStep,
+    *,
+    input_attached: list[bool],
+    error_visible: list[bool] | None = None,
+) -> None:
+    """Script what the page answers, per selector, read in turn.
+
+    Each list is consumed one read at a time and its last value then repeats,
+    so a test says only as much about the page as it cares about. ``input`` is
+    asked both by the verdict poll and by the settle re-check; ``error`` both
+    before the answer goes in (is the banner stale?) and during the poll.
     """
-    remaining = list(accepted)
+    queues = {
+        step.input: list(input_attached),
+        step.error: list(error_visible or [False]),
+    }
 
     def exists(selector: Any, timeout: int = 0, *, state: str = "attached") -> bool:
-        if selector == step.error:
-            if remaining[0]:
-                return False
-            remaining.pop(0)
-            return True
-        remaining.pop(0)
-        return False
+        queue = queues[selector]
+        return queue.pop(0) if len(queue) > 1 else queue[0]
 
     session.element_exists.side_effect = exists
 
@@ -88,7 +101,7 @@ def test_normalize_answer(reply: str, expected: str | None) -> None:
 
 def test_a_right_answer_on_the_first_attempt(mock_session: MagicMock) -> None:
     step = captcha_step()
-    verdicts(mock_session, step, [True])
+    page(mock_session, step, input_attached=[False])
     solver, seen = replying(ANSWER)
 
     result = solved(mock_session, step, solver)
@@ -105,7 +118,15 @@ def test_a_rejected_answer_is_retried_against_a_fresh_crop(
     mock_session: MagicMock,
 ) -> None:
     step = captcha_step()
-    verdicts(mock_session, step, [False, True])
+    page(
+        mock_session,
+        step,
+        # attached for the first verdict, gone for the second.
+        input_attached=[True, False],
+        # no banner before the first answer, one after it, still up before the
+        # second — the page never clears it.
+        error_visible=[False, True, True],
+    )
     mock_session.screenshot_bytes.side_effect = [b"first-crop", b"second-crop"]
     solver, seen = replying("wrong", ANSWER)
 
@@ -118,7 +139,7 @@ def test_a_rejected_answer_is_retried_against_a_fresh_crop(
 
 def test_running_out_of_retries_asks_for_a_human(mock_session: MagicMock) -> None:
     step = captcha_step(retries=2)
-    verdicts(mock_session, step, [False, False])
+    page(mock_session, step, input_attached=[True], error_visible=[False, True])
     solver, _ = replying(ANSWER, ANSWER)
 
     result = solved(mock_session, step, solver)
@@ -185,12 +206,81 @@ def test_a_solver_that_raises_fails_the_step_instead_of_the_run(
 
 def test_the_answer_never_reaches_the_result(mock_session: MagicMock) -> None:
     step = captcha_step()
-    verdicts(mock_session, step, [True])
+    page(mock_session, step, input_attached=[False])
     solver, _ = replying(ANSWER)
 
     result = solved(mock_session, step, solver)
 
     assert ANSWER not in str(result.model_dump())
+
+
+def test_a_banner_the_page_never_cleared_is_not_this_answer_s_verdict(
+    mock_session: MagicMock,
+) -> None:
+    """The blocking bug: a rejection left over from the previous attempt made
+    the next correct answer come back as `human_needed`."""
+    step = captcha_step()
+    page(
+        mock_session,
+        step,
+        input_attached=[False],
+        error_visible=[True],  # already showing when the answer goes in
+    )
+    solver, _ = replying(ANSWER)
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, CaptchaResult)
+    assert result.attempts == 1
+
+
+def test_a_banner_that_appears_after_the_answer_is_a_rejection(
+    mock_session: MagicMock,
+) -> None:
+    """The single-page case: no reload, the banner simply was not there
+    before and is now."""
+    step = captcha_step(retries=1)
+    page(mock_session, step, input_attached=[True], error_visible=[False, True])
+    solver, _ = replying(ANSWER)
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, ErrorResult)
+    assert result.human_needed is True
+
+
+def test_a_reload_that_puts_the_banner_back_up_is_a_rejection(
+    mock_session: MagicMock, no_sleep: None
+) -> None:
+    """A reload takes the input away and brings it back, and the banner it
+    renders is a fresh verdict even though one was already showing."""
+    step = captcha_step(retries=1, timeout=5_000)
+    page(
+        mock_session,
+        step,
+        # gone, back (the reload), then attached for the verdict read.
+        input_attached=[False, True, True],
+        error_visible=[True],  # stale before, and rendered again after
+    )
+    solver, _ = replying(ANSWER)
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, ErrorResult)
+    assert result.human_needed is True
+
+
+def test_an_input_that_only_flickered_is_not_acceptance(
+    mock_session: MagicMock,
+) -> None:
+    """Acceptance is the input staying gone, not one lucky read of it."""
+    step = captcha_step(retries=1, timeout=0, error=None)
+    page(mock_session, step, input_attached=[False, True])
+    solver, _ = replying(ANSWER)
+
+    result = solved(mock_session, step, solver)
+
+    assert isinstance(result, ErrorResult)
 
 
 FLOW = """

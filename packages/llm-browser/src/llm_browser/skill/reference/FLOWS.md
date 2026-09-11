@@ -41,7 +41,6 @@ steps:
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
 | `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
-
 | `solve_captcha` | `image`, `input` | `submit`, `error`, `retries` (default 3), `solver` (`auto`/`sampling`/`human`, default `auto`), `prompt`, `timeout` | Crops `image`, hands the PNG to the solver the caller passed to `run_flow(..., solver=)`, types the answer into `input` and clicks `submit`. See [Captchas](#captchas) |
 
 ### Waiting
@@ -86,10 +85,11 @@ look at a picture. The library never reads the image: the caller passes a
 `solver` — `(png_bytes, prompt) -> reply` — to `run_flow`, and the step owns
 the loop around it.
 
-One attempt is: crop `image`, ask the solver, strip everything but letters and
-digits from the reply, and reject what is left unless it is 3-12 alphanumeric
-characters (a solver that answers `UNREADABLE` spends the attempt without
-typing). The answer goes into `input`, `submit` is clicked if set, and then the
+One attempt is: crop `image`, ask the solver, then strip everything that is
+not a letter or a digit from the whole reply and keep the result only if it is
+3-12 characters and not `UNREADABLE`. Nothing is extracted from a sentence: a
+solver that explains itself has spent the attempt without typing, which is why
+the prompt should ask for the characters alone. The answer goes into `input`, `submit` is clicked if set, and then the
 page's own verdict decides: `error` becoming visible is a rejection and the
 next attempt crops the image again, `input` leaving the DOM is acceptance.
 `timeout` is how long each attempt waits for that verdict.
@@ -97,8 +97,11 @@ next attempt crops the image again, `input` leaving the DOM is acceptance.
 `solver:` says who may read the image — `human` never calls the solver and
 fails immediately, `sampling` fails if the caller wired none, `auto` uses one
 when it is there. Every failure path — no solver, `retries` exhausted — comes
-back as a `FlowError` with `human_needed: true`, except a `sampling` step with
-no solver, which is a caller bug rather than a page needing a person. The
+back as a `FlowError` with `human_needed: true`, with three exceptions: a
+`sampling` step with no solver (a caller bug, not a page needing a person), a
+solver that raised (an ordinary failed step, carrying the exception's message),
+and `optional: true`, which turns a raising solver into a skip and lets the
+flow carry on. The
 answer is never put in the result or in a log line; the step's row in
 `outputs` is `{"attempts": 2, "solver": "auto"}`.
 

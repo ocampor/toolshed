@@ -28,7 +28,8 @@
 - `BrowserSession.element_exists(..., state=)` — the bool wait answers about
   any `WaitState`, not just `attached`.
 - `selector_map` `ref:` expansion for any selector-valued step key, so a step
-  naming several selectors can use the map for all of them.
+  naming several selectors can use the map for all of them. A `run-flow`
+  step's `data:` is exempt — a child's arguments are values, not selectors.
 
 ### Fixed
 

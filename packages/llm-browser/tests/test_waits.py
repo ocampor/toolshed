@@ -194,6 +194,19 @@ def test_a_navigation_during_a_detached_wait_reads_as_not_yet(
     assert driver.count.call_count == 2
 
 
+def test_a_detached_wait_still_re_raises_any_other_driver_error(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """Only the navigation message is forgiven; a CDP failure is still a bug
+    to surface, not "the element is still there"."""
+    driver = driver_with(counts=[1])
+    driver.count.side_effect = RuntimeError("Could not find node with given id")
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(RuntimeError, match="Could not find node"):
+        session.wait_for_element("#boom", state="detached")
+
+
 def test_a_visibility_error_escapes_too(tmp_path: Path, clock: FakeClock) -> None:
     driver = driver_with(visible=[False])
     driver.is_visible.side_effect = RuntimeError("Execution context was destroyed")

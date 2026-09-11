@@ -15,11 +15,17 @@ from __future__ import annotations
 import logging
 import re
 import time
-from enum import StrEnum
 from typing import TYPE_CHECKING, Callable
 
-from llm_browser.constants import DEFAULT_POLL_INTERVAL_MS, LOGGER_NAME
+from llm_browser.behavior import jittered_sleep
+from llm_browser.constants import (
+    DEFAULT_POLL_INTERVAL_MS,
+    DEFAULT_SETTLE_MS,
+    LOGGER_NAME,
+)
+from llm_browser.models import SolverMode
 from llm_browser.results import ActionResult, CaptchaResult, ErrorResult
+from llm_browser.waits import poll_jitter
 
 if TYPE_CHECKING:
     from llm_browser.models import SolveCaptchaStep
@@ -40,19 +46,13 @@ ANSWER_PATTERN = re.compile(r"^[A-Za-z0-9]{3,12}$")
 UNREADABLE = "unreadable"
 
 
-class SolverMode(StrEnum):
-    """Who is allowed to read the image."""
-
-    AUTO = "auto"
-    SAMPLING = "sampling"
-    HUMAN = "human"
-
-
 def normalize_answer(reply: str) -> str | None:
     """What to type, or ``None`` when the reply is not an answer.
 
-    Punctuation and whitespace go: a solver that answers ``"7 F K 2 Q"`` or
-    ``"The code is: 7fkq2."`` means the same five characters.
+    One rule, applied to the whole reply: drop everything that is not a letter
+    or a digit, and keep the result only if it is 3-12 characters and not
+    ``UNREADABLE``. Nothing is *extracted* — a solver that explains itself has
+    failed the attempt, which is why the prompt asks for the characters alone.
     """
     stripped = re.sub(r"[^A-Za-z0-9]", "", reply)
     if stripped.casefold() == UNREADABLE:
@@ -98,24 +98,51 @@ def ask(solver: CaptchaSolver, png: bytes, prompt: str | None) -> str:
         ) from exc
 
 
-def accepted(session: BrowserSession, step: SolveCaptchaStep) -> bool:
-    """Poll the page for its verdict until ``timeout`` runs out.
+def error_showing(session: BrowserSession, step: SolveCaptchaStep) -> bool:
+    return step.error is not None and session.element_exists(
+        step.error, timeout=0, state="visible"
+    )
 
-    ``True`` once the input is gone — the form moved on. ``False`` as soon as
-    the page shows its error, and ``False`` again if neither happens in time:
-    an undecided page is a failed attempt, not a hang.
+
+def gone_for_good(session: BrowserSession, step: SolveCaptchaStep) -> bool:
+    """Whether the input that just left the DOM stays gone.
+
+    A form that reloads takes its input away for a moment on the way back, so
+    a single "not there" read is not the form moving on. Waiting for it to
+    come back is the same question upside down: nothing within ``settle``
+    means it really is gone.
+    """
+    return not session.element_exists(step.input, timeout=DEFAULT_SETTLE_MS)
+
+
+def accepted(
+    session: BrowserSession, step: SolveCaptchaStep, stale_error: bool
+) -> bool:
+    """Poll the page for its verdict on the answer just submitted.
+
+    ``stale_error`` is whether the error was already showing before this
+    answer went in. A banner the page never cleared is not a verdict on this
+    attempt — believing one is how a correct second answer gets reported as a
+    failure — so a stale banner only counts once a reload has put a fresh one
+    up.
+
+    ``True`` when the input is gone for good, ``False`` on a rejection and
+    ``False`` again if neither happens within ``timeout``: an undecided page
+    is a failed attempt, not a hang.
     """
     deadline = time.monotonic() + step.timeout / 1000.0
+    pause = poll_jitter(DEFAULT_POLL_INTERVAL_MS)
+    reloaded = False
     while True:
-        if step.error is not None and session.element_exists(
-            step.error, timeout=0, state="visible"
-        ):
-            return False
         if not session.element_exists(step.input, timeout=0):
-            return True
+            if gone_for_good(session, step):
+                return True
+            reloaded = True
+        elif error_showing(session, step) and (not stale_error or reloaded):
+            return False
         if time.monotonic() >= deadline:
             return False
-        time.sleep(DEFAULT_POLL_INTERVAL_MS / 1000.0)
+        jittered_sleep(pause, session.behavior_runtime.rng)
 
 
 def one_attempt(
@@ -132,10 +159,11 @@ def one_attempt(
     )
     if answer is None:
         return False
+    stale_error = error_showing(session, step)
     session.fill(step.input, answer)
     if step.submit is not None:
         session.click(step.submit)
-    return accepted(session, step)
+    return accepted(session, step, stale_error)
 
 
 def solve(session: BrowserSession, step: SolveCaptchaStep) -> ActionResult:

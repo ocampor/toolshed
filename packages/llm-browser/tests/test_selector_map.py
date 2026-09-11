@@ -104,3 +104,15 @@ def test_resolve_refs_expands_every_selector_valued_key() -> None:
 def test_resolve_refs_leaves_a_mapping_that_is_not_a_ref_alone() -> None:
     step = {"name": "s", "selector": {"css": "#a"}, "data": {"ref": "x", "n": 1}}
     assert resolve_refs(step, {}) == step
+
+
+def test_resolve_refs_leaves_a_sub_flow_s_data_alone() -> None:
+    """A `run-flow` child's `data:` is arguments, not selectors: a param that
+    happens to be called `ref` keeps its literal value."""
+    step = {
+        "name": "child",
+        "action": "run-flow",
+        "flow": "child.yaml",
+        "data": {"ref": "INV-1"},
+    }
+    assert resolve_refs(step, {}) == step

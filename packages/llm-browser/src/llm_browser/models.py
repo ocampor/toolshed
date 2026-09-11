@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import (
@@ -17,7 +18,6 @@ from pydantic import (
 )
 
 from llm_browser.behavior import Jitter
-from llm_browser.captcha import SolverMode
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
@@ -34,6 +34,15 @@ if TYPE_CHECKING:
 
 
 CaptureMode = Literal["screenshot", "dom", "both", "none"]
+
+
+class SolverMode(StrEnum):
+    """Who is allowed to read a captcha image."""
+
+    AUTO = "auto"
+    SAMPLING = "sampling"
+    HUMAN = "human"
+
 
 WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
