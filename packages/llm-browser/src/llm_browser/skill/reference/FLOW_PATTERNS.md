@@ -29,7 +29,7 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
 |---|---|---|
 | `low` | every attribute except `style` | the default |
 | `medium` | lxml's `safe_attrs` (`id`, `class`, `name`, `type`, `value`, `alt`, `title`, `for`, table attrs, …) plus `href`, `src`; no `style` | drops `data-*`, `aria-*`, `role`, `placeholder` |
-| `high` | `medium` minus `href` and `src` | for full-page captures where links are noise |
+| `high` | `medium` minus `href` and `src` | for page-sized `dom` reads where links are noise |
 | `xhigh` | `id`, `name`, `role`, `type`, `value`, `placeholder`, `alt`, `title` only | unwraps `div`/`span`/`section`, so structure reads at a glance |
 
 - Scripts, inline styles, `style` attributes, comments, `<meta>` and `<link>` are stripped at

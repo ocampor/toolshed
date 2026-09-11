@@ -30,10 +30,10 @@ Flow (pydantic)      steps: [GotoStep, ClickStep, WaitForStep, ReadStep, RunFlow
 actions              registry action name → fn(session, step) -> ActionResult      one per step type
    │
    ▼
-BrowserSession       goto · find · wait_for_element · dom · probe · parse_elements · screenshot
+BrowserSession       goto · find · wait_for_element · dom · probe · parse_elements · screenshot_bytes
    │  selector resolution, waits (waits.py), sanitization (html.py), probe JS, behavior pacing
    ▼
-Driver (ABC)         resolve/count/first/is_visible/text_content · click/fill/type/press · goto/wait_for_load · evaluate · screenshot
+Driver (ABC)         resolve/count/first/is_visible/text_content · click/fill/type/press · goto/wait_for_load · evaluate · screenshot_bytes
    │  contract: no DOM waits (only wait_for_load blocks), trusted input, JS only in evaluate/is_visible/input_value/extract_rows
    ▼
 patchright | camoufox | nodriver
@@ -119,6 +119,13 @@ three reference docs it links to into `.claude/skills/llm-browser-flows/` of the
 docs — `FLOWS.md`, `FLOW_PATTERNS.md`, `DRIVERS.md` — live under `src/llm_browser/skill/reference/`
 so they ship in the wheel; `FLOWS.md` and `docs/` keep one-line pointers to them.
 
+The library never writes output files: every step result comes back in `FlowSuccess.outputs`,
+and `llm-browser run` is the only thing that puts it on disk. A step's `path:` is written under
+`--out-dir`. A `screenshot` or `download` that declared no `path:` is written there too, under
+the name its payload came with (`shot.png`, the server's filename) — bytes are always written,
+because base64 on stdout helps nobody. `read`, `parse` and `dom` results without a `path:` stay
+inline in the JSON.
+
 Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
 `run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](src/llm_browser/skill/reference/FLOWS.md) for the full flow
 language, and [docs/API.md](docs/API.md) for typed extraction (pydantic models, YAML-declared
@@ -164,8 +171,10 @@ session.attach("http://localhost:9222")
 session.close()  # disconnects only — your Chromium keeps running
 ```
 
-`BrowserSession(capture=...)` controls what's saved when a flow step fails: `"screenshot"`
-(default), `"dom"`, or `"both"`. Paths and cleanup: [docs/API.md](docs/API.md#capture-modes).
+`BrowserSession(capture=...)` controls what a failing flow step carries back: `"screenshot"`
+(default), `"dom"`, `"both"` or `"none"`. Nothing is written — `FlowError` holds the PNG bytes
+and the DOM text in memory, and `llm-browser run` is what puts them on disk (`--capture-dir`).
+Details: [docs/API.md](docs/API.md#capture-modes).
 
 ### Conformance
 

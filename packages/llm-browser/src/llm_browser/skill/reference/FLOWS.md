@@ -33,14 +33,14 @@ steps:
 | `check` | — | `checked` (bool, default true) | Sets checkbox state |
 | `pick` | — | `value` | Clicks the list item matching this text |
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
-| `download` | `path` | — | Triggers the download, saves it to `path` |
+| `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
 
 ### Page actions (no selector)
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
-| `screenshot` | — | `path` | Without `path`, writes to the session's default location; with it, writes there too (parent dirs created) |
+| `screenshot` | — | `path` | The PNG bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
 
 ### Waiting
 
@@ -54,7 +54,7 @@ One step covers both kinds of waiting: element presence and text stability.
 | `hidden` | element is not rendered | |
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
-`wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus a screenshot and DOM snapshot; `optional: true` turns that into a skip.
+`wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus whatever `BrowserSession(capture=)` asks for, in memory on the `FlowError`; `optional: true` turns that into a skip.
 
 ```yaml
 - name: captcha appears
@@ -91,13 +91,13 @@ One step covers both kinds of waiting: element presence and text stability.
 
 ### Data actions
 
-Pair with `path:` to also land the result on disk mid-flow.
+Every result comes back in `outputs`. `path:` is an instruction to `llm-browser run` — it writes that file under `--out-dir` once the run is over — and the runner itself ignores it. Rows and text with no `path:` stay inline in the JSON `run` prints; bytes are written either way, because base64 on stdout helps nobody.
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `path` | Extract structured data as dicts |
 | `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
-| `dom` | — | `max_depth` (default 0 = no limit), `path` | Cleaned HTML snippet; with `path`, also written there. Always sanitized at `low`; only the CLI's `dom --level` and `session.dom(level=)` pick another level (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
+| `dom` | — | `max_depth` (default 0 = no limit), `path` | Cleaned HTML snippet. Always sanitized at `low`; only the CLI's `dom --level` and `session.dom(level=)` pick another level (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
 
 ### Composition
 
@@ -140,7 +140,19 @@ run_flow(session, flow, data)
 
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never touches the filesystem; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every `read`/`parse`/`dom` result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow); screenshots stay on disk, and a step with `path:` still writes its file regardless. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, and every log record emitted during the run — files written by `path:` steps are not rewritten.
+`run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, and a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
+
+A failing run also carries the page itself: `FlowError.screenshot` is PNG bytes and `FlowError.dom` is sanitized HTML text, both in memory and controlled by `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `model_dump(mode="json")` base64-encodes the bytes and validating that back decodes them, so the result round-trips; `llm-browser run` instead writes both to `--capture-dir` and prints the paths.
+
+### Capturing artifacts
+
+| knob | where | default | what it decides |
+|---|---|---|---|
+| `capture` | `BrowserSession(capture=)` | `screenshot` | which of `screenshot` / `dom` a failing step attaches: `screenshot`, `dom`, `both`, `none` |
+| `capture_level` | `BrowserSession(capture_level=)`, `llm-browser run --capture-level` | `high` | how hard the DOM snapshot is sanitized: `low`, `medium`, `high`, `xhigh` |
+| `--capture-dir` | `llm-browser run` | the session dir | where the CLI writes `screenshot.png` and `dom.html` |
+
+`high` drops every `src` and `href`, which is what you want for reading a page back. Use `medium` when the link is the point — where the flow would have gone next — and `xhigh` when you want the structure without the wrappers. The levels mean exactly what they mean for a `dom` step; see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page).
 
 ## Selectors
 
@@ -190,7 +202,7 @@ Skip a step unless every condition holds (AND'ed).
     amount: { child_selector: "td.amount", attribute: textContent }
 ```
 
-Attributes: `textContent`, `value`, or any HTML attribute name. Set `path: <file>` on a `read` or `parse` step to JSON-dump the rows to disk — the flow runner only returns `FlowSuccess(step=name)` and otherwise drops action results.
+Attributes: `textContent`, `value`, or any HTML attribute name. The rows land in `FlowSuccess.outputs` under the step name; `path: <file>` on a `read` or `parse` step tells `llm-browser run` to JSON-dump them there as well.
 
 ## Patterns
 

@@ -81,25 +81,44 @@ schema instances instead of raw strings:
   schema_path: "schemas/repo.yaml"   # CWD-relative or absolute
 ```
 
-`ParsedResult.rows` are `Repo` instances built from the schema, values coerced by Pydantic —
-same outcome as `Repo.extract_all(session, ...)`. Empty rows (every field `None`) come back as
-`None`, mirroring `read`'s behavior.
+`ParsedResult.rows` (`llm_browser.results.ParsedResult`) are `Repo` instances built from the
+schema, values coerced by Pydantic — same outcome as `Repo.extract_all(session, ...)`. Empty
+rows (every field `None`) come back as `None`, mirroring `read`'s behavior.
 
 ## Capture modes
 
-`BrowserSession(capture=...)` controls what gets captured when a flow step fails (and on the
-result):
+`BrowserSession(capture=...)` controls what a failing flow step carries back on its
+`FlowError` — in memory; the library writes no file:
 
-| Mode | Enables | On-disk paths |
-|---|---|---|
-| `"screenshot"` (default) | `session.take_screenshot()` | `<session_dir>/screenshot.png` |
-| `"dom"` | `session.take_dom_snapshot()` | `<session_dir>/dom.html` |
-| `"both"` | both | both |
+| Mode | What `FlowError` carries |
+|---|---|
+| `"screenshot"` (default) | `screenshot`: PNG bytes of the failing page |
+| `"dom"` | `dom`: the failing page's sanitized HTML, as text |
+| `"both"` | both |
+| `"none"` | neither |
+
+`BrowserSession(capture_level=...)` decides how hard that DOM snapshot is
+sanitized — a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`), default `high`.
+`high` drops every `src` and `href`; `medium` keeps them, for when where the
+page would have gone next is what you need. `llm-browser run --capture-level`
+sets it, and `dom_snapshot(level=)` overrides it for one call.
+
+`model_dump(mode="json")` base64-encodes `screenshot`; `run_flow(..., redact=[...])` scrubs
+`dom` like every other text on the result. Persisting either is the caller's call —
+`llm-browser run` does it, into `--capture-dir` (default: the session dir) as `screenshot.png`
+and `dom.html`, and prints those paths in place of the base64.
+
+The same rule covers step outputs. `llm-browser run` writes a step's `path:` under `--out-dir`;
+a `screenshot` or `download` that declared none is written there anyway, under the name its
+payload came with, because base64 on stdout helps nobody. Text and rows without a `path:` stay
+inline in the printed JSON. Every written file is reported by its absolute path in place of the
+value.
 
 `<session_dir>` is `<state_dir>/sessions/<session_id>` (default `/tmp/llm-browser/sessions/default`)
-and is logged at INFO on first `launch()` / `attach()`. The user-data-dir inside it is never
-auto-removed — call `session.close(cleanup=True)` to remove the screenshot/DOM files, or delete
-the session dir yourself to start fresh.
+and is logged at INFO on first `launch()` / `attach()`. It holds session *state*, never output:
+`state.json` (how a detached browser is found again) and `user-data/`. The user-data-dir is
+never auto-removed (profile reuse is intentional) — delete the session dir yourself to start
+fresh.
 
 ## Session methods
 
@@ -110,7 +129,7 @@ the session dir yourself to start fresh.
 | `attach_to_tab(cdp_url, target_id)` | Attach to one existing tab, addressed by its CDP target id |
 | `launch_detached(url, headed)` | Spawn detached Chromium + auto-attach (multi-CLI safe) |
 | `stop_detached()` | Kill a detached Chromium spawned by `launch_detached` |
-| `close(cleanup=False)` | Close session; attach/detached keep the browser alive |
+| `close()` | Close session; attach/detached keep the browser alive |
 | `connect()` | Reconnect to the browser recorded in the session state and return its page |
 | `status()` | Whether a session is `open` or `closed`, with its CDP URL and target id |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
@@ -129,11 +148,9 @@ the session dir yourself to start fresh.
 | `parse_elements(selector, extract)` | Extract structured data |
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
-| `download_file(selector, output_path)` | Trigger a download and save it to `output_path` |
-| `take_screenshot()` | Screenshot to file |
-| `save_screenshot(path)` | Screenshot to an explicit path |
-| `screenshot_bytes()` | Screenshot as PNG bytes, no file written |
-| `take_dom_snapshot()` | Sanitized HTML of the current page to `<session_dir>/dom.html` |
+| `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
+| `screenshot_bytes()` | The current page as PNG bytes; nothing is written |
+| `dom_snapshot(level=None)` | Sanitized HTML of the whole current page, as text; `level` defaults to the session's `capture_level` |
 | `scroll(dx, dy)` | Mouse-wheel scroll |
 | `get_page()` | Raw driver page (a Playwright `Page` on patchright/camoufox, a nodriver `Tab` on nodriver) |
 | `frame(selector)` | Enter iframe |
