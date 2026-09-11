@@ -161,6 +161,29 @@ return a one-line string, which lands in the details — used where drivers
 legitimately differ and the point is to *record* which behaviour this one has
 (`disabled button`, `new tab`) rather than force one answer.
 
+## Coverage
+
+[`docs/coverage.md`](docs/coverage.md) — every step type, step field, step
+option, `when:` condition and `BrowserSession` method the library exposes, and
+the scenario that exercises it. The rows are *introspected* from
+`llm_browser.models` and `llm_browser.session`, so a step type or a field
+added to the library shows up uncovered and `tests/test_coverage.py` fails
+until a scenario claims it. That is what makes a green run an acceptance test
+for a release rather than a spot check.
+
+A scenario claims what it exercises through `covers`:
+
+```python
+Scenario(
+    "goto wait_until",
+    Section.STEPS,
+    goto_waits_for_the_load_event,
+    covers=frozenset({"step:goto", "field:goto.wait_until"}),
+)
+```
+
+Regenerate the table with `llm-browser-check --coverage > docs/coverage.md`.
+
 ## Known gaps
 
 [`docs/known-gaps.md`](docs/known-gaps.md) — generated from the `known_gaps`

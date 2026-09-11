@@ -53,6 +53,9 @@ class Section(StrEnum):
     FRAMES = "frames"
     STEALTH = "stealth"
     STEPS = "steps"
+    OPTIONS = "options"
+    RESULTS = "results"
+    API = "api"
 
 
 class ScenarioSkipped(Exception):
@@ -185,6 +188,12 @@ class Scenario:
     differ and the point is to *record* which behaviour this one has rather
     than to force a single answer.
 
+    ``covers`` names the public surface this scenario exercises — step types,
+    step fields, step options, session methods (see
+    :mod:`llm_browser_conformance.coverage` for the key grammar). It is what
+    ``docs/coverage.md`` is built from, and what lets a test fail when the
+    library grows a step type or a field nothing checks.
+
     There is deliberately no ``page`` field: the check navigates, so a second
     copy of the page name here would be documentation nothing verifies.
     """
@@ -194,6 +203,7 @@ class Scenario:
     check: Check
     drivers: frozenset[str] | None = None
     known_gaps: Mapping[str, str] = field(default_factory=dict)
+    covers: frozenset[str] = frozenset()
 
     def applies_to(self, driver: str) -> bool:
         return self.drivers is None or driver in self.drivers

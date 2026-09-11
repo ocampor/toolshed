@@ -106,36 +106,58 @@ SCENARIOS = [
         "controlled input",
         Section.STEPS,
         a_controlled_input_keeps_what_fill_and_type_write,
+        covers=frozenset(
+            {
+                "field:fill.value",
+                "field:type.selector",
+                "field:type.value",
+                "step:fill",
+                "step:type",
+            }
+        ),
     ),
     Scenario(
         "masked input",
         Section.STEPS,
         a_mask_reformats_every_keystroke,
+        covers=frozenset({"field:type.delay", "field:type.value", "step:type"}),
     ),
     Scenario(
         "autocomplete click",
         Section.STEPS,
         a_debounced_autocomplete_can_be_clicked,
+        covers=frozenset({"step:click"}),
     ),
     Scenario(
         "autocomplete enter",
         Section.STEPS,
         a_debounced_autocomplete_can_be_chosen_with_enter,
+        covers=frozenset({"field:press.key", "step:press"}),
     ),
     Scenario(
         "custom select click",
         Section.STEPS,
         a_div_dropdown_is_driven_by_clicking,
+        covers=frozenset({"step:click"}),
     ),
     Scenario(
         "custom select rejects select",
         Section.STEPS,
         select_on_a_div_dropdown_fails_clearly,
+        covers=frozenset(
+            {
+                "field:select.selector",
+                "field:select.value",
+                "session:select_option",
+                "step:select",
+            }
+        ),
     ),
     Scenario(
         "native select optgroup",
         Section.STEPS,
         a_native_select_picks_an_option_behind_an_optgroup,
+        covers=frozenset({"field:select.value", "step:select"}),
     ),
     Scenario(
         "native select disabled option",
@@ -145,10 +167,19 @@ SCENARIOS = [
             "patchright": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
             "camoufox": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
         },
+        covers=frozenset({"option:timeout"}),
     ),
     Scenario(
         "checkbox and radio",
         Section.STEPS,
         an_invisible_checkbox_and_a_radio_group_toggle,
+        covers=frozenset(
+            {
+                "field:check.checked",
+                "field:check.selector",
+                "session:set_checked",
+                "step:check",
+            }
+        ),
     ),
 ]

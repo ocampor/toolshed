@@ -75,25 +75,38 @@ SCENARIOS = [
         "flow failure captures artifacts",
         Section.FLOWS,
         a_failing_wait_step_captures_screenshot_and_dom,
+        covers=frozenset(
+            {
+                "field:wait_for.selector",
+                "field:wait_for.state",
+                "session:take_dom_snapshot",
+                "session:take_screenshot",
+                "step:wait_for",
+            }
+        ),
     ),
     Scenario(
         "flow failure flags a login wall",
         Section.FLOWS,
         a_failure_behind_a_login_wall_asks_for_a_human,
+        covers=frozenset({"api:human_needed.password", "session:probe"}),
     ),
     Scenario(
         "screenshot is a png",
         Section.FLOWS,
         a_screenshot_is_a_png,
+        covers=frozenset({"session:screenshot_bytes", "session:take_screenshot"}),
     ),
     Scenario(
         "parse writes typed rows",
         Section.FLOWS,
         a_parse_step_writes_its_typed_rows_to_disk,
+        covers=frozenset({"field:parse.path"}),
     ),
     Scenario(
         "optional step swallows a timeout",
         Section.FLOWS,
         an_optional_wait_step_turns_a_timeout_into_a_skip,
+        covers=frozenset({"option:optional"}),
     ),
 ]

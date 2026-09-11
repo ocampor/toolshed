@@ -5,6 +5,7 @@ import sys
 import click
 
 from llm_browser_conformance import history
+from llm_browser_conformance.coverage import coverage_document
 from llm_browser_conformance.drivers import CONFORMANCE_DRIVERS, installed_drivers
 from llm_browser_conformance.gaps import known_gaps_document
 from llm_browser_conformance.runner import (
@@ -48,6 +49,12 @@ from llm_browser_conformance.scenarios import select
     help="Print docs/known-gaps.md as the scenarios define it, and exit.",
 )
 @click.option(
+    "--coverage",
+    "print_coverage",
+    is_flag=True,
+    help="Print docs/coverage.md as the scenarios define it, and exit.",
+)
+@click.option(
     "--delay",
     "delay_ms",
     default=DEFAULT_DELAY_MS,
@@ -61,6 +68,7 @@ def main(
     only_failed: bool,
     as_json_output: bool,
     print_gaps: bool,
+    print_coverage: bool,
     delay_ms: int,
 ) -> None:
     """Run every conformance scenario against one or all installed drivers.
@@ -76,6 +84,9 @@ def main(
     """
     if print_gaps:
         click.echo(known_gaps_document(), nl=False)
+        return
+    if print_coverage:
+        click.echo(coverage_document(), nl=False)
         return
     selected = list(drivers) or installed_drivers()
     if not selected:

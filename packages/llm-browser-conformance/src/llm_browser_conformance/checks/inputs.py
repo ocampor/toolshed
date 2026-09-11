@@ -113,51 +113,61 @@ SCENARIOS = [
         "dynamic loading",
         Section.INPUTS,
         dynamic_loading_spinner_then_result,
+        covers=frozenset({"session:click", "session:find", "session:wait_for_element"}),
     ),
     Scenario(
         "dynamic controls toggle",
         Section.INPUTS,
         dynamic_controls_remove_then_re_add,
+        covers=frozenset({"session:click"}),
     ),
     Scenario(
         "dynamic controls enable",
         Section.INPUTS,
         dynamic_controls_enable_makes_the_input_writable,
+        covers=frozenset({"session:click", "session:fill"}),
     ),
     Scenario(
         "fill/type/check",
         Section.INPUTS,
         fill_type_and_check_land_their_values,
+        covers=frozenset({"session:fill", "session:set_checked", "session:type"}),
     ),
     Scenario(
         "select_option",
         Section.INPUTS,
         select_option_changes_the_selects_value,
+        covers=frozenset({"session:select_option"}),
     ),
     Scenario(
         "hidden input is readable",
         Section.INPUTS,
         a_hidden_input_is_readable_without_being_visible,
+        covers=frozenset({"session:find"}),
     ),
     Scenario(
         "click is trusted",
         Section.INPUTS,
         a_click_is_a_trusted_event,
+        covers=frozenset({"session:click"}),
     ),
     Scenario(
         "press is trusted",
         Section.INPUTS,
         a_key_press_is_a_trusted_event,
+        covers=frozenset({"session:press"}),
     ),
     Scenario(
         "typing fires trusted input",
         Section.INPUTS,
         typing_fires_trusted_input_events,
+        covers=frozenset({"session:type"}),
     ),
     Scenario(
         "typing fires trusted keydown",
         Section.INPUTS,
         typing_fires_trusted_key_events,
+        covers=frozenset({"session:type"}),
     ),
     Scenario(
         "dispatch is untrusted",
@@ -170,10 +180,12 @@ SCENARIOS = [
             "this side, and a driver-neutral caller must not rely on the "
             "distinction"
         },
+        covers=frozenset({"session:click"}),
     ),
     Scenario(
         "revealed control is fillable",
         Section.INPUTS,
         a_revealed_control_becomes_fillable,
+        covers=frozenset({"session:fill", "session:wait_for_element"}),
     ),
 ]
