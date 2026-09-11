@@ -74,6 +74,7 @@ class PwKeyboard(Protocol):
 
 
 class PwMouse(Protocol):
+    def move(self, x: float, y: float) -> None: ...
     def wheel(self, delta_x: int, delta_y: int) -> None: ...
 
 

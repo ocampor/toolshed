@@ -6,6 +6,7 @@ self-contained page and the flow that has to survive it.
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 from llm_browser.models import FlowSuccess
@@ -18,9 +19,12 @@ from llm_browser_conformance.checks.support import (
     run,
     texts,
 )
-from llm_browser_conformance.scenario import Context, Scenario, Section
+from llm_browser_conformance.scenario import POLL_MS, Context, Scenario, Section
 
 DOWNLOAD_PAYLOAD = "conformance-payload"
+
+# A wheel event is delivered synchronously; the scroll it causes is not.
+SCROLL_SETTLE_S = 2.0
 
 
 def an_overlay_is_waited_out_before_the_click(ctx: Context) -> None:
@@ -48,6 +52,27 @@ def a_click_on_a_still_disabled_button(ctx: Context) -> str:
     if clicked == "clicked":
         return "click waited for the button to become enabled"
     return "click landed on the disabled button and did nothing"
+
+
+def scrolling_moves_the_page(ctx: Context) -> None:
+    """A `scroll` step that quietly does nothing is worse than one that
+    fails: the flow keeps going against a page it never moved."""
+    ctx.visit("sticky-header.html")
+    assert ctx.js("window.scrollY") == 0
+    try:
+        ctx.session.scroll(0, 800)
+    except NotImplementedError as exc:
+        raise ctx.skip(str(exc)) from exc
+    assert scrolled_within(ctx, SCROLL_SETTLE_S), "the page never moved"
+
+
+def scrolled_within(ctx: Context, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if float(ctx.js("window.scrollY")) > 0:
+            return True
+        time.sleep(POLL_MS / 1000)
+    return False
 
 
 def an_open_shadow_root_is_reachable(ctx: Context) -> None:
@@ -143,6 +168,11 @@ SCENARIOS = [
         "disabled button",
         Section.STEPS,
         a_click_on_a_still_disabled_button,
+    ),
+    Scenario(
+        "scroll",
+        Section.STEPS,
+        scrolling_moves_the_page,
     ),
     Scenario(
         "shadow dom",

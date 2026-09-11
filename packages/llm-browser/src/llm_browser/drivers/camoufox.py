@@ -108,6 +108,18 @@ class CamoufoxDriver(PlaywrightDriverBase):
             locator.type(ch, delay=0)
             jittered_sleep(DEFAULT_TYPE_CHAR_DELAY, _RNG)
 
+    def scroll(self, page: Any, dx: int, dy: int) -> None:
+        """Park the cursor over the content before the wheel turns.
+
+        Gecko delivers a wheel event to whatever is under the pointer, and
+        Playwright's pointer starts off the page — so the event landed
+        nowhere and the page never moved. Chromium scrolls either way, which
+        is why only this driver needs it.
+        """
+        width, height = page.evaluate("() => [window.innerWidth, window.innerHeight]")
+        page.mouse.move(width / 2, height / 2)
+        page.mouse.wheel(dx, dy)
+
     def page(self, handle: DriverHandle) -> Any:
         if self._page is None:
             raise RuntimeError(
