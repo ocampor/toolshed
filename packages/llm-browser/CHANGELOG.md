@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.10.0 — 2026-09-11
+
+### Added
+
+- `solve_captcha` step — crops `image:`, hands the PNG to a solver the caller
+  injects, types the normalized answer into `input:`, clicks `submit:` if set,
+  and reads the page's verdict: `error:` visible is a rejection and the next of
+  `retries:` attempts crops again, `input:` detached is acceptance. `solver:`
+  is `auto` / `sampling` / `human`, `prompt:` is passed through to the solver,
+  and the step's row in `outputs` is `{"attempts": n, "solver": mode}` — never
+  the answer.
+- `llm_browser.CaptchaSolver` — `(png_bytes, prompt) -> reply`, and
+  `run_flow(..., solver=)` / `run_loaded_flow` / `run_subflow` / `execute_step`
+  thread one down to every `solve_captcha` step, sub-flows included.
+- `llm_browser.captcha.normalize_answer` — strips everything but letters and
+  digits, accepts 3-12 alphanumeric characters, and reads `UNREADABLE` as
+  "no answer".
+- `results.CaptchaResult(attempts, solver)`.
+- `ErrorResult.human_needed` — an action's own verdict that retrying will not
+  help; `execute_step` ORs it into `FlowError.human_needed`.
+- `screenshot: selector:` and `BrowserSession.screenshot_bytes(selector)` —
+  capture one element instead of the viewport.
+- `Driver.screenshot_element_bytes(locator)` — not abstract, so a page-only
+  backend leaves it raising `NotImplementedError`. Implemented on the
+  Playwright family and on nodriver.
+- `BrowserSession.element_exists(..., state=)` — the bool wait answers about
+  any `WaitState`, not just `attached`.
+- `selector_map` `ref:` expansion for any selector-valued step key, so a step
+  naming several selectors can use the map for all of them.
+
+### Fixed
+
+- A `wait_for` with `state: detached` no longer unwinds when the navigation it
+  is watching for destroys the execution context mid-poll; that one driver
+  message reads as "not gone yet" and the next tick re-asks.
+
 ## 0.9.1 — 2026-09-11
 
 - `NodriverDriver.close()` calls `Browser.stop()` directly instead of `self.run(Browser.stop())`.
