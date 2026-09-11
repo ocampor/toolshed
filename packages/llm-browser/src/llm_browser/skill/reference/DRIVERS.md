@@ -7,8 +7,9 @@ landscape and each driver's fine print.
 
 `Behavior.human()` is **timing-only** humanization: inter-key gaps, click jitter, mouse paths,
 pre/post action pauses. It applies to every `BrowserSession` input method — `click`, `fill`,
-`type`, `press`, `select_option`, `set_checked`, `pick`, `download_file` — and so to the flow
-steps built on them: `session.click("#go")` gets the same humanization a `click` step gets.
+`type`, `press`, `select_option`, `set_checked`, `pick`, `download_file` (which returns the
+file's bytes, never writes them) — and so to the flow steps built on them:
+`session.click("#go")` gets the same humanization a `click` step gets.
 Calls on a raw driver locator or page (`session.find(...)`, `session.get_page()`) bypass it.
 
 Timing humanization does NOT modify runtime JS fingerprints (navigator, WebGL, canvas, CDP
@@ -41,6 +42,7 @@ ship a wrong value*, so pick the driver before you pick the selector.
 | `FallbackSelector` | yes | yes | yes, if both branches are CSS |
 | `press` named keys (`Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, arrows) | yes | yes | yes |
 | `press` chords (`Control+a`) | yes | yes | **no** — anything outside `NAMED_KEYS` goes to `el.send_keys(key)`, which **types the literal text `Control+a` into the field and reports success** |
+| `download` step / `download_file` | yes | yes | **no** — `download_bytes` raises `NotImplementedError` |
 
 On `nodriver`, reach a label-anchored control with CSS instead: `:has()` and attribute selectors
 cover most of what a `//label[...]/following::…` XPath was doing, and an id with the
@@ -62,8 +64,11 @@ ABC, not against a browser API. Its class docstring is the contract, and the fiv
 are the parts a new backend gets wrong: which methods may block on the DOM (only
 `wait_for_load` — every read answers about the page as it is now), that input must be trusted
 events, which methods may run JS, that `first`/`nth` stay re-resolvable, and that timeouts are
-milliseconds and raise the builtin `TimeoutError`. `tests/test_driver_contract.py` checks the
-read rules against each driver with fakes; add yours to its fixture. Conformance suite:
+milliseconds and raise the builtin `TimeoutError`. Capture returns bytes, never a path:
+`screenshot_bytes(page)` hands back PNG and `download_bytes(page, trigger)` a `BytesResult`, so
+a backend whose API can only write a file spools it to a temporary directory and removes it
+before returning. `tests/test_driver_contract.py` checks the read rules against each driver with
+fakes; add yours to its fixture. Conformance suite:
 `packages/llm-browser-conformance` (separate package, in progress).
 
 ## nodriver — detectable surfaces

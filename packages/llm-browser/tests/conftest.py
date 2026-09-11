@@ -5,7 +5,10 @@ import pytest
 
 from llm_browser.behavior import Behavior
 from llm_browser.models import PageProbe
+from llm_browser.results import BytesResult
 from llm_browser.session import BrowserSession
+
+PNG = b"\x89PNG\r\n\x1a\nfake"
 
 
 @pytest.fixture
@@ -17,7 +20,11 @@ def mock_session(tmp_path: Path) -> MagicMock:
     session.capture = "screenshot"
     session.driver = MagicMock()
     session.get_page.return_value = MagicMock()
-    session.take_screenshot.return_value = tmp_path / "screenshot.png"
+    session.screenshot_bytes.return_value = PNG
+    session.dom_snapshot.return_value = "<html><body>hi</body></html>"
+    session.download_file.return_value = BytesResult(
+        name="download.bin", content=b"payload"
+    )
     session.element_exists.return_value = True
     session.probe.return_value = PageProbe()
     locator = MagicMock()

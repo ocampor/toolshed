@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from llm_browser.cli import main, run_attached
+from llm_browser.models import FlowSuccess
 from llm_browser.session import BrowserSession
 from tests.test_attach import AttachStubDriver
 
@@ -53,11 +54,11 @@ def test_run_attached_is_stateless(base: BrowserSession) -> None:
     def record(session: BrowserSession) -> object:
         seen.append(session)
         assert session.stateless
-        assert not session._state_file.exists()
+        assert not session.state.path.exists()
         return None
 
     run_attached(base, CDP_URL, record)
-    assert not seen[0]._state_file.exists()
+    assert not seen[0].state.path.exists()
 
 
 def test_run_attached_uses_a_unique_session_id(base: BrowserSession) -> None:
@@ -90,7 +91,10 @@ def invoke_run(
 ) -> tuple[Any, AttachStubDriver]:
     driver = AttachStubDriver()
     monkeypatch.setattr("llm_browser.session.resolve_driver", lambda _d: driver)
-    monkeypatch.setattr("llm_browser.cli.run_cli_flow", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(
+        "llm_browser.cli.run_cli_flow",
+        lambda *a, **k: FlowSuccess(step="s1"),
+    )
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("flow.yml").write_text(FLOW_YAML)

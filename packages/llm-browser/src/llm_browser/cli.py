@@ -6,9 +6,10 @@ import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, cast, get_args
+from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
@@ -25,14 +26,18 @@ from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
+    FlowError,
     FlowResult,
     RunFlowStep,
+    SubFlow,
     WaitState,
     check_settle_budget,
 )
+from llm_browser.results import BytesResult
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
 from llm_browser.skill_install import install_skill, skill_text
+from llm_browser.steps import resolve_step
 
 
 @contextmanager
@@ -52,6 +57,41 @@ def url_argument_errors() -> Iterator[None]:
         yield
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
+
+
+def prepare_output_path(path: str | Path) -> Path:
+    """The absolute path to write ``path`` to, with its parent created.
+
+    A caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first, and
+    what is reported back reads the same from any working directory.
+
+    For a path the *user* typed (``--path``). A path that came out of a flow
+    goes through :func:`contained_output_path`, which will not leave its
+    directory.
+
+    Writing is the CLI's job alone; the library returns its output in memory.
+    """
+    out = Path(path).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def contained_output_path(directory: Path, relative: str) -> Path:
+    """Where ``relative`` lands under ``directory``, refusing to leave it.
+
+    ``path:`` is templated from ``--data`` before it gets here and a
+    download's filename is whatever the server called it, so both are
+    untrusted: ``..`` segments and absolute paths would otherwise write
+    wherever they pleased, and ``--out-dir`` promises they cannot.
+    """
+    root = directory.resolve()
+    target = (root / relative).resolve()
+    if not target.is_relative_to(root):
+        raise click.UsageError(
+            f"refusing to write {relative!r} outside {root}: "
+            "a step path is relative to the output directory"
+        )
+    return target
 
 
 def _output(data: object) -> None:
@@ -320,6 +360,25 @@ def goto(ctx: click.Context, url: str) -> None:
         "invocations can run in parallel against the same browser."
     ),
 )
+@click.option(
+    "--out-dir",
+    "out_dir",
+    default=".",
+    help="Directory every step `path:` is written under. Default: the CWD.",
+)
+@click.option(
+    "--capture-dir",
+    "capture_dir",
+    default=None,
+    help="Where a failure's screenshot.png / dom.html land. Default: the session dir.",
+)
+@click.option(
+    "--capture-level",
+    "capture_level",
+    type=click.Choice([level.value for level in SanitizeLevel]),
+    default=SanitizeLevel.HIGH.value,
+    help="How hard a failure's DOM snapshot is sanitized. Default: high.",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -329,10 +388,18 @@ def run(
     selector_map_path: str | None,
     from_step: str | None,
     cdp_url: str | None,
+    out_dir: str,
+    capture_dir: str | None,
+    capture_level: str,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
     Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
+
+    The run itself writes nothing: every step result comes back in memory
+    and this command is what puts it on disk. A step's `path:` is written
+    under --out-dir; a screenshot or download without one lands there under
+    its own name; a failure's captures go to --capture-dir.
 
     With --cdp-url the flow runs one-shot on an already-running Chromium:
 
@@ -341,6 +408,7 @@ def run(
     """
 
     session: BrowserSession = ctx.obj["session"]
+    session.capture_level = SanitizeLevel(capture_level)
     selector_map = (
         load_selector_map(Path(selector_map_path))
         if selector_map_path and Path(selector_map_path).exists()
@@ -351,15 +419,162 @@ def run(
     flow = load_flow_document(document, selector_map=selector_map)
 
     def execute(target: BrowserSession) -> object:
-        return run_cli_flow(
+        result = run_cli_flow(
             target, flow, data, from_step=from_step, flow_path=file_path(flow_path)
+        )
+        return write_run(
+            result,
+            flow,
+            data,
+            out_dir=Path(out_dir),
+            capture_dir=Path(capture_dir) if capture_dir else target.session_dir,
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
-    if endpoint and not ctx.obj.get("target_id"):
-        _output(run_attached(session, endpoint, execute))
-    else:
-        _output(execute(session))
+    finished = cast(
+        CliFlowRun,
+        run_attached(session, endpoint, execute)
+        if endpoint and not ctx.obj.get("target_id")
+        else execute(session),
+    )
+    click.echo(json.dumps(finished.payload, ensure_ascii=False))
+    if isinstance(finished.result, FlowError):
+        raise SystemExit(1)
+
+
+# --- Writing what a run returned ---
+#
+# The library keeps every output in memory; these are the only functions in
+# the package that turn one into a file.
+
+
+class CliFlowRun(NamedTuple):
+    result: FlowResult
+    payload: dict[str, Any]
+
+
+def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
+    """Qualified step name to the ``path:`` that step asked the CLI to write.
+
+    The value comes from the resolved step, so ``path: out/{{ id }}.png``
+    names the file the flow meant. The *key* comes from the unresolved one,
+    because that is what ``run_loaded_flow`` keys ``outputs`` on — a step
+    whose ``name:`` is itself templated would otherwise never match its own
+    output, and its file would silently not be written.
+    """
+    paths: dict[str, str] = {}
+    flow_data = flow.validate_data(data)
+    for step in flow.steps:
+        resolved = resolve_step(step, flow_data)
+        if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
+            paths.update(declared_paths(resolved.flow, resolved.data))
+            continue
+        path = getattr(resolved, "path", None)
+        if path:
+            paths[step.qualified_name] = str(path)
+    return paths
+
+
+def as_text(output: object) -> str:
+    """A non-bytes output as the file a ``path:`` asks for: ``dom`` text
+    verbatim, ``read`` / ``parse`` rows as JSON.
+
+    ``to_json`` rather than ``json.dumps``: a ``parse`` schema may declare
+    ``Decimal``, ``date`` or ``datetime``, and rows reach here in python mode
+    carrying the real objects. ``json.dumps`` cannot encode any of them, and
+    the resulting ``TypeError`` would replace the flow result with a
+    traceback.
+    """
+    if isinstance(output, str):
+        return output
+    return to_json(output).decode()
+
+
+def write_outputs(
+    outputs: dict[str, object], paths: dict[str, str], out_dir: Path
+) -> dict[str, str]:
+    """Write the run's outputs, returning step name to file written.
+
+    Bytes are always written — a PNG on stdout helps nobody — under the
+    step's ``path:`` or, failing that, the name the payload came with.
+    Text and rows are written only where the step asked for a file; they
+    stay in the JSON either way.
+    """
+    targets = planned_outputs(outputs, paths, out_dir)
+    for step, (target, payload) in targets.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(payload, bytes):
+            target.write_bytes(payload)
+        else:
+            target.write_text(payload)
+    return {step: str(target) for step, (target, _) in targets.items()}
+
+
+def planned_outputs(
+    outputs: dict[str, object], paths: dict[str, str], out_dir: Path
+) -> dict[str, tuple[Path, bytes | str]]:
+    """Every file this run is about to write, resolved and bounds-checked.
+
+    Planned in full before anything is written so that a path trying to leave
+    ``--out-dir`` fails the command with nothing on disk, rather than half a
+    run's output and an error.
+    """
+    planned: dict[str, tuple[Path, bytes | str]] = {}
+    for step, output in outputs.items():
+        path = paths.get(step)
+        if isinstance(output, BytesResult):
+            # The fallback name is the server's `Content-Disposition`
+            # filename: take the basename, never its directories.
+            target = contained_output_path(out_dir, path or Path(output.name).name)
+            planned[step] = (target, output.content)
+        elif path:
+            planned[step] = (contained_output_path(out_dir, path), as_text(output))
+    return planned
+
+
+def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
+    """Write the failing page's screenshot and DOM, returning what was written."""
+    written: dict[str, str] = {}
+    if error.screenshot is not None:
+        target = contained_output_path(capture_dir, "screenshot.png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(error.screenshot)
+        written["screenshot"] = str(target)
+    if error.dom is not None:
+        target = contained_output_path(capture_dir, "dom.html")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(error.dom)
+        written["dom"] = str(target)
+    return written
+
+
+def describe_run(
+    result: FlowResult, outputs: dict[str, str], captures: dict[str, str]
+) -> dict[str, Any]:
+    """The JSON this command prints: every payload the CLI put on disk is
+    reported as its path rather than as base64.
+
+    ``outputs`` is keyed by step and ``captures`` by ``screenshot`` / ``dom``,
+    which is why they stay apart — a step named ``screenshot`` would otherwise
+    take the failing page's capture path as its own output.
+    """
+    payload: dict[str, Any] = result.model_dump(mode="json", exclude_none=True)
+    payload["outputs"] = {**payload.get("outputs", {}), **outputs}
+    return {**payload, **captures}
+
+
+def write_run(
+    result: FlowResult,
+    flow: Flow,
+    data: dict[str, object],
+    out_dir: Path,
+    capture_dir: Path,
+) -> CliFlowRun:
+    outputs = write_outputs(result.outputs, declared_paths(flow, data), out_dir)
+    captures = (
+        write_captures(result, capture_dir) if isinstance(result, FlowError) else {}
+    )
+    return CliFlowRun(result, describe_run(result, outputs, captures))
 
 
 async def resolve_flow_options(
@@ -427,6 +642,7 @@ def run_attached(
         driver=base.driver,
         behavior=base.behavior,
         capture=base.capture,
+        capture_level=base.capture_level,
         executable_path=base.executable_path,
         stateless=True,
     )
@@ -516,12 +732,22 @@ def validate(
 
 
 @main.command()
+@click.option(
+    "--path",
+    default=None,
+    help="Destination PNG path; defaults to <session dir>/screenshot.png.",
+)
 @click.pass_context
-def screenshot(ctx: click.Context) -> None:
-    """Take a screenshot of the current page."""
+def screenshot(ctx: click.Context, path: str | None) -> None:
+    """Take a screenshot of the current page and write it out.
+
+    The library hands back the PNG bytes; writing them is this command's job.
+    """
     session: BrowserSession = ctx.obj["session"]
-    path = session.take_screenshot()
-    _output({"screenshot": str(path)})
+    content = session.screenshot_bytes()
+    target = prepare_output_path(path or session.session_dir / "screenshot.png")
+    target.write_bytes(content)
+    _output({"screenshot": str(target)})
 
 
 def _find_all_output(session: BrowserSession, selector: str) -> None:
@@ -639,13 +865,22 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
 
 @main.command()
 @click.option("--selector", required=True, help="Download link/button selector.")
-@click.option("--path", required=True, help="Destination file path.")
+@click.option(
+    "--path",
+    default=None,
+    help="Destination file path; defaults to the filename the server suggests.",
+)
 @click.pass_context
-def download(ctx: click.Context, selector: str, path: str) -> None:
-    """Download a file by clicking a link/button."""
+def download(ctx: click.Context, selector: str, path: str | None) -> None:
+    """Download a file by clicking a link/button.
+
+    The library hands back the bytes; writing them is this command's job.
+    """
     session: BrowserSession = ctx.obj["session"]
-    result = session.download_file(selector, path)
-    _output({"path": str(result)})
+    result = session.download_file(selector)
+    target = prepare_output_path(path or result.name)
+    target.write_bytes(result.content)
+    _output({"path": str(target), "name": result.name, "bytes": len(result.content)})
 
 
 @main.command()

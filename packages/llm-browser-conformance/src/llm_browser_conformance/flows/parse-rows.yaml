@@ -1,4 +1,5 @@
-# `parse` coerces each row to the schema, then writes the rows to `path`.
+# `parse` coerces each row to the schema; `path:` is for the CLI and the
+# runner has to ignore it.
 steps:
   - name: rows
     action: parse

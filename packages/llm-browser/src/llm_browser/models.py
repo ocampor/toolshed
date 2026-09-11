@@ -23,12 +23,13 @@ from llm_browser.constants import (
     DEFAULT_WAIT_TIMEOUT_MS,
 )
 from llm_browser.parse import ExtractField
+from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
 
 # --- Step types ---
 
 
-CaptureMode = Literal["screenshot", "dom", "both"]
+CaptureMode = Literal["screenshot", "dom", "both", "none"]
 
 WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
 
@@ -113,6 +114,14 @@ class GotoStep(BaseStep):
 
 
 class ScreenshotStep(BaseStep):
+    """``path`` is a CLI instruction, not a runner one.
+
+    The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
+    in ``FlowSuccess.outputs``; the library never writes a file. ``path`` is
+    where ``llm-browser run`` puts those bytes — relative to ``--out-dir`` —
+    and an embedding caller is free to ignore it.
+    """
+
     action: Literal["screenshot"]
     path: str | None = None
 
@@ -126,6 +135,7 @@ class ReadStep(SelectorStep):
 
     action: Literal["read"]
     extract: dict[str, ExtractField] = {}
+    # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
     @field_validator("extract", mode="before")
@@ -146,7 +156,7 @@ class ParseStep(SelectorStep):
 
     Like ``read``, but every row is validated against the schema and
     coerced to a Pydantic model. ``schema_path`` is CWD-relative or
-    absolute (same convention as ``download.path``).
+    absolute. ``path`` is CLI-only — see :class:`ScreenshotStep`.
     """
 
     action: Literal["parse"]
@@ -157,12 +167,18 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
 
 class DownloadStep(SelectorStep):
+    """``path`` is a CLI instruction, not a runner one — see
+    :class:`ScreenshotStep`. Left unset, ``llm-browser run`` falls back to the
+    filename the server suggested.
+    """
+
     action: Literal["download"]
-    path: str = Field(..., min_length=1)
+    path: str | None = None
 
 
 class ThinkStep(BaseStep):
@@ -395,7 +411,6 @@ class SessionResult(BaseModel):
     url: str | None = None
     cdp_url: str | None = None
     target_id: str | None = None
-    screenshot: str | None = None
 
 
 class SessionInfo(BaseModel):
@@ -430,8 +445,10 @@ class FlowSuccess(BaseModel):
     Carries the name of the last step run (or ``"end"`` for an empty
     flow) — mostly informational.
 
-    ``outputs`` holds every ``read`` / ``parse`` / ``dom`` result, keyed by
-    qualified step name; screenshots stay on disk and never land here.
+    ``outputs`` holds every step result the flow produced, keyed by qualified
+    step name: rows for ``read`` / ``parse``, text for ``dom``, and a
+    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
+    Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
     """
 
     step: str
@@ -452,11 +469,17 @@ class FlowError(BaseModel):
 
     ``outputs`` holds the results collected before the failing step, keyed
     the same way as :attr:`FlowSuccess.outputs`.
+
+    ``screenshot`` and ``dom`` are the failing page itself, in memory: PNG
+    bytes and sanitized HTML text, controlled by ``BrowserSession(capture=)``.
+    Nothing is written — ``model_dump(mode="json")`` base64-encodes the PNG
+    and validating that back decodes it, so the model round-trips, and a
+    caller that wants files writes them.
     """
 
     step: str
     data: object = None
-    screenshot: str | None = None
+    screenshot: PayloadBytes | None = None
     dom: str | None = None
     human_needed: bool = False
     retry_hint: RetryHint | None = None

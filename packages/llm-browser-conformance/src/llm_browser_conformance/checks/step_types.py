@@ -11,7 +11,6 @@ import asyncio
 import concurrent.futures
 import datetime
 import decimal
-import json
 import tempfile
 import time
 from pathlib import Path
@@ -21,6 +20,7 @@ from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import FlowSuccess
+from llm_browser.results import BytesResult
 from pydantic import ValidationError
 
 from llm_browser_conformance.checks.support import (
@@ -29,6 +29,7 @@ from llm_browser_conformance.checks.support import (
     expect_success,
     one_text,
     texts,
+    wrote_nothing,
 )
 from llm_browser_conformance.scenario import (
     FLOWS_DIR,
@@ -110,28 +111,35 @@ def goto_refuses_a_url_that_is_not_http(ctx: Context) -> None:
     assert "http or https" in message, message
 
 
-def both_screenshot_steps_write_a_png(ctx: Context) -> None:
-    session_shot = ctx.session.session_dir / "screenshot.png"
-    # Removed first: the runner captures a screenshot there on any failure, so
-    # a leftover would let a step that wrote nothing pass.
-    session_shot.unlink(missing_ok=True)
+def both_screenshot_steps_return_png_bytes(ctx: Context) -> None:
+    """With a ``path:`` or without one, a screenshot step returns the PNG.
+
+    ``path:`` is an instruction to the CLI — the runner has to leave it alone.
+    """
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "shot.png"
-        outputs = expect_success(ctx, "form.html", "screenshot", path=str(target))
-        assert target.read_bytes().startswith(PNG_MAGIC)
-    assert session_shot.read_bytes().startswith(PNG_MAGIC)
-    assert outputs == {}, f"screenshots must stay on disk, got {outputs}"
+        with wrote_nothing(ctx):
+            outputs = expect_success(ctx, "form.html", "screenshot", path=str(target))
+        assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
+    for step in ("explicit", "session"):
+        shot = outputs[step]
+        assert isinstance(shot, BytesResult), shot
+        assert shot.content.startswith(PNG_MAGIC), shot.content[:16]
+        assert shot.media_type == "image/png"
+        assert shot.name == f"{step}.png"
 
 
 def read_pulls_a_different_attribute_per_field(ctx: Context) -> None:
+    """``path:`` is an instruction to the CLI — the runner has to leave it
+    alone and hand the rows back instead."""
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "rows.json"
-        outputs = expect_success(
-            ctx, "rows-attributes.html", "read-attributes", path=str(target)
-        )
-        on_disk = json.loads(target.read_text())
+        with wrote_nothing(ctx):
+            outputs = expect_success(
+                ctx, "rows-attributes.html", "read-attributes", path=str(target)
+            )
+        assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
     assert outputs["rows"] == ATTRIBUTE_ROWS
-    assert on_disk == ATTRIBUTE_ROWS
 
 
 def parse_coerces_every_cell_to_its_declared_type(ctx: Context) -> None:
@@ -151,16 +159,20 @@ def parse_coerces_every_cell_to_its_declared_type(ctx: Context) -> None:
 
 
 def dom_truncates_at_max_depth(ctx: Context) -> None:
+    """``path:`` is an instruction to the CLI — the runner has to leave it
+    alone and hand the snippet back instead."""
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "tree.html"
-        outputs = expect_success(ctx, "nested-tree.html", "dom-depth", path=str(target))
-        on_disk = target.read_text()
+        with wrote_nothing(ctx):
+            outputs = expect_success(
+                ctx, "nested-tree.html", "dom-depth", path=str(target)
+            )
+        assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
     shallow = str(outputs["shallow"])
     whole = str(outputs["whole"])
     assert "level-1" in shallow, shallow
     assert "deep-leaf" not in shallow, shallow
     assert "deep-leaf" in whole, whole
-    assert on_disk == whole
 
 
 def think_sleeps_inside_the_window_it_declares(ctx: Context) -> None:
@@ -296,13 +308,12 @@ SCENARIOS = [
     Scenario(
         "screenshot step",
         Section.STEPS,
-        both_screenshot_steps_write_a_png,
+        both_screenshot_steps_return_png_bytes,
         covers=frozenset(
             {
                 "step:screenshot",
                 "field:screenshot.path",
-                "session:save_screenshot",
-                "session:take_screenshot",
+                "session:screenshot_bytes",
             }
         ),
     ),

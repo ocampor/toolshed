@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from llm_browser.models import FlowSuccess
+from llm_browser.results import BytesResult
 
 from llm_browser_conformance.checks.frames import enter_frame_or_skip
 from llm_browser_conformance.checks.session_api import (
@@ -23,6 +24,7 @@ from llm_browser_conformance.checks.support import (
     one_text,
     run,
     texts,
+    wrote_nothing,
 )
 from llm_browser_conformance.scenario import POLL_MS, Context, Scenario, Section
 
@@ -112,14 +114,27 @@ def a_redirect_is_followed_to_late_content(ctx: Context) -> None:
     assert one_text(outputs, "result") == "arrived"
 
 
-def a_download_lands_on_disk(ctx: Context) -> None:
+def a_download_comes_back_as_bytes(ctx: Context) -> None:
+    """The browser spools a download to a file of its own; the driver has to
+    read it back and remove it, so the caller gets bytes and no debris.
+
+    ``path:`` is an instruction to the CLI — the runner has to leave it alone.
+    """
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "payload.txt"
         try:
-            expect_success(ctx, "download.html", "download", path=str(target))
+            with wrote_nothing(ctx):
+                outputs = expect_success(
+                    ctx, "download.html", "download", path=str(target)
+                )
         except NotImplementedError as exc:
             raise ctx.skip(str(exc)) from exc
-        assert target.read_text().strip() == DOWNLOAD_PAYLOAD
+        assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
+    payload = outputs["download"]
+    assert isinstance(payload, BytesResult), payload
+    assert payload.content.decode().strip() == DOWNLOAD_PAYLOAD
+    assert payload.name == "download.txt", payload.name
+    assert payload.media_type == "text/plain", payload.media_type
 
 
 def tab_moves_focus_to_the_next_field(ctx: Context) -> None:
@@ -226,7 +241,7 @@ SCENARIOS = [
     Scenario(
         "download",
         Section.STEPS,
-        a_download_lands_on_disk,
+        a_download_comes_back_as_bytes,
         covers=frozenset(
             {
                 "field:download.path",

@@ -21,6 +21,7 @@ from llm_browser.behavior import (
 )
 from llm_browser.constants import READ_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
+from llm_browser.results import BytesResult, guess_media_type
 from llm_browser.scripts import extract_rows_js
 
 
@@ -62,7 +63,10 @@ class PwDownloadInfo(Protocol):
 
 
 class PwDownload(Protocol):
-    def save_as(self, path: str) -> None: ...
+    @property
+    def suggested_filename(self) -> str: ...
+    def path(self) -> str: ...
+    def delete(self) -> None: ...
 
 
 class PwDownloadContext(Protocol):
@@ -92,9 +96,9 @@ class PwPage(Protocol):
     def goto(self, url: str, wait_until: str = ...) -> None: ...
     def wait_for_load_state(self, state: str = ..., timeout: int = ...) -> None: ...
     def content(self) -> str: ...
-    def screenshot(self, path: str = ..., full_page: bool = ...) -> bytes: ...
+    def screenshot(self, full_page: bool = ...) -> bytes: ...
     def evaluate(self, script: str) -> Any: ...
-    def expect_download(self) -> PwDownloadContext: ...
+    def expect_download(self, timeout: float = ...) -> PwDownloadContext: ...
 
 
 def _pw_page(page: Any) -> PwPage:
@@ -238,19 +242,37 @@ class PlaywrightDriverBase(Driver):
     def page_url(self, page: Any) -> str:
         return _pw_page(page).url
 
-    def screenshot(self, page: Any, path: Path) -> None:
-        _pw_page(page).screenshot(path=str(path), full_page=False)
-
     def screenshot_bytes(self, page: Any) -> bytes:
         return _pw_page(page).screenshot(full_page=False)
 
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path:
-        with _pw_page(page).expect_download() as info:
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
+        """Playwright always spools the download to a temp file of its own;
+        ``delete()`` removes it once the bytes are in memory, on the failing
+        path as much as the succeeding one.
+
+        A download that fails or is cancelled makes ``path()`` raise
+        Playwright's own ``Error``, which is neither a timeout nor a
+        ``ValueError`` and so would unwind out of ``run_flow`` instead of
+        coming back as a failed step. Restated as a ``ValueError`` here, it is
+        the step result the caller is promised.
+        """
+        with _pw_page(page).expect_download(timeout=timeout_ms) as info:
             trigger()
-        info.value.save_as(str(output))
-        return output
+        download = info.value
+        try:
+            content = Path(download.path()).read_bytes()
+        except Exception as exc:
+            raise ValueError(
+                f"download did not complete: {' '.join(str(exc).split())[:200]}"
+            ) from exc
+        finally:
+            download.delete()
+        name = download.suggested_filename
+        return BytesResult(
+            name=name, content=content, media_type=guess_media_type(name)
+        )
 
     def enter_frame(self, locator: Any) -> Any:
         handle = _pw_loc(locator).element_handle()

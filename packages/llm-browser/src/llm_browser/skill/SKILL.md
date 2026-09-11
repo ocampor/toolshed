@@ -100,9 +100,9 @@ llm-browser --cdp-url http://localhost:9222 --target-id <target_id> screenshot
 - Branch in the parent, not the child: `when:` on the `run-flow` step keeps typed booleans and nulls intact, which templating a child's `data:` block cannot.
 - Write `when:` predicates exactly as FLOWS → Conditions spells them; `{ field: X, op: eq, value: V }` needs its `value:` key, and a missing one is a `KeyError` mid-run, not a load-time error. `element_missing` is the idempotent-toggle guard.
 - `recovery_*` flows: one per known dead end, named for what it undoes (`recovery_dismiss_modal.yaml`, `recovery_session_timeout.yaml`). Keep them idempotent, run them before retrying the failed step, and reference the same file from the happy path as an `optional: true` `run-flow` step.
-- Outputs: `read` + `extract` for rows and fields, `parse` + `schema_path` for typed rows, `dom` for a snapshot, `download` for files. Add `path:` to also land the result on disk.
+- Outputs: `read` + `extract` for rows and fields, `parse` + `schema_path` for typed rows, `dom` for a snapshot, `download` for files. Every result comes back in `FlowSuccess.outputs`; the runner writes nothing. `path:` is an instruction to `llm-browser run`, which writes that file under `--out-dir` — a Python caller gets the value and decides. A `screenshot` or `download` with no `path:` is still written under `--out-dir`, under the name its payload came with; `read`/`parse`/`dom` without one stay inline in the JSON.
 - Secrets are params, never literals: `value: "{{ password }}"`, supplied via `--data`, fetched and used in one shell command so the value never reaches tool output. From Python, `run_flow(..., redact=[password])` replaces it with `***` in outputs, logs, errors and retry hints.
-- Failure capture is automatic: `BrowserSession(capture="screenshot" | "dom" | "both")`. `FlowError` carries `step`, `screenshot`, `dom`, the `outputs` collected so far, and a `retry_hint` naming the failed step.
+- Failure capture is automatic: `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `FlowError` carries `step`, `screenshot` (PNG bytes) and `dom` (HTML text) in memory, the `outputs` collected so far, and a `retry_hint` naming the failed step. `llm-browser run` writes those two to `--capture-dir` (default: the session dir). `--capture-level` (`low`/`medium`/`high`/`xhigh`, default `high`) decides how hard the DOM snapshot is sanitized — reach for `medium` when you need the `href` the page would have followed.
 - `FlowError.human_needed` true means a password prompt, a live captcha or an interstitial — retrying is useless. Tell the user which screen it is, that they must log in or clear the challenge in the attached browser, and the exact `run --from <step>` to resume with.
 - There is no in-flow pause. A flow that needs a human ends before the human's step; the caller prints the instruction and is re-invoked afterwards against the same session.
 
@@ -142,7 +142,7 @@ llm-browser run --flow flows/search.yaml --selector-map flows/selector_map.yaml 
 ```
 
 1. `validate` first — it loads every sub-flow and expands every `ref` with no browser, so typos never cost a page load. It cannot catch a malformed `when:` predicate; those fail mid-run.
-2. `run` once; on failure read `step`, `screenshot` and `dom` from the JSON error.
+2. `run` once; on failure read `step` from the JSON error, plus the `screenshot` / `dom` paths `run` wrote and reported there.
 3. Re-probe just that region: `llm-browser dom --selector "form#search" --level medium --max-depth 3`.
 4. Fix **one** selector or one wait, then `run --from <failed step>` — never restart from the top while the browser is already on the right screen.
 5. Keep an attempts table in the PR or notes: step · selector tried · what the page actually showed · outcome.

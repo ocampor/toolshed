@@ -6,17 +6,20 @@ browser — every assertion is about ``FlowSuccess.outputs``, ``FlowError`` and
 ``RetryHint``, so a driver has almost nothing to disagree about.
 """
 
+import base64
 from collections.abc import Iterable
 
-from llm_browser.actions import ErrorResult
 from llm_browser.constants import REDACTED
 from llm_browser.flows import run_flow
 from llm_browser.models import FlowError, FlowResult, FlowSuccess
+from llm_browser.results import BytesResult, ErrorResult
 
 from llm_browser_conformance.checks.support import error_message
 from llm_browser_conformance.scenario import Context, Scenario, Section, raises
 
 SECRET = "hunter2-swordfish"
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
 def run(
@@ -49,7 +52,9 @@ def failed(result: FlowResult) -> FlowError:
     return result
 
 
-def outputs_hold_rows_and_dom_text_and_no_screenshot(ctx: Context) -> None:
+def outputs_hold_rows_and_dom_text_and_screenshot_bytes(ctx: Context) -> None:
+    """One output per kind: rows, text, and bytes. Nothing is a path — the
+    caller decides what, if anything, reaches disk."""
     success = succeeded(run(ctx, "result-rows.html", "result-outputs"))
     assert success.outputs["rows"] == [
         {"code": "A", "label": "alpha"},
@@ -59,8 +64,20 @@ def outputs_hold_rows_and_dom_text_and_no_screenshot(ctx: Context) -> None:
     panel = success.outputs["panel"]
     assert isinstance(panel, str), f"dom output is {type(panel).__name__}"
     assert "Panel text" in panel
-    assert "shot" not in success.outputs, "a screenshot is a path on disk, not output"
+    shot = success.outputs["shot"]
+    assert isinstance(shot, BytesResult), f"screenshot output is {type(shot).__name__}"
+    assert shot.content.startswith(PNG_MAGIC), shot.content[:16]
     assert success.step == "shot"
+
+
+def a_json_dump_base64s_the_bytes_it_cannot_hold(ctx: Context) -> None:
+    """``outputs`` keeps real bytes for a Python caller; a JSON consumer gets
+    base64 rather than a serializer crash."""
+    success = succeeded(run(ctx, "result-rows.html", "result-outputs"))
+    shot = success.outputs["shot"]
+    assert isinstance(shot, BytesResult), shot
+    encoded = success.model_dump(mode="json")["outputs"]["shot"]["content"]
+    assert base64.b64decode(encoded) == shot.content
 
 
 def a_failure_keeps_the_outputs_collected_before_it(ctx: Context) -> None:
@@ -127,8 +144,14 @@ SCENARIOS = [
     Scenario(
         "outputs shape",
         Section.RESULTS,
-        outputs_hold_rows_and_dom_text_and_no_screenshot,
+        outputs_hold_rows_and_dom_text_and_screenshot_bytes,
         covers=frozenset({"api:outputs.shape"}),
+    ),
+    Scenario(
+        "outputs json dump",
+        Section.RESULTS,
+        a_json_dump_base64s_the_bytes_it_cannot_hold,
+        covers=frozenset({"api:outputs.json"}),
     ),
     Scenario(
         "error keeps partial outputs",

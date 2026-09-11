@@ -6,6 +6,7 @@ scenario here adds a row to ``llm-browser-check`` and a pytest case at once.
 """
 
 from llm_browser_conformance.checks import (
+    command_line,
     controls,
     flows,
     frames,
@@ -32,6 +33,7 @@ ALL_SCENARIOS: list[Scenario] = [
     *results.SCENARIOS,
     *session_api.SCENARIOS,
     *stealth.SCENARIOS,
+    *command_line.SCENARIOS,
 ]
 
 

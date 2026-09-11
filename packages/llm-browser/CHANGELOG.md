@@ -1,5 +1,115 @@
 # Changelog
 
+## 0.9.0 — 2026-09-10
+
+The library never writes output files. Everything a flow or a session produces
+comes back in memory; the caller decides whether any of it reaches disk. Only
+`llm-browser` the CLI writes, and `tests/test_no_output_writes.py` reads the
+package's own AST to keep it that way.
+
+### Added
+
+- `llm_browser.results` — the action-result models, moved out of
+  `llm_browser.actions` so the driver layer can name one without importing the
+  action registry. `llm_browser.actions` still re-exports them.
+- `results.BytesResult(name, content, media_type)` — what a `download` or a
+  `screenshot` step returns, and what lands in `FlowSuccess.outputs` under that
+  step's qualified name. `content` stays `bytes` in memory;
+  `model_dump(mode="json")` base64-encodes it.
+- `BrowserSession.dom_snapshot() -> str` — sanitized HTML of the whole current
+  page, as text.
+- `llm-browser run --out-dir` (default: the CWD) and `--capture-dir` (default:
+  the session dir, as before). The CLI writes each step's `path:` under the out
+  dir — templates in the path resolved the way the runner resolves them — and a
+  failure's captures under the capture dir. A `screenshot` or `download` with no
+  `path:` is still written, under the name its payload came with.
+- `llm-browser screenshot --path` (default `<session dir>/screenshot.png`,
+  as before).
+- `capture="none"` is in `CaptureMode`; it always worked, it was never typed.
+- `BrowserSession(capture_level=SanitizeLevel.HIGH)`, `dom_snapshot(level=)` and
+  `llm-browser run --capture-level [low|medium|high|xhigh]` — how hard a
+  failure's DOM snapshot is sanitized is the caller's decision now, not a
+  constant. `high` (the default, and the previous behaviour) drops every `src`
+  and `href`, which is right for reading and wrong when where the page would
+  have gone next is the thing you need; `medium` keeps them. `sanitize_page_html`
+  takes the level and applies the same per-level passes as
+  `sanitize_html_fragment` — data-URI truncation at `medium`+, structural
+  collapse at `xhigh`, whitespace normalization — via a shared `sanitize_tree`,
+  so a page snapshot and a `dom` snippet at the same level agree.
+- `llm_browser.state.SessionState` — the session's `state.json`, in its own
+  module. It is the only file the library writes, and `state.py` is what the
+  no-output-writes guard exempts, rather than all of `session.py`.
+
+### Breaking
+
+- `path:` on `download`, `screenshot`, `read`, `parse` and `dom` is an
+  instruction to the CLI. The runner ignores it — an embedding caller reads the
+  value out of `outputs` instead. `DownloadStep.path` is optional as a result.
+- `FlowError.screenshot` is `bytes | None` (PNG) and `FlowError.dom` is
+  `str | None` (sanitized HTML text). Neither is a path. `redact=` scrubs the
+  failure DOM along with the rest of the result.
+- `BrowserSession.take_screenshot()`, `save_screenshot(path)` and
+  `take_dom_snapshot()` are removed; `screenshot_bytes()` and `dom_snapshot()`
+  replace them. `download_file(selector)` returns a `BytesResult` and no longer
+  takes an output path.
+- `BrowserSession.close()` drops `cleanup=` — there are no capture files left to
+  remove. `launch()` no longer takes a screenshot, so `SessionResult.screenshot`
+  is gone.
+- Driver contract: abstract `screenshot_bytes(page) -> bytes` replaces
+  `screenshot(page, path)`, and
+  `download_bytes(page, trigger, timeout_ms) -> BytesResult` replaces
+  `expect_download(page, trigger, output)`. A backend whose API can
+  only write a file spools it to a temporary directory and removes it before
+  returning: nodriver does that for a capture, and the Playwright family reads
+  back and deletes the download Playwright spools for it. nodriver still does
+  not implement downloads.
+- `results.PathResult` is gone with the paths it carried.
+- `llm_browser.paths.prepare_output_path` is gone; the CLI owns the one copy.
+- `llm-browser download --path` is optional and defaults to the filename the
+  server suggested. Every path the CLI reports is absolute.
+- `--out-dir` and `--capture-dir` are boundaries, not prefixes. A step `path:`
+  is templated from `--data` and a download's filename comes from the server,
+  so both are untrusted: a target that resolves outside its directory fails the
+  command with nothing written, and a download's fallback name is reduced to
+  its basename.
+- `BytesResult.content` and `FlowError.screenshot` decode the base64 they
+  serialize, so `model_validate(model_dump(mode="json"))` returns the bytes
+  that went in. (`pydantic.Base64Bytes` would have been the obvious type and is
+  the wrong one: it decodes on *construction* too, silently turning a real PNG
+  into a few bytes of garbage.) A caller still passing a path string where the
+  screenshot goes now gets a `ValidationError` instead of silence.
+- `Driver.download_bytes` takes the step's `timeout` and passes it to the wait
+  for the download, which previously always used Playwright's 30s default. A
+  download that starts and then fails comes back as a `FlowError` rather than
+  unwinding Playwright's own exception out of `run_flow`.
+
+### Migration
+
+- A step's `path:` still works — under `llm-browser run`, relative to
+  `--out-dir`. A Python caller that relied on the runner writing it reads
+  `FlowSuccess.outputs[step]` instead: `BytesResult` for `screenshot` and
+  `download`, rows for `read` and `parse`, text for `dom`.
+- Reading `FlowError.screenshot` / `.dom` as paths → they are the bytes and the
+  text. `Path(err.screenshot).read_bytes()` becomes `err.screenshot`.
+  `llm-browser run` still reports both as paths to the same files — but as
+  *absolute* paths now, so a script that compared them against the relative
+  value it passed in, or that `cd`s before reading, needs updating.
+- `llm-browser run` now writes a `screenshot` or `download` that declared **no**
+  `path:` into `--out-dir` (default: the CWD), under the name its payload came
+  with. Previously a `screenshot` without a `path:` went to the session dir and
+  a `download` could not run without one, so a CLI consumer gains files in its
+  working directory unless it passes `--out-dir`.
+- `llm-browser download` prints `name` and `bytes` alongside `path`. Anything
+  `jq`-ing that command for `.path` is unaffected; anything asserting on the
+  whole object is not.
+- `session.take_screenshot()` → `Path(...).write_bytes(session.screenshot_bytes())`
+- `session.save_screenshot(p)` → `p.write_bytes(session.screenshot_bytes())`
+- `session.take_dom_snapshot()` → `p.write_text(session.dom_snapshot())`
+- `session.download_file(sel, out)` → `p.write_bytes(session.download_file(sel).content)`
+- `session.close(cleanup=True)` → `session.close()`
+- A custom driver implements `screenshot_bytes` and `download_bytes` rather than
+  `screenshot` and `expect_download`.
+
 ## 0.8.0 — 2026-09-09
 
 ### Added

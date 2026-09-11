@@ -1,6 +1,5 @@
 """The `wait_for` flow step: model validation, failure capture, optional skip."""
 
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -19,6 +18,8 @@ from llm_browser.constants import (
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowError, FlowSuccess, WaitForStep, validate_step
 from llm_browser.steps import execute_step
+
+from tests.conftest import PNG
 
 TIMEOUT_MESSAGE = "'#late' did not become visible within 3000ms"
 
@@ -146,17 +147,16 @@ def _run_missing_element_flow(session: MagicMock, **step_overrides: Any) -> Any:
 
 
 def test_timeout_fails_the_flow_with_a_full_capture(
-    mock_session: MagicMock, tmp_path: Path
+    mock_session: MagicMock,
 ) -> None:
     mock_session.capture = "both"
-    mock_session.take_dom_snapshot.return_value = tmp_path / "dom.html"
 
     result = _run_missing_element_flow(mock_session)
 
     assert isinstance(result, FlowError)
     assert result.step == "await_it"
-    assert result.screenshot == str(tmp_path / "screenshot.png")
-    assert result.dom == str(tmp_path / "dom.html")
+    assert result.screenshot == PNG
+    assert result.dom == mock_session.dom_snapshot.return_value
 
 
 def test_failure_report_carries_the_selector_and_state_message(

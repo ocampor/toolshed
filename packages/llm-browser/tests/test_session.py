@@ -17,9 +17,9 @@ def test_save_and_load_state(tmp_path: Path) -> None:
         pid=9999, cdp_url="ws://127.0.0.1:9222/devtools", user_data_dir="/tmp/ud"
     )
     session._ensure_dirs()
-    session._save_state(info)
+    session.state.save(info)
 
-    loaded = session._load_state()
+    loaded = session.state.load()
     assert loaded is not None
     assert loaded.pid == 9999
     assert loaded.cdp_url == "ws://127.0.0.1:9222/devtools"
@@ -27,23 +27,23 @@ def test_save_and_load_state(tmp_path: Path) -> None:
 
 def test_load_state_missing(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path)
-    assert session._load_state() is None
+    assert session.state.load() is None
 
 
 def test_clear_state(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path)
     info = SessionInfo(pid=9999, cdp_url="ws://localhost:9222", user_data_dir="/tmp/ud")
     session._ensure_dirs()
-    session._save_state(info)
-    assert session._load_state() is not None
+    session.state.save(info)
+    assert session.state.load() is not None
 
-    session._clear_state()
-    assert session._load_state() is None
+    session.state.clear()
+    assert session.state.load() is None
 
 
 def test_clear_state_noop_when_missing(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path)
-    session._clear_state()  # should not raise
+    session.state.clear()  # should not raise
 
 
 def test_status_closed_no_state(tmp_path: Path) -> None:
@@ -151,4 +151,4 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
     session._page = MagicMock()
 
     session.screenshot_bytes()
-    assert not session._screenshot_path.exists()
+    assert not session.session_dir.exists()

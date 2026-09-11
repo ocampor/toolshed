@@ -183,7 +183,7 @@ def test_session_attach_persists_target_id(tmp_path: Path) -> None:
     result = session.attach(CDP_URL)
 
     assert result.target_id == "stub-tab"
-    info = session._load_state()
+    info = session.state.load()
     assert info is not None and info.target_id == "stub-tab"
     assert session._handle_from_state(info).extra["target_id"] == "stub-tab"
 
@@ -204,10 +204,10 @@ def test_stateless_session_never_writes_state(tmp_path: Path) -> None:
     )
     session.attach_to_tab(CDP_URL, "ABC")
 
-    assert not session._state_file.exists()
+    assert not session.state.path.exists()
     assert session.status().status == "open"
     session.close()
-    assert not session._state_file.exists()
+    assert not session.state.path.exists()
 
 
 def test_stateless_session_ignores_an_existing_state_file(tmp_path: Path) -> None:
@@ -218,7 +218,7 @@ def test_stateless_session_ignores_an_existing_state_file(tmp_path: Path) -> Non
         state_dir=tmp_path, driver=AttachStubDriver(), stateless=True
     )
     assert fresh.status().status == "closed"
-    assert stateful._state_file.exists()
+    assert stateful.state.path.exists()
 
 
 def test_build_session_without_cdp_url_is_stateful() -> None:

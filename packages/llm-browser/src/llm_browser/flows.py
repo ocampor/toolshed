@@ -5,7 +5,12 @@ out) and stage three (run it). Neither stage touches the filesystem — every
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from llm_browser.actions import ActionResult, ParsedResult, TextResult
+from llm_browser.results import (
+    ActionResult,
+    BytesResult,
+    ParsedResult,
+    TextResult,
+)
 from llm_browser.constants import OUTPUT_ACTIONS
 from llm_browser.flow_pipeline import parse_flow_yaml
 from llm_browser.models import (
@@ -78,7 +83,8 @@ def run_flow(
     redact: Iterable[str] = (),
 ) -> FlowResult:
     """``from_step`` does not propagate into sub-flows; children always run
-    top-to-bottom. ``redact`` leaves files written by ``path:`` steps alone."""
+    top-to-bottom. ``redact`` scrubs every text the result carries — outputs,
+    the error, and the failure DOM; binary payloads are left as they are."""
     secrets = clean_secrets(redact)
     with redacting_logs(secrets):
         result = run_loaded_flow(session, flow, data, from_step=from_step)
@@ -94,7 +100,7 @@ def run_flow(
         data=redact_secrets(result.data, secrets),
         outputs=redact_secrets(result.outputs, secrets),
         screenshot=result.screenshot,
-        dom=result.dom,
+        dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
         retry_hint=RetryHint(
             data=redact_secrets(data, secrets),
@@ -118,8 +124,9 @@ def select_steps(steps: list[Step], from_step: str | None) -> list[Step]:
 
 
 def step_output(step: Step, result: ActionResult) -> object | None:
-    """``None`` for steps whose result isn't kept in memory (screenshots stay
-    paths on disk)."""
+    """``None`` for steps that produce nothing worth keeping (a click, a
+    skipped step). Bytes come back as the :class:`BytesResult` itself, so the
+    caller holds the real payload and not a base64 string."""
     if step.action not in OUTPUT_ACTIONS:
         return None
     match result:
@@ -129,6 +136,8 @@ def step_output(step: Step, result: ActionResult) -> object | None:
             ]
         case TextResult():
             return result.text
+        case BytesResult():
+            return result
         case _:
             return None
 

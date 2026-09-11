@@ -25,6 +25,7 @@ from llm_browser.html import SanitizeLevel
 from llm_browser.probe import human_needed
 from llm_browser.session import BrowserSession
 
+from llm_browser_conformance.checks.support import artifact_snapshot
 from llm_browser_conformance.drivers import chrome_binary, configured
 from llm_browser_conformance.scenario import (
     POLL_MS,
@@ -69,19 +70,6 @@ def probe_sees_a_visible_bot_challenge(ctx: Context) -> None:
 
 
 # --- screenshots ---
-
-
-def artifact_snapshot(session: BrowserSession) -> list[tuple[str, int, int]]:
-    """The files the session writes into its own dir, with their stats.
-
-    Only the top level: ``user-data/`` is the live profile and the browser
-    writes into it constantly.
-    """
-    return sorted(
-        (path.name, path.stat().st_size, path.stat().st_mtime_ns)
-        for path in session.session_dir.iterdir()
-        if path.is_file()
-    )
 
 
 def screenshot_bytes_returns_a_png_and_writes_nothing(ctx: Context) -> None:

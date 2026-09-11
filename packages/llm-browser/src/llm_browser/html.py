@@ -112,13 +112,14 @@ def truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> Non
         truncate_tree(child, max_depth, current + 1)
 
 
-def sanitize_html_fragment(
-    html: str,
-    max_depth: int = 0,
-    level: SanitizeLevel = SanitizeLevel.LOW,
-) -> str:
-    """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
-    tree: HtmlElement = fragment_fromstring(html, create_parent=False)
+def sanitize_tree(tree: HtmlElement, level: SanitizeLevel) -> None:
+    """Apply ``level`` to ``tree``, in place.
+
+    The one implementation of what a level *means*. Both entry points — a
+    fragment from `dom`, a whole document from a failure capture — go through
+    it, so a page snapshot at ``medium`` keeps exactly the attributes a
+    snippet at ``medium`` keeps.
+    """
     CLEANERS[level](tree)
     if level is not SanitizeLevel.LOW:
         truncate_data_uris(tree)
@@ -126,15 +127,31 @@ def sanitize_html_fragment(
         # Never touches the root, so a structural root keeps its tag and attrs.
         etree.strip_tags(tree, *STRUCTURAL_TAGS)
     normalize_whitespace(tree)
+
+
+def sanitize_html_fragment(
+    html: str,
+    max_depth: int = 0,
+    level: SanitizeLevel = SanitizeLevel.LOW,
+) -> str:
+    """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
+    tree: HtmlElement = fragment_fromstring(html, create_parent=False)
+    sanitize_tree(tree, level)
     if max_depth > 0:
         truncate_tree(tree, max_depth)
     return serialize(tree)
 
 
-def sanitize_page_html(html: str) -> str:
-    """Sanitize a full page for checkpoint capture."""
+def sanitize_page_html(html: str, level: SanitizeLevel = SanitizeLevel.HIGH) -> str:
+    """Sanitize a whole page for a failure capture.
+
+    ``high`` by default — a capture is for reading, and every `src`/`href` in
+    a full page is noise — but the caller decides: ``medium`` keeps links when
+    the point is to see where the page would have gone next, ``xhigh``
+    collapses the wrappers when the point is to read the structure.
+    """
     tree: HtmlElement = document_fromstring(html, parser=_page_parser)
-    CLEANERS[SanitizeLevel.HIGH](tree)
+    sanitize_tree(tree, level)
     return serialize(tree)
 
 

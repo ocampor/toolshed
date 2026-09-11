@@ -53,7 +53,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:goto.wait_until` | goto wait_until |
 | `field:parse.selector` | parse typed rows |
 | `field:parse.schema_path` | parse typed rows |
-| `field:parse.path` | parse writes typed rows |
+| `field:parse.path` | parse decimal and date rows |
 | `field:pick.selector` | pick by text |
 | `field:pick.value` | pick by text |
 | `field:press.selector` | enter and escape, press chord |
@@ -111,6 +111,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
 | `session:dom` | dom snippet, dom step depth, sanitize levels |
+| `session:dom_snapshot` | flow failure captures artifacts, flow failure capture level |
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
@@ -127,15 +128,12 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:pick` | pick by text |
 | `session:press` | press is trusted, tab order |
 | `session:probe` | flow failure flags a login wall, probe sees a password |
-| `session:save_screenshot` | screenshot step |
-| `session:screenshot_bytes` | screenshot is a png, screenshot bytes |
+| `session:screenshot_bytes` | flow failure captures artifacts, screenshot is a png, screenshot step, screenshot bytes |
 | `session:scroll` | scroll, wheel ticks |
 | `session:select_option` | select_option, custom select rejects select |
 | `session:set_checked` | fill/type/check, checkbox and radio |
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
-| `session:take_dom_snapshot` | flow failure captures artifacts |
-| `session:take_screenshot` | flow failure captures artifacts, screenshot is a png, screenshot step |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
@@ -146,12 +144,17 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `api:behavior.human` | behavior human paces input |
 | `api:behavior.off` | behavior human paces input |
+| `api:capture_level` | flow failure capture level |
+| `api:cli.capture_dir` | cli run failure captures |
+| `api:cli.out_dir` | cli run writes outputs |
+| `api:cli.typed_rows` | cli run writes typed rows |
 | `api:error.outputs` | error keeps partial outputs |
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |
 | `api:goto.scheme_guard` | goto scheme guard |
 | `api:human_needed.challenge` | probe sees a challenge |
 | `api:human_needed.password` | flow failure flags a login wall, probe sees a password |
+| `api:outputs.json` | outputs json dump |
 | `api:outputs.qualified_name` | run-flow embedded |
 | `api:outputs.shape` | outputs shape |
 | `api:params.default` | params default |

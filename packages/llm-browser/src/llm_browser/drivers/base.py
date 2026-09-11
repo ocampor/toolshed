@@ -5,13 +5,13 @@ A Driver owns both lifecycle (launch/connect/close) and interactions
 plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
-import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.drivers.handle import DriverHandle
+from llm_browser.results import BytesResult
 
 
 class Driver(ABC):
@@ -252,20 +252,30 @@ class Driver(ABC):
     def page_url(self, page: Any) -> str: ...
 
     @abstractmethod
-    def screenshot(self, page: Any, path: Path) -> None: ...
-
     def screenshot_bytes(self, page: Any) -> bytes:
-        """The page as PNG bytes. The default writes a temp file and reads it
-        back, for drivers whose screenshot API can only write one."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            path = Path(tmp_dir) / "screenshot.png"
-            self.screenshot(page, path)
-            return path.read_bytes()
+        """The page as PNG bytes.
+
+        Nothing is left on disk: a backend whose capture API can only write a
+        file spools it to a temporary directory and removes it on the way
+        out.
+        """
 
     @abstractmethod
-    def expect_download(
-        self, page: Any, trigger: Callable[[], None], output: Path
-    ) -> Path: ...
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
+        """Run ``trigger``, wait up to ``timeout_ms`` for the download it
+        starts, and return its bytes.
+
+        Nothing is left on disk: a backend whose API can only download to a
+        file reads that file back and removes it before returning. A download
+        that never starts raises ``TimeoutError``; one that starts and then
+        fails raises ``ValueError`` — both are step results, per rule 5.
+
+        The payload is held whole in memory. There is no size ceiling here,
+        deliberately: a caller that fetches something large should expect to
+        hold it, and to hold ~4/3 of it again if it dumps the result to JSON.
+        """
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...

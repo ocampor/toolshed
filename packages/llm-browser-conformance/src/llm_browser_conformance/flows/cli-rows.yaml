@@ -1,0 +1,15 @@
+# `parse` rows carry Decimal and date objects, which `json.dumps` cannot
+# encode: the CLI writer has to serialize them in JSON mode or the command
+# dies with a TypeError instead of printing a flow result.
+params:
+  - url
+  - schema
+steps:
+  - name: open
+    action: goto
+    url: "{{ url }}"
+  - name: rows
+    action: parse
+    selector: "tr.row"
+    schema_path: "{{ schema }}"
+    path: typed/rows.json

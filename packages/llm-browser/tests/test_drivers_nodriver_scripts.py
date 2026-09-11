@@ -309,7 +309,8 @@ class ForegroundTab:
 
     async def save_screenshot(self, **kwargs: Any) -> str:
         self.calls.append(f"save_screenshot {kwargs['format']}")
-        return ""
+        Path(kwargs["filename"]).write_bytes(b"png")
+        return kwargs["filename"]
 
 
 def test_goto_activates_the_tab_it_is_about_to_drive() -> None:
@@ -322,7 +323,7 @@ def test_goto_activates_the_tab_it_is_about_to_drive() -> None:
 
 def test_a_screenshot_activates_the_tab_first() -> None:
     tab = ForegroundTab()
-    driver_with_loop().screenshot(tab, Path("/tmp/shot.png"))
+    driver_with_loop().screenshot_bytes(tab)
     assert tab.calls == ["activate", "save_screenshot png"]
 
 

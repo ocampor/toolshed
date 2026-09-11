@@ -56,6 +56,8 @@ class Section(StrEnum):
     OPTIONS = "options"
     RESULTS = "results"
     API = "api"
+    # Drives the installed console script, not the library.
+    CLI = "cli"
 
 
 class ScenarioSkipped(Exception):
@@ -112,7 +114,11 @@ class Context:
         self.session.goto(self.url(page))
 
     def flow(self, name: str) -> Flow:
-        return load_flow_text((FLOWS_DIR / f"{name}.yaml").read_text())
+        return load_flow_text(self.flow_file(name).read_text())
+
+    def flow_file(self, name: str) -> Path:
+        """The fixture flow on disk — what a CLI invocation needs."""
+        return FLOWS_DIR / f"{name}.yaml"
 
     # --- Waiting ---
 
