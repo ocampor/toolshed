@@ -14,6 +14,9 @@ from llm_browser.steps import execute_step
 def _session(tmp_path: Path) -> BrowserSession:
     session = BrowserSession(state_dir=tmp_path)
     session.driver = MagicMock()
+    # A real Driver's `name` is a plain string; the pre-attach SessionInfo
+    # `launch_detached` writes validates it as one.
+    session.driver.name = "mock"
     session._page = MagicMock()
     handle = DriverHandle(
         driver="mock", pid=1, endpoint="http://cdp", user_data_dir="d"

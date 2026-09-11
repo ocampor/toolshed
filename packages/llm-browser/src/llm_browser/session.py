@@ -238,7 +238,24 @@ class BrowserSession:
             cdp_url,
             resolved_profile,
         )
-        handle = self.driver.attach(cdp_url)
+        # Recorded before the attach: a browser nothing knows the pid of is a
+        # browser nobody can stop, and `attach` is the step most likely to
+        # fail (wrong driver, CDP not up yet, a profile already in use).
+        self._save_state(
+            SessionInfo(
+                pid=pid,
+                cdp_url=cdp_url,
+                user_data_dir=str(resolved_profile),
+                driver=self.driver.name,
+                mode="attached",
+            )
+        )
+        try:
+            handle = self.driver.attach(cdp_url)
+        except BaseException:
+            kill_detached_chromium(pid)
+            self._clear_state()
+            raise
         info = SessionInfo(
             pid=pid,
             cdp_url=handle.endpoint or cdp_url,
