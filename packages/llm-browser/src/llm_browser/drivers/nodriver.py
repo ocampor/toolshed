@@ -657,7 +657,9 @@ class NodriverDriver(Driver):
         return str(page.url)
 
     def screenshot(self, page: Any, path: Path) -> None:
-        self.run(page.save_screenshot(filename=str(path)))
+        """`format` is explicit: nodriver defaults to jpeg and would write
+        JPEG bytes into the `.png` file every caller here asks for."""
+        self.run(page.save_screenshot(filename=str(path), format="png"))
 
     def expect_download(
         self, page: Any, trigger: Callable[[], None], output: Path

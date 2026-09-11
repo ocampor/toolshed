@@ -17,6 +17,8 @@ from llm_browser_conformance.scenario import Context, Scenario, Section
 
 SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
 
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
 
 def a_failing_wait_step_captures_screenshot_and_dom(ctx: Context) -> None:
     ctx.visit("never.html")
@@ -33,6 +35,14 @@ def a_failure_behind_a_login_wall_asks_for_a_human(ctx: Context) -> None:
     result = run_flow(ctx.session, ctx.flow("wait-never"), {})
     assert isinstance(result, FlowError), result
     assert result.human_needed is True
+
+
+def a_screenshot_is_a_png(ctx: Context) -> None:
+    """Everything above the driver names the file `.png` and hands it to a
+    reader that trusts the extension, so the bytes have to match it."""
+    ctx.visit("form.html")
+    assert ctx.session.take_screenshot().read_bytes()[:8] == PNG_MAGIC
+    assert ctx.session.screenshot_bytes()[:8] == PNG_MAGIC
 
 
 def a_parse_step_writes_its_typed_rows_to_disk(ctx: Context) -> None:
@@ -70,6 +80,11 @@ SCENARIOS = [
         "flow failure flags a login wall",
         Section.FLOWS,
         a_failure_behind_a_login_wall_asks_for_a_human,
+    ),
+    Scenario(
+        "screenshot is a png",
+        Section.FLOWS,
+        a_screenshot_is_a_png,
     ),
     Scenario(
         "parse writes typed rows",
