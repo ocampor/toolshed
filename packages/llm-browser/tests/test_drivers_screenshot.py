@@ -60,7 +60,11 @@ def test_nodriver_asks_for_png() -> None:
         page.saved = kwargs
         return kwargs["filename"]
 
+    async def activate() -> None:
+        return None
+
     page.save_screenshot = save_screenshot
+    page.activate = activate
     driver = NodriverDriver()
     driver.loop = asyncio.new_event_loop()
     driver.screenshot(page, Path("/tmp/shot.png"))

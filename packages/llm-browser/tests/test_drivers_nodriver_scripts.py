@@ -8,6 +8,7 @@ invoked and which gets evaluated.
 
 import asyncio
 import re
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -289,3 +290,35 @@ def test_a_chord_holds_its_modifier_down_and_types_nothing(
         ("keyUp", "Control", 0),
     ]
     assert all("text" not in e for e in recorded_keys.events)
+
+
+# --- the tab stays in the foreground ---
+
+
+class ForegroundTab:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def activate(self) -> None:
+        self.calls.append("activate")
+
+    async def get(self, url: str) -> None:
+        self.calls.append(f"get {url}")
+
+    async def save_screenshot(self, **kwargs: Any) -> str:
+        self.calls.append(f"save_screenshot {kwargs['format']}")
+        return ""
+
+
+def test_goto_activates_the_tab_it_is_about_to_drive() -> None:
+    """Chromium throttles a background tab's timers and stalls a capture on
+    it; one `window.open` is enough to leave the opener there for good."""
+    tab = ForegroundTab()
+    driver_with_loop().goto(tab, "http://example.test", "load")
+    assert tab.calls == ["activate", "get http://example.test"]
+
+
+def test_a_screenshot_activates_the_tab_first() -> None:
+    tab = ForegroundTab()
+    driver_with_loop().screenshot(tab, Path("/tmp/shot.png"))
+    assert tab.calls == ["activate", "save_screenshot png"]

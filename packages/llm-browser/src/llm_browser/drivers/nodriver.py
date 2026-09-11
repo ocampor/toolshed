@@ -508,7 +508,18 @@ class NodriverDriver(Driver):
     # --- Navigation / waiting ---
 
     def goto(self, page: Any, url: str, wait_until: str) -> None:
-        self.run(page.get(url))
+        self.run(self.do_goto(page, url))
+
+    async def do_goto(self, page: Any, url: str) -> None:
+        """Activate first: the tab a caller navigates is the tab it drives.
+
+        A background tab is not just invisible — Chromium throttles its timers
+        and stalls `Page.captureScreenshot` on it waiting for a frame that
+        never comes. One `window.open` earlier in a session is enough to leave
+        the opener there for good.
+        """
+        await page.activate()
+        await page.get(url)
 
     def wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
         self.run(self.do_wait_for_load(page, state, timeout_ms))
@@ -658,8 +669,14 @@ class NodriverDriver(Driver):
 
     def screenshot(self, page: Any, path: Path) -> None:
         """`format` is explicit: nodriver defaults to jpeg and would write
-        JPEG bytes into the `.png` file every caller here asks for."""
-        self.run(page.save_screenshot(filename=str(path), format="png"))
+        JPEG bytes into the `.png` file every caller here asks for. The
+        activate is what keeps the capture from stalling on a background tab.
+        """
+        self.run(self.do_screenshot(page, path))
+
+    async def do_screenshot(self, page: Any, path: Path) -> None:
+        await page.activate()
+        await page.save_screenshot(filename=str(path), format="png")
 
     def expect_download(
         self, page: Any, trigger: Callable[[], None], output: Path
