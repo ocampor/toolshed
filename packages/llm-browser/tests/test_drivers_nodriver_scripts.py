@@ -179,3 +179,13 @@ def test_a_successful_select_focuses_first(stub_cdp: None) -> None:
     locator = NodriverLocator(tab=tab, element=SelectElement("ok"))
     driver_with_loop().select_option(locator, "c")
     assert tab.sent == 1
+
+
+def test_the_visibility_read_asks_the_platform_first() -> None:
+    """A box read cannot see `visibility: hidden` -- the element still has a
+    box -- and `opacity: 0` has to stay visible, so only the CSS check is on."""
+    from llm_browser.drivers.nodriver import VISIBILITY_SCRIPT
+
+    assert "checkVisibility({checkVisibilityCSS: true})" in VISIBILITY_SCRIPT
+    assert "opacityProperty" not in VISIBILITY_SCRIPT
+    assert "getClientRects" in VISIBILITY_SCRIPT

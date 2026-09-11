@@ -27,8 +27,9 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
     * `do_wait_for_load`  — Runtime.evaluate `document.readyState` polled
                             every 250ms. nodriver 0.48 has no CDP lifecycle
                             hook (`tab.wait()` is a plain sleep).
-    * `is_visible`        — Runtime.callFunctionOn `offsetParent` /
-                            `getClientRects`. Required: nodriver exposes no
+    * `is_visible`        — Runtime.callFunctionOn `checkVisibility`, or a
+                            box read where that is missing. Required: nodriver
+                            exposes no
                             visibility API, and CDP has no visibility
                             predicate either. It is the read the Python-side
                             explicit wait polls for `visible` / `hidden`;
@@ -99,9 +100,16 @@ READY_STATES: dict[str, set[str]] = {
     "networkidle": {"complete"},
 }
 
-# The standard "is it rendered" read: `offsetParent` is null for
-# display:none (and for position:fixed, which getClientRects still covers).
-VISIBILITY_SCRIPT = "(el) => el.offsetParent !== null || el.getClientRects().length > 0"
+# `checkVisibility` is the platform's own answer, and the only one that
+# notices `visibility: hidden` -- a box read cannot, because a hidden element
+# still has one. `checkVisibilityCSS` alone, so `opacity: 0` stays visible,
+# which is what the Playwright family answers too. The fallback is the old
+# box read, for an engine that has not shipped the method.
+VISIBILITY_SCRIPT = (
+    "(el) => el.checkVisibility"
+    " ? el.checkVisibility({checkVisibilityCSS: true})"
+    " : (el.offsetParent !== null || el.getClientRects().length > 0)"
+)
 
 # A script that *is* a function has to be invoked, not evaluated. The library
 # writes its page scripts the way Playwright takes them — `el => el.outerHTML`,

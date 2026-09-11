@@ -131,10 +131,6 @@ SCENARIOS = [
         "visibility:hidden is hidden",
         Section.WAITS,
         visibility_hidden_counts_as_hidden,
-        known_gaps={
-            "nodriver": "is_visible tests offsetParent/getClientRects, neither "
-            "of which notices visibility:hidden"
-        },
     ),
     Scenario(
         "opacity:0 is visible",
