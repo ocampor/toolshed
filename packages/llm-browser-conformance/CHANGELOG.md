@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.1 — 2026-09-10
+
+### Fixed
+
+- `launched_session` registers its browser with `interrupts` while live and
+  unregisters it on a normal `close()`; an `atexit` hook and chained
+  SIGINT/SIGTERM handlers close whatever is still registered.
+- `close_stranded_sessions` pops and closes sessions one at a time, ignores a
+  re-entrant call instead of restarting the sweep, and defers a
+  `KeyboardInterrupt`/`SystemExit` raised mid-sweep until every session has
+  had its turn.
+- `install_interrupt_handlers` saves the previous SIGINT/SIGTERM handlers,
+  chains to them after the sweep, restores them once no session is
+  registered, and only installs from the main thread.
+- `handle_interrupt` stays a no-op after chaining when the previous handler
+  was `SIG_IGN`, instead of falling through to the default action.
+- `LaunchPlaceholder` holds a registry slot across `session.launch()`, so a
+  signal during launch no longer restores the handlers before the real
+  session registers.
+- `close_stranded_sessions` keeps the first `KeyboardInterrupt`/`SystemExit`
+  seen across the sweep instead of the last.
+
 ## 0.2.0 — 2026-09-10
 
 Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
