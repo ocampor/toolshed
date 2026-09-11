@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from llm_browser.cli import main, run_attached
+from llm_browser.models import FlowSuccess
 from llm_browser.session import BrowserSession
 from tests.test_attach import AttachStubDriver
 
@@ -90,7 +91,10 @@ def invoke_run(
 ) -> tuple[Any, AttachStubDriver]:
     driver = AttachStubDriver()
     monkeypatch.setattr("llm_browser.session.resolve_driver", lambda _d: driver)
-    monkeypatch.setattr("llm_browser.cli.run_cli_flow", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(
+        "llm_browser.cli.run_cli_flow",
+        lambda *a, **k: FlowSuccess(step="s1"),
+    )
     runner = CliRunner()
     with runner.isolated_filesystem():
         Path("flow.yml").write_text(FLOW_YAML)

@@ -6,7 +6,7 @@ import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, cast, get_args
+from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
 
@@ -25,14 +25,18 @@ from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
+    FlowError,
     FlowResult,
     RunFlowStep,
+    SubFlow,
     WaitState,
     check_settle_budget,
 )
+from llm_browser.results import BytesResult
 from llm_browser.selector_map import load_selector_map
 from llm_browser.session import BrowserSession
 from llm_browser.skill_install import install_skill, skill_text
+from llm_browser.steps import resolve_step
 
 
 @contextmanager
@@ -55,12 +59,14 @@ def url_argument_errors() -> Iterator[None]:
 
 
 def prepare_output_path(path: str | Path) -> Path:
-    """Coerce ``path`` to a ``Path`` and ensure its parent directory exists,
-    so a caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first.
+    """The absolute path to write ``path`` to, with its parent created.
+
+    A caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first, and
+    what is reported back reads the same from any working directory.
 
     Writing is the CLI's job alone; the library returns its output in memory.
     """
-    out = Path(path)
+    out = Path(path).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     return out
 
@@ -331,6 +337,18 @@ def goto(ctx: click.Context, url: str) -> None:
         "invocations can run in parallel against the same browser."
     ),
 )
+@click.option(
+    "--out-dir",
+    "out_dir",
+    default=".",
+    help="Directory every step `path:` is written under. Default: the CWD.",
+)
+@click.option(
+    "--capture-dir",
+    "capture_dir",
+    default=None,
+    help="Where a failure's screenshot.png / dom.html land. Default: the session dir.",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -340,10 +358,17 @@ def run(
     selector_map_path: str | None,
     from_step: str | None,
     cdp_url: str | None,
+    out_dir: str,
+    capture_dir: str | None,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
     Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
+
+    The run itself writes nothing: every step result comes back in memory
+    and this command is what puts it on disk. A step's `path:` is written
+    under --out-dir; a screenshot or download without one lands there under
+    its own name; a failure's captures go to --capture-dir.
 
     With --cdp-url the flow runs one-shot on an already-running Chromium:
 
@@ -362,15 +387,133 @@ def run(
     flow = load_flow_document(document, selector_map=selector_map)
 
     def execute(target: BrowserSession) -> object:
-        return run_cli_flow(
+        result = run_cli_flow(
             target, flow, data, from_step=from_step, flow_path=file_path(flow_path)
+        )
+        return write_run(
+            result,
+            flow,
+            data,
+            out_dir=Path(out_dir),
+            capture_dir=Path(capture_dir) if capture_dir else target.session_dir,
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
-    if endpoint and not ctx.obj.get("target_id"):
-        _output(run_attached(session, endpoint, execute))
-    else:
-        _output(execute(session))
+    finished = cast(
+        CliFlowRun,
+        run_attached(session, endpoint, execute)
+        if endpoint and not ctx.obj.get("target_id")
+        else execute(session),
+    )
+    click.echo(json.dumps(finished.payload, ensure_ascii=False))
+    if isinstance(finished.result, FlowError):
+        raise SystemExit(1)
+
+
+# --- Writing what a run returned ---
+#
+# The library keeps every output in memory; these are the only functions in
+# the package that turn one into a file.
+
+
+class CliFlowRun(NamedTuple):
+    result: FlowResult
+    payload: dict[str, Any]
+
+
+def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
+    """Qualified step name to the ``path:`` that step asked the CLI to write.
+
+    Templates are resolved the way the runner resolves them, so
+    ``path: out/{{ id }}.png`` names the same file the flow meant.
+    """
+    paths: dict[str, str] = {}
+    flow_data = flow.validate_data(data)
+    for step in flow.steps:
+        resolved = resolve_step(step, flow_data)
+        if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
+            paths.update(declared_paths(resolved.flow, resolved.data))
+            continue
+        path = getattr(resolved, "path", None)
+        if path:
+            paths[resolved.qualified_name] = str(path)
+    return paths
+
+
+def as_text(output: object) -> str:
+    """A non-bytes output as the file a ``path:`` asks for: ``dom`` text
+    verbatim, ``read`` / ``parse`` rows as JSON."""
+    if isinstance(output, str):
+        return output
+    return json.dumps(output, ensure_ascii=False)
+
+
+def write_outputs(
+    outputs: dict[str, object], paths: dict[str, str], out_dir: Path
+) -> dict[str, str]:
+    """Write the run's outputs, returning step name to file written.
+
+    Bytes are always written — a PNG on stdout helps nobody — under the
+    step's ``path:`` or, failing that, the name the payload came with.
+    Text and rows are written only where the step asked for a file; they
+    stay in the JSON either way.
+    """
+    written: dict[str, str] = {}
+    for step, output in outputs.items():
+        path = paths.get(step)
+        if isinstance(output, BytesResult):
+            target = prepare_output_path(out_dir / (path or output.name))
+            target.write_bytes(output.content)
+        elif path:
+            target = prepare_output_path(out_dir / path)
+            target.write_text(as_text(output))
+        else:
+            continue
+        written[step] = str(target)
+    return written
+
+
+def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
+    """Write the failing page's screenshot and DOM, returning what was written."""
+    written: dict[str, str] = {}
+    if error.screenshot is not None:
+        target = prepare_output_path(capture_dir / "screenshot.png")
+        target.write_bytes(error.screenshot)
+        written["screenshot"] = str(target)
+    if error.dom is not None:
+        target = prepare_output_path(capture_dir / "dom.html")
+        target.write_text(error.dom)
+        written["dom"] = str(target)
+    return written
+
+
+def describe_run(
+    result: FlowResult, outputs: dict[str, str], captures: dict[str, str]
+) -> dict[str, Any]:
+    """The JSON this command prints: every payload the CLI put on disk is
+    reported as its path rather than as base64.
+
+    ``outputs`` is keyed by step and ``captures`` by ``screenshot`` / ``dom``,
+    which is why they stay apart — a step named ``screenshot`` would otherwise
+    take the failing page's capture path as its own output.
+    """
+    payload: dict[str, Any] = result.model_dump(mode="json", exclude_none=True)
+    payload["outputs"] = {**payload.get("outputs", {}), **outputs}
+    return {**payload, **captures}
+
+
+def write_run(
+    result: FlowResult,
+    flow: Flow,
+    data: dict[str, object],
+    out_dir: Path,
+    capture_dir: Path,
+) -> CliFlowRun:
+    outputs = write_outputs(result.outputs, declared_paths(flow, data), out_dir)
+    captures = (
+        write_captures(result, capture_dir) if isinstance(result, FlowError) else {}
+    )
+    return CliFlowRun(result, describe_run(result, outputs, captures))
 
 
 async def resolve_flow_options(
