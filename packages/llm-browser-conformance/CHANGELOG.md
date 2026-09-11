@@ -14,6 +14,13 @@
 - `install_interrupt_handlers` saves the previous SIGINT/SIGTERM handlers,
   chains to them after the sweep, restores them once no session is
   registered, and only installs from the main thread.
+- `handle_interrupt` stays a no-op after chaining when the previous handler
+  was `SIG_IGN`, instead of falling through to the default action.
+- `LaunchPlaceholder` holds a registry slot across `session.launch()`, so a
+  signal during launch no longer restores the handlers before the real
+  session registers.
+- `close_stranded_sessions` keeps the first `KeyboardInterrupt`/`SystemExit`
+  seen across the sweep instead of the last.
 
 ## 0.2.0 — 2026-09-10
 

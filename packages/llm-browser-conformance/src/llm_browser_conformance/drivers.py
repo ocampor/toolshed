@@ -16,7 +16,9 @@ from llm_browser.session import BrowserSession
 
 from llm_browser_conformance.interrupts import (
     install_interrupt_handlers,
+    register_launch_placeholder,
     register_session,
+    unregister_launch_placeholder,
     unregister_session,
 )
 
@@ -103,9 +105,13 @@ def launched_session(driver: str) -> Iterator[BrowserSession]:
 
     A worker killed or timed out mid-run never reaches that ``finally`` at
     all, so the session also registers with ``interrupts`` for the
-    ``atexit``/SIGINT/SIGTERM sweep to close on its way out.
+    ``atexit``/SIGINT/SIGTERM sweep to close on its way out. A placeholder
+    holds that registration open across ``session.launch()`` itself, so a
+    signal arriving before the real session is registered does not find an
+    empty registry and restore the original handlers early.
     """
     install_interrupt_handlers()
+    placeholder = register_launch_placeholder()
     with tempfile.TemporaryDirectory(
         prefix="llm-browser-conformance-", ignore_cleanup_errors=True
     ) as state_dir:
@@ -117,9 +123,14 @@ def launched_session(driver: str) -> Iterator[BrowserSession]:
             driver=configured(driver),
             executable_path=chrome_binary() if driver == "nodriver" else None,
         )
-        session.launch(headed=False)
+        try:
+            session.launch(headed=False)
+        except BaseException:
+            unregister_launch_placeholder(placeholder)
+            raise
         bound_action_timeout(session, driver)
         register_session(session)
+        unregister_launch_placeholder(placeholder)
         try:
             yield session
         finally:

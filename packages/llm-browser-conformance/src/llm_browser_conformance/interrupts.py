@@ -14,28 +14,57 @@ import signal
 import threading
 from collections.abc import Callable
 from types import FrameType
-
-from llm_browser.session import BrowserSession
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
 Handler = Callable[[int, FrameType | None], object] | int | signal.Handlers | None
 
+
+class Closeable(Protocol):
+    def close(self) -> object: ...
+
+
+class LaunchPlaceholder:
+    """Occupies the registry while a session is mid-launch.
+
+    ``session.launch()`` runs between ``install_interrupt_handlers()`` and
+    ``register_session()`` — a signal landing in that window would otherwise
+    find an empty registry and restore the original handlers right then,
+    leaving nothing covering the session for the rest of its life. There is
+    nothing to close yet at this point, so ``close()`` is a no-op.
+    """
+
+    def close(self) -> None:
+        return None
+
+
 INTERRUPT_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 
-LIVE_SESSIONS: dict[int, BrowserSession] = {}
+LIVE_SESSIONS: dict[int, Closeable] = {}
 
 previous_handlers: dict[int, Handler] = {}
 sweep_in_progress = False
 
 
-def register_session(session: BrowserSession) -> None:
+def register_session(session: Closeable) -> None:
     LIVE_SESSIONS[id(session)] = session
 
 
-def unregister_session(session: BrowserSession) -> None:
+def unregister_session(session: Closeable) -> None:
     LIVE_SESSIONS.pop(id(session), None)
     restore_interrupt_handlers_if_idle()
+
+
+def register_launch_placeholder() -> Closeable:
+    """Reserve a registry slot for the session ``launch()`` is about to make."""
+    placeholder = LaunchPlaceholder()
+    register_session(placeholder)
+    return placeholder
+
+
+def unregister_launch_placeholder(placeholder: Closeable) -> None:
+    unregister_session(placeholder)
 
 
 def close_stranded_sessions() -> None:
@@ -47,8 +76,9 @@ def close_stranded_sessions() -> None:
     reached yet. Each session's ``close()`` is best-effort: an ordinary
     exception is swallowed so the next session still gets a turn, but a
     ``KeyboardInterrupt``/``SystemExit`` raised while closing one (the
-    chained previous handler firing mid-sweep) is held until every other
-    session has had its turn, then re-raised.
+    chained previous handler firing mid-sweep) is held — the first one seen,
+    deterministically — until every other session has had its turn, then
+    re-raised.
     """
     global sweep_in_progress
     if sweep_in_progress:
@@ -63,12 +93,18 @@ def close_stranded_sessions() -> None:
             try:
                 session.close()
             except (KeyboardInterrupt, SystemExit) as interrupt:
-                to_reraise = interrupt
+                if to_reraise is None:
+                    to_reraise = interrupt
             except Exception:  # noqa: BLE001, S110 - one session's failure is not fatal
                 pass
     finally:
         sweep_in_progress = False
-    restore_interrupt_handlers_if_idle()
+    # Not restore_interrupt_handlers_if_idle() here: a sweep can run while a
+    # LaunchPlaceholder is the only thing registered, and closing it empties
+    # the registry without meaning the launch it stands for is done.
+    # Restoring is unregister_session's call — it runs once whatever was
+    # actually finished (a session closed, or a launch placeholder cleared)
+    # says so.
     if to_reraise is not None:
         raise to_reraise
 
@@ -94,7 +130,10 @@ def restore_interrupt_handlers_if_idle() -> None:
 
     Lets a pytest run keep its own Ctrl-C behaviour once the last
     ``launched_session`` in it has closed, instead of staying rewired for
-    every unrelated test that follows.
+    every unrelated test that follows. Only ``unregister_session`` calls this
+    — not the sweep itself — so a ``LaunchPlaceholder`` popped mid-sweep does
+    not restore anything until the launch it stands for actually finishes,
+    one way or the other.
     """
     if LIVE_SESSIONS or not previous_handlers:
         return
@@ -106,11 +145,13 @@ def restore_interrupt_handlers_if_idle() -> None:
 
 
 def handle_interrupt(signum: int, frame: FrameType | None) -> None:
-    # Captured before the sweep: closing the last session can itself restore
-    # (and clear) the saved handlers, which would otherwise erase the one
-    # this call is about to chain to.
+    # Captured before the sweep: a session's close() runs arbitrary code, and
+    # nothing rules out it reaching unregister_session itself, which can
+    # restore (and clear) the saved handlers before this call gets to them.
     previous = previous_handlers.get(signum)
     close_stranded_sessions()
+    if previous is signal.SIG_IGN:
+        return
     if callable(previous):
         previous(signum, frame)
         return
