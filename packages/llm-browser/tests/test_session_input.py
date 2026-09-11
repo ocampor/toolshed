@@ -120,8 +120,20 @@ def test_press_with_a_selector_resolves_it(session: BrowserSession) -> None:
 
 
 def test_select_option(session: BrowserSession) -> None:
+    driver(session).evaluate.return_value = "SELECT"
     session.select_option("#dropdown", "opt2")
     driver(session).select_option.assert_called_once_with("element", "opt2")
+
+
+def test_select_on_a_non_select_is_a_value_error(session: BrowserSession) -> None:
+    """A `ValueError` is what `execute_action` turns into an `ErrorResult`;
+    the driver's own exception would abort the flow instead."""
+    driver(session).evaluate.return_value = "DIV"
+    with pytest.raises(
+        ValueError, match=r"select needs a <select>; #dropdown is a <div>"
+    ):
+        session.select_option("#dropdown", "opt2")
+    driver(session).select_option.assert_not_called()
 
 
 def test_set_checked(session: BrowserSession) -> None:

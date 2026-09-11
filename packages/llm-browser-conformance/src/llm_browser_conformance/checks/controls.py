@@ -131,15 +131,6 @@ SCENARIOS = [
         "custom select rejects select",
         Section.STEPS,
         select_on_a_div_dropdown_fails_clearly,
-        # Not a driver difference: execute_action only converts TimeoutError
-        # and ValueError into an ErrorResult, so a wrong-element select
-        # escapes run_flow as a raw driver exception on every backend --
-        # `optional:` cannot swallow it and the CLI cannot report it.
-        known_gaps=dict.fromkeys(
-            ("patchright", "camoufox", "nodriver"),
-            "select on a non-<select> raises out of run_flow instead of "
-            "returning a FlowError",
-        ),
     ),
     Scenario(
         "native select optgroup",

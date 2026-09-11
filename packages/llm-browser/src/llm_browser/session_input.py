@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from llm_browser.behavior import jittered_sleep, paced
 from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS
-from llm_browser.selectors import Selector
+from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
@@ -111,7 +111,24 @@ def select_option(
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     with paced(session.behavior, session.behavior_runtime):
-        session.driver.select_option(session.find(selector, timeout=timeout), value)
+        element = session.find(selector, timeout=timeout)
+        expect_select(session, element, selector)
+        session.driver.select_option(element, value)
+
+
+def expect_select(session: "BrowserSession", element: Any, selector: Selector) -> None:
+    """`select` on something that is not a `<select>` is a step error.
+
+    Left to the drivers it is not: Playwright raises its own `Error`, which
+    `execute_action` does not convert, so the flow died instead of returning
+    a `FlowError` an `optional:` step could swallow. Asking the page costs one
+    read and gives every driver the same message.
+    """
+    tag = str(session.driver.evaluate(element, "el => el.tagName")).lower()
+    if tag != "select":
+        raise ValueError(
+            f"select needs a <select>; {describe_selector(selector)} is a <{tag}>"
+        )
 
 
 def set_checked(
