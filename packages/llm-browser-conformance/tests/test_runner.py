@@ -5,7 +5,7 @@ only part of the package CI actually exercises — everything pure lives here.
 """
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -24,7 +24,13 @@ from llm_browser_conformance.runner import (
     run_driver,
     run_scenario,
 )
-from llm_browser_conformance.scenario import Outcome, Section
+from llm_browser_conformance.scenario import (
+    Context,
+    Outcome,
+    Scenario,
+    ScenarioSkipped,
+    Section,
+)
 from llm_browser_conformance.scenarios import ALL_SCENARIOS, select
 from tests.fakes import FAKE_DRIVER, FAKE_SCENARIOS, fake_context
 
@@ -128,12 +134,71 @@ def test_one_line_names_the_assertion_that_raised() -> None:
     assert "test_runner.py:" in message
 
 
+CLEANUP_NOTE = "cleanup failed too: the opened tab never closed"
+
+
+def raising(error: BaseException) -> Callable[[Context], None]:
+    """A check that fails the way a scenario whose cleanup also failed does."""
+    error.add_note(CLEANUP_NOTE)
+
+    def check(ctx: Context) -> None:
+        raise error
+
+    return check
+
+
 def test_one_line_carries_the_notes_the_failure_was_given() -> None:
     """A cleanup that failed after the real failure attaches itself with
     ``add_note``, and the table is the only place anyone would read it."""
     error = AssertionError("new-tab.html not in current")
-    error.add_note("cleanup failed too: the opened tab never closed")
-    assert "cleanup failed too: the opened tab never closed" in one_line(error)
+    error.add_note(CLEANUP_NOTE)
+    assert CLEANUP_NOTE in one_line(error)
+
+
+@pytest.mark.parametrize(
+    ("noted_scenario", "expected"),
+    [
+        pytest.param(
+            Scenario("noted fail", Section.FLOWS, raising(AssertionError("boom"))),
+            Outcome.FAIL,
+            id="fail",
+        ),
+        pytest.param(
+            Scenario(
+                "noted gap",
+                Section.FLOWS,
+                raising(AssertionError("boom")),
+                known_gaps={FAKE_DRIVER: "documented"},
+            ),
+            Outcome.XFAIL,
+            id="xfail",
+        ),
+        pytest.param(
+            Scenario("noted skip", Section.FLOWS, raising(ScenarioSkipped("no api"))),
+            Outcome.SKIP,
+            id="skip",
+        ),
+    ],
+)
+def test_a_cleanup_note_reaches_the_detail_whatever_the_verdict(
+    noted_scenario: Scenario, expected: Outcome
+) -> None:
+    """The note is attached by a helper any scenario can use, so the branch
+    that happens to report the row must not be what decides whether it is
+    read."""
+    result = run_scenario(noted_scenario, fake_context())
+    assert result.outcome is expected
+    assert CLEANUP_NOTE in result.detail
+
+
+def test_a_known_gap_still_explains_itself_alongside_the_note() -> None:
+    scenario = Scenario(
+        "noted gap",
+        Section.FLOWS,
+        raising(AssertionError("boom")),
+        known_gaps={FAKE_DRIVER: "documented"},
+    )
+    assert run_scenario(scenario, fake_context()).detail.startswith("documented")
 
 
 def test_one_line_falls_back_to_the_exception_type() -> None:

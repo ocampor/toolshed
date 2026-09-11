@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-09-10
 
 ### Added
 
@@ -39,4 +39,5 @@
 - The tab scenarios close their popup through `tabs_closed_after`, which lets
   the scenario's own exception win: a cleanup that fails on the way out is
   attached to it with `add_note` instead of replacing it in the table. Run
-  details carry an exception's notes for that reason.
+  details carry an exception's notes whatever the verdict — a failure, a known
+  gap and a skip all report them.
