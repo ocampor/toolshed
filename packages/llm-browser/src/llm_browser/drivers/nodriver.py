@@ -64,15 +64,9 @@ from llm_browser.drivers.base import Driver
 from llm_browser.drivers.handle import DriverHandle, load_optional_module
 from llm_browser.scripts import select_option_js
 
-# Virtual key codes for trusted keyboard events via Input.dispatchKeyEvent.
-# Using JS element.value="" would bypass input/change events — detectable.
-KEY_A_VK = 65
-KEY_DELETE_VK = 46
-MODIFIER_CTRL = 2
-
 # Named keys → (DOM `key`, DOM `code`, Windows VK code) for dispatch_key_event.
 # Enter is the common case (submit on chat UIs); extend as other named keys
-# are needed. Single-character keys fall back to text-input semantics.
+# are needed. A single character derives its own triplet.
 NAMED_KEYS: dict[str, tuple[str, str, int]] = {
     "Enter": ("Enter", "Enter", 13),
     "Tab": ("Tab", "Tab", 9),
@@ -83,6 +77,16 @@ NAMED_KEYS: dict[str, tuple[str, str, int]] = {
     "ArrowDown": ("ArrowDown", "ArrowDown", 40),
     "ArrowLeft": ("ArrowLeft", "ArrowLeft", 37),
     "ArrowRight": ("ArrowRight", "ArrowRight", 39),
+}
+
+# Chord modifier → (CDP modifier bit, the modifier key's own triplet).
+MODIFIERS: dict[str, tuple[int, tuple[str, str, int]]] = {
+    "Alt": (1, ("Alt", "AltLeft", 18)),
+    "Control": (2, ("Control", "ControlLeft", 17)),
+    "Ctrl": (2, ("Control", "ControlLeft", 17)),
+    "Meta": (4, ("Meta", "MetaLeft", 91)),
+    "Command": (4, ("Meta", "MetaLeft", 91)),
+    "Shift": (8, ("Shift", "ShiftLeft", 16)),
 }
 
 T = TypeVar("T")
@@ -128,6 +132,102 @@ def is_function_literal(script: str) -> bool:
     expression like ``(document.title)`` is still an expression.
     """
     return FUNCTION_LITERAL.match(script) is not None
+
+
+def key_triplet(key: str) -> tuple[str, str, int]:
+    """DOM `key`, DOM `code` and the Windows virtual-key code CDP needs.
+
+    Without the VK code Chromium leaves `windowsVirtualKeyCode` at 0 and many
+    apps read the event as text input — Enter gets typed instead of submitting.
+    """
+    if key in NAMED_KEYS:
+        return NAMED_KEYS[key]
+    if len(key) != 1:
+        return key, key, 0
+    upper = key.upper()
+    if upper.isascii() and upper.isalpha():
+        return key, f"Key{upper}", ord(upper)
+    if key.isascii() and key.isdigit():
+        return key, f"Digit{key}", ord(key)
+    return key, "", 0
+
+
+def split_chord(chord: str) -> tuple[list[str], str]:
+    """`"Control+a"` → `(["Control"], "a")`. A bare `"+"` is the key itself."""
+    parts = chord.split("+")
+    key = parts[-1] or "+"
+    names = [part for part in parts[:-1] if part]
+    unknown = next((name for name in names if name not in MODIFIERS), None)
+    if unknown is not None:
+        raise ValueError(f"unknown key modifier {unknown!r} in {chord!r}")
+    return names, key
+
+
+async def dispatch_key_event(
+    tab: Any,
+    event_type: str,
+    triplet: tuple[str, str, int],
+    modifiers: int,
+    **extra: Any,
+) -> None:
+    nodriver = load_optional_module("nodriver", "nodriver")
+    dom_key, dom_code, vk = triplet
+    await tab.send(
+        nodriver.cdp.input_.dispatch_key_event(
+            event_type,
+            key=dom_key,
+            code=dom_code,
+            windows_virtual_key_code=vk,
+            modifiers=modifiers,
+            **extra,
+        )
+    )
+
+
+async def press_key(
+    tab: Any, key: str, modifiers: int = 0, commands: list[str] | None = None
+) -> None:
+    """One key, down and up, over CDP Input.
+
+    `keyDown` carries `text` for a plain character, which is what makes
+    Chromium emit the keypress and input a page is watching for; a `char`
+    event alone — what nodriver's own `send_keys` sends — emits no keydown at
+    all. A chord must not carry text, or `Control+a` would type an "a".
+    """
+    triplet = key_triplet(key)
+    types_text = len(triplet[0]) == 1 and not modifiers
+    extra: dict[str, Any] = {}
+    if types_text:
+        extra["text"] = triplet[0]
+    if commands:
+        extra["commands"] = commands
+    await dispatch_key_event(
+        tab,
+        "keyDown" if types_text else "rawKeyDown",
+        triplet,
+        modifiers,
+        **extra,
+    )
+    await dispatch_key_event(tab, "keyUp", triplet, modifiers)
+
+
+async def press_chord(tab: Any, chord: str, commands: list[str] | None = None) -> None:
+    """`"Control+a"`, with the modifiers held down around the key.
+
+    The modifiers get their own events because a real keyboard sends them: a
+    page watching for the Control keydown sees one.
+    """
+    names, key = split_chord(chord)
+    modifiers = 0
+    for name in names:
+        bit, triplet = MODIFIERS[name]
+        modifiers |= bit
+        await dispatch_key_event(tab, "rawKeyDown", triplet, modifiers)
+    await press_key(tab, key, modifiers, commands)
+    for name in reversed(names):
+        bit, triplet = MODIFIERS[name]
+        modifiers &= ~bit
+        await dispatch_key_event(tab, "keyUp", triplet, modifiers)
 
 
 @dataclass
@@ -319,63 +419,44 @@ class NodriverDriver(Driver):
         self.run(self.do_type(locator, text, delay_ms))
 
     async def do_type(self, loc: NodriverLocator, text: str, delay_ms: int) -> None:
-        """Per-char CDP Input.dispatchKeyEvent via nodriver's send_keys.
+        """CDP focus, then one real key per character.
 
-        send_keys focuses via JS apply() then dispatches a real `char` key event
-        per character — event.isTrusted=true on the resulting input/keydown.
+        nodriver's own `send_keys` dispatches `char` events, which fire
+        keypress and input but no keydown at all — so a page that watches
+        keystrokes (a mask, an autocomplete, a hotkey) never reacts.
         """
-        el = await self.resolve_element(loc)
-        if delay_ms <= 0:
-            await el.send_keys(text)
-            return
+        await self.focus_trusted(loc)
         for ch in text:
-            await el.send_keys(ch)
-            await asyncio.sleep(delay_ms / 1000.0)
+            await press_key(loc.tab, ch)
+            if delay_ms > 0:
+                await asyncio.sleep(delay_ms / 1000.0)
+
+    async def focus_trusted(self, loc: NodriverLocator) -> Any:
+        """CDP `DOM.focus`, not the JS `el.focus()` nodriver reaches for."""
+        el = await self.resolve_element(loc)
+        nodriver = load_optional_module("nodriver", "nodriver")
+        await loc.tab.send(nodriver.cdp.dom.focus(backend_node_id=el.backend_node_id))
+        return el
 
     async def clear_trusted(self, loc: NodriverLocator) -> None:
         """CDP focus → Ctrl+A (selectAll) → Delete. All isTrusted=true.
 
         Replaces `element.clear_input()` which sets value="" via JS and fires
-        no input/change events — a detectable value discontinuity.
+        no input/change events — a detectable value discontinuity. `selectAll`
+        is spelled out because the chord alone tells the page what happened
+        without asking Chromium to perform the edit.
         """
-        el = await self.resolve_element(loc)
-        nodriver = load_optional_module("nodriver", "nodriver")
-        cdp = nodriver.cdp
-        await loc.tab.send(cdp.dom.focus(backend_node_id=el.backend_node_id))
-        for event_type, extra in (
-            ("rawKeyDown", {"modifiers": MODIFIER_CTRL, "commands": ["selectAll"]}),
-            ("keyUp", {"modifiers": MODIFIER_CTRL}),
-        ):
-            await loc.tab.send(
-                cdp.input_.dispatch_key_event(
-                    event_type,
-                    key="a",
-                    code="KeyA",
-                    windows_virtual_key_code=KEY_A_VK,
-                    **extra,
-                )
-            )
-        for event_type in ("rawKeyDown", "keyUp"):
-            await loc.tab.send(
-                cdp.input_.dispatch_key_event(
-                    event_type,
-                    key="Delete",
-                    code="Delete",
-                    windows_virtual_key_code=KEY_DELETE_VK,
-                )
-            )
+        await self.focus_trusted(loc)
+        await press_chord(loc.tab, "Control+a", commands=["selectAll"])
+        await press_key(loc.tab, "Delete")
 
     def press(self, locator: Any, key: str) -> None:
         self.run(self.do_press(locator, key))
 
     async def do_press(self, loc: NodriverLocator, key: str) -> None:
-        el = await self.resolve_element(loc)
-        if key in NAMED_KEYS:
-            await el.focus()
-            await self._dispatch_named_key(loc.tab, key)
-        else:
-            # Single-character keys: let send_keys handle text-input semantics.
-            await el.send_keys(key)
+        """`key` may be a chord: `"Control+a"`, `"Shift+Tab"`."""
+        await self.focus_trusted(loc)
+        await press_chord(loc.tab, key)
 
     def press_focused(self, page: Any, key: str) -> None:
         self.run(self._press_focused_async(page, key))
@@ -383,28 +464,7 @@ class NodriverDriver(Driver):
     async def _press_focused_async(self, page: Any, key: str) -> None:
         # Nodriver has no page-level keyboard API; dispatch via CDP Input on
         # whatever element currently holds focus.
-        await self._dispatch_named_key(page, key)
-
-    async def _dispatch_named_key(self, tab: Any, key: str) -> None:
-        """Emit keyDown+keyUp via CDP with the correct key/code/VK triplet.
-
-        For named keys like 'Enter', just passing ``key=code="Enter"`` leaves
-        ``windowsVirtualKeyCode=0`` and many apps (ChatGPT included) treat the
-        event as text input — so Enter gets typed instead of submitting. The
-        Windows VK code is what makes Chromium generate a real keypress.
-        """
-        nodriver = load_optional_module("nodriver", "nodriver")
-        cdp = nodriver.cdp
-        dom_key, dom_code, vk = NAMED_KEYS.get(key, (key, key, 0))
-        for event_type in ("rawKeyDown", "keyUp"):
-            await tab.send(
-                cdp.input_.dispatch_key_event(
-                    event_type,
-                    key=dom_key,
-                    code=dom_code,
-                    windows_virtual_key_code=vk,
-                )
-            )
+        await press_chord(page, key)
 
     def select_option(self, locator: Any, value: str) -> None:
         self.run(self.do_select_option(locator, value))
@@ -417,9 +477,7 @@ class NodriverDriver(Driver):
         option reported success. See the module docstring for why the two
         events this fires are synthetic.
         """
-        el = await self.resolve_element(loc)
-        nodriver = load_optional_module("nodriver", "nodriver")
-        await loc.tab.send(nodriver.cdp.dom.focus(backend_node_id=el.backend_node_id))
+        el = await self.focus_trusted(loc)
         outcome = await el.apply(select_option_js(value))
         if outcome != "ok":
             reason = SELECT_FAILURES.get(str(outcome), UNKNOWN_SELECT_FAILURE)

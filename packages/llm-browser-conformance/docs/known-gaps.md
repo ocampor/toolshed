@@ -13,7 +13,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 
 | scenario | driver | gap |
 | --- | --- | --- |
-| typing fires trusted keydown | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |
 | dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | custom select rejects select | patchright | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |

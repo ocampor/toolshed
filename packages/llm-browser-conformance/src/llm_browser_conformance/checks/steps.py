@@ -99,6 +99,14 @@ def tab_moves_focus_to_the_next_field(ctx: Context) -> None:
     assert ctx.js("document.activeElement.id") == "second"
 
 
+def a_chord_reaches_the_page_with_its_modifier(ctx: Context) -> None:
+    """A hotkey is a keydown carrying `ctrlKey`, so a driver that can only
+    send the bare character cannot drive one."""
+    ctx.visit("keyboard.html")
+    ctx.session.press("#first", "Control+a")
+    assert ctx.text("#chord") == "ctrl+a"
+
+
 def enter_submits_and_escape_closes(ctx: Context) -> None:
     outputs = expect_success(ctx, "keyboard.html", "keyboard")
     assert one_text(outputs, "result") == "submitted"
@@ -162,6 +170,11 @@ SCENARIOS = [
     ),
     Scenario("download", Section.STEPS, a_download_lands_on_disk),
     Scenario("tab order", Section.STEPS, tab_moves_focus_to_the_next_field),
+    Scenario(
+        "key chord",
+        Section.STEPS,
+        a_chord_reaches_the_page_with_its_modifier,
+    ),
     Scenario(
         "enter and escape",
         Section.STEPS,

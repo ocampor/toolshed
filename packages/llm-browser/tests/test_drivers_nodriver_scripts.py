@@ -189,3 +189,103 @@ def test_the_visibility_read_asks_the_platform_first() -> None:
     assert "checkVisibility({checkVisibilityCSS: true})" in VISIBILITY_SCRIPT
     assert "opacityProperty" not in VISIBILITY_SCRIPT
     assert "getClientRects" in VISIBILITY_SCRIPT
+
+
+# --- keyboard ---
+
+
+@pytest.mark.parametrize(
+    ("key", "triplet"),
+    [
+        ("Enter", ("Enter", "Enter", 13)),
+        ("a", ("a", "KeyA", 65)),
+        ("Z", ("Z", "KeyZ", 90)),
+        ("7", ("7", "Digit7", 55)),
+        ("+", ("+", "", 0)),
+    ],
+)
+def test_a_key_carries_its_virtual_key_code(
+    key: str, triplet: tuple[str, str, int]
+) -> None:
+    from llm_browser.drivers.nodriver import key_triplet
+
+    assert key_triplet(key) == triplet
+
+
+@pytest.mark.parametrize(
+    ("chord", "expected"),
+    [
+        ("Control+a", (["Control"], "a")),
+        ("Shift+Tab", (["Shift"], "Tab")),
+        ("Control+Shift+k", (["Control", "Shift"], "k")),
+        ("Enter", ([], "Enter")),
+        ("+", ([], "+")),
+    ],
+)
+def test_a_chord_splits_into_modifiers_and_a_key(
+    chord: str, expected: tuple[list[str], str]
+) -> None:
+    from llm_browser.drivers.nodriver import split_chord
+
+    assert split_chord(chord) == expected
+
+
+def test_an_unknown_modifier_is_a_value_error() -> None:
+    from llm_browser.drivers.nodriver import split_chord
+
+    with pytest.raises(ValueError, match="unknown key modifier 'Hyper'"):
+        split_chord("Hyper+a")
+
+
+class KeyboardTab:
+    """Records the `Input.dispatchKeyEvent` arguments, not the CDP wrapper."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    async def send(self, command: Any) -> None:
+        self.events.append(command)
+
+
+@pytest.fixture
+def recorded_keys(monkeypatch: pytest.MonkeyPatch) -> KeyboardTab:
+    tab = KeyboardTab()
+
+    def fake_module(*names: str) -> Any:
+        module = MagicMock()
+        module.cdp.input_.dispatch_key_event = lambda event_type, **kwargs: {
+            "type": event_type,
+            **kwargs,
+        }
+        module.cdp.dom.focus = lambda **kwargs: {"type": "focus"}
+        return module
+
+    monkeypatch.setattr(nodriver_driver, "load_optional_module", fake_module)
+    return tab
+
+
+def test_a_typed_character_fires_a_keydown_with_its_text(
+    recorded_keys: KeyboardTab,
+) -> None:
+    """`char` alone — what nodriver's `send_keys` sends — fires no keydown."""
+    asyncio.new_event_loop().run_until_complete(
+        nodriver_driver.press_key(recorded_keys, "a")
+    )
+    assert [e["type"] for e in recorded_keys.events] == ["keyDown", "keyUp"]
+    assert recorded_keys.events[0]["text"] == "a"
+    assert recorded_keys.events[0]["windows_virtual_key_code"] == 65
+
+
+def test_a_chord_holds_its_modifier_down_and_types_nothing(
+    recorded_keys: KeyboardTab,
+) -> None:
+    asyncio.new_event_loop().run_until_complete(
+        nodriver_driver.press_chord(recorded_keys, "Control+a")
+    )
+    assert [(e["type"], e["key"], e["modifiers"]) for e in recorded_keys.events] == [
+        ("rawKeyDown", "Control", 2),
+        ("rawKeyDown", "a", 2),
+        ("keyUp", "a", 2),
+        ("keyUp", "Control", 0),
+    ]
+    assert all("text" not in e for e in recorded_keys.events)

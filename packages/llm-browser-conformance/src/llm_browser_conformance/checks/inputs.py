@@ -158,10 +158,6 @@ SCENARIOS = [
         "typing fires trusted keydown",
         Section.INPUTS,
         typing_fires_trusted_key_events,
-        known_gaps={
-            "nodriver": "send_keys dispatches Input.dispatchKeyEvent type=char, "
-            "which fires keypress/input but no keydown"
-        },
     ),
     Scenario(
         "dispatch is untrusted",
