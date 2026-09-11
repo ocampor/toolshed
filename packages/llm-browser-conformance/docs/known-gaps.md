@@ -18,18 +18,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
-| screenshot step | nodriver | screenshot calls tab.save_screenshot without a format and nodriver defaults to jpeg, so the file at the requested .png path holds JPEG bytes |
-| read attributes | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
-| parse typed rows | nodriver | extract_rows walks rows from Python and NodriverDriver.all() drops the selector, so child() re-queries the whole document and every row reads the first match |
-| dom step depth | nodriver | session.dom asks for `el => el.outerHTML`, which NodriverDriver.evaluate wraps as a function body, so the expression is never returned and the snippet comes back None |
-| scroll ticks | camoufox | Driver.scroll calls page.mouse.wheel without moving the pointer onto the page first, and Firefox delivers a wheel event only to the widget under the pointer, so a page the pointer is not over never moves — any earlier click puts it over the page and hides this |
-| type delay | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |
-| press chord | nodriver | press only special-cases its NAMED_KEYS table and send_keys anything else, so 'Control+a' is typed into the field as literal text instead of selecting it |
 | dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
-| outputs shape | nodriver | session.dom evaluates 'el => el.outerHTML', and nodriver's element evaluate wraps its argument as a function *body* — the arrow lands as an expression statement, returns undefined, and sanitize_html_fragment raises on the None |
-| probe sees a password | nodriver | page_probe.js is a function literal and nodriver's evaluate runs it as an expression, so PageProbe comes back empty and human_needed is always False |
-| probe sees a challenge | nodriver | page_probe.js is a function literal and nodriver's evaluate runs it as an expression, so PageProbe comes back empty and human_needed is always False |
-| screenshot bytes | nodriver | NodriverDriver.screenshot calls tab.save_screenshot without format=, and nodriver defaults to jpeg whatever the file extension says, so the bytes come back JPEG |
-| sanitize levels | nodriver | session.dom evaluates Playwright's arrow form 'el => el.outerHTML', and NodriverDriver.evaluate wraps an element script as a function body, so the arrow is evaluated, discarded, and dom() gets None back |
 | behavior human paces input | camoufox | the plain locator.type() path already spends ~70ms a key on Camoufox's patched Firefox, inside Behavior.human()'s own 30-90ms jitter band, so the humanized path is not measurably slower |
 | behavior human paces input | nodriver | NodriverDriver leaves humanized_type defaulted because its native CDP input already types like a person, so Behavior.human() adds paced()'s post-action pause and no per-key delay |

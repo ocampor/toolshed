@@ -69,12 +69,6 @@ OFF_PAGE_MARGIN_PX = 50
 TYPED_TEXT = "abcde"
 TYPE_DELAY_MS = 60
 
-NODRIVER_CHILD_SELECTOR_GAP = (
-    "extract_rows walks rows from Python and NodriverDriver.all() drops the "
-    "selector, so child() re-queries the whole document and every row reads "
-    "the first match"
-)
-
 
 def resolved_document(text: str, repository: FlowRepository) -> dict[str, Any]:
     """Resolution is async, and Playwright's sync API already owns a running
@@ -311,11 +305,6 @@ SCENARIOS = [
                 "session:take_screenshot",
             }
         ),
-        known_gaps={
-            "nodriver": "screenshot calls tab.save_screenshot without a "
-            "format and nodriver defaults to jpeg, so the file at the "
-            "requested .png path holds JPEG bytes"
-        },
     ),
     Scenario(
         "read attributes",
@@ -324,7 +313,6 @@ SCENARIOS = [
         covers=frozenset(
             {"field:read.extract", "field:read.path", "session:parse_elements"}
         ),
-        known_gaps={"nodriver": NODRIVER_CHILD_SELECTOR_GAP},
     ),
     Scenario(
         "parse typed rows",
@@ -337,7 +325,6 @@ SCENARIOS = [
                 "field:parse.schema_path",
             }
         ),
-        known_gaps={"nodriver": NODRIVER_CHILD_SELECTOR_GAP},
     ),
     Scenario(
         "dom step depth",
@@ -352,11 +339,6 @@ SCENARIOS = [
                 "session:dom",
             }
         ),
-        known_gaps={
-            "nodriver": "session.dom asks for `el => el.outerHTML`, which "
-            "NodriverDriver.evaluate wraps as a function body, so the "
-            "expression is never returned and the snippet comes back None"
-        },
     ),
     Scenario(
         "think pauses",
@@ -377,13 +359,6 @@ SCENARIOS = [
                 "session:scroll",
             }
         ),
-        known_gaps={
-            "camoufox": "Driver.scroll calls page.mouse.wheel without moving "
-            "the pointer onto the page first, and Firefox delivers a wheel "
-            "event only to the widget under the pointer, so a page the "
-            "pointer is not over never moves — any earlier click puts it "
-            "over the page and hides this"
-        },
     ),
     Scenario(
         "eval step",
@@ -410,21 +385,12 @@ SCENARIOS = [
         Section.STEPS,
         type_delay_sends_one_keydown_per_character,
         covers=frozenset({"field:type.delay", "field:type.selector"}),
-        known_gaps={
-            "nodriver": "send_keys dispatches Input.dispatchKeyEvent type=char, "
-            "which fires keypress/input but no keydown"
-        },
     ),
     Scenario(
         "press chord",
         Section.STEPS,
         a_chord_selects_the_field_before_the_replacement,
         covers=frozenset({"field:press.selector"}),
-        known_gaps={
-            "nodriver": "press only special-cases its NAMED_KEYS table and "
-            "send_keys anything else, so 'Control+a' is typed into the field "
-            "as literal text instead of selecting it"
-        },
     ),
     Scenario(
         "dispatch click step",

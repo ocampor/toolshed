@@ -17,7 +17,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `step:check` | checkbox and radio |
 | `step:click` | overlay intercepts click, sticky header, disabled button, new tab, autocomplete click, custom select click |
-| `step:dom` | dom snippet |
+| `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
 | `step:fill` | shadow dom, controlled input |
@@ -42,9 +42,9 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.checked` | checkbox and radio |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
-| `field:dom.selector` | dom snippet |
-| `field:dom.max_depth` | dom snippet |
-| `field:dom.path` | dom snippet |
+| `field:dom.selector` | dom step depth |
+| `field:dom.max_depth` | dom step depth |
+| `field:dom.path` | dom step depth |
 | `field:download.selector` | download |
 | `field:download.path` | download |
 | `field:fill.selector` | shadow dom |
@@ -53,7 +53,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:goto.wait_until` | goto wait_until |
 | `field:parse.selector` | parse typed rows |
 | `field:parse.schema_path` | parse typed rows |
-| `field:parse.path` | parse typed rows |
+| `field:parse.path` | parse writes typed rows |
 | `field:pick.selector` | pick by text |
 | `field:pick.value` | pick by text |
 | `field:press.selector` | enter and escape, press chord |
@@ -110,7 +110,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:click` | wait detached, dynamic loading, dynamic controls toggle, dynamic controls enable, click is trusted, dispatch is untrusted, tab order |
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
-| `session:dom` | dom snippet, sanitize levels |
+| `session:dom` | dom snippet, dom step depth, sanitize levels |
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
@@ -128,14 +128,14 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:press` | press is trusted, tab order |
 | `session:probe` | flow failure flags a login wall, probe sees a password |
 | `session:save_screenshot` | screenshot step |
-| `session:screenshot_bytes` | screenshot bytes |
-| `session:scroll` | scroll ticks |
+| `session:screenshot_bytes` | screenshot is a png, screenshot bytes |
+| `session:scroll` | scroll, scroll ticks |
 | `session:select_option` | select_option, custom select rejects select |
 | `session:set_checked` | fill/type/check, checkbox and radio |
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
 | `session:take_dom_snapshot` | flow failure captures artifacts |
-| `session:take_screenshot` | flow failure captures artifacts, screenshot step |
+| `session:take_screenshot` | flow failure captures artifacts, screenshot is a png, screenshot step |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |

@@ -128,12 +128,6 @@ SCENARIOS = [
         "outputs shape",
         Section.RESULTS,
         outputs_hold_rows_and_dom_text_and_no_screenshot,
-        known_gaps={
-            "nodriver": "session.dom evaluates 'el => el.outerHTML', and "
-            "nodriver's element evaluate wraps its argument as a function "
-            "*body* — the arrow lands as an expression statement, returns "
-            "undefined, and sanitize_html_fragment raises on the None"
-        },
         covers=frozenset({"api:outputs.shape"}),
     ),
     Scenario(

@@ -42,12 +42,6 @@ MISSING_TIMEOUT_MS = 1_000
 # delay, and the assertion wants the cleanest lower bound it can state.
 TYPED_TEXT = "conformance " * 4
 
-NODRIVER_PROBE_GAP = (
-    "page_probe.js is a function literal and nodriver's evaluate runs it as "
-    "an expression, so PageProbe comes back empty and human_needed is always "
-    "False"
-)
-
 
 # --- probe ---
 
@@ -439,25 +433,18 @@ SCENARIOS = [
         Section.API,
         probe_sees_the_password_field_and_the_page_text,
         covers=frozenset({"session:probe", "api:human_needed.password"}),
-        known_gaps={"nodriver": NODRIVER_PROBE_GAP},
     ),
     Scenario(
         "probe sees a challenge",
         Section.API,
         probe_sees_a_visible_bot_challenge,
         covers=frozenset({"api:human_needed.challenge"}),
-        known_gaps={"nodriver": NODRIVER_PROBE_GAP},
     ),
     Scenario(
         "screenshot bytes",
         Section.API,
         screenshot_bytes_returns_a_png_and_writes_nothing,
         covers=frozenset({"session:screenshot_bytes"}),
-        known_gaps={
-            "nodriver": "NodriverDriver.screenshot calls tab.save_screenshot "
-            "without format=, and nodriver defaults to jpeg whatever the file "
-            "extension says, so the bytes come back JPEG"
-        },
     ),
     Scenario(
         "element exists",
@@ -490,12 +477,6 @@ SCENARIOS = [
                 "api:sanitize.xhigh",
             }
         ),
-        known_gaps={
-            "nodriver": "session.dom evaluates Playwright's arrow form "
-            "'el => el.outerHTML', and NodriverDriver.evaluate wraps an element "
-            "script as a function body, so the arrow is evaluated, discarded, "
-            "and dom() gets None back"
-        },
     ),
     Scenario(
         "wait for load state",
