@@ -72,3 +72,58 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "self": "whole row",
         }
     ]
+
+
+SELECT_HARNESS = """
+const makeOption = (value, index, disabled) => ({
+  value, index, disabled, parentElement: { disabled: false },
+});
+const options = [
+  makeOption("a", 0, false),
+  makeOption("b", 1, true),
+  makeOption("c", 2, false),
+];
+const select = {
+  tagName: "SELECT",
+  options,
+  selectedIndex: 0,
+  events: [],
+  dispatchEvent(event) { this.events.push(event.type); return true; },
+};
+console.log(JSON.stringify({
+  outcome: SELECT(select),
+  selectedIndex: select.selectedIndex,
+  events: select.events,
+}));
+"""
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("c", {"outcome": "ok", "selectedIndex": 2, "events": ["input", "change"]}),
+        ("b", {"outcome": "disabled", "selectedIndex": 0, "events": []}),
+        ("z", {"outcome": "missing", "selectedIndex": 0, "events": []}),
+    ],
+)
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_select_option_js_semantics_in_node(
+    value: str, expected: dict[str, object], tmp_path: Path
+) -> None:
+    from llm_browser.scripts import select_option_js
+
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        "class Event { constructor(type) { this.type = type; } }\n"
+        f"const SELECT = {select_option_js(value)};\n{SELECT_HARNESS}"
+    )
+    out = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == expected
+
+
+def test_select_option_js_rejects_a_non_select() -> None:
+    from llm_browser.scripts import select_option_js
+
+    assert '"not-a-select"' in select_option_js("a")

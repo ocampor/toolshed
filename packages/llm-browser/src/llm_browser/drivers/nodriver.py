@@ -14,7 +14,7 @@ Stealth notes — detectable surfaces
 Default write paths go through real CDP Input events (`isTrusted=true`):
 mouse via `Input.dispatchMouseEvent`, keyboard via `Input.dispatchKeyEvent`,
 focus via `DOM.focus`. Clears use Ctrl+A + Delete over CDP (not JS
-`value=""`). That covers `do_click`, `do_type`, `do_fill`, `do_select_option`.
+`value=""`). That covers `do_click`, `do_type` and `do_fill`.
 
 Residual JS touchpoints — all reads/polls, no DOM events dispatched:
     * `input_value`       — Runtime.callFunctionOn `(el) => el.value`.
@@ -34,6 +34,14 @@ Residual JS touchpoints — all reads/polls, no DOM events dispatched:
                             explicit wait polls for `visible` / `hidden`;
                             `attached` / `detached` go through `count`, a
                             plain DOM query with no Runtime traffic.
+    * `do_select_option`  — Runtime.callFunctionOn `js/select_option.js`,
+                            which writes `selectedIndex` and fires
+                            input/change. Unavoidable: a closed native select
+                            has no option to click and CDP has no command for
+                            choosing one. The focus ahead of it is a real
+                            `DOM.focus`; the two events are the only synthetic
+                            ones on a default write path, and Playwright
+                            resolves the same problem the same way.
     * `evaluate` / `dom`  — arbitrary user-supplied JS. Inherently JS.
 
 Opt-in synthetic-event escape hatches (emit `isTrusted=false` — detectable):
@@ -53,6 +61,7 @@ from typing import Any, Callable, ClassVar, Coroutine, TypeVar
 
 from llm_browser.drivers.base import Driver
 from llm_browser.drivers.handle import DriverHandle, load_optional_module
+from llm_browser.scripts import select_option_js
 
 # Virtual key codes for trusted keyboard events via Input.dispatchKeyEvent.
 # Using JS element.value="" would bypass input/change events — detectable.
@@ -76,6 +85,13 @@ NAMED_KEYS: dict[str, tuple[str, str, int]] = {
 }
 
 T = TypeVar("T")
+
+SELECT_FAILURES = {
+    "not-a-select": "select_option needs a <select>, got another element",
+    "missing": "no <option value={value!r}> in the select",
+    "disabled": "<option value={value!r}> is disabled",
+}
+UNKNOWN_SELECT_FAILURE = "could not select <option value={value!r}>"
 
 READY_STATES: dict[str, set[str]] = {
     "load": {"complete"},
@@ -386,13 +402,20 @@ class NodriverDriver(Driver):
         self.run(self.do_select_option(locator, value))
 
     async def do_select_option(self, loc: NodriverLocator, value: str) -> None:
-        """Native-click the matching <option>. Avoids synthetic change events
-        that bot-detection libraries flag via event.isTrusted."""
-        select_el = await self.resolve_element(loc)
-        option = await select_el.query_selector(f'option[value="{value}"]')
-        if option is None:
-            raise RuntimeError(f"No <option value={value!r}> under select")
-        await option.click()
+        """Set the value through the select, after a real CDP focus.
+
+        Clicking the `<option>` -- what this used to do -- is a no-op on a
+        closed native select: the value never changed, and a *disabled*
+        option reported success. See the module docstring for why the two
+        events this fires are synthetic.
+        """
+        el = await self.resolve_element(loc)
+        nodriver = load_optional_module("nodriver", "nodriver")
+        await loc.tab.send(nodriver.cdp.dom.focus(backend_node_id=el.backend_node_id))
+        outcome = await el.apply(select_option_js(value))
+        if outcome != "ok":
+            reason = SELECT_FAILURES.get(str(outcome), UNKNOWN_SELECT_FAILURE)
+            raise ValueError(reason.format(value=value))
 
     def set_checked(self, locator: Any, checked: bool) -> None:
         self.run(self.do_set_checked(locator, checked))

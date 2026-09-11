@@ -7,7 +7,9 @@ invoked and which gets evaluated.
 """
 
 import asyncio
+import re
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -122,3 +124,58 @@ def test_a_dispatched_click_needs_no_coordinates() -> None:
     element = ClickableElement()
     driver_with_loop().click(NodriverLocator(tab=None, element=element), dispatch=True)
     assert element.calls == ["click"]
+
+
+class SelectElement:
+    """A select whose in-page script has already made up its mind."""
+
+    backend_node_id = 7
+
+    def __init__(self, outcome: str) -> None:
+        self.outcome = outcome
+
+    async def apply(self, script: str) -> str:
+        return self.outcome
+
+
+class FocusingTab:
+    def __init__(self) -> None:
+        self.sent = 0
+
+    async def send(self, command: Any) -> None:
+        self.sent += 1
+
+
+@pytest.fixture
+def stub_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the real `nodriver` package out of `sys.modules`: a sibling test
+    asserts the wait paths never pull it in, and an import here is global."""
+    monkeypatch.setattr(
+        nodriver_driver, "load_optional_module", lambda *names: MagicMock()
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "message"),
+    [
+        ("missing", "no <option value='z'> in the select"),
+        ("disabled", "<option value='z'> is disabled"),
+        ("not-a-select", "select_option needs a <select>"),
+        ("something-else", "could not select <option value='z'>"),
+    ],
+)
+def test_a_refused_select_is_a_value_error(
+    outcome: str, message: str, stub_cdp: None
+) -> None:
+    """``ValueError`` is what ``execute_action`` turns into an ``ErrorResult``;
+    anything else would abort the flow instead of failing the step."""
+    locator = NodriverLocator(tab=FocusingTab(), element=SelectElement(outcome))
+    with pytest.raises(ValueError, match=re.escape(message)):
+        driver_with_loop().select_option(locator, "z")
+
+
+def test_a_successful_select_focuses_first(stub_cdp: None) -> None:
+    tab = FocusingTab()
+    locator = NodriverLocator(tab=tab, element=SelectElement("ok"))
+    driver_with_loop().select_option(locator, "c")
+    assert tab.sent == 1

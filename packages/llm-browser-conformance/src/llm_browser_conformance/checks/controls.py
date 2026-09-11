@@ -145,18 +145,12 @@ SCENARIOS = [
         "native select optgroup",
         Section.STEPS,
         a_native_select_picks_an_option_behind_an_optgroup,
-        known_gaps={
-            "nodriver": "select_option native-clicks the <option>; a closed "
-            "native select ignores it and the value never changes"
-        },
     ),
     Scenario(
         "native select disabled option",
         Section.STEPS,
         a_disabled_option_cannot_be_selected,
         known_gaps={
-            "nodriver": "clicking a disabled <option> is a no-op, so the step "
-            "reports success instead of failing",
             "patchright": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
             "camoufox": PLAYWRIGHT_SELECT_TIMEOUT_GAP,
         },

@@ -90,6 +90,9 @@ PROBE_PASSWORD_PLACEHOLDER = "PASSWORD_SELECTOR_JSON"
 PROBE_CHALLENGE_PLACEHOLDER = "CHALLENGE_SELECTOR_JSON"
 PROBE_MAX_CHARS_PLACEHOLDER = "MAX_CHARS_INT"
 
+# Substituted into ``js/select_option.js``.
+SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
+
 # A page needs a human only for a real credential prompt, a live bot challenge or
 # an explicit interstitial — a bare "sign in" link is ordinary page furniture.
 PASSWORD_INPUT_PATTERN = r"<input[^>]*type\s*=\s*[\"']?password"

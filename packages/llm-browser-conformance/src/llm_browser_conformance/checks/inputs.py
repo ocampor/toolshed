@@ -133,10 +133,6 @@ SCENARIOS = [
         "select_option",
         Section.INPUTS,
         select_option_changes_the_selects_value,
-        known_gaps={
-            "nodriver": "select_option native-clicks the <option>; a closed "
-            "native select ignores it and the value never changes"
-        },
     ),
     Scenario(
         "hidden input is readable",

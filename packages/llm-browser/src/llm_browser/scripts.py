@@ -20,6 +20,13 @@ def extract_rows_js() -> str:
     return load_script("extract_rows")
 
 
+def select_option_js(value: str) -> str:
+    """``(el) => "ok" | "missing" | "disabled" | "not-a-select"`` for one value."""
+    return load_script("select_option").replace(
+        constants.SELECT_VALUE_PLACEHOLDER, json.dumps(value)
+    )
+
+
 def page_probe_js(selector: str | None, max_chars: int) -> str:
     """``() => PageProbe`` — password/challenge visibility plus page text.
 

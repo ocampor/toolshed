@@ -14,14 +14,11 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | scenario | driver | gap |
 | --- | --- | --- |
 | visibility:hidden is hidden | nodriver | is_visible tests offsetParent/getClientRects, neither of which notices visibility:hidden |
-| select_option | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
 | typing fires trusted keydown | nodriver | send_keys dispatches Input.dispatchKeyEvent type=char, which fires keypress/input but no keydown |
 | dispatch is untrusted | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | custom select rejects select | patchright | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
 | custom select rejects select | camoufox | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
 | custom select rejects select | nodriver | select on a non-&lt;select> raises out of run_flow instead of returning a FlowError |
-| native select optgroup | nodriver | select_option native-clicks the &lt;option>; a closed native select ignores it and the value never changes |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
-| native select disabled option | nodriver | clicking a disabled &lt;option> is a no-op, so the step reports success instead of failing |
