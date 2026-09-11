@@ -1,0 +1,19 @@
+# `read` pulls a different attribute per field, and writes the rows to disk.
+params:
+  - path
+steps:
+  - name: rows
+    action: read
+    selector: ".row"
+    path: "{{ path }}"
+    extract:
+      text:
+        child_selector: ".label"
+      qty:
+        child_selector: ".qty"
+        attribute: value
+      row_id:
+        attribute: id
+      href:
+        child_selector: ".link"
+        attribute: href

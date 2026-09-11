@@ -1,0 +1,9 @@
+# `option-plain` plus `wait_after`, which must cost the flow those 1500ms.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    wait_after: 1500
+    extract:
+      text:
+        attribute: textContent

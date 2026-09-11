@@ -1,0 +1,10 @@
+# An optional param's default reaches the template when the caller passes nothing.
+params:
+  - greeting:
+      required: false
+      default: from-the-default
+steps:
+  - name: fill
+    action: fill
+    selector: "#field"
+    value: "{{ greeting }}"

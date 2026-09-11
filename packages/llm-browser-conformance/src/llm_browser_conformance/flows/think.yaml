@@ -1,0 +1,6 @@
+# `think` sleeps for a jittered pause inside the window it declares.
+steps:
+  - name: think
+    action: think
+    min_ms: 400
+    max_ms: 600

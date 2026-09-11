@@ -1,0 +1,13 @@
+# `element_missing` is the idempotence guard: run only if the mark is not there.
+params:
+  - target
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - element_missing:
+          selector: "{{ target }}"
+    extract:
+      text:
+        attribute: textContent

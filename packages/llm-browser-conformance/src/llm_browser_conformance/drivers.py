@@ -85,8 +85,19 @@ def bound_action_timeout(session: BrowserSession, driver: str) -> None:
 
 @contextmanager
 def launched_session(driver: str) -> Iterator[BrowserSession]:
-    """One headless browser, on a throwaway profile, closed on the way out."""
-    with tempfile.TemporaryDirectory(prefix="llm-browser-conformance-") as state_dir:
+    """One headless browser, on a throwaway profile, closed on the way out.
+
+    ``ignore_cleanup_errors`` narrowly covers the profile directory, not the
+    session: ``close()`` releases the connection and returns, but Chromium is
+    still flushing its profile for a moment afterwards, so the ``rmdir`` races
+    it and raises ``Directory not empty``. That is the OS reclaiming a
+    throwaway directory, not a browser refusing to stop — and charging it to
+    the teardown row would report a driver failure that did not happen. A
+    ``close()`` that really does raise still reaches the ``finally`` below.
+    """
+    with tempfile.TemporaryDirectory(
+        prefix="llm-browser-conformance-", ignore_cleanup_errors=True
+    ) as state_dir:
         session = BrowserSession(
             session_id=f"conformance-{driver}",
             state_dir=Path(state_dir),

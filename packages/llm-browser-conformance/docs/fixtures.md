@@ -23,3 +23,18 @@ The suite is meant to grow out of production failures. The recipe:
 6. **Cite the origin** in a one-line HTML comment at the top of the page —
    site and date only, no URL parameters, no identifying data.
 
+
+## What a fixture can use beyond a static page
+
+| piece | where | for |
+| --- | --- | --- |
+| `?delay=` | every page | the one knob the whole suite's timing is expressed in |
+| isTrusted recorder | every page taking input | `data-trusted` / `data-trusted-input`, read by `Context.trusted` |
+| `/redirect` | `server.py` | a 302, which no static file can express |
+| `/slow-resource` | `server.py` | a body served only after `?delay=` ms, so a page's `load` event can be held open |
+| `schemas/*.yaml` | package dir | the typed schema a `parse` step validates rows against |
+
+A `parse` step's `schema_path` and a `download`/`screenshot`/`read` step's
+`path` are CWD-relative or absolute, so a scenario passes the packaged
+absolute path in through a `{{ }}` param rather than assuming a working
+directory.

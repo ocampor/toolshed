@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sanitize levels</title>
+<div id="target" class="card" style="color: rgb(0, 128, 0)" title="Target" data-secret="keep-me-out">
+  <span class="wrap">wrapped</span>
+  <a href="https://example.com/detail" title="Detail">detail</a>
+  <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="pixel">
+  <svg width="20" height="20"><circle cx="10" cy="10" r="8"></circle></svg>
+  <script>window.__sanitize = 1;</script>
+</div>

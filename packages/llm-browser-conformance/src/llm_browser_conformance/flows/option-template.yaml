@@ -1,0 +1,9 @@
+# One `{{ }}` in a selector and one in a value; both are resolved from data.
+params:
+  - target
+  - text
+steps:
+  - name: fill
+    action: fill
+    selector: "{{ target }}"
+    value: "{{ text }}"

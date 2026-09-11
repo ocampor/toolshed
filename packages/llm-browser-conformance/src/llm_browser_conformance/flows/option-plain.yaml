@@ -1,0 +1,8 @@
+# The control every option flow is compared against: one bare read.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    extract:
+      text:
+        attribute: textContent

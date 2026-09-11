@@ -1,0 +1,7 @@
+# The same composition by reference: `flow` is a name a FlowRepository resolves.
+steps:
+  - name: child
+    action: run-flow
+    data:
+      row: "#row-3 .label"
+    flow: run-flow-child.yaml

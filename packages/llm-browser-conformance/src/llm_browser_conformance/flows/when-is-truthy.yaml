@@ -1,0 +1,13 @@
+# `when: is_truthy` gates a step on the flow's own data, never on the page.
+params:
+  - flag
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - field: flag
+        op: is_truthy
+    extract:
+      text:
+        attribute: textContent

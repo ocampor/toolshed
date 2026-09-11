@@ -1,0 +1,20 @@
+# A failure one level down: the retry hint has to name the parent step, not
+# the child the error names.
+params:
+  - label
+steps:
+  - name: panel
+    action: read
+    selector: "#panel"
+    extract:
+      text:
+        attribute: textContent
+  - name: nested
+    action: run-flow
+    flow:
+      steps:
+        - name: boom
+          action: wait_for
+          selector: "#never"
+          state: attached
+          timeout: 500

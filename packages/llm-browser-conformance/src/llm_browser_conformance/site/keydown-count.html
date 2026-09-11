@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Keydown count</title>
+<input type="text" id="typed">
+<div id="keydowns">0</div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const counter = document.getElementById("keydowns");
+document.getElementById("typed").addEventListener("keydown", () => {
+  counter.textContent = String(Number(counter.textContent) + 1);
+});
+</script>
