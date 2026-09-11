@@ -10,6 +10,9 @@ touched it.
 
 from pathlib import Path
 
+import pytest
+from llm_browser.session import BrowserSession
+
 from llm_browser_conformance.coverage import (
     REQUIRED_API,
     REQUIRED_CONDITIONS,
@@ -71,6 +74,19 @@ def test_the_discriminator_is_not_mistaken_for_an_option() -> None:
 
 def test_private_session_helpers_are_not_required() -> None:
     assert not [name for name in session_methods() if name.startswith("_")]
+
+
+def test_a_session_property_is_required_like_a_method(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``inspect.isfunction`` sees neither a ``property`` nor a
+    ``classmethod``, so a session attribute declared as one would slip past
+    the gate the day the library grows it."""
+    monkeypatch.setattr(
+        BrowserSession, "brand_prop", property(lambda self: None), raising=False
+    )
+    assert "brand_prop" in session_methods()
+    assert "session:brand_prop" in uncovered()
 
 
 def test_the_hand_listed_keys_stay_sorted_and_unique() -> None:

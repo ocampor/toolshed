@@ -4,8 +4,6 @@
 <input type="text" id="typed">
 <div id="keydowns">0</div>
 <script>
-const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
-
 const recordTrust = (e) => {
   if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
 };

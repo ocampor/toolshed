@@ -177,7 +177,7 @@ A scenario claims what it exercises through `covers`:
 Scenario(
     "goto wait_until",
     Section.STEPS,
-    goto_waits_for_the_load_event,
+    goto_waits_for_the_load_state_it_was_asked_for,
     covers=frozenset({"step:goto", "field:goto.wait_until"}),
 )
 ```
