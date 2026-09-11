@@ -175,6 +175,25 @@ def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
         session.wait_for_element("#boom")
 
 
+def test_a_navigation_during_a_detached_wait_reads_as_not_yet(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """The navigation that destroys the context is what `detached` is waiting
+    for, so the poll re-asks on the next tick instead of unwinding."""
+    driver = driver_with(counts=[1])
+    driver.count.side_effect = [
+        RuntimeError(
+            "Execution context was destroyed, most likely because of a navigation."
+        ),
+        0,
+    ]
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_element("#gone", state="detached")
+
+    assert driver.count.call_count == 2
+
+
 def test_a_visibility_error_escapes_too(tmp_path: Path, clock: FakeClock) -> None:
     driver = driver_with(visible=[False])
     driver.is_visible.side_effect = RuntimeError("Execution context was destroyed")

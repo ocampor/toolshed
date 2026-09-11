@@ -41,6 +41,9 @@ READ_TIMEOUT_MS = 250
 # itself a fingerprint.
 POLL_JITTER_RATIO = 0.3
 
+# What a Playwright-family driver says when a read raced a navigation.
+DESTROYED_CONTEXT_MESSAGE = "Execution context was destroyed"
+
 DEFAULT_URL_SCHEMES = ("http", "https")
 
 REDACTED = "***"
