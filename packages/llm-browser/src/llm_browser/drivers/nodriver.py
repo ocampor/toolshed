@@ -331,10 +331,16 @@ class NodriverDriver(Driver):
 
     def close(self, handle: DriverHandle) -> None:
         if self.browser is not None and self.loop is not None:
-            # Shutdown is racy — CDP websocket may already be disconnected.
-            # Swallow so subsequent state reset always runs.
+            # Browser.stop() is synchronous — it calls Process.terminate()
+            # directly, no event loop needed. Wrapping it in self.run() made
+            # the terminate happen as a side effect of evaluating the
+            # argument, then raised TypeError on the non-coroutine result,
+            # which the broad except below silently ate. Shutdown is still
+            # racy — the CDP websocket may already be disconnected — so the
+            # except stays, but it now only catches Browser.stop()'s own
+            # failures.
             try:
-                self.run(self.browser.stop())
+                self.browser.stop()
             except Exception:
                 pass
         if self.loop is not None and not self.loop.is_closed():

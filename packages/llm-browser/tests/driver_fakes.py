@@ -41,3 +41,16 @@ class FakeTab:
 
     def next_result(self) -> Any:
         return self.results.pop(0) if len(self.results) > 1 else self.results[0]
+
+
+class FakeBrowser:
+    """A nodriver ``Browser`` double: ``stop()`` is synchronous, like the real one."""
+
+    def __init__(self, *, stop_error: Exception | None = None) -> None:
+        self.stop_calls = 0
+        self._stop_error = stop_error
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+        if self._stop_error is not None:
+            raise self._stop_error

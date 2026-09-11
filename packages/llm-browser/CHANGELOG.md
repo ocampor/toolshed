@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `NodriverDriver.close()` calls `Browser.stop()` directly instead of
+  `self.run(Browser.stop())`. `Browser.stop()` is synchronous and terminates
+  the launched Chromium as a side effect of evaluating the call — wrapping it
+  in the coroutine bridge always raised `TypeError` on the non-coroutine
+  result, which the broad `except` around it silently swallowed. The browser
+  was still stopped either way; a caller that expected a clean `close()` to
+  ever surface a real `Browser.stop()` failure would not have seen one.
+
 ## 0.9.0 — 2026-09-10
 
 The library never writes output files. Everything a flow or a session produces

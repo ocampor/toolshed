@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-09-10
+
+### Fixed
+
+- `launched_session` registers its browser with `interrupts` while live and
+  unregisters it on a normal `close()`. An `atexit` hook and SIGINT/SIGTERM
+  handlers sweep whatever is still registered, so a worker killed or timed
+  out mid-run no longer strands the Chromium/Firefox it launched — a normal
+  exit already reached `session.close()` in the `finally`; only an abnormal
+  one skipped it.
+
 ## 0.2.0 — 2026-09-10
 
 Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
