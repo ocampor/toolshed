@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from llm_browser.flows import run_flow
+from llm_browser.html import SanitizeLevel
 from llm_browser.models import FlowError, FlowSuccess
 
 from llm_browser_conformance.checks.support import expect_success, wrote_nothing
@@ -33,6 +34,26 @@ def a_failing_wait_step_captures_screenshot_and_dom_in_memory(ctx: Context) -> N
     assert isinstance(result.dom, str)
     assert "<html" in result.dom and "<script" not in result.dom
     assert result.human_needed is False
+
+
+def the_capture_level_decides_what_the_dom_snapshot_keeps(ctx: Context) -> None:
+    """`high` is for reading and drops every href; `medium` keeps them, for
+    when where the page would have gone next is the thing you need."""
+    ctx.visit("never.html")
+    flow = ctx.flow("wait-never")
+    default = ctx.session.capture_level
+    try:
+        ctx.session.capture_level = SanitizeLevel.MEDIUM
+        lenient = run_flow(ctx.session, flow, {})
+        ctx.session.capture_level = SanitizeLevel.HIGH
+        strict = run_flow(ctx.session, flow, {})
+    finally:
+        ctx.session.capture_level = default
+    assert isinstance(lenient, FlowError) and isinstance(strict, FlowError)
+    assert lenient.dom is not None and strict.dom is not None
+    assert "next.example" in lenient.dom, "medium must keep the href"
+    assert "next.example" not in strict.dom, "high must drop the href"
+    assert "next" in strict.dom, "the link text survives either way"
 
 
 def a_failure_behind_a_login_wall_asks_for_a_human(ctx: Context) -> None:
@@ -92,6 +113,12 @@ SCENARIOS = [
                 "step:wait_for",
             }
         ),
+    ),
+    Scenario(
+        "flow failure capture level",
+        Section.FLOWS,
+        the_capture_level_decides_what_the_dom_snapshot_keeps,
+        covers=frozenset({"api:capture_level", "session:dom_snapshot"}),
     ),
     Scenario(
         "flow failure flags a login wall",

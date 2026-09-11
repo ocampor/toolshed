@@ -45,7 +45,10 @@ def cli_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "flow.yml").write_text(FLOW_YAML)
 
-    def invoke(result: FlowResult, *args: str) -> tuple[Any, Path]:
+    def invoke(
+        result: FlowResult, *args: str, flow: str = FLOW_YAML
+    ) -> tuple[Any, Path]:
+        (tmp_path / "flow.yml").write_text(flow)
         monkeypatch.setattr("llm_browser.cli.run_cli_flow", lambda *a, **k: result)
         outcome = CliRunner().invoke(main, ["run", "--flow", "flow.yml", *args])
         return outcome, tmp_path
@@ -137,3 +140,169 @@ def test_a_step_named_screenshot_keeps_its_own_path(cli_run: Any) -> None:
     reported = payload(outcome)
     assert reported["outputs"]["screenshot"] == str(cwd / "step.png")
     assert reported["screenshot"] == str(cwd / "diagnostics" / "screenshot.png")
+
+
+# --- --out-dir is a boundary ---
+
+
+ESCAPE_FLOW = """
+steps:
+  - name: rows
+    action: read
+    selector: tr
+    path: "{}"
+"""
+
+
+def _escape_run(cli_run: Any, path: str) -> Any:
+    return cli_run(
+        FlowSuccess(step="rows", outputs={"rows": [{"title": "hello"}]}),
+        flow=ESCAPE_FLOW.format(path),
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../escaped.json",
+        "nested/../../escaped.json",
+        "/tmp/llm-browser-escape-test.json",
+    ],
+)
+def test_a_path_leaving_out_dir_is_refused(
+    cli_run: Any, path: str, tmp_path: Path
+) -> None:
+    """`path:` is templated from --data, so it is untrusted input."""
+    outcome, cwd = _escape_run(cli_run, path)
+    assert outcome.exit_code != 0
+    assert "refusing to write" in outcome.output, outcome.output
+    assert not (tmp_path.parent / "escaped.json").exists()
+    assert not Path("/tmp/llm-browser-escape-test.json").exists()
+
+
+def test_a_nested_path_inside_out_dir_is_allowed(cli_run: Any) -> None:
+    outcome, cwd = _escape_run(cli_run, "deep/nested/rows.json")
+    assert outcome.exit_code == 0, outcome.output
+    assert json.loads((cwd / "deep" / "nested" / "rows.json").read_text()) == [
+        {"title": "hello"}
+    ]
+
+
+def test_nothing_is_written_when_one_path_escapes(cli_run: Any) -> None:
+    """The whole run is planned before anything lands, so a rejected path
+    leaves no half-written output behind."""
+    flow = """
+steps:
+  - name: good
+    action: dom
+    selector: "#a"
+    path: fine.html
+  - name: bad
+    action: dom
+    selector: "#b"
+    path: ../escaped.html
+"""
+    outcome, cwd = cli_run(
+        FlowSuccess(step="bad", outputs={"good": "<p>a</p>", "bad": "<p>b</p>"}),
+        flow=flow,
+    )
+    assert outcome.exit_code != 0
+    assert not (cwd / "fine.html").exists(), "a refused run wrote part of its output"
+
+
+def test_a_hostile_download_filename_is_reduced_to_its_basename(cli_run: Any) -> None:
+    """`BytesResult.name` is the server's Content-Disposition filename."""
+    hostile = BytesResult(name="../../../etc/escape.bin", content=b"payload")
+    outcome, cwd = cli_run(
+        FlowSuccess(step="grab", outputs={"grab": hostile}),
+        flow="steps:\n  - name: grab\n    action: download\n    selector: '#dl'\n",
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert (cwd / "escape.bin").read_bytes() == b"payload"
+
+
+# --- keys match what the runner produced ---
+
+
+def test_a_templated_step_name_still_gets_its_file(cli_run: Any) -> None:
+    """`run_loaded_flow` keys outputs on the unresolved step name, so the CLI
+    has to look the path up the same way or silently write nothing."""
+    flow = """
+params:
+  - id
+steps:
+  - name: "shot-{{ id }}"
+    action: screenshot
+    path: "out/{{ id }}.png"
+"""
+    outcome, cwd = cli_run(
+        FlowSuccess(
+            step="shot-{{ id }}",
+            outputs={"shot-{{ id }}": BytesResult(name="shot.png", content=PNG)},
+        ),
+        flow=flow,
+        *("--data", json.dumps({"id": "run7"})),
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert (cwd / "out" / "run7.png").read_bytes() == PNG
+
+
+# --- rows a schema declared as Decimal/date ---
+
+
+def test_typed_rows_are_written_as_json(cli_run: Any) -> None:
+    """`parse` rows reach the writer in python mode carrying real `Decimal`
+    and `date` objects; `json.dumps` cannot encode either."""
+    import datetime
+    import decimal
+
+    rows = [{"total": decimal.Decimal("10.25"), "due": datetime.date(2024, 3, 1)}]
+    outcome, cwd = cli_run(
+        FlowSuccess(step="rows", outputs={"rows": rows}),
+        flow=(
+            "steps:\n  - name: rows\n    action: parse\n    selector: tr\n"
+            "    schema_path: s.yaml\n    path: out/rows.json\n"
+        ),
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert json.loads((cwd / "out" / "rows.json").read_text()) == [
+        {"total": "10.25", "due": "2024-03-01"}
+    ]
+
+
+# --- --capture-level threads through to the session ---
+
+
+def test_capture_level_reaches_the_session(cli_run: Any, monkeypatch: Any) -> None:
+    seen: list[str] = []
+
+    def record(session: Any, *a: Any, **k: Any) -> Any:
+        seen.append(session.capture_level.value)
+        return FlowSuccess(step="snap")
+
+    monkeypatch.setattr("llm_browser.cli.run_cli_flow", record)
+    outcome = CliRunner().invoke(
+        main, ["run", "--flow", "flow.yml", "--capture-level", "medium"]
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert seen == ["medium"]
+
+
+def test_capture_level_defaults_to_high(cli_run: Any, monkeypatch: Any) -> None:
+    seen: list[str] = []
+
+    def record(session: Any, *a: Any, **k: Any) -> Any:
+        seen.append(session.capture_level.value)
+        return FlowSuccess(step="snap")
+
+    monkeypatch.setattr("llm_browser.cli.run_cli_flow", record)
+    outcome = CliRunner().invoke(main, ["run", "--flow", "flow.yml"])
+    assert outcome.exit_code == 0, outcome.output
+    assert seen == ["high"]
+
+
+def test_an_unknown_capture_level_is_a_usage_error(cli_run: Any) -> None:
+    outcome = CliRunner().invoke(
+        main, ["run", "--flow", "flow.yml", "--capture-level", "nonsense"]
+    )
+    assert outcome.exit_code == 2

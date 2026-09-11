@@ -125,7 +125,7 @@ def test_attach_persists_attached_mode(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path, driver=driver)
     session.attach("http://localhost:9222")
 
-    info = session._load_state()
+    info = session.state.load()
     assert info is not None
     assert info.mode == "attached"
     assert info.pid is None

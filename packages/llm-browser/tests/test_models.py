@@ -1,6 +1,7 @@
 """Tests for Pydantic model serialization round-trips."""
 
 import pytest
+from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
 from llm_browser.models import (
@@ -26,11 +27,32 @@ def test_session_info_round_trip() -> None:
 
 
 def test_flow_error_round_trip() -> None:
-    result = FlowError(step="check", data='{"cp": "05330"}', screenshot="/tmp/s.png")
-    json_str = result.model_dump_json()
-    restored = FlowError.model_validate_json(json_str)
+    """The capture survives a JSON round trip as the bytes that went in, not
+    as the base64 they were transported as."""
+    shot = b"\x89PNG\r\n\x1a\n\x00binary\xff"
+    result = FlowError(
+        step="check", data='{"cp": "05330"}', screenshot=shot, dom="<p>hi</p>"
+    )
+    restored = FlowError.model_validate_json(result.model_dump_json())
     assert restored.step == "check"
     assert restored.data == '{"cp": "05330"}'
+    assert restored.screenshot == shot
+    assert restored.dom == "<p>hi</p>"
+
+
+def test_flow_error_screenshot_is_base64_on_the_wire() -> None:
+    import base64
+
+    shot = b"\x89PNG\r\n\x1a\n\xff"
+    dumped = FlowError(step="s", screenshot=shot).model_dump(mode="json")
+    assert dumped["screenshot"] == base64.b64encode(shot).decode()
+
+
+def test_flow_error_rejects_a_screenshot_that_is_not_base64() -> None:
+    """The field used to hold a path; a caller still passing one is told so
+    rather than quietly storing the filename as the image."""
+    with pytest.raises(ValidationError):
+        FlowError(step="check", screenshot="/tmp/s.png")
 
 
 def test_flow_success_minimal() -> None:

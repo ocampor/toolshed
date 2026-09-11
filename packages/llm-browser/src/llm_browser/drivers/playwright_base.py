@@ -98,7 +98,7 @@ class PwPage(Protocol):
     def content(self) -> str: ...
     def screenshot(self, full_page: bool = ...) -> bytes: ...
     def evaluate(self, script: str) -> Any: ...
-    def expect_download(self) -> PwDownloadContext: ...
+    def expect_download(self, timeout: float = ...) -> PwDownloadContext: ...
 
 
 def _pw_page(page: Any) -> PwPage:
@@ -245,14 +245,28 @@ class PlaywrightDriverBase(Driver):
     def screenshot_bytes(self, page: Any) -> bytes:
         return _pw_page(page).screenshot(full_page=False)
 
-    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
         """Playwright always spools the download to a temp file of its own;
-        ``delete()`` removes it once the bytes are in memory."""
-        with _pw_page(page).expect_download() as info:
+        ``delete()`` removes it once the bytes are in memory, on the failing
+        path as much as the succeeding one.
+
+        A download that fails or is cancelled makes ``path()`` raise
+        Playwright's own ``Error``, which is neither a timeout nor a
+        ``ValueError`` and so would unwind out of ``run_flow`` instead of
+        coming back as a failed step. Restated as a ``ValueError`` here, it is
+        the step result the caller is promised.
+        """
+        with _pw_page(page).expect_download(timeout=timeout_ms) as info:
             trigger()
         download = info.value
         try:
             content = Path(download.path()).read_bytes()
+        except Exception as exc:
+            raise ValueError(
+                f"download did not complete: {' '.join(str(exc).split())[:200]}"
+            ) from exc
         finally:
             download.delete()
         name = download.suggested_filename

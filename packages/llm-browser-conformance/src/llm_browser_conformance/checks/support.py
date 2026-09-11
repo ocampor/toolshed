@@ -55,21 +55,35 @@ def one_text(outputs: dict[str, object], step: str) -> str | None:
     return values[0]
 
 
-def artifact_snapshot(session: BrowserSession) -> list[tuple[str, int, int]]:
-    """The files the session has in its own dir, with their stats.
+def file_stats(directory: Path) -> list[tuple[str, int, int]]:
+    """Every top-level file in ``directory``, with the stats that would change
+    if something rewrote one.
 
-    Only the top level: ``user-data/`` is the live profile and the browser
-    writes into it constantly.
+    Name alone is not enough: a flow's ``path:`` values are relative names, so
+    the likeliest regression is a runner *overwriting* a file that was already
+    there, which a set of names cannot see. A directory that does not exist
+    yet has no files, which is the same answer as an empty one.
     """
+    if not directory.exists():
+        return []
     return sorted(
         (path.name, path.stat().st_size, path.stat().st_mtime_ns)
-        for path in session.session_dir.iterdir()
+        for path in directory.iterdir()
         if path.is_file()
     )
 
 
-def cwd_snapshot() -> list[str]:
-    return sorted(path.name for path in Path.cwd().iterdir())
+def artifact_snapshot(session: BrowserSession) -> list[tuple[str, int, int]]:
+    """The files the session has in its own dir.
+
+    Only the top level: ``user-data/`` is the live profile and the browser
+    writes into it constantly.
+    """
+    return file_stats(session.session_dir)
+
+
+def cwd_snapshot() -> list[tuple[str, int, int]]:
+    return file_stats(Path.cwd())
 
 
 @contextlib.contextmanager

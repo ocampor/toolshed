@@ -707,7 +707,9 @@ class NodriverDriver(Driver):
         await page.activate()
         await page.save_screenshot(filename=str(path), format="png")
 
-    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
         raise NotImplementedError(
             "NodriverDriver does not support download_bytes in this version."
         )

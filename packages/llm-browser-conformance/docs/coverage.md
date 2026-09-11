@@ -111,7 +111,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
 | `session:dom` | dom snippet, dom step depth, sanitize levels |
-| `session:dom_snapshot` | flow failure captures artifacts |
+| `session:dom_snapshot` | flow failure captures artifacts, flow failure capture level |
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
@@ -144,8 +144,10 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `api:behavior.human` | behavior human paces input |
 | `api:behavior.off` | behavior human paces input |
+| `api:capture_level` | flow failure capture level |
 | `api:cli.capture_dir` | cli run failure captures |
 | `api:cli.out_dir` | cli run writes outputs |
+| `api:cli.typed_rows` | cli run writes typed rows |
 | `api:error.outputs` | error keeps partial outputs |
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -13,7 +12,6 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
-    field_serializer,
     field_validator,
     model_validator,
 )
@@ -25,6 +23,7 @@ from llm_browser.constants import (
     DEFAULT_WAIT_TIMEOUT_MS,
 )
 from llm_browser.parse import ExtractField
+from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
 
 # --- Step types ---
@@ -473,21 +472,18 @@ class FlowError(BaseModel):
 
     ``screenshot`` and ``dom`` are the failing page itself, in memory: PNG
     bytes and sanitized HTML text, controlled by ``BrowserSession(capture=)``.
-    Nothing is written — ``model_dump(mode="json")`` base64-encodes the PNG,
-    and a caller that wants files writes them.
+    Nothing is written — ``model_dump(mode="json")`` base64-encodes the PNG
+    and validating that back decodes it, so the model round-trips, and a
+    caller that wants files writes them.
     """
 
     step: str
     data: object = None
-    screenshot: bytes | None = None
+    screenshot: PayloadBytes | None = None
     dom: str | None = None
     human_needed: bool = False
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
-
-    @field_serializer("screenshot", when_used="json-unless-none")
-    def serialize_screenshot(self, screenshot: bytes) -> str:
-        return base64.b64encode(screenshot).decode("ascii")
 
 
 # Public type alias: callers that don't care which arm they got can use

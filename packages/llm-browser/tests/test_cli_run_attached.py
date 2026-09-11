@@ -54,11 +54,11 @@ def test_run_attached_is_stateless(base: BrowserSession) -> None:
     def record(session: BrowserSession) -> object:
         seen.append(session)
         assert session.stateless
-        assert not session._state_file.exists()
+        assert not session.state.path.exists()
         return None
 
     run_attached(base, CDP_URL, record)
-    assert not seen[0]._state_file.exists()
+    assert not seen[0].state.path.exists()
 
 
 def test_run_attached_uses_a_unique_session_id(base: BrowserSession) -> None:

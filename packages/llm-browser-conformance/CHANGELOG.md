@@ -16,6 +16,10 @@ Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
 - `support.wrote_nothing(ctx)` brackets a scenario body and fails if the
   session directory or the working directory gained or changed a file;
   `artifact_snapshot` moved there from `checks/session_api.py` to back it.
+- `support.wrote_nothing` compares `(name, size, mtime_ns)` for the working
+  directory as well as the session dir. Names alone could not see a run
+  *overwriting* a file that was already there, which is the likeliest shape of
+  the regression it guards, since flow `path:` values are relative names.
 - Coverage follows the session API: `session:dom_snapshot` in,
   `session:take_screenshot`, `session:save_screenshot` and
   `session:take_dom_snapshot` out.
@@ -25,8 +29,8 @@ Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
 - `outputs json dump` (`api:outputs.json`): `outputs` holds real bytes for a
   Python caller, and `model_dump(mode="json")` base64-encodes them rather than
   crashing the serializer.
-- A `[cli]` section, and the two scenarios in it — `cli run writes outputs`
-  and `cli run failure captures` (`api:cli.out_dir`, `api:cli.capture_dir`).
+- A `[cli]` section, opened by `cli run writes outputs` and `cli run failure
+  captures` (`api:cli.out_dir`, `api:cli.capture_dir`).
   They drive the installed `llm-browser` console script as a subprocess
   against the fixture site, because the other half of "the library writes
   nothing" — that `llm-browser run` puts the results where the flow and the
@@ -37,6 +41,15 @@ Tracks `llm-browser` 0.9.0, where the library stopped writing output files.
   patchright only; what the CLI writes is decided above the driver, and a
   second browser per column would triple the cost of a run to re-check the
   same code.
+- `cli run writes typed rows` (`api:cli.typed_rows`): a `parse` schema
+  declaring `Decimal` and `date` reaches the CLI writer as those objects, and
+  `json.dumps` can encode neither. The library used to write that file itself,
+  in JSON mode; moving the write to the CLI reintroduced the crash once, and
+  this is what catches it.
+- `flow failure capture level` (`api:capture_level`): the failing page's DOM
+  snapshot honours `BrowserSession(capture_level=)` — `medium` keeps the
+  `href` the flow would have followed, `high` drops it. `never.html` gained an
+  anchor nothing clicks, so a capture taken there has a link to keep or drop.
 
 ## 0.1.1 — 2026-09-10
 

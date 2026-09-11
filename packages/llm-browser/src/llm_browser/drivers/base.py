@@ -261,11 +261,20 @@ class Driver(ABC):
         """
 
     @abstractmethod
-    def download_bytes(self, page: Any, trigger: Callable[[], None]) -> BytesResult:
-        """Run ``trigger``, wait for the download it starts, return its bytes.
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
+        """Run ``trigger``, wait up to ``timeout_ms`` for the download it
+        starts, and return its bytes.
 
         Nothing is left on disk: a backend whose API can only download to a
-        file reads that file back and removes it before returning.
+        file reads that file back and removes it before returning. A download
+        that never starts raises ``TimeoutError``; one that starts and then
+        fails raises ``ValueError`` — both are step results, per rule 5.
+
+        The payload is held whole in memory. There is no size ceiling here,
+        deliberately: a caller that fetches something large should expect to
+        hold it, and to hold ~4/3 of it again if it dumps the result to JSON.
         """
 
     @abstractmethod

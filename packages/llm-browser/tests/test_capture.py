@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.html import sanitize_page_html
+from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.session import BrowserSession
 from tests.conftest import PNG
 from tests.flow_helpers import run_flow_file
@@ -158,3 +158,63 @@ def test_dom_snapshot_sanitizes_the_page(tmp_path: Path) -> None:
     assert "hello" in content
     assert "script" not in content
     assert not session.session_dir.exists()
+
+
+# --- the capture level is the caller's decision ---
+
+LINKED_PAGE = _wrap(
+    '<div><a href="https://next.example/step2">next</a>'
+    '<img src="data:image/png;base64,AAAABBBB">'
+    "<span>text</span></div>"
+)
+
+
+def _snapshot_at(tmp_path: Path, level: SanitizeLevel | None) -> str:
+    session = BrowserSession(state_dir=tmp_path, capture="dom")
+    page = MagicMock()
+    page.content.return_value = LINKED_PAGE
+    session._page = page
+    return session.dom_snapshot(level)
+
+
+@pytest.mark.parametrize(
+    "level, keeps_href, keeps_span",
+    [
+        (SanitizeLevel.LOW, True, True),
+        (SanitizeLevel.MEDIUM, True, True),
+        (SanitizeLevel.HIGH, False, True),
+        (SanitizeLevel.XHIGH, False, False),
+    ],
+)
+def test_dom_snapshot_honours_the_level(
+    tmp_path: Path, level: SanitizeLevel, keeps_href: bool, keeps_span: bool
+) -> None:
+    """A page snapshot applies the same per-level passes a `dom` snippet
+    does — the level table is one implementation, not two."""
+    out = _snapshot_at(tmp_path, level)
+    assert ("next.example" in out) is keeps_href, out
+    assert ("<span" in out) is keeps_span, out
+    assert "next" in out, "the text survives every level"
+
+
+def test_dom_snapshot_defaults_to_the_session_level(tmp_path: Path) -> None:
+    session = BrowserSession(
+        state_dir=tmp_path, capture="dom", capture_level=SanitizeLevel.MEDIUM
+    )
+    page = MagicMock()
+    page.content.return_value = LINKED_PAGE
+    session._page = page
+    assert "next.example" in session.dom_snapshot()
+    assert "next.example" not in session.dom_snapshot(SanitizeLevel.HIGH)
+
+
+def test_the_default_capture_level_is_high(tmp_path: Path) -> None:
+    assert BrowserSession(state_dir=tmp_path).capture_level is SanitizeLevel.HIGH
+    assert "next.example" not in _snapshot_at(tmp_path, None)
+
+
+def test_medium_truncates_a_data_uri_in_a_page_snapshot(tmp_path: Path) -> None:
+    """The per-level extras apply to a document, not just a fragment."""
+    out = _snapshot_at(tmp_path, SanitizeLevel.MEDIUM)
+    assert "AAAABBBB" not in out
+    assert "data:image/png" in out

@@ -222,7 +222,7 @@ def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
 def action_download(session: BrowserSession, step: DownloadStep) -> BytesResult:
     """``step.path`` is not consulted: the runner returns the bytes and the
     CLI is what writes them."""
-    return session.download_file(step.selector)
+    return session.download_file(step.selector, timeout=step.timeout)
 
 
 # --- Pacing actions ---

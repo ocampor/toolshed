@@ -228,7 +228,7 @@ def test_download_arms_the_trigger_with_the_same_click(
     session.behavior = Behavior.human()
     session.behavior_runtime = session.behavior.runtime()
     session.download_file("#dl")
-    _page, trigger = driver(session).download_bytes.call_args.args
+    _page, trigger, _timeout = driver(session).download_bytes.call_args.args
     trigger()
     driver(session).humanized_click.assert_called_once()
     driver(session).click.assert_not_called()

@@ -353,6 +353,8 @@ def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> Ma
     """A Playwright ``Download`` whose spool file really exists on disk."""
     from contextlib import contextmanager
 
+    page = session._page
+
     spooled = tmp_path / "spool" / "download.bin"
     spooled.parent.mkdir()
     spooled.write_bytes(payload)
@@ -363,7 +365,8 @@ def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> Ma
     mock_download.delete.side_effect = spooled.unlink
 
     @contextmanager
-    def fake_expect_download():  # type: ignore[no-untyped-def]
+    def fake_expect_download(timeout=None):  # type: ignore[no-untyped-def]
+        page.expect_download_timeout = timeout
         yield MagicMock(value=mock_download)
 
     session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
@@ -389,6 +392,36 @@ def test_download_leaves_no_spool_file_behind(
     _arm_download(session, tmp_path, b"payload")
     execute_action(session, DownloadStep(name="s", action="download", selector="#a"))
     assert list((tmp_path / "spool").iterdir()) == []
+
+
+def test_download_honours_the_step_timeout(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """Without this the step's budget bounds `find` only and Playwright's own
+    30s default takes over for the wait that matters."""
+    _arm_download(session, tmp_path, b"payload")
+    step = DownloadStep(name="s", action="download", selector="#dl", timeout=2500)
+    execute_action(session, step)
+    assert session._page.expect_download_timeout == 2500  # type: ignore[union-attr]
+
+
+def test_a_download_that_fails_is_a_step_failure(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """Playwright raises its own `Error` from `path()` on a cancelled
+    download; raw, it would unwind out of `run_flow` instead of coming back
+    as a failed step."""
+    from llm_browser.results import ErrorResult
+
+    mock_download = _arm_download(session, tmp_path, b"payload")
+    mock_download.path.side_effect = RuntimeError("download was canceled")
+    result = execute_action(
+        session, DownloadStep(name="s", action="download", selector="#dl")
+    )
+    assert isinstance(result, ErrorResult)
+    assert result.error == "ValueError"
+    assert "download did not complete" in result.message
+    mock_download.delete.assert_called_once()
 
 
 def test_download_path_is_ignored_by_the_runner(

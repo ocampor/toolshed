@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
@@ -64,11 +65,33 @@ def prepare_output_path(path: str | Path) -> Path:
     A caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first, and
     what is reported back reads the same from any working directory.
 
+    For a path the *user* typed (``--path``). A path that came out of a flow
+    goes through :func:`contained_output_path`, which will not leave its
+    directory.
+
     Writing is the CLI's job alone; the library returns its output in memory.
     """
     out = Path(path).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def contained_output_path(directory: Path, relative: str) -> Path:
+    """Where ``relative`` lands under ``directory``, refusing to leave it.
+
+    ``path:`` is templated from ``--data`` before it gets here and a
+    download's filename is whatever the server called it, so both are
+    untrusted: ``..`` segments and absolute paths would otherwise write
+    wherever they pleased, and ``--out-dir`` promises they cannot.
+    """
+    root = directory.resolve()
+    target = (root / relative).resolve()
+    if not target.is_relative_to(root):
+        raise click.UsageError(
+            f"refusing to write {relative!r} outside {root}: "
+            "a step path is relative to the output directory"
+        )
+    return target
 
 
 def _output(data: object) -> None:
@@ -349,6 +372,13 @@ def goto(ctx: click.Context, url: str) -> None:
     default=None,
     help="Where a failure's screenshot.png / dom.html land. Default: the session dir.",
 )
+@click.option(
+    "--capture-level",
+    "capture_level",
+    type=click.Choice([level.value for level in SanitizeLevel]),
+    default=SanitizeLevel.HIGH.value,
+    help="How hard a failure's DOM snapshot is sanitized. Default: high.",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -360,6 +390,7 @@ def run(
     cdp_url: str | None,
     out_dir: str,
     capture_dir: str | None,
+    capture_level: str,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
@@ -377,6 +408,7 @@ def run(
     """
 
     session: BrowserSession = ctx.obj["session"]
+    session.capture_level = SanitizeLevel(capture_level)
     selector_map = (
         load_selector_map(Path(selector_map_path))
         if selector_map_path and Path(selector_map_path).exists()
@@ -424,8 +456,11 @@ class CliFlowRun(NamedTuple):
 def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     """Qualified step name to the ``path:`` that step asked the CLI to write.
 
-    Templates are resolved the way the runner resolves them, so
-    ``path: out/{{ id }}.png`` names the same file the flow meant.
+    The value comes from the resolved step, so ``path: out/{{ id }}.png``
+    names the file the flow meant. The *key* comes from the unresolved one,
+    because that is what ``run_loaded_flow`` keys ``outputs`` on — a step
+    whose ``name:`` is itself templated would otherwise never match its own
+    output, and its file would silently not be written.
     """
     paths: dict[str, str] = {}
     flow_data = flow.validate_data(data)
@@ -436,16 +471,23 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
             continue
         path = getattr(resolved, "path", None)
         if path:
-            paths[resolved.qualified_name] = str(path)
+            paths[step.qualified_name] = str(path)
     return paths
 
 
 def as_text(output: object) -> str:
     """A non-bytes output as the file a ``path:`` asks for: ``dom`` text
-    verbatim, ``read`` / ``parse`` rows as JSON."""
+    verbatim, ``read`` / ``parse`` rows as JSON.
+
+    ``to_json`` rather than ``json.dumps``: a ``parse`` schema may declare
+    ``Decimal``, ``date`` or ``datetime``, and rows reach here in python mode
+    carrying the real objects. ``json.dumps`` cannot encode any of them, and
+    the resulting ``TypeError`` would replace the flow result with a
+    traceback.
+    """
     if isinstance(output, str):
         return output
-    return json.dumps(output, ensure_ascii=False)
+    return to_json(output).decode()
 
 
 def write_outputs(
@@ -458,30 +500,49 @@ def write_outputs(
     Text and rows are written only where the step asked for a file; they
     stay in the JSON either way.
     """
-    written: dict[str, str] = {}
+    targets = planned_outputs(outputs, paths, out_dir)
+    for step, (target, payload) in targets.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(payload, bytes):
+            target.write_bytes(payload)
+        else:
+            target.write_text(payload)
+    return {step: str(target) for step, (target, _) in targets.items()}
+
+
+def planned_outputs(
+    outputs: dict[str, object], paths: dict[str, str], out_dir: Path
+) -> dict[str, tuple[Path, bytes | str]]:
+    """Every file this run is about to write, resolved and bounds-checked.
+
+    Planned in full before anything is written so that a path trying to leave
+    ``--out-dir`` fails the command with nothing on disk, rather than half a
+    run's output and an error.
+    """
+    planned: dict[str, tuple[Path, bytes | str]] = {}
     for step, output in outputs.items():
         path = paths.get(step)
         if isinstance(output, BytesResult):
-            target = prepare_output_path(out_dir / (path or output.name))
-            target.write_bytes(output.content)
+            # The fallback name is the server's `Content-Disposition`
+            # filename: take the basename, never its directories.
+            target = contained_output_path(out_dir, path or Path(output.name).name)
+            planned[step] = (target, output.content)
         elif path:
-            target = prepare_output_path(out_dir / path)
-            target.write_text(as_text(output))
-        else:
-            continue
-        written[step] = str(target)
-    return written
+            planned[step] = (contained_output_path(out_dir, path), as_text(output))
+    return planned
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
     """Write the failing page's screenshot and DOM, returning what was written."""
     written: dict[str, str] = {}
     if error.screenshot is not None:
-        target = prepare_output_path(capture_dir / "screenshot.png")
+        target = contained_output_path(capture_dir, "screenshot.png")
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(error.screenshot)
         written["screenshot"] = str(target)
     if error.dom is not None:
-        target = prepare_output_path(capture_dir / "dom.html")
+        target = contained_output_path(capture_dir, "dom.html")
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(error.dom)
         written["dom"] = str(target)
     return written
@@ -581,6 +642,7 @@ def run_attached(
         driver=base.driver,
         behavior=base.behavior,
         capture=base.capture,
+        capture_level=base.capture_level,
         executable_path=base.executable_path,
         stateless=True,
     )

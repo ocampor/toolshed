@@ -22,6 +22,8 @@ from typing import Any
 
 from llm_browser_conformance.scenario import Context, Scenario, Section
 
+SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
+
 CLI_DRIVER = "patchright"
 
 DOWNLOAD_PAYLOAD = "conformance-payload"
@@ -99,7 +101,7 @@ def files_under(directory: Path) -> list[str]:
 
 
 def cli_run(
-    ctx: Context, page: str, flow: str, tmp: Path, *args: str
+    ctx: Context, page: str, flow: str, tmp: Path, *args: str, **data: str
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     """`daemon` a headless browser, `run` the flow against it, always `stop`.
 
@@ -127,7 +129,7 @@ def cli_run(
             "--flow",
             str(ctx.flow_file(flow)),
             "--data",
-            json.dumps({"url": ctx.url(page)}),
+            json.dumps({"url": ctx.url(page), **data}),
             *args,
         )
     finally:
@@ -195,12 +197,47 @@ def cli_run_writes_the_failure_captures(ctx: Context) -> None:
         assert reported["screenshot"] == str(shot), reported["screenshot"]
 
 
+def cli_run_writes_typed_rows_as_json(ctx: Context) -> None:
+    """A `parse` schema may declare `Decimal` and `date`; the rows reach the
+    CLI writer as those objects and `json.dumps` cannot encode either.
+
+    The library used to write this file itself, in JSON mode, and the crash
+    this pins is what moving the write to the CLI reintroduced once.
+    """
+    only_on_the_cli_driver(ctx)
+    with scratch() as tmp:
+        out_dir = tmp / "artifacts"
+        done, workdir = cli_run(
+            ctx,
+            "parse-rows.html",
+            "cli-rows",
+            tmp,
+            "--out-dir",
+            str(out_dir),
+            schema=str(SCHEMAS_DIR / "invoice.yaml"),
+        )
+        fail_on("run", done)
+
+        written = json.loads((out_dir / "typed" / "rows.json").read_text())
+        assert written == [
+            {"name": "alpha", "total": "10.25", "due": "2024-03-01"},
+            {"name": "beta", "total": "7.50", "due": "2024-04-15"},
+        ], written
+        assert files_under(workdir) == []
+
+
 SCENARIOS = [
     Scenario(
         "cli run writes outputs",
         Section.CLI,
         cli_run_writes_every_output_where_it_was_asked,
         covers=frozenset({"api:cli.out_dir"}),
+    ),
+    Scenario(
+        "cli run writes typed rows",
+        Section.CLI,
+        cli_run_writes_typed_rows_as_json,
+        covers=frozenset({"api:cli.typed_rows"}),
     ),
     Scenario(
         "cli run failure captures",

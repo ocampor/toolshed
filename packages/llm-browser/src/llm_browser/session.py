@@ -35,6 +35,7 @@ from llm_browser.models import (
 )
 from llm_browser.parse import ExtractField
 from llm_browser.results import BytesResult
+from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
     Selector,
@@ -68,6 +69,7 @@ class BrowserSession:
         state_dir: Path = DEFAULT_STATE_DIR,
         behavior: Behavior | None = None,
         capture: CaptureMode = "screenshot",
+        capture_level: SanitizeLevel = SanitizeLevel.HIGH,
         driver: Driver | str | None = None,
         executable_path: str | Path | None = None,
         stateless: bool = False,
@@ -76,14 +78,17 @@ class BrowserSession:
         self.state_dir = state_dir
         self.stateless = stateless
         self.session_dir = state_dir / "sessions" / session_id
-        self._state_file = self.session_dir / "state.json"
+        self.state = SessionState(self.session_dir / STATE_FILENAME, stateless)
         self._user_data_dir = self.session_dir / "user-data"
         self.driver: Driver = resolve_driver(driver)
-        self._info: SessionInfo | None = None
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
         self.behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
+        # How hard a failure's DOM snapshot is sanitized. `high` drops every
+        # src/href, which is right for reading and wrong when the link is the
+        # thing you need to see.
+        self.capture_level: SanitizeLevel = capture_level
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
         )
@@ -93,33 +98,6 @@ class BrowserSession:
     def _ensure_dirs(self) -> None:
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._user_data_dir.mkdir(parents=True, exist_ok=True)
-
-    def _save_state(self, info: SessionInfo) -> None:
-        """Record the live session; persist it too unless stateless."""
-        self._info = info
-        if self.stateless:
-            return
-        self._ensure_dirs()
-        self._state_file.write_text(info.model_dump_json())
-
-    def _load_state(self) -> SessionInfo | None:
-        if self._info is not None or self.stateless:
-            return self._info
-        if not self._state_file.exists():
-            return None
-        return SessionInfo.model_validate_json(self._state_file.read_text())
-
-    def _restore_state(self, recorded: SessionInfo | None) -> None:
-        """Put back what was on disk before a launch that did not complete."""
-        if recorded is None:
-            self._clear_state()
-            return
-        self._save_state(recorded)
-
-    def _clear_state(self) -> None:
-        self._info = None
-        if not self.stateless and self._state_file.exists():
-            self._state_file.unlink()
 
     def _handle_from_state(self, info: SessionInfo) -> DriverHandle:
         extra: dict[str, str] = {}
@@ -160,7 +138,7 @@ class BrowserSession:
             driver=handle.driver,
             mode="launched",
         )
-        self._save_state(info)
+        self.state.save(info)
         self._page = self.driver.page(handle)
         return SessionResult(
             status="open",
@@ -191,7 +169,7 @@ class BrowserSession:
             self.session_dir.mkdir(parents=True, exist_ok=True)
             logger.info("llm-browser session dir: %s (attached)", self.session_dir)
         info = self._attached_info(handle, cdp_url)
-        self._save_state(info)
+        self.state.save(info)
         self._page = self.driver.page(handle)
         return SessionResult(
             status="open",
@@ -235,7 +213,7 @@ class BrowserSession:
         # Whatever was already recorded, so a failed attach can put it back:
         # clearing the file would strand an *earlier* detached browser with no
         # pid anywhere for `stop_detached` to kill.
-        recorded = self._load_state()
+        recorded = self.state.load()
         pid, cdp_url = spawn_detached_chromium(
             resolved_profile, headed=headed, executable_path=resolved_exe
         )
@@ -248,7 +226,7 @@ class BrowserSession:
         # Recorded before the attach: a browser nothing knows the pid of is a
         # browser nobody can stop, and `attach` is the step most likely to
         # fail (wrong driver, CDP not up yet, a profile already in use).
-        self._save_state(
+        self.state.save(
             SessionInfo(
                 pid=pid,
                 cdp_url=cdp_url,
@@ -261,7 +239,7 @@ class BrowserSession:
             handle = self.driver.attach(cdp_url)
         except BaseException:
             kill_detached_chromium(pid)
-            self._restore_state(recorded)
+            self.state.restore(recorded)
             raise
         info = SessionInfo(
             pid=pid,
@@ -271,7 +249,7 @@ class BrowserSession:
             mode="attached",
             target_id=handle.extra.get("target_id"),
         )
-        self._save_state(info)
+        self.state.save(info)
         self._page = self.driver.page(handle)
         if target is not None:
             self.driver.goto(self._page, target, "domcontentloaded")
@@ -294,22 +272,22 @@ class BrowserSession:
         ``launch_detached()``. A plain ``close()`` only releases the
         connection and leaves the browser running.
         """
-        info = self._load_state()
+        info = self.state.load()
         if info is not None:
             self.driver.close(self._handle_from_state(info))
             if info.pid:
                 kill_detached_chromium(info.pid)
         self._page = None
-        self._clear_state()
+        self.state.clear()
         return SessionResult(status="closed")
 
     def connect(self) -> Any:
         """Connect to a running browser and return the active page."""
-        info = self._load_state()
+        info = self.state.load()
         if info is None:
             raise RuntimeError("No browser session. Run 'llm-browser open' first.")
         if info.pid and not is_process_alive(info.pid):
-            self._clear_state()
+            self.state.clear()
             raise RuntimeError(
                 "Browser process is no longer running. Run 'llm-browser open' again."
             )
@@ -330,7 +308,7 @@ class BrowserSession:
 
     def latest_tab(self) -> Any:
         """Switch to the most recently opened tab and return it."""
-        info = self._load_state()
+        info = self.state.load()
         if info is None:
             raise RuntimeError("No browser session.")
         if self._page is None:
@@ -348,16 +326,16 @@ class BrowserSession:
         intentional). Nothing else is left behind to remove: the session
         directory holds state, never captures.
         """
-        info = self._load_state()
+        info = self.state.load()
         if info is not None:
             self.driver.close(self._handle_from_state(info))
         self._page = None
-        self._clear_state()
+        self.state.clear()
         return SessionResult(status="closed")
 
     def status(self) -> SessionResult:
         """Return current browser status."""
-        info = self._load_state()
+        info = self.state.load()
         if info is None:
             return SessionResult(status="closed")
         if self.driver.status(self._handle_from_state(info)):
@@ -366,7 +344,7 @@ class BrowserSession:
                 cdp_url=info.cdp_url or None,
                 target_id=info.target_id,
             )
-        self._clear_state()
+        self.state.clear()
         return SessionResult(status="closed")
 
     def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
@@ -382,22 +360,32 @@ class BrowserSession:
         """PNG bytes of the current page, without writing into the session dir."""
         return self.driver.screenshot_bytes(self.get_page())
 
-    def dom_snapshot(self) -> str:
-        """Sanitized HTML of the whole current page, as text."""
-        return sanitize_page_html(self.driver.content(self.get_page()))
+    def dom_snapshot(self, level: SanitizeLevel | None = None) -> str:
+        """Sanitized HTML of the whole current page, as text.
 
-    def download_file(self, selector: Selector) -> BytesResult:
+        ``level`` defaults to the session's ``capture_level``.
+        """
+        return sanitize_page_html(
+            self.driver.content(self.get_page()),
+            self.capture_level if level is None else level,
+        )
+
+    def download_file(
+        self, selector: Selector, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+    ) -> BytesResult:
         """Click ``selector`` and return what the browser downloaded.
 
         The bytes come back in memory under the filename the server
-        suggested; writing them anywhere is the caller's decision.
+        suggested — remote input, so a caller writing it to disk takes the
+        basename first. ``timeout`` bounds both halves: finding the element
+        and waiting for the download it starts.
         """
-        element = self.find(selector)
+        element = self.find(selector, timeout=timeout)
 
         def trigger() -> None:
             session_input.click_element(self, element)
 
-        return self.driver.download_bytes(self.get_page(), trigger)
+        return self.driver.download_bytes(self.get_page(), trigger, timeout)
 
     # --- Interaction ---
 

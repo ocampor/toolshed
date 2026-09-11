@@ -69,7 +69,7 @@ def test_launch_detached_persists_pid_and_attaches(tmp_path: Path) -> None:
         result = session.launch_detached(headed=True)
 
     assert result.cdp_url == "http://127.0.0.1:54321"
-    info = session._load_state()
+    info = session.state.load()
     assert info is not None
     assert info.mode == "attached"
     assert info.pid == 9999
@@ -107,7 +107,7 @@ def test_stop_detached_kills_pid_and_clears_state(tmp_path: Path) -> None:
         session.stop_detached()
         kill.assert_called_once_with(9999)
 
-    assert session._load_state() is None
+    assert session.state.load() is None
     assert len(driver.close_calls) == 1
 
 
@@ -146,7 +146,7 @@ def test_launch_detached_kills_the_browser_when_attach_fails(tmp_path: Path) -> 
         session.launch_detached(headed=True)
 
     kill.assert_called_once_with(9999)
-    assert session._load_state() is None
+    assert session.state.load() is None
 
 
 def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> None:
@@ -156,7 +156,7 @@ def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> Non
 
     class RecordingDriver(AttachStubDriver):
         def attach(self, cdp_url: str) -> Any:
-            state = BrowserSession(state_dir=tmp_path)._load_state()
+            state = BrowserSession(state_dir=tmp_path).state.load()
             seen.append(state.pid if state else None)
             return super().attach(cdp_url)
 
@@ -192,6 +192,6 @@ def test_a_failed_attach_leaves_an_earlier_session_stoppable(tmp_path: Path) -> 
         second.launch_detached(headed=True)
 
     kill.assert_called_once_with(200)
-    still_recorded = BrowserSession(state_dir=tmp_path)._load_state()
+    still_recorded = BrowserSession(state_dir=tmp_path).state.load()
     assert still_recorded is not None
     assert still_recorded.pid == 100

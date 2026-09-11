@@ -50,8 +50,10 @@ REQUIRED_CONDITIONS = (
 REQUIRED_API = (
     "behavior.human",
     "behavior.off",
+    "capture_level",
     "cli.capture_dir",
     "cli.out_dir",
+    "cli.typed_rows",
     "error.outputs",
     "flow_repository",
     "from_step",
