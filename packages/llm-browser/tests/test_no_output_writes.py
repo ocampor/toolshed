@@ -52,7 +52,6 @@ WRITE_MODES = set("wax+")
 ALLOWED = {
     "cli.py": "the CLI is what writes what a run returned",
     "state.py": "state.json is how a detached browser is found again",
-    "skill_install.py": "`skill install` copies a packaged asset on request",
 }
 
 

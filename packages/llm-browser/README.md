@@ -46,8 +46,8 @@ patchright | camoufox | nodriver
 - **patchright / camoufox / nodriver** — concrete drivers; same five-rule contract, different backend.
 - **session_input.py** — one click/fill/type/press/select_option/set_checked path every action and `BrowserSession` method shares; `tests/test_actions.py` asserts `actions.py`/`steps.py`/`flows.py` never touch `session.driver`.
 
-Waiting: the five `wait_for` states are documented in [FLOWS.md](src/llm_browser/skill/reference/FLOWS.md#waiting).
-Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (details: [DRIVERS.md](src/llm_browser/skill/reference/DRIVERS.md)).
+Waiting: the five `wait_for` states are documented in [FLOWS.md](docs/FLOWS.md#waiting).
+Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (details: [DRIVERS.md](docs/DRIVERS.md)).
 
 ## Install
 
@@ -111,13 +111,12 @@ steps:
 ```
 
 Flow patterns for hard widgets (autocomplete, framework-bound inputs, hidden checkboxes, rotating ids):
-[FLOW_PATTERNS.md](src/llm_browser/skill/reference/FLOW_PATTERNS.md).
+[FLOW_PATTERNS.md](docs/FLOW_PATTERNS.md).
 
-Authoring flows with Claude: `llm-browser skill install` drops the flow-authoring skill and the
-three reference docs it links to into `.claude/skills/llm-browser-flows/` of the current repo
-(`--dest DIR` for another one); `llm-browser skill show` prints the skill itself. Those reference
-docs — `FLOWS.md`, `FLOW_PATTERNS.md`, `DRIVERS.md` — live under `src/llm_browser/skill/reference/`
-so they ship in the wheel; `FLOWS.md` and `docs/` keep one-line pointers to them.
+Authoring flows with Claude: the guidance lives in the env-sync `browser-flows` skill
+([ocampor/env-sync](https://github.com/ocampor/env-sync), `claude/skills/browser-flows/`), which
+env-sync installs globally and which fetches these docs on demand. This package ships only the
+library docs — `docs/FLOWS.md`, `docs/FLOW_PATTERNS.md`, `docs/DRIVERS.md`.
 
 The library never writes output files: every step result comes back in `FlowSuccess.outputs`,
 and `llm-browser run` is the only thing that puts it on disk. A step's `path:` is written under
@@ -127,7 +126,7 @@ because base64 on stdout helps nobody. `read`, `parse` and `dom` results without
 inline in the JSON.
 
 Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
-`run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](src/llm_browser/skill/reference/FLOWS.md) for the full flow
+`run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](docs/FLOWS.md) for the full flow
 language, and [docs/API.md](docs/API.md) for typed extraction (pydantic models, YAML-declared
 schemas, the `parse` action) and the full session-method table.
 
@@ -135,7 +134,7 @@ schemas, the `parse` action) and the full session-method table.
 
 `wait_for_element` / the `wait_for` step is the one wait — everything else (`find`, `find_all`,
 `frame`, `element_exists`) goes through it too, so a state means the same thing everywhere. The
-five states and their parameters: [FLOWS.md → Waiting](src/llm_browser/skill/reference/FLOWS.md#waiting).
+five states and their parameters: [FLOWS.md → Waiting](docs/FLOWS.md#waiting).
 
 ## Drivers
 
@@ -143,12 +142,12 @@ five states and their parameters: [FLOWS.md → Waiting](src/llm_browser/skill/r
 |---|---|---|
 | `patchright` (default) | removes Playwright automation fingerprints | Chromium; humanization via Playwright's helpers |
 | `camoufox` | C++-level fingerprint spoofing | Firefox; stealth defaults on; the only viable **headless** option against strict detectors |
-| `nodriver` | all writes go through trusted `Input.dispatch*` CDP events | Chromium via raw CDP; a few reads use JS (see src/llm_browser/skill/reference/DRIVERS.md) |
+| `nodriver` | all writes go through trusted `Input.dispatch*` CDP events | Chromium via raw CDP; a few reads use JS (see docs/DRIVERS.md) |
 
 Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance
 suite: `packages/llm-browser-conformance` (separate package, in progress). Full anti-bot
 landscape, camoufox defaults and nodriver's detectable surfaces:
-[DRIVERS.md](src/llm_browser/skill/reference/DRIVERS.md). Build-vs-buy investigation of the 2026
+[DRIVERS.md](docs/DRIVERS.md). Build-vs-buy investigation of the 2026
 landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Attach, daemon, and capture modes
