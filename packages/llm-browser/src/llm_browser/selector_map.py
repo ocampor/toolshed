@@ -52,10 +52,10 @@ def resolve_refs(
 
     Handles:
       - step-level: ``{"ref": "invoice.rfc"} -> {"selector": {"id": "135..."}}``
-      - any selector-valued key: ``{"image": {"ref": "login.captcha"}}`` ->
-        the selector itself, which is how a step with more than one selector
-        (``solve_captcha``) names each of them. ``data:`` is exempt — a
-        sub-flow's arguments are values, not selectors.
+      - any selector-valued key: ``{"selector": {"ref": "login.user"}}`` ->
+        the selector itself, which is how a step names a selector-valued
+        field by ref. ``data:`` is exempt — a sub-flow's arguments are
+        values, not selectors.
       - field-level: ``fields[i]["ref"]`` -> resolved selector as
         ``id`` (when the map entry is an id) or ``selector`` otherwise.
       - read-level: ``read[key]["ref"]`` -> resolved as ``selector``.
