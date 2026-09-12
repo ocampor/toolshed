@@ -85,41 +85,6 @@ schema instances instead of raw strings:
 schema, values coerced by Pydantic — same outcome as `Repo.extract_all(session, ...)`. Empty
 rows (every field `None`) come back as `None`, mirroring `read`'s behavior.
 
-## Reading a captcha
-
-`solve_captcha` needs something that can look at an image, and the library is not it. The
-host process hands the session a reader, and every `solve_captcha` step run on that session
-uses it:
-
-```python
-from llm_browser import BrowserSession, CaptchaReader
-
-def read_it(png: bytes, prompt: str | None) -> str:
-    return my_model.answer(png, prompt)   # or "UNREADABLE"
-
-session = BrowserSession(captcha_reader=read_it)
-session.captcha_reader = None             # a plain attribute; change or clear it later
-```
-
-| Name | Signature | What it is |
-| --- | --- | --- |
-| `llm_browser.CaptchaReader` | `Callable[[bytes, str \| None], str]` | `(png_bytes, prompt) -> reply` |
-| `BrowserSession(captcha_reader=)` | `CaptchaReader \| None`, default `None` | The reader this session's captcha steps use |
-| `llm_browser.ReaderUnavailable` | `Exception` | Raise it *from* a reader to say nothing can read in this run |
-
-There is no per-flow or per-step override: one session, one way of reading an image, and a
-different mechanism would be a different step. The default is `None` — and the `llm-browser`
-CLI passes none — so an unconfigured session fails every `solve_captcha` step with
-`FlowError.human_needed` *before* it touches the page, which is also what happens when
-`retries` runs out.
-
-A reader on the session can still be unable to read *right now* — an HTTP run with no client
-attached to ask. Raising `ReaderUnavailable` from it says so: the step gives up after that
-first crop with `human_needed` set, instead of spending the remaining retries on the same
-refusal and reporting a retryable failure. Any *other* exception is an ordinary failed step
-carrying the exception's message, never an unwound run. The step's row in `outputs` is
-`{"attempts": n}`: the answer typed into the page is never carried out of the step.
-
 ## Capture modes
 
 `BrowserSession(capture=...)` controls what a failing flow step carries back on its

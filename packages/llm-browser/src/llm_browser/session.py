@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Collection
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlsplit
 
 from llm_browser import session_input, waits
@@ -46,9 +46,6 @@ from llm_browser.selectors import (
     resolve_selector,
 )
 
-if TYPE_CHECKING:
-    from llm_browser.captcha import CaptchaReader
-
 logger = logging.getLogger(LOGGER_NAME)
 
 
@@ -78,7 +75,6 @@ class BrowserSession:
         driver: Driver | str | None = None,
         executable_path: str | Path | None = None,
         stateless: bool = False,
-        captcha_reader: CaptchaReader | None = None,
     ) -> None:
         self.session_id = session_id
         self.state_dir = state_dir
@@ -98,10 +94,6 @@ class BrowserSession:
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
         )
-        # What a ``solve_captcha`` step reads an image with. None — the
-        # default, and what the CLI builds — makes every captcha a human
-        # handoff rather than a guess.
-        self.captcha_reader: CaptchaReader | None = captcha_reader
 
     # --- Lifecycle ---
 

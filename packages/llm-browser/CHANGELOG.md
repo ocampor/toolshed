@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0 — 2026-09-11
+
+### Removed
+
+- `solve_captcha` step and the `llm_browser.captcha` module
+  (`normalize_answer` included).
+- `BrowserSession(captcha_reader=)` parameter and the `self.captcha_reader`
+  attribute.
+- `llm_browser.CaptchaReader` and `llm_browser.ReaderUnavailable` exports.
+- `results.CaptchaResult`.
+- `ErrorResult.human_needed` — nothing read it once the `solve_captcha` step
+  was gone; `FlowError.human_needed` (the page-probe verdict) is unchanged.
+
+The 0.10.0 additions that are not captcha-specific stay: element-scoped
+`screenshot: selector:` / `screenshot_bytes(selector)`, the `wait_for`
+`state: detached` navigation fix, and `selector_map` `ref:` expansion for any
+selector-valued key.
+
 ## 0.10.0 — 2026-09-11
 
 ### Added

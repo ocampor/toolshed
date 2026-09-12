@@ -82,21 +82,20 @@ def test_resolve_refs_unknown_ref_raises() -> None:
 
 
 def test_resolve_refs_expands_every_selector_valued_key() -> None:
-    """A step with more than one selector names each of them, so a `ref:`
-    standing in for a selector is expanded wherever it appears."""
+    """A `ref:` standing in for a selector is expanded wherever it appears,
+    not only under the top-level `selector` key."""
     selector_map = {
-        "login.captcha": {"id": "captchaImg"},
-        "login.captcha_answer": {"css": "#answer"},
+        "login.user": {"id": "userField"},
+        "login.pass": {"css": "#answer"},
     }
     step = {
-        "name": "captcha",
-        "action": "solve_captcha",
-        "image": {"ref": "login.captcha"},
-        "input": {"ref": "login.captcha_answer"},
+        "name": "s",
+        "image": {"ref": "login.user"},
+        "input": {"ref": "login.pass"},
         "submit": "#go",
     }
     result = resolve_refs(step, selector_map)
-    assert result["image"] == {"id": "captchaImg"}
+    assert result["image"] == {"id": "userField"}
     assert result["input"] == {"css": "#answer"}
     assert result["submit"] == "#go"
 

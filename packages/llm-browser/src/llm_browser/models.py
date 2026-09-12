@@ -247,28 +247,6 @@ class WaitForStep(SelectorStep):
         return self
 
 
-class SolveCaptchaStep(BaseStep):
-    """Read an image captcha and type the answer back.
-
-    ``image`` is cropped and handed to the session's ``captcha_reader``; the
-    reply is typed into ``input`` and, if ``submit`` is set, submitted. The page's own verdict
-    decides the attempt: ``error`` becoming visible is a rejection, ``input``
-    leaving the DOM and staying gone is acceptance, and ``timeout`` bounds how
-    long that verdict is waited for.
-
-    With no reader on the session the step fails asking for a human before it
-    touches the page. The answer is never put in the result.
-    """
-
-    action: Literal["solve_captcha"]
-    image: Selector
-    input: Selector
-    submit: Selector | None = None
-    error: Selector | None = None
-    retries: int = Field(3, ge=1)
-    prompt: str | None = None
-
-
 class EvalStep(BaseStep):
     """Step with no browser action (eval-only, wait)."""
 
@@ -328,7 +306,6 @@ Step = Annotated[
     | Annotated[ScrollStep, Tag("scroll")]
     | Annotated[PressStep, Tag("press")]
     | Annotated[WaitForStep, Tag("wait_for")]
-    | Annotated[SolveCaptchaStep, Tag("solve_captcha")]
     | Annotated[RunFlowStep, Tag("run-flow")]
     | Annotated[EvalStep, Tag("eval")],
     Discriminator(_step_discriminator),
