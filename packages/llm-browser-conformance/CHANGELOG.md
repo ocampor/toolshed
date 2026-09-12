@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-09-11
+
+Tracks `llm-browser` 0.11.0.
+
+### Removed
+
+- `solve captcha` scenario, the `site/captcha.html` fixture and
+  `flows/solve-captcha.yaml` — `llm-browser` dropped the `solve_captcha` step.
+  The element-`screenshot` scenario stays.
+
 ## 0.3.0 — 2026-09-11
 
 Tracks `llm-browser` 0.10.0.
