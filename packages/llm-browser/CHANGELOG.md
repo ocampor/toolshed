@@ -1,18 +1,20 @@
 # Changelog
 
-## Unreleased
-
-### Removed
-
-- `llm-browser skill install` / `llm-browser skill show` and the in-package
-  Claude skill bundle (`src/llm_browser/skill/`, `llm_browser.skill_install`).
-  Flow-authoring guidance for Claude now lives in the env-sync `browser-flows`
-  skill.
+## 0.12.0 — 2026-09-12
 
 ### Changed
 
 - Reference docs `FLOWS.md`, `FLOW_PATTERNS.md` and `DRIVERS.md` moved to
   `docs/`; they are no longer shipped in the wheel.
+
+### Breaking
+
+- `llm-browser skill install` / `llm-browser skill show` and the in-package
+  Claude skill bundle (`src/llm_browser/skill/`, `llm_browser.skill_install`)
+  are removed. Migration: flow-authoring guidance now comes from the env-sync
+  `browser-flows` skill
+  (https://github.com/ocampor/env-sync, `claude/skills/browser-flows/`),
+  installed globally via env-sync.
 
 ## 0.11.0 — 2026-09-11
 
