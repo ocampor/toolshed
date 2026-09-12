@@ -139,7 +139,10 @@ llm-browser run --flow login.yaml --data '{"user": "admin", "pass": "secret"}'
 llm-browser resume --data '{"confirm": true}'
 ```
 
-See [FLOWS.md](FLOWS.md) for the complete flow language reference.
+The complete flow language reference is maintained in the `browser-flows` skill
+([`ocampor/env-sync`](https://github.com/ocampor/env-sync),
+`claude/skills/browser-flows/reference.md`); see [FLOWS.md](FLOWS.md) for the
+pointer.
 
 ## Anti-bot landscape
 
