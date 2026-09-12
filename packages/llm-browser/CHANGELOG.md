@@ -16,6 +16,10 @@
   (https://github.com/ocampor/env-sync, `claude/skills/browser-flows/`),
   installed globally via env-sync.
 
+### Removed
+
+- Top-level pointer file `FLOWS.md` (superseded by `docs/FLOWS.md`).
+
 ## 0.11.0 — 2026-09-11
 
 ### Removed
