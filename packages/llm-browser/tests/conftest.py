@@ -41,6 +41,7 @@ def mock_session(tmp_path: Path) -> MagicMock:
 ExploringSession = Callable[..., BrowserSession]
 
 # A first match nothing is wrong with; a test states only what it changes.
+# `clickable` is not here: the model computes it from `why_not`.
 CLICKABLE_FIRST: dict[str, object] = {
     "tag": "a",
     "text": "Alpha",
@@ -54,8 +55,22 @@ CLICKABLE_FIRST: dict[str, object] = {
     "covered_by": None,
     "stable": True,
     "pointer_events": True,
-    "clickable": True,
     "why_not": [],
+    "nested_controls": [],
+}
+
+# What the first match offers a selector when it offers nothing.
+NO_LOCATORS: dict[str, object] = {
+    "tag": "a",
+    "testid_attribute": None,
+    "testid": None,
+    "testid_depth": 0,
+    "aria_label": None,
+    "role": None,
+    "name": None,
+    "id": None,
+    "href": None,
+    "classes": [],
 }
 
 
@@ -75,8 +90,9 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         rows: list[dict[str | None, str | None]],
         text: str = "",
         first: dict[str, object] | None = None,
-        candidates: list[str] | None = None,
+        locators: dict[str, object] | None = None,
         matches: dict[str, int] | None = None,
+        since_navigation_ms: int = 120,
     ) -> BrowserSession:
         def read(target: tuple[int, str | None], name: str) -> str | None:
             index, child_selector = target
@@ -90,7 +106,8 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         driver.count.side_effect = lambda locator: counts.get(locator, len(rows))
         driver.evaluate.return_value = {
             "first": CLICKABLE_FIRST | (first or {}),
-            "candidates": candidates or [],
+            "locators": NO_LOCATORS | (locators or {}),
+            "since_navigation_ms": since_navigation_ms,
         }
         driver.nth.side_effect = lambda locator, index: (index, None)
         driver.child.side_effect = lambda element, selector: (element[0], selector)

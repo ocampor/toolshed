@@ -24,18 +24,24 @@ from llm_browser.constants import (
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
     EXPLORE_MAX_CANDIDATES,
+    EXPLORE_SAMPLE_CHARS,
     EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
-from llm_browser.explore import selector_stability, verdict_for
+from llm_browser.explore import (
+    accepted_counts,
+    candidate_selectors,
+    selector_stability,
+    verdict_for,
+)
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
+    ExploreRead,
     ExploreResult,
-    FirstMatch,
     Intent,
     PageProbe,
     SessionInfo,
@@ -64,6 +70,11 @@ def checked_url(
     if urlsplit(url).scheme not in allowed_schemes:
         raise ValueError(f"url must be {' or '.join(allowed_schemes)}: {url}")
     return url
+
+
+def cut(value: str | None, limit: int) -> str | None:
+    """A sampled field, shortened. `None` and `""` stay themselves."""
+    return value[:limit] if value else value
 
 
 def empty_everywhere(
@@ -604,6 +615,7 @@ class BrowserSession:
         sample: int = EXPLORE_SAMPLE_ROWS,
         timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
         intent: Intent = Intent.READ,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
     ) -> ExploreResult:
         """Count and sample what ``selector`` matches, without touching it.
 
@@ -613,7 +625,8 @@ class BrowserSession:
         fields stayed empty, and — in ``first`` — whether a click or a fill
         would actually land. ``verdict`` reads all of that against ``intent``.
         A selector that never arrives is a count of zero, not a
-        ``TimeoutError`` — "nothing here" is the answer.
+        ``TimeoutError`` — "nothing here" is the answer. Each sampled field is
+        cut to ``sample_chars``: reading a row whole is what ``read`` is for.
         """
         stability = selector_stability(describe_selector(selector))
         started = time.monotonic()
@@ -623,7 +636,7 @@ class BrowserSession:
             return ExploreResult(
                 count=0, sample=[], empty_fields=[], text_chars=0, stability=stability
             )
-        appeared_after_ms = round((time.monotonic() - started) * 1000)
+        since_call_ms = round((time.monotonic() - started) * 1000)
         count = self.driver.count(locator)
         spec = row_spec(extract or parse_extract_spec(None))
         # Only the sampled elements are read: `sample x (fields + 1)`
@@ -631,12 +644,13 @@ class BrowserSession:
         elements = [self.driver.nth(locator, i) for i in range(min(sample, count))]
         rows = [
             {
-                name: self.driver.read_field(element, field)
+                name: cut(self.driver.read_field(element, field), sample_chars)
                 for name, field in spec.items()
             }
             for element in elements
         ]
-        first, proposals = self.first_match(locator) if count else (None, [])
+        found = self.first_match(locator) if count else None
+        first = found.first if found else None
         return ExploreResult(
             count=count,
             sample=rows,
@@ -645,41 +659,48 @@ class BrowserSession:
                 len(self.driver.read_property(el, "innerText") or "") for el in elements
             ),
             first=first,
-            appeared_after_ms=appeared_after_ms,
-            candidates=self.verified_candidates(proposals),
+            since_navigation_ms=found.since_navigation_ms if found else None,
+            since_call_ms=since_call_ms,
+            candidates=self.verified_candidates(
+                candidate_selectors(found.locators) if found else [],
+                accepted_counts(intent, count),
+            ),
             stability=stability,
             verdict=verdict_for(intent, count, first),
         )
 
-    def first_match(self, locator: Any) -> tuple[FirstMatch, list[str]]:
-        """The first match as a click would find it, plus selectors proposed
-        from its own attributes — one page evaluation for both."""
+    def first_match(self, locator: Any) -> ExploreRead:
+        """The first match as a click would find it, what it offers a selector,
+        and how long the page had been up — one page evaluation for all three."""
         raw = self.driver.evaluate(self.driver.first(locator), explore_first_js())
-        return FirstMatch.model_validate(raw["first"]), list(raw["candidates"])
+        return ExploreRead.model_validate(raw)
 
-    def verified_candidates(self, proposals: list[str]) -> list[str]:
-        """The proposals that match exactly one element, at most
+    def verified_candidates(
+        self, proposals: list[str], accepted: Collection[int]
+    ) -> list[str]:
+        """The proposals whose own count is one ``accepted`` here, at most
         ``EXPLORE_MAX_CANDIDATES`` of them — one count each.
 
-        A unique match *is* the first match: every proposal was built from an
-        attribute read off it.
+        A unique match *is* the first match: every proposal was built from
+        something read off it (or off the row carrying it).
         """
         kept: list[str] = []
         for candidate in proposals:
             if len(kept) == EXPLORE_MAX_CANDIDATES:
                 break
-            if self.matches_once(candidate):
+            if self.count_of(candidate) in accepted:
                 kept.append(candidate)
         return kept
 
-    def matches_once(self, selector: str) -> bool:
-        """A selector a driver cannot even parse — ``role=`` off the
-        Playwright family — is not a candidate, rather than an error."""
+    def count_of(self, selector: str) -> int:
+        """How many elements a proposed selector matches; ``-1`` when a driver
+        cannot even parse it — ``role=`` off the Playwright family — so it is
+        not a candidate rather than an error."""
         try:
             locator = resolve_selector(self.driver, self.get_page(), selector)
-            return self.driver.count(locator) == 1
+            return self.driver.count(locator)
         except Exception:
-            return False
+            return -1
 
     def dom(
         self,

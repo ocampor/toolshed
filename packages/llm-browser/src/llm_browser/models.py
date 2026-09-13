@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (
     BaseModel,
     ConfigDict,
+    computed_field,
     Discriminator,
     Field,
     PrivateAttr,
@@ -20,6 +21,7 @@ from pydantic import (
 from llm_browser.behavior import Jitter
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
+    EXPLORE_NON_BLOCKING,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
 )
@@ -445,11 +447,37 @@ class Covering(BaseModel):
     text: str
 
 
+class NestedControl(BaseModel):
+    """A control inside the first match, which a loose click lands on instead."""
+
+    tag: str
+    text: str
+
+
+class Locators(BaseModel):
+    """What the first match offers a selector, before any rule is applied.
+
+    The page reports; :mod:`llm_browser.explore` decides which of these make a
+    candidate and in what order.
+    """
+
+    tag: str
+    testid_attribute: str | None = None
+    testid: str | None = None
+    testid_depth: int = 0
+    aria_label: str | None = None
+    role: str | None = None
+    name: str | None = None
+    id: str | None = None
+    href: str | None = None
+    classes: list[str] = Field(default_factory=list)
+
+
 class FirstMatch(BaseModel):
     """The first match as a click would find it.
 
-    ``why_not`` is empty exactly when ``clickable``; each name in it is one
-    reason a click would miss — see ``docs/API.md`` for the list.
+    Each name in ``why_not`` is one reason a click would miss — see
+    ``docs/API.md`` for the list.
     """
 
     tag: str
@@ -464,8 +492,26 @@ class FirstMatch(BaseModel):
     covered_by: Covering | None = None
     stable: bool
     pointer_events: bool
-    clickable: bool
     why_not: list[str] = Field(default_factory=list)
+    nested_controls: list[NestedControl] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def clickable(self) -> bool:
+        """Nothing in ``why_not`` a driver does not handle itself: every one
+        of them scrolls the target into view before clicking, so ``offscreen``
+        is information rather than an obstacle."""
+        return not [
+            reason for reason in self.why_not if reason not in EXPLORE_NON_BLOCKING
+        ]
+
+
+class ExploreRead(BaseModel):
+    """What one page evaluation of the first match answers."""
+
+    first: FirstMatch
+    locators: Locators
+    since_navigation_ms: int
 
 
 class ExploreResult(BaseModel):
@@ -476,6 +522,10 @@ class ExploreResult(BaseModel):
     is how much rendered text the sampled elements carry between them.
     ``verdict`` answers the intent; ``candidates`` are sturdier selectors that
     were checked to match the same element and nothing else.
+    ``since_navigation_ms`` is how long the page had been up when the first
+    match was read — the one a `wait_for` timeout should be sized from, since
+    ``since_call_ms`` only counts from a call that may follow the load by
+    seconds.
     """
 
     count: int
@@ -483,7 +533,8 @@ class ExploreResult(BaseModel):
     empty_fields: list[str]
     text_chars: int
     first: FirstMatch | None = None
-    appeared_after_ms: int | None = None
+    since_navigation_ms: int | None = None
+    since_call_ms: int | None = None
     candidates: list[str] = Field(default_factory=list)
     stability: Stability = Stability.OTHER
     verdict: Verdict = Verdict.MISSING

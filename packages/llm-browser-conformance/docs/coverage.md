@@ -112,12 +112,13 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:click` | wait detached, dynamic loading, dynamic controls toggle, dynamic controls enable, click is trusted, dispatch is untrusted, tab order |
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
+| `session:count_of` | explore a button |
 | `session:dom` | dom snippet, dom step depth, sanitize levels |
 | `session:dom_snapshot` | flow failure captures artifacts, flow failure capture level |
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
-| `session:explore` | explore a button, explore a list |
+| `session:explore` | explore a button, explore a click cost, explore a list |
 | `session:fill` | dynamic controls enable, fill/type/check, revealed control is fillable |
 | `session:find` | find rejects ambiguity, dynamic loading, hidden input is readable |
 | `session:find_all` | pick by text, find all |
@@ -128,7 +129,6 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:latest_tab` | latest tab |
 | `session:launch` | attach over cdp |
 | `session:launch_detached` | attach over cdp |
-| `session:matches_once` | explore a button |
 | `session:parse_elements` | overlay intercepts click, read attributes |
 | `session:pick` | pick by text |
 | `session:press` | press is trusted, tab order |

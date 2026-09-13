@@ -27,15 +27,18 @@ is `ok`; anything else is the step failing now instead of on the run.
 | `--intent` | `ok` when | Read these |
 |---|---|---|
 | `read` | `count >= 1` | `count`, `sample`, `empty_fields` |
-| `wait` | `count == 1` | `count`, `appeared_after_ms` |
-| `click` | `count == 1` and `first.clickable` | `first.why_not`, `first.covered_by`, `candidates` |
+| `wait` | `count == 1` | `count`, `since_navigation_ms` |
+| `click` | `count == 1` and `first.clickable` | `first.why_not`, `first.covered_by`, `first.nested_controls`, `candidates` |
 | `fill` | `count == 1`, visible and enabled | `first.visible`, `first.enabled`, `first.tag` |
 
-- `wait_for` timeout: **3x `appeared_after_ms`, minimum 3000** — the measured
-  arrival with room for a cold cache, rather than a number picked out of the air.
+- `wait_for` timeout: **3x `since_navigation_ms`, minimum 3000** — measured off
+  the page's own clock, so a call made long after the load still sizes the wait
+  for a cold one. `since_call_ms` is the same wait seen from the caller.
 - `first.why_not` names what a click would hit instead: `covered` (with
   `covered_by`), `offscreen`, `moving`, `hidden`, `disabled`,
-  `no-pointer-events`, `not-interactive`.
+  `no-pointer-events`, `not-interactive`. Only `offscreen` is not an obstacle —
+  the drivers scroll first. `nested_controls` is the other half: a card-sized
+  anchor wrapping its own dismiss button takes the click you meant for the card.
 - `candidates` are selectors checked to match that same element and nothing
   else; `stability` says how much of the one you wrote a redeploy is likely to
   take with it (`data-testid` > `aria` > `id` > `class-hash` > `positional`).

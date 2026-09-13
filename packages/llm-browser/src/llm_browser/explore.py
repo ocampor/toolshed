@@ -1,9 +1,10 @@
-"""The two rules ``BrowserSession.explore`` answers with: verdict and stability."""
+"""The rules ``BrowserSession.explore`` answers with: verdict, candidates, stability."""
 
+import json
 import re
 from collections.abc import Callable
 
-from llm_browser.models import FirstMatch, Intent, Stability, Verdict
+from llm_browser.models import FirstMatch, Intent, Locators, Stability, Verdict
 
 # Every intent but ``read`` wants exactly one match; these say what else it
 # wants of that match.
@@ -28,6 +29,16 @@ def verdict_for(intent: Intent, count: int, first: FirstMatch | None) -> Verdict
     if count > 1:
         return Verdict.AMBIGUOUS
     return Verdict.OK if READY[intent](first) else Verdict.NOT_ACTIONABLE
+
+
+def accepted_counts(intent: Intent, count: int) -> set[int]:
+    """What a candidate has to match to be one.
+
+    Every intent but ``read`` is after one element. A ``read`` is after the
+    list: a candidate that finds one of thirty rows is not a selector to write
+    in its place, whatever else it is.
+    """
+    return {count} if intent is Intent.READ else {1}
 
 
 CLASS_TOKENS = re.compile(r"\.([A-Za-z0-9_-]+)")
@@ -61,3 +72,66 @@ def selector_stability(selector: str) -> Stability:
     if POSITIONAL_PARTS.search(selector):
         return Stability.POSITIONAL
     return Stability.OTHER
+
+
+# --- Candidates: what to write instead of the selector that was explored ---
+
+CSS_UNSAFE = re.compile(r"([^A-Za-z0-9_-])")
+
+
+def quoted(value: str) -> str:
+    """A CSS attribute value, quoted — `json.dumps` escapes what CSS escapes."""
+    return json.dumps(value)
+
+
+def escaped_id(value: str) -> str:
+    return CSS_UNSAFE.sub(r"\\\1", value)
+
+
+def generated_id(value: str) -> bool:
+    """An id a redeploy will renumber: `react-select-2-input`, a uuid, a hash."""
+    return any(c.isdigit() for c in value) or len(value) > 40
+
+
+def href_prefix(href: str) -> str | None:
+    """The part of a link's path that names the section rather than the page.
+
+    ``/item?id=123`` is every item, ``/jobs/data-eng-4821`` is every job. A
+    trailing segment that carries a number is the page; what is left is the
+    section, and ``None`` when nothing is.
+    """
+    path = href.split("?")[0].split("#")[0]
+    segments = path.split("/")
+    kept = list(segments)
+    while kept and (not kept[-1] or generated_id(kept[-1])):
+        kept.pop()
+    if not any(kept):
+        return None
+    prefix = "/".join(kept) if kept == segments else f"{'/'.join(kept)}/"
+    # Nothing was generalized: `a[href^=<the whole href>]` is the link itself
+    # spelled longer.
+    return prefix if prefix != href else None
+
+
+def candidate_selectors(locators: Locators) -> list[str]:
+    """Sturdier selectors for the first match, best first.
+
+    A test id survives a redesign; an aria label survives a restyle; an id
+    survives both unless it was generated; a link's section outlives the page
+    it points at; a hashed class outlives nothing but the markup around it.
+    Nothing here is checked to match — that is the caller's count.
+    """
+    proposals: list[str] = []
+    if locators.testid and locators.testid_attribute:
+        proposals.append(f"[{locators.testid_attribute}={quoted(locators.testid)}]")
+    if locators.aria_label:
+        proposals.append(f"[aria-label={quoted(locators.aria_label)}]")
+    if locators.role and locators.name:
+        proposals.append(f"role={locators.role}[name={quoted(locators.name)}]")
+    if locators.id and not generated_id(locators.id):
+        proposals.append(f"#{escaped_id(locators.id)}")
+    prefix = href_prefix(locators.href) if locators.href else None
+    if prefix:
+        proposals.append(f"a[href^={quoted(prefix)}]")
+    proposals += [f".{token}" for token in locators.classes if hashed_class(token)]
+    return proposals

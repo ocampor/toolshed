@@ -38,6 +38,10 @@ def explore_first_js() -> str:
         "interactive_tags": list(constants.INTERACTIVE_TAGS),
         "interactive_roles": list(constants.INTERACTIVE_ROLES),
         "implicit_roles": constants.IMPLICIT_ROLES,
+        "nested_text_max": constants.EXPLORE_NESTED_TEXT_MAX_CHARS,
+        "max_nested_controls": constants.EXPLORE_MAX_NESTED_CONTROLS,
+        "ancestor_levels": constants.EXPLORE_ANCESTOR_LEVELS,
+        "testid_attributes": list(constants.TESTID_ATTRIBUTES),
     }
     return load_script("explore_first").replace(
         constants.EXPLORE_LIMITS_PLACEHOLDER, json.dumps(limits)

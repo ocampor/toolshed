@@ -146,7 +146,7 @@ fresh.
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
-| `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
+| `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ, sample_chars=200)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
 | `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
@@ -177,7 +177,8 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
            "visible": true, "enabled": true, "in_viewport": true,
            "stable": true, "pointer_events": true, "clickable": true,
            "why_not": []},
- "appeared_after_ms": 41, "candidates": ["#first-result"],
+ "since_navigation_ms": 620, "since_call_ms": 41,
+ "candidates": ["#first-result", "a[href^=\"/results/\"]"],
  "stability": "other", "verdict": "ok"}
 ```
 
@@ -188,10 +189,16 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
 | `first.why_not` | Empty exactly when `clickable`; one or more of `hidden`, `disabled`, `covered`, `offscreen`, `moving`, `no-pointer-events`, `not-interactive` |
 | `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre, when that is neither the element nor a descendant |
 | `first.stable` | Whether two rects 100 ms apart are the same box — an element still animating is one a click lands beside |
-| `appeared_after_ms` | How long the first match took to arrive; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |
-| `candidates` | Up to three sturdier selectors, each checked to match that element and nothing else |
+| `first.nested_controls` | Up to five `button`/`a`/`input` inside the match — what a loose click lands on instead of the match itself |
+| `since_navigation_ms` | How long the page had been up when the first match was read, off the page's own clock; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |
+| `since_call_ms` | The same wait measured from the call, which on a page that loaded seconds ago says only how fast this call was |
+| `candidates` | Up to three sturdier selectors — a `data-testid` on the match or an ancestor within three levels, an aria label or role+name, an ungenerated id, a link's section (`a[href^=…]`), a hashed class — each checked to match that element and nothing else (or, for `--intent read`, the same number of rows the explored selector found — a candidate matching one of thirty rows is not a selector for the list) |
 | `stability` | What the selector you wrote leans on: `data-testid`, `aria`, `id`, `class-hash`, `positional`, `other` |
 | `verdict` | `ok`, `ambiguous`, `missing` or `not_actionable`, against `--intent` (`read` default, or `click` / `fill` / `wait`) |
+
+`first.clickable` is `why_not` being empty bar `offscreen`, which every driver
+handles by scrolling before it clicks. Each sampled field is cut to
+`--sample-chars` (200); reading a row whole is what `read` is for.
 
 The command exits non-zero unless the verdict is `ok`, and drops null fields
 from its JSON like every other one — `role`, `aria_label` and `covered_by` are

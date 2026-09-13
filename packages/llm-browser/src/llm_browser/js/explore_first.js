@@ -10,6 +10,10 @@ async (el) => {
     return [r.x, r.y, r.width, r.height].map(Math.round).join(",");
   };
 
+  // Read before the wait: how long the page has been up when the element is
+  // first seen, not a hundred milliseconds later.
+  const since_navigation_ms = Math.round(performance.now());
+
   // Two reads a beat apart: an element still sliding into place is one a click
   // would land beside, and a single rect cannot tell.
   const before = box();
@@ -43,20 +47,21 @@ async (el) => {
     rect.left < innerWidth;
   const pointer_events = style.pointerEvents !== "none";
 
+  // A label and the control it labels are one target: clicking either drives
+  // the same thing, so neither covers the other.
+  const labels = (a, b) => a.tagName === "LABEL" && a.control === b;
   const at = document.elementFromPoint(
     rect.left + rect.width / 2,
     rect.top + rect.height / 2,
   );
-  const covering = at && at !== el && !el.contains(at) ? at : null;
-  const covered_by = covering
-    ? {
-        tag: covering.tagName.toLowerCase(),
-        text: squeeze(
-          covering.innerText || covering.textContent,
-          limits.cover_text_max,
-        ),
-      }
-    : null;
+  const same_target =
+    !at || at === el || el.contains(at) || labels(el, at) || labels(at, el);
+  const covered_by = same_target
+    ? null
+    : {
+        tag: at.tagName.toLowerCase(),
+        text: squeeze(at.innerText || at.textContent, limits.cover_text_max),
+      };
 
   const interactive =
     limits.interactive_tags.includes(tag) ||
@@ -73,22 +78,31 @@ async (el) => {
   if (!pointer_events) why_not.push("no-pointer-events");
   if (!interactive) why_not.push("not-interactive");
 
-  // Proposals only: each is built from an attribute of this element, so the
-  // caller's `count == 1` is what makes one a candidate.
-  const quoted = (value) => JSON.stringify(String(value));
-  const id = el.getAttribute("id");
-  const generated = (value) => /\d/.test(value) || value.length > 40;
-  const candidates = [];
-  for (const attribute of ["data-testid", "data-testing-id"]) {
-    const value = el.getAttribute(attribute);
-    if (value) candidates.push(`[${attribute}=${quoted(value)}]`);
+  // A control inside the target is what a loose click lands on instead: a
+  // card-sized anchor wrapping its own "dismiss" button hides the card.
+  const nested_controls = Array.from(el.querySelectorAll("button, a, input"))
+    .slice(0, limits.max_nested_controls)
+    .map((child) => ({
+      tag: child.tagName.toLowerCase(),
+      text: squeeze(child.innerText || child.value || child.textContent, limits.nested_text_max),
+    }));
+
+  // Raw material for the caller's selector rules, which own what counts as a
+  // generated id or a hashed class. The test id may sit on an ancestor: it is
+  // the row that carries it, and the child is what the selector descends to.
+  const testid = { attribute: null, value: null, depth: 0 };
+  let node = el;
+  for (let depth = 0; node && depth <= limits.ancestor_levels; depth += 1) {
+    for (const attribute of limits.testid_attributes) {
+      const value = node.getAttribute && node.getAttribute(attribute);
+      if (value && testid.value === null) {
+        testid.attribute = attribute;
+        testid.value = value;
+        testid.depth = depth;
+      }
+    }
+    node = node.parentElement;
   }
-  if (id && !generated(id)) candidates.push(`#${CSS.escape(id)}`);
-  if (aria_label) candidates.push(`[aria-label=${quoted(aria_label)}]`);
-  // The implicit role is what a `role=` selector matches on, and the one an
-  // `<a>` or a `<button>` never spells out.
-  const named_role = role || limits.implicit_roles[tag];
-  if (named_role && name) candidates.push(`role=${named_role}[name=${quoted(name)}]`);
 
   return {
     first: {
@@ -104,9 +118,21 @@ async (el) => {
       covered_by,
       stable,
       pointer_events,
-      clickable: why_not.length === 0,
       why_not,
+      nested_controls,
     },
-    candidates,
+    locators: {
+      tag,
+      testid_attribute: testid.attribute,
+      testid: testid.value,
+      testid_depth: testid.depth,
+      aria_label,
+      role: role || limits.implicit_roles[tag] || null,
+      name: name || null,
+      id: el.getAttribute("id"),
+      href: el.getAttribute("href"),
+      classes: Array.from(el.classList),
+    },
+    since_navigation_ms,
   };
 }

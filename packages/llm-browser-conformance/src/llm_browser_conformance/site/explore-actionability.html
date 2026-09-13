@@ -10,10 +10,29 @@
   /* Enough that only the first button's centre falls under the banner. */
   main { padding-top: 100px; }
   button { display: block; margin: 18px 12px; }
+  .hack { position: relative; display: inline-block; margin: 18px 12px; }
+  .over {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    margin: 0; opacity: 0; z-index: 1;
+  }
 </style>
 <div class="banner">Cookie notice</div>
 <main>
   <button id="buried" data-testid="buy">Buy now</button>
   <button id="off" disabled>Sold out</button>
   <button id="clear" data-testid="help">Help</button>
+  <!-- Wikipedia's checkbox hack: the input is laid over the label it belongs
+       to, so the label's centre hit-tests to the control it drives. One
+       target, not a covered one. -->
+  <div class="hack">
+    <input id="agree" type="checkbox" class="over">
+    <label id="tick" for="agree">I agree</label>
+  </div>
+  <!-- A card-sized link with its own dismiss button inside it. -->
+  <a id="card" href="/missions/senior-eng-4821" data-testid="mission">
+    Senior engineer
+    <button>Not Interested</button>
+  </a>
+  <div style="height: 1200px"></div>
+  <a id="below" href="/missions/staff-eng-991">Below the fold</a>
 </main>

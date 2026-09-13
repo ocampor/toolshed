@@ -5,23 +5,32 @@
 ### Added
 
 - `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
-  intent=Intent.READ)`:
+  intent=Intent.READ, sample_chars=200)`:
   an `ExploreResult` with the selector's `count`, the first `sample` rows,
   the `empty_fields` no sampled row filled in and their total `text_chars`.
   Never clicks, and a selector that never arrives is a count of zero.
   Costs `sample x (fields + 1)` per-element reads, independent of `count`.
 - `explore` also answers "is this the element, and would a click land on it":
   `first` (tag, text, role, aria-label, name, href, visible, enabled,
-  in-viewport, `covered_by`, `stable`, pointer-events, `clickable` and the
-  `why_not` list behind it), `appeared_after_ms`, up to three sturdier
-  `candidates` checked to match that element and nothing else, the selector's
+  in-viewport, `covered_by`, `stable`, pointer-events, `nested_controls`, the
+  `why_not` list and the `clickable` computed from it), `since_navigation_ms`
+  and `since_call_ms`, up to three sturdier `candidates`, the selector's
   `stability`, and a `verdict` of `ok` / `ambiguous` / `missing` /
   `not_actionable` against an `intent` of `read` (default), `click`, `fill` or
   `wait`. One page evaluation, two rects 100 ms apart, still never a click.
+  - `clickable` ignores `offscreen`: every driver scrolls before it clicks.
+  - A `label` and the control it labels never cover each other.
+  - `candidates` rank `data-testid` (on the match or an ancestor within three
+    levels) > aria label or role+name > an ungenerated id > a link's section
+    (`a[href^=…]`) > a hashed class, each checked to match that element alone —
+    or, under `intent=read`, the same number of rows the selector found.
+  - `nested_controls` names the `button`/`a`/`input` inside the match that a
+    loose click lands on instead.
 - `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
-  [--intent read|click|fill|wait]`: the same as JSON, exiting non-zero unless
-  the verdict is `ok`. A repeated `--extract NAME=` is a `UsageError` naming the
-  field, not a silent last-wins.
+  [--intent read|click|fill|wait] [--sample-chars]`: the same as JSON, exiting
+  non-zero unless the verdict is `ok`. Each sampled field is cut to
+  `--sample-chars` (200). A repeated `--extract NAME=` is a `UsageError` naming
+  the field, not a silent last-wins.
 
 ### Fixed
 

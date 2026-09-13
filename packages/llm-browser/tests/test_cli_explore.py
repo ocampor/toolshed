@@ -169,3 +169,25 @@ def test_explore_rejects_the_same_extract_name_twice(
 
     assert result.exit_code == 2
     assert "--extract label given twice" in result.output + result.stderr
+
+
+def test_sample_chars_cuts_each_field_of_the_sample(
+    cli_explore: ExploringSession,
+) -> None:
+    cli_explore([{".label": "Alpha and then some"}])
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "explore",
+            "--selector",
+            ".row",
+            "--extract",
+            "label=.label",
+            "--sample-chars",
+            "5",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["sample"] == [{"label": "Alpha"}]

@@ -18,6 +18,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     DRIVER_ENV_VAR,
+    EXPLORE_SAMPLE_CHARS,
     EXPLORE_SAMPLE_ROWS,
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
@@ -897,6 +898,12 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
     help="How long to wait for the first match (ms).",
 )
 @click.option(
+    "--sample-chars",
+    type=click.IntRange(min=0),
+    default=EXPLORE_SAMPLE_CHARS,
+    help="How much of each sampled field to keep.",
+)
+@click.option(
     "--intent",
     type=click.Choice([intent.value for intent in Intent]),
     default=Intent.READ.value,
@@ -909,6 +916,7 @@ def explore(
     extract: tuple[str, ...],
     sample: int,
     timeout: int,
+    sample_chars: int,
     intent: str,
 ) -> None:
     """Count and sample a selector before writing a step against it.
@@ -924,6 +932,7 @@ def explore(
         sample=sample,
         timeout_ms=timeout,
         intent=Intent(intent),
+        sample_chars=sample_chars,
     )
     _output(result)
     if result.verdict is not Verdict.OK:

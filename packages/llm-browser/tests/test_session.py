@@ -251,8 +251,9 @@ def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
 ONE_ROW: list[dict[str | None, str | None]] = [{".label": "Alpha"}]
 TWO_ROWS: list[dict[str | None, str | None]] = [{".label": "Alpha"}, {".label": "Beta"}]
 
-COVERED = {"clickable": False, "why_not": ["covered"]}
-DISABLED = {"clickable": False, "enabled": False, "why_not": ["disabled"]}
+COVERED = {"why_not": ["covered"]}
+DISABLED = {"enabled": False, "why_not": ["disabled"]}
+BELOW_THE_FOLD = {"in_viewport": False, "why_not": ["offscreen"]}
 
 
 @pytest.mark.parametrize(
@@ -264,6 +265,7 @@ DISABLED = {"clickable": False, "enabled": False, "why_not": ["disabled"]}
         (Intent.WAIT, TWO_ROWS, {}, Verdict.AMBIGUOUS),
         (Intent.CLICK, ONE_ROW, {}, Verdict.OK),
         (Intent.CLICK, ONE_ROW, COVERED, Verdict.NOT_ACTIONABLE),
+        (Intent.CLICK, ONE_ROW, BELOW_THE_FOLD, Verdict.OK),
         (Intent.CLICK, TWO_ROWS, {}, Verdict.AMBIGUOUS),
         (Intent.FILL, ONE_ROW, COVERED, Verdict.OK),
         (Intent.FILL, ONE_ROW, DISABLED, Verdict.NOT_ACTIONABLE),
@@ -278,7 +280,8 @@ def test_the_verdict_answers_the_intent(
     exploring_session: ExploringSession,
 ) -> None:
     """A `read` is happy with any number of matches; a covered element is
-    still fine to wait for or to fill, and only a click cares."""
+    still fine to wait for or to fill, and only a click cares. Below the fold
+    is not a reason: every driver scrolls before it clicks."""
     session = exploring_session(rows, first=first)
 
     assert session.explore(".row", timeout_ms=0, intent=intent).verdict == expected
@@ -303,24 +306,65 @@ def test_a_candidate_has_to_match_exactly_one_element(
     match is that element; one that matches twice names something else too."""
     session = exploring_session(
         ONE_ROW,
-        candidates=["#alpha", '[aria-label="Go"]'],
+        locators={"id": "alpha", "aria_label": "Go"},
         matches={"#alpha": 1, '[aria-label="Go"]': 2},
     )
 
     assert session.explore(".row").candidates == ["#alpha"]
 
 
-def test_only_three_candidates_are_kept(exploring_session: ExploringSession) -> None:
-    proposals = ["#a", "#b", "#c", "#d"]
-    session = exploring_session(ONE_ROW, candidates=proposals)
+def test_a_read_candidate_may_match_every_row_instead_of_one(
+    exploring_session: ExploringSession,
+) -> None:
+    """A list is explored to be read as a list: a candidate that finds the
+    same 4 rows is the selector to write, and only a `read` can say so."""
+    session = exploring_session(
+        LABELLED_ROWS,
+        locators={"classes": ["card-2xh9"]},
+        matches={".card-2xh9": 4},
+    )
 
-    assert session.explore(".row").candidates == proposals[:3]
+    assert session.explore(".row").candidates == [".card-2xh9"]
+    assert session.explore(".row", intent=Intent.CLICK).candidates == []
+
+
+def test_a_read_drops_a_candidate_that_finds_one_row_of_many(
+    exploring_session: ExploringSession,
+) -> None:
+    """The first row's own link is not a selector for the list."""
+    session = exploring_session(
+        LABELLED_ROWS,
+        locators={"id": "first-row"},
+        matches={"#first-row": 1},
+    )
+
+    assert session.explore(".row").candidates == []
+
+
+def test_only_three_candidates_are_kept(exploring_session: ExploringSession) -> None:
+    session = exploring_session(
+        ONE_ROW,
+        locators={
+            "testid_attribute": "data-testid",
+            "testid": "buy",
+            "aria_label": "Buy",
+            "role": "link",
+            "name": "Buy",
+            "id": "buy-now",
+        },
+    )
+
+    assert session.explore(".row").candidates == [
+        '[data-testid="buy"]',
+        '[aria-label="Buy"]',
+        'role=link[name="Buy"]',
+    ]
 
 
 def test_a_candidate_no_driver_can_parse_is_not_one(
     exploring_session: ExploringSession,
 ) -> None:
-    session = exploring_session(ONE_ROW, candidates=["role=button[name=Go]"])
+    session = exploring_session(ONE_ROW, locators={"role": "button", "name": "Go"})
     resolve = session.driver.resolve.side_effect
 
     def refuse_the_role_engine(page: object, selector: str) -> object:
@@ -338,16 +382,20 @@ def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(
 ) -> None:
     result = exploring_session([]).explore(".row", timeout_ms=0, intent=Intent.CLICK)
 
-    assert (result.first, result.appeared_after_ms) == (None, None)
+    assert (result.first, result.since_navigation_ms) == (None, None)
+    assert result.since_call_ms is None
     assert result.verdict == Verdict.MISSING
 
 
-def test_explore_times_how_long_the_first_match_took(
+def test_explore_times_the_match_against_the_page_and_against_the_call(
     exploring_session: ExploringSession,
 ) -> None:
-    result = exploring_session(ONE_ROW).explore(".row")
+    """A call seconds after the load would size a `wait_for` from its own
+    latency; the page's own clock is what the element actually took."""
+    result = exploring_session(ONE_ROW, since_navigation_ms=740).explore(".row")
 
-    assert result.appeared_after_ms is not None and result.appeared_after_ms >= 0
+    assert result.since_navigation_ms == 740
+    assert result.since_call_ms is not None and result.since_call_ms >= 0
 
 
 @pytest.mark.parametrize(
@@ -369,3 +417,36 @@ def test_stability_reads_the_selector_a_redeploy_would_break(
     session = exploring_session(ONE_ROW)
 
     assert session.explore(selector).stability == expected
+
+
+def test_a_control_inside_the_first_match_is_named(
+    exploring_session: ExploringSession,
+) -> None:
+    """A card-sized anchor wrapping its own dismiss button: the click that
+    looks like "open the card" is the one that hides it."""
+    session = exploring_session(
+        ONE_ROW,
+        first={"nested_controls": [{"tag": "button", "text": "Not Interested"}]},
+    )
+
+    first = session.explore(".row").first
+
+    assert first is not None
+    assert [(c.tag, c.text) for c in first.nested_controls] == [
+        ("button", "Not Interested")
+    ]
+
+
+def test_a_sampled_field_is_cut_to_sample_chars(
+    exploring_session: ExploringSession,
+) -> None:
+    """A 2 kB row times forty rows is what `read` is for, not a look."""
+    session = exploring_session([{".label": "x" * 900}])
+
+    result = session.explore(
+        ".row",
+        extract={"label": ExtractField(child_selector=".label")},
+        sample_chars=10,
+    )
+
+    assert result.sample == [{"label": "x" * 10}]

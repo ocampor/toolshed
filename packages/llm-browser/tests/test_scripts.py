@@ -220,3 +220,6 @@ def test_explore_first_js_reads_every_limit_from_python() -> None:
     assert f'"cover_text_max": {constants.EXPLORE_COVER_TEXT_MAX_CHARS}' in source
     assert json.dumps(list(constants.INTERACTIVE_TAGS)) in source
     assert json.dumps(list(constants.INTERACTIVE_ROLES)) in source
+    assert json.dumps(list(constants.TESTID_ATTRIBUTES)) in source
+    assert f'"nested_text_max": {constants.EXPLORE_NESTED_TEXT_MAX_CHARS}' in source
+    assert f'"ancestor_levels": {constants.EXPLORE_ANCESTOR_LEVELS}' in source

@@ -156,10 +156,33 @@ def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
     clear = ctx.session.explore("#clear", intent=Intent.CLICK)
     assert clear.first is not None and clear.first.clickable, clear
     assert clear.verdict is Verdict.OK, clear
-    assert clear.appeared_after_ms is not None, clear
+    assert clear.since_navigation_ms is not None, clear
 
     both = ctx.session.explore("button[data-testid]", intent=Intent.CLICK)
     assert both.count == 2 and both.verdict is Verdict.AMBIGUOUS, both
+
+
+def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
+    """Below the fold is not an obstacle, a label is not covered by its own
+    checkbox, and a card that swallows a dismiss button says so."""
+    ctx.visit("explore-actionability.html")
+
+    below = ctx.session.explore("#below", intent=Intent.CLICK)
+    assert below.first is not None and below.first.why_not == ["offscreen"], below
+    assert below.first.clickable and below.verdict is Verdict.OK, below
+
+    tick = ctx.session.explore("#tick", intent=Intent.CLICK)
+    assert tick.first is not None and tick.first.covered_by is None, tick
+    assert tick.verdict is Verdict.OK, tick
+
+    card = ctx.session.explore("#card", intent=Intent.CLICK)
+    assert card.first is not None, card
+    assert [c.text for c in card.first.nested_controls] == ["Not Interested"], card
+    # The test id on the card outranks everything else it could be called.
+    assert card.candidates[0] == '[data-testid="mission"]', card
+    assert len(card.candidates) <= 3, card
+    assert card.since_navigation_ms is not None, card
+    assert card.since_call_ms is not None, card
 
 
 # --- tabs ---
@@ -546,9 +569,15 @@ SCENARIOS = [
                 "session:explore",
                 "session:first_match",
                 "session:verified_candidates",
-                "session:matches_once",
+                "session:count_of",
             }
         ),
+    ),
+    Scenario(
+        "explore a click cost",
+        Section.API,
+        explore_reads_what_a_loose_click_would_cost,
+        covers=frozenset({"session:explore"}),
     ),
     Scenario(
         "explore a list",

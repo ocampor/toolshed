@@ -127,6 +127,18 @@ EXPLORE_COVER_TEXT_MAX_CHARS = 60
 # short enough to sit inside one `explore` without being felt.
 EXPLORE_STABLE_DELAY_MS = 100
 EXPLORE_MAX_CANDIDATES = 3
+EXPLORE_NESTED_TEXT_MAX_CHARS = 40
+EXPLORE_MAX_NESTED_CONTROLS = 5
+# How much of each sampled field the sample keeps. Reading the whole of every
+# row is what `read` is for.
+EXPLORE_SAMPLE_CHARS = 200
+# How far up from the first match a test id still names it.
+EXPLORE_ANCESTOR_LEVELS = 3
+TESTID_ATTRIBUTES = ("data-testid", "data-testing-id")
+
+# Reasons a click would miss that the drivers handle themselves: every one of
+# them scrolls the target into view first.
+EXPLORE_NON_BLOCKING = ("offscreen",)
 
 # What counts as an element a click means something to, when no `onclick` and
 # no `cursor: pointer` says so.
