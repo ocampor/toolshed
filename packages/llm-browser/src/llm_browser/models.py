@@ -408,6 +408,20 @@ class PageProbe(BaseModel):
     selector_text: str | None = None
 
 
+class ExploreResult(BaseModel):
+    """What a selector matches right now, for an author sizing up a step.
+
+    ``empty_fields`` names the fields no sampled row filled in — a wrong
+    child selector, or a page that has not hydrated yet — and ``text_chars``
+    is how much rendered text the sampled elements carry between them.
+    """
+
+    count: int
+    sample: list[dict[str, str | None]]
+    empty_fields: list[str]
+    text_chars: int
+
+
 class SessionResult(BaseModel):
     """Result returned by session operations (launch, close, status)."""
 

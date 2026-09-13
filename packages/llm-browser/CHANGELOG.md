@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.0 — 2026-09-13
+
+### Added
+
+- `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000)`:
+  an `ExploreResult` with the selector's `count`, the first `sample` rows,
+  the `empty_fields` no sampled row filled in and their total `text_chars`.
+  Never clicks, and a selector that never arrives is a count of zero.
+- `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]`:
+  the same as JSON, exiting non-zero when nothing matched.
+
 ## 0.13.0 — 2026-09-13
 
 ### Added

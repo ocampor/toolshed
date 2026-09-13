@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-09-13
+
+Tracks `llm-browser` 0.14.0.
+
+### Added
+
+- `explore a list` scenario, claiming `session:explore`.
+
 ## 0.5.0 — 2026-09-13
 
 Tracks `llm-browser` 0.13.0.

@@ -38,6 +38,10 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
   survive only at `low`. Pick the level from this table, not by stepping down through them.
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
+- On an SPA that hydrates late, run `llm-browser explore --selector …` before
+  writing the `read`: it says how many rows the selector matches right now and
+  which fields come back empty, which is the mistake a `read` against a stub
+  otherwise only shows at run time.
 
 ## Autocomplete (jQuery UI and friends)
 

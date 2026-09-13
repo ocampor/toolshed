@@ -117,6 +117,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
+| `session:explore` | explore a list |
 | `session:fill` | dynamic controls enable, fill/type/check, revealed control is fillable |
 | `session:find` | find rejects ambiguity, dynamic loading, hidden input is readable |
 | `session:find_all` | pick by text, find all |

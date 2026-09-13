@@ -146,6 +146,7 @@ fresh.
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
+| `explore(selector, extract=None, sample=3, timeout_ms=3000)` | Count and sample what a selector matches, without touching it — an `ExploreResult`, never a click |
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
 | `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
@@ -156,3 +157,19 @@ fresh.
 | `frame(selector)` | Enter iframe |
 | `wait_for_load_state(state)` | Wait for page load |
 | `latest_tab()` | Switch to newest tab |
+
+### Exploring before writing a step
+
+A `read` written against a selector you have not checked fails on the run, not
+at authoring time. `explore` answers the two questions first — how many
+elements the selector really matches, and what they say:
+
+```bash
+llm-browser explore --selector ".result" --extract title=h3 --extract url="a@href"
+{"count": 24, "sample": [{"title": "First", "url": "/a"}, ...],
+ "empty_fields": ["url"], "text_chars": 1840}
+```
+
+`empty_fields` names what no sampled row filled in — the wrong child selector,
+or a page still hydrating — and the command exits non-zero when `count` is 0.
+Nothing here is a flow step: it is for writing the step, not for running it.

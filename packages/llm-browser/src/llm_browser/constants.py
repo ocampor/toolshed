@@ -116,6 +116,10 @@ EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"
 
+# How many matches ``BrowserSession.explore`` reads: enough to see whether the
+# rows differ from each other, few enough to stay one round-trip per row.
+EXPLORE_SAMPLE_ROWS = 3
+
 # --- YAML schema types ---
 
 # The only names a schema `type:` string may use; see `schema_types.py`.

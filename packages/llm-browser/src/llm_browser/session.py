@@ -22,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
+    EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
 )
@@ -30,12 +31,13 @@ from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
+    ExploreResult,
     PageProbe,
     SessionInfo,
     SessionResult,
     WaitState,
 )
-from llm_browser.parse import ExtractField
+from llm_browser.parse import ExtractField, parse_extract_spec, row_spec
 from llm_browser.results import BytesResult
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
@@ -56,6 +58,15 @@ def checked_url(
     if urlsplit(url).scheme not in allowed_schemes:
         raise ValueError(f"url must be {' or '.join(allowed_schemes)}: {url}")
     return url
+
+
+def empty_everywhere(
+    rows: list[dict[str, str | None]], fields: Collection[str]
+) -> list[str]:
+    """Fields that no sampled row filled in — missing and blank both count."""
+    if not rows:
+        return []
+    return [name for name in fields if not any(row[name] for row in rows)]
 
 
 class BrowserSession:
@@ -578,11 +589,47 @@ class BrowserSession:
         element itself.
         """
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        spec = {
-            name: {"child_selector": f.child_selector, "attribute": f.attribute}
-            for name, f in extract.items()
-        }
-        return self.driver.extract_rows(locator, spec)
+        return self.driver.extract_rows(locator, row_spec(extract))
+
+    def explore(
+        self,
+        selector: Selector,
+        extract: dict[str, ExtractField] | None = None,
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+    ) -> ExploreResult:
+        """Count and sample what ``selector`` matches, without touching it.
+
+        For writing a step against a page you have not read yet: how many
+        elements the selector really finds, what the first ``sample`` of them
+        say under ``extract`` (the row's own text when it is omitted), and
+        which fields stayed empty. A selector that never arrives is a count of
+        zero, not a ``TimeoutError`` — "nothing here" is the answer.
+        """
+        try:
+            locator = self.find_all(selector, timeout=timeout_ms)
+        except TimeoutError:
+            return ExploreResult(count=0, sample=[], empty_fields=[], text_chars=0)
+        count = self.driver.count(locator)
+        spec = row_spec(extract or parse_extract_spec(None))
+        # Only the sampled elements are read: a selector matching a thousand
+        # rows is exactly the one an author needs told about cheaply.
+        elements = [self.driver.nth(locator, i) for i in range(min(sample, count))]
+        rows = [
+            {
+                name: self.driver.read_field(element, field)
+                for name, field in spec.items()
+            }
+            for element in elements
+        ]
+        return ExploreResult(
+            count=count,
+            sample=rows,
+            empty_fields=empty_everywhere(rows, spec),
+            text_chars=sum(
+                len(self.driver.read_property(el, "innerText") or "") for el in elements
+            ),
+        )
 
     def dom(
         self,

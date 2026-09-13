@@ -18,11 +18,13 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     DRIVER_ENV_VAR,
+    EXPLORE_SAMPLE_ROWS,
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
+from llm_browser.parse import parse_extract_spec
 from llm_browser.models import (
     Flow,
     FlowError,
@@ -854,6 +856,65 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     session: BrowserSession = ctx.obj["session"]
     html = session.dom(selector, max_depth=max_depth, level=SanitizeLevel(level))
     _output({"html": html})
+
+
+def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
+    """``--extract name=child selector@attribute`` pairs; ``None`` when unused."""
+    if not values:
+        return None
+    pairs: dict[str, str] = {}
+    for value in values:
+        name, separator, spec = value.partition("=")
+        if not separator or not name:
+            raise click.UsageError(f"--extract expects name=spec, got {value!r}.")
+        pairs[name] = spec
+    return pairs
+
+
+@main.command()
+@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option(
+    "--extract",
+    "extract",
+    multiple=True,
+    metavar="NAME=SPEC",
+    help="Field to read off each sampled row, as name=child selector@attribute. Repeatable.",
+)
+@click.option(
+    "--sample",
+    type=click.IntRange(min=0),
+    default=EXPLORE_SAMPLE_ROWS,
+    help="How many matches to read.",
+)
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=0),
+    default=DEFAULT_WAIT_TIMEOUT_MS,
+    help="How long to wait for the first match (ms).",
+)
+@click.pass_context
+def explore(
+    ctx: click.Context,
+    selector: str,
+    extract: tuple[str, ...],
+    sample: int,
+    timeout: int,
+) -> None:
+    """Count and sample a selector before writing a step against it.
+
+    Exits non-zero when nothing matched, so a shell can tell "wrong
+    selector" from "empty page" without parsing the JSON.
+    """
+    session: BrowserSession = ctx.obj["session"]
+    result = session.explore(
+        selector,
+        extract=parse_extract_spec(extract_pairs(extract)),
+        sample=sample,
+        timeout_ms=timeout,
+    )
+    _output(result)
+    if result.count == 0:
+        raise SystemExit(1)
 
 
 @main.command()

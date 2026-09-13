@@ -90,6 +90,14 @@ class ExtractField(FieldInfo):
         )
 
 
+def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None]]:
+    """The driver-facing form of an extract map, as ``extract_rows`` wants it."""
+    return {
+        name: {"child_selector": field.child_selector, "attribute": field.attribute}
+        for name, field in extract.items()
+    }
+
+
 def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField]:
     """Turn ``{field: "child selector@attribute"}`` into extraction fields.
 

@@ -8,7 +8,10 @@ import pytest
 from llm_browser.chrome import is_process_alive
 from llm_browser.drivers.base import Driver
 from llm_browser.models import SessionInfo
+from llm_browser.parse import ExtractField
 from llm_browser.session import BrowserSession
+
+from tests.conftest import ExploringSession
 
 
 def test_save_and_load_state(tmp_path: Path) -> None:
@@ -152,3 +155,75 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
 
     session.screenshot_bytes()
     assert not session.session_dir.exists()
+
+
+# --- explore ---
+
+LABELLED_ROWS: list[dict[str | None, str | None]] = [
+    {".label": "Alpha", ".note": None},
+    {".label": "Beta", ".note": ""},
+    {".label": "Gamma", ".note": None},
+    {".label": "Delta", ".note": None},
+]
+
+LABEL_AND_NOTE = {
+    "label": ExtractField(child_selector=".label"),
+    "note": ExtractField(child_selector=".note"),
+}
+
+
+def test_explore_counts_every_match_but_samples_only_the_first_few(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(".row", extract=LABEL_AND_NOTE, sample=2)
+
+    assert result.count == 4
+    assert result.sample == [
+        {"label": "Alpha", "note": None},
+        {"label": "Beta", "note": ""},
+    ]
+
+
+def test_explore_names_the_fields_no_sampled_row_filled_in(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(".row", extract=LABEL_AND_NOTE)
+
+    assert result.empty_fields == ["note"]
+
+
+def test_explore_reads_the_rows_own_text_when_no_extract_is_given(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session([{None: "Alpha"}, {None: "Beta"}])
+
+    result = session.explore(".row")
+
+    assert result.sample == [{"text": "Alpha"}, {"text": "Beta"}]
+    assert result.empty_fields == []
+
+
+def test_explore_sums_the_rendered_text_of_the_sampled_elements(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS, text="12345")
+
+    result = session.explore(".row", sample=3)
+
+    assert result.text_chars == 15
+
+
+def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session([])
+
+    result = session.explore(".row", timeout_ms=0)
+
+    assert result.count == 0
+    assert result.sample == []
+    assert result.text_chars == 0

@@ -22,6 +22,7 @@ from llm_browser.behavior import Behavior
 from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
 from llm_browser.html import SanitizeLevel
+from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
 from llm_browser.session import BrowserSession
 
@@ -106,6 +107,27 @@ def find_all_returns_what_find_refuses(ctx: Context) -> None:
     assert ctx.session.driver.count(locator) == 2
     error = raises(ValueError, lambda: ctx.session.find(".item"))
     assert "found 2" in str(error), error
+
+
+def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> None:
+    """What an author asks before writing the `read`: how many, and saying what."""
+    ctx.visit("rows-attributes.html")
+    found = ctx.session.explore(
+        ".row",
+        extract={
+            "label": ExtractField(child_selector=".label"),
+            "absent": ExtractField(child_selector=".nothing-matches-this"),
+        },
+        sample=2,
+    )
+    assert found.count == 3, found
+    assert [row["label"] for row in found.sample] == ["Alpha", "Beta"], found
+    assert found.empty_fields == ["absent"], found
+    assert found.text_chars > 0, found
+
+    missing = ctx.session.explore("#no-such-element", timeout_ms=MISSING_TIMEOUT_MS)
+    assert missing.count == 0, missing
+    assert missing.sample == [], missing
 
 
 # --- tabs ---
@@ -482,6 +504,12 @@ SCENARIOS = [
         Section.API,
         find_all_returns_what_find_refuses,
         covers=frozenset({"session:find_all"}),
+    ),
+    Scenario(
+        "explore a list",
+        Section.API,
+        explore_counts_the_whole_list_and_reads_only_the_sample,
+        covers=frozenset({"session:explore"}),
     ),
     Scenario(
         "latest tab",
