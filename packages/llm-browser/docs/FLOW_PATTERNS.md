@@ -46,6 +46,14 @@ See [API.md](API.md#surveying-before-exploring) for every field.
 `llm-browser explore --selector … --intent <what the step will do>` is the same
 answer for one selector, when a step is all that is in question.
 
+A page that reveals a control on a click is **two** rounds, not one: survey,
+write the click, run it, then survey again. Wikipedia's header search is the
+example — `#searchInput` is on the page and hidden, and the toggle click
+replaces the whole form with one that has no id at all. `explore` says
+`not_actionable` / `why_not: ["hidden"]` on the first round, which is the
+signal to go round again; `validate` never will, because it checks the flow's
+schema and never opens the page.
+
 | `--intent` | `ok` when | Read these |
 |---|---|---|
 | `read` | `count >= 1` | `count`, `sample`, `empty_fields` |
