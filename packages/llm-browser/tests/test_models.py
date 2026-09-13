@@ -298,11 +298,10 @@ def test_type_delay_accepts_a_constant_or_a_pair() -> None:
     assert step.delay == Jitter(min_ms=30, max_ms=90)
 
 
-def test_type_delay_rejects_an_inverted_pair() -> None:
-    with pytest.raises(ValidationError, match=">="):
-        validate_step(
-            {"name": "s", "action": "type", "selector": "#x", "delay": [90, 30]}
-        )
+@pytest.mark.parametrize("delay", [[90, 30], [50], [10, 20, 30], [-5, 20]])
+def test_type_delay_rejects_anything_but_a_min_max_pair(delay: list[int]) -> None:
+    with pytest.raises(ValidationError, match=r"\[min_ms, max_ms\]"):
+        validate_step({"name": "s", "action": "type", "selector": "#x", "delay": delay})
 
 
 def test_humanize_defaults_to_following_the_session() -> None:

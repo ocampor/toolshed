@@ -12,6 +12,7 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -21,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
+    DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
@@ -101,9 +103,14 @@ class TypeStep(SelectorStep):
     @field_validator("delay", mode="before")
     @classmethod
     def _pair_to_jitter(cls, value: Any) -> Any:
-        if isinstance(value, (list, tuple)) and len(value) == 2:
+        if not isinstance(value, (list, tuple)):
+            return value
+        if len(value) != 2:
+            raise ValueError(DELAY_SHAPE)
+        try:
             return Jitter(min_ms=value[0], max_ms=value[1])
-        return value
+        except ValidationError as e:
+            raise ValueError(DELAY_SHAPE) from e
 
 
 class SelectStep(SelectorStep):

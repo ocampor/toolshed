@@ -10,7 +10,7 @@ humanization and honor only the timing fields.
 
 import random
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, Self
 
@@ -21,6 +21,9 @@ PUNCTUATION = ".,?!;:\n"
 # How far off the straight line the Bézier control point may sit, as a
 # fraction of the travelled distance.
 MOUSE_BOW_RATIO = 0.2
+
+# How far from its target a pointer of unknown position starts, in pixels.
+MOUSE_APPROACH_PX = 200.0
 
 
 class Jitter(BaseModel):
@@ -46,8 +49,9 @@ class BehaviorRuntime:
         self.rng = rng
         self.last_action_monotonic: float | None = None
         self.pacing = False
-        # Where the pointer was left. A fresh page starts it at the origin.
-        self.mouse_xy: tuple[float, float] = (0.0, 0.0)
+        # Where the pointer was left, or ``None`` when that is no longer
+        # known — a scroll or a navigation moves it behind our back.
+        self.mouse_xy: tuple[float, float] | None = None
 
 
 class Behavior(BaseModel):
@@ -117,6 +121,11 @@ BEHAVIOR_OFF = Behavior(
 )
 
 
+# The gap between two points of a mouse path: samples arrive on a wire, not
+# in one burst, and a constant interval is as readable as a straight line.
+MOUSE_STEP_PAUSE = Jitter(min_ms=4, max_ms=16)
+
+
 def enforce_gap(behavior: Behavior, runtime: BehaviorRuntime) -> None:
     if behavior.min_gap_ms <= 0 or runtime.last_action_monotonic is None:
         return
@@ -160,6 +169,12 @@ def jittered_sleep(jitter: Jitter, rng: random.Random) -> None:
     time.sleep(jitter.sample_seconds(rng))
 
 
+def forget_mouse(runtime: BehaviorRuntime) -> None:
+    """Something moved the pointer without us (a wheel scroll, a navigation),
+    so the next path starts near its target instead of from a stale point."""
+    runtime.mouse_xy = None
+
+
 def jittered_delta(delta: int, behavior: Behavior, rng: random.Random) -> int:
     """Wheel ticks of identical size are a tell; this is the fraction one may
     stray from the delta the step asked for."""
@@ -198,8 +213,7 @@ def humanized_type(
     """Type text char-by-char with jittered per-key delays."""
     if behavior.focus_drift and behavior.mouse_move:
         _drift_mouse_to(page, element, behavior, runtime)
-    for ch in text:
-        _type_char(element, ch, behavior, runtime)
+    type_chars(lambda ch: element.type(ch, delay=0), text, behavior, runtime)
 
 
 def jittered_target(
@@ -228,15 +242,74 @@ def path_steps(behavior: Behavior, rng: random.Random) -> int:
     return rng.randint(max(1, top // 2), top)
 
 
+def type_chars(
+    send: Callable[[str], None],
+    text: str,
+    behavior: Behavior,
+    runtime: BehaviorRuntime,
+) -> None:
+    """Send ``text`` one key at a time, on the behaviour's cadence.
+
+    The one definition of that cadence: the Playwright path drives a locator,
+    the driver default drives ``Driver.type``, and both owe the caller the
+    same per-key jitter and boundary pauses.
+    """
+    for ch in text:
+        send(ch)
+        jittered_sleep(behavior.type_char_delay, runtime.rng)
+        pause = boundary_pause(ch, behavior, runtime.rng)
+        if pause is not None:
+            jittered_sleep(pause, runtime.rng)
+
+
 def move_mouse_to(
     page: Any,
     target: tuple[float, float],
     runtime: BehaviorRuntime,
     steps: int,
 ) -> None:
-    for x, y in curve_points(runtime.mouse_xy, target, steps, runtime.rng):
-        page.mouse.move(x, y)
+    start = runtime.mouse_xy
+    if start is None:
+        start = approach_start(target, runtime.rng)
+    bounds = viewport_size(page)
+    for point in curve_points(start, target, steps, runtime.rng):
+        page.mouse.move(*clamp_to_viewport(point, bounds))
+        jittered_sleep(MOUSE_STEP_PAUSE, runtime.rng)
     runtime.mouse_xy = target
+
+
+def approach_start(
+    target: tuple[float, float], rng: random.Random
+) -> tuple[float, float]:
+    """Where a pointer of unknown position comes from: the target's
+    neighbourhood, which is the honest answer once the old point is stale."""
+    reach = MOUSE_APPROACH_PX
+    return (
+        target[0] + rng.uniform(-reach, reach),
+        target[1] + rng.uniform(-reach, reach),
+    )
+
+
+def viewport_size(page: Any) -> tuple[float, float] | None:
+    """The page's viewport in CSS pixels, or ``None`` when the driver does not
+    say (nodriver, a fake page in a test)."""
+    size = getattr(page, "viewport_size", None)
+    if not isinstance(size, dict):
+        return None
+    try:
+        return float(size["width"]), float(size["height"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def clamp_to_viewport(
+    point: tuple[float, float], bounds: tuple[float, float] | None
+) -> tuple[float, float]:
+    """A bowed curve can swing off-screen near an edge; a pointer cannot."""
+    x, y = max(0.0, point[0]), max(0.0, point[1])
+    if bounds is None:
+        return x, y
+    return min(x, bounds[0]), min(y, bounds[1])
 
 
 def curve_points(
@@ -294,13 +367,3 @@ def _drift_mouse_to(
 ) -> None:
     target = jittered_target(element, behavior, runtime)
     move_mouse_to(page, target, runtime, max(1, path_steps(behavior, runtime.rng) // 2))
-
-
-def _type_char(
-    element: Any, ch: str, behavior: Behavior, runtime: BehaviorRuntime
-) -> None:
-    element.type(ch, delay=0)
-    jittered_sleep(behavior.type_char_delay, runtime.rng)
-    pause = boundary_pause(ch, behavior, runtime.rng)
-    if pause is not None:
-        jittered_sleep(pause, runtime.rng)

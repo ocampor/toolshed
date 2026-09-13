@@ -35,6 +35,10 @@ DESTROYED_CONTEXT_MESSAGE = "Execution context was destroyed"
 
 DEFAULT_URL_SCHEMES = ("http", "https")
 
+# What a `type` step's `delay` may be, said once so a bad pair reads as one
+# error instead of two union failures.
+DELAY_SHAPE = "delay must be a non-negative int, or [min_ms, max_ms] with min <= max"
+
 REDACTED = "***"
 
 # Every action whose result the flow runner keeps in ``outputs``.

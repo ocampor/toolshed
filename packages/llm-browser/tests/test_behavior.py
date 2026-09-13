@@ -5,13 +5,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from llm_browser import behavior as behavior_module
 from llm_browser.actions import execute_action
 from llm_browser.behavior import (
+    MOUSE_APPROACH_PX,
     Behavior,
     Jitter,
+    approach_start,
     boundary_pause,
     curve_points,
     enforce_gap,
+    forget_mouse,
     humanized_click,
     humanized_type,
     jittered_delta,
@@ -352,3 +356,76 @@ def test_think_rejects_inverted_bounds(session: BrowserSession) -> None:
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert "max_ms" in result.message
+
+
+# --- The pointer between actions ---
+
+
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    recorded: list[float] = []
+    monkeypatch.setattr(behavior_module.time, "sleep", recorded.append)
+    return recorded
+
+
+def _page_with_viewport(width: float, height: float) -> MagicMock:
+    page = MagicMock()
+    page.viewport_size = {"width": width, "height": height}
+    return page
+
+
+def test_a_mouse_path_stays_inside_the_viewport(no_sleep: list[float]) -> None:
+    """The bow is a fraction of the distance, so a long approach to an element
+    at the edge swings off-screen — where no real pointer can be."""
+    corner = {"x": 0.0, "y": 0.0, "width": 40.0, "height": 20.0}
+    for seed in range(20):
+        b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8, seed=seed)
+        r = b.runtime()
+        r.mouse_xy = (0.0, 500.0)
+        page = _page_with_viewport(800.0, 600.0)
+        humanized_click(page, _element_at(corner), b, r)
+        path = [call.args for call in page.mouse.move.call_args_list]
+        assert all(0.0 <= x <= 800.0 and 0.0 <= y <= 600.0 for x, y in path), path
+
+
+def test_an_unknown_pointer_approaches_from_its_own_neighbourhood() -> None:
+    target = (400.0, 300.0)
+    starts = [approach_start(target, random.Random(seed)) for seed in range(50)]
+    assert all(
+        abs(x - target[0]) <= MOUSE_APPROACH_PX
+        and abs(y - target[1]) <= MOUSE_APPROACH_PX
+        for x, y in starts
+    )
+    assert len(set(starts)) == len(starts)
+
+
+def test_a_forgotten_pointer_does_not_teleport_from_the_origin(
+    no_sleep: list[float],
+) -> None:
+    b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8, seed=3)
+    r = b.runtime()
+    forget_mouse(r)
+    page = _page_with_viewport(1000.0, 800.0)
+    humanized_click(
+        page, _element_at({"x": 600.0, "y": 400.0, "width": 40.0, "height": 20.0}), b, r
+    )
+    first = page.mouse.move.call_args_list[0].args
+    assert first[0] > MOUSE_APPROACH_PX and first[1] > MOUSE_APPROACH_PX
+
+
+def test_the_path_is_paced_point_by_point(no_sleep: list[float]) -> None:
+    """A trail with a shape but no speed still reads as synthetic."""
+    b = Behavior(
+        pre_click_pause=Jitter(),
+        hover_dwell=Jitter(),
+        press_hold=Jitter(),
+        mouse_move_steps=10,
+        seed=5,
+    )
+    r = b.runtime()
+    page = _page_with_viewport(800.0, 600.0)
+    humanized_click(page, _element_at(), b, r)
+    moves = page.mouse.move.call_count
+    gaps = [slept for slept in no_sleep if slept > 0.0]
+    assert len(gaps) == moves
+    assert len(set(gaps)) > 1

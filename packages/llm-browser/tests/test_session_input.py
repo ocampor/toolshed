@@ -9,7 +9,9 @@ import pytest
 from llm_browser import behavior as behavior_module
 from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
+from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.models import ClickStep
+from llm_browser.session_input import behavior_for
 from llm_browser.session import BrowserSession
 
 PACE_MS = 40
@@ -287,3 +289,76 @@ def test_download_arms_the_trigger_with_the_same_click(
     trigger()
     driver(session).humanized_click.assert_called_once()
     driver(session).click.assert_not_called()
+
+
+# --- what `humanize` switches, and what it leaves alone ---
+
+RATE_LIMITED = Behavior(min_gap_ms=2_000, mouse_move=False, type_char_delay=Jitter())
+
+
+def test_humanize_true_switches_the_knobs_and_keeps_the_rate_limit(
+    session: BrowserSession,
+) -> None:
+    """`humanize` is a humanization flag, not a fresh config: dropping the
+    session's `min_gap_ms` is the one loss that can get a run blocked."""
+    session.behavior = RATE_LIMITED
+    forced = behavior_for(session, True)
+    assert forced.mouse_move is True
+    assert forced.type_char_delay == Behavior.human().type_char_delay
+    assert forced.min_gap_ms == 2_000
+
+
+def test_humanize_false_switches_the_knobs_off_and_keeps_the_rate_limit(
+    session: BrowserSession,
+) -> None:
+    session.behavior = Behavior(min_gap_ms=2_000)
+    plain = behavior_for(session, False)
+    assert plain.mouse_move is False
+    assert plain.fill_as_type is False
+    assert plain.type_char_delay == Jitter()
+    assert plain.min_gap_ms == 2_000
+
+
+def test_humanize_true_honours_a_drivers_own_mouse_humanization(
+    session: BrowserSession,
+) -> None:
+    """Camoufox's native Bézier owns the pointer; stacking ours on top would
+    run N native curves for one click."""
+    session.behavior = CamoufoxBehaviorConfig(
+        driver="camoufox", type_char_delay=Jitter()
+    )
+    forced = behavior_for(session, True)
+    assert forced.mouse_move is False
+    assert forced.focus_drift is False
+    assert forced.type_char_delay == Behavior.human().type_char_delay
+
+
+def test_humanize_false_still_jitters_an_explicit_delay_pair(
+    session: BrowserSession,
+) -> None:
+    """`humanize: false` drops the mouse path and the humanized pacing; a
+    `[min, max]` the caller wrote is a cadence they asked for, so it stays."""
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    delay = Jitter(min_ms=40, max_ms=80)
+    session.type("#search", "query", delay_ms=delay, humanize=False)
+    driver(session).type.assert_not_called()
+    _page, _element, _value, behavior, _runtime = driver(
+        session
+    ).humanized_type.call_args.args
+    assert behavior.type_char_delay == delay
+    assert behavior.mouse_move is False
+
+
+def test_scroll_and_goto_forget_where_the_pointer_was(
+    session: BrowserSession,
+) -> None:
+    """Both move the pointer behind our back — a wheel parks it over what it
+    scrolls, a navigation resets it — so the next curve must not start there."""
+    session.behavior_runtime.mouse_xy = (10.0, 20.0)
+    session.scroll(0, 300)
+    assert session.behavior_runtime.mouse_xy is None
+
+    session.behavior_runtime.mouse_xy = (10.0, 20.0)
+    session.goto("https://example.com")
+    assert session.behavior_runtime.mouse_xy is None

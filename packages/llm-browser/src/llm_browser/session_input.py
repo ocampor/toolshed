@@ -17,13 +17,42 @@ if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
 
 
+# The knobs ``humanize`` switches: every field ``Behavior.human()`` and
+# ``Behavior.off()`` disagree on, minus the rate limit — a per-step flag must
+# not hand back a gap the session set to stay under a site's radar.
+HUMANIZE_KNOBS = frozenset(
+    name
+    for name in Behavior.model_fields
+    if getattr(Behavior.human(), name) != getattr(Behavior.off(), name)
+) - {"min_gap_ms"}
+
+
+def driver_opt_out(behavior: Behavior, field: str) -> bool:
+    """Whether the session's behaviour class owns this knob itself.
+
+    A driver config that redefines one — camoufox turning ``mouse_move`` off
+    because its native C++ Bézier does the moving — keeps it off, or our path
+    would run stacked on top of the driver's own.
+    """
+    declared = behavior.__class__.model_fields[field]
+    return bool(declared.default != Behavior.model_fields[field].default)
+
+
 def behavior_for(session: "BrowserSession", humanize: bool | None) -> Behavior:
-    """The behaviour one call runs under. ``humanize`` overrides the session's
-    for that call — timing included, since a humanized action that pauses like
-    an instant one is only half humanized."""
+    """The behaviour one call runs under. ``humanize`` switches the session's
+    humanization knobs on or off for that call — timing included, since a
+    humanized action that pauses like an instant one is only half humanized —
+    and leaves everything else the session was configured with in place.
+    """
     if humanize is None:
         return session.behavior
-    return Behavior.human() if humanize else Behavior.off()
+    source = Behavior.human() if humanize else Behavior.off()
+    knobs = {
+        name: getattr(source, name)
+        for name in HUMANIZE_KNOBS
+        if not (humanize and driver_opt_out(session.behavior, name))
+    }
+    return session.behavior.model_copy(update=knobs)
 
 
 def click(
