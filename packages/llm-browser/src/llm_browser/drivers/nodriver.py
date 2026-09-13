@@ -414,6 +414,16 @@ class NodriverDriver(Driver):
             loc.element = await loc.tab.select(loc.selector)
         return loc.element
 
+    async def resolve_now(self, loc: NodriverLocator) -> Any:
+        """`resolve_element` without the wait: the bare query, so a read of a
+        selector nothing matches is `None` now rather than after `tab.select`
+        has retried for its ten seconds."""
+        if loc.element is not None:
+            return loc.element
+        matches = await self.query(loc)
+        loc.element = matches[loc.index] if loc.index < len(matches) else None
+        return loc.element
+
     async def query(self, loc: NodriverLocator) -> list[Any]:
         """Everything `loc` matches right now — the one DOM query.
 
@@ -432,7 +442,7 @@ class NodriverDriver(Driver):
         return list(await scope.query_selector_all(loc.selector) or [])
 
     async def apply_script(self, loc: NodriverLocator, script: str) -> Any:
-        el = await self.resolve_element(loc)
+        el = await self.resolve_now(loc)
         if el is None:
             return None
         return await el.apply(script)
@@ -639,7 +649,7 @@ class NodriverDriver(Driver):
         return self.run(self.read_attribute(locator, name))
 
     async def read_attribute(self, loc: NodriverLocator, name: str) -> str | None:
-        el = await self.resolve_element(loc)
+        el = await self.resolve_now(loc)
         if el is None:
             return None
         value = el.attrs.get(name)

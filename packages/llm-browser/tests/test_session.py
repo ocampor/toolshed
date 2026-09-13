@@ -217,6 +217,23 @@ def test_explore_sums_the_rendered_text_of_the_sampled_elements(
     assert result.text_chars == 15
 
 
+def test_explore_names_a_child_selector_that_matches_no_row(
+    exploring_session: ExploringSession,
+) -> None:
+    """The read of an absent child is a miss, not a wait — see
+    `test_read_field_of_a_missing_child_is_none` for the driver side."""
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(
+        ".row",
+        extract={"absent": ExtractField(child_selector=".nothing-matches-this")},
+        sample=2,
+    )
+
+    assert result.sample == [{"absent": None}, {"absent": None}]
+    assert result.empty_fields == ["absent"]
+
+
 def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
     exploring_session: ExploringSession,
 ) -> None:

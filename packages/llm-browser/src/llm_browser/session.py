@@ -612,8 +612,8 @@ class BrowserSession:
             return ExploreResult(count=0, sample=[], empty_fields=[], text_chars=0)
         count = self.driver.count(locator)
         spec = row_spec(extract or parse_extract_spec(None))
-        # Only the sampled elements are read: a selector matching a thousand
-        # rows is exactly the one an author needs told about cheaply.
+        # Only the sampled elements are read: `sample x (fields + 1)`
+        # per-element reads (the +1 is `text_chars`), whatever `count` is.
         elements = [self.driver.nth(locator, i) for i in range(min(sample, count))]
         rows = [
             {

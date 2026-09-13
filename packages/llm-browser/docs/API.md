@@ -166,7 +166,11 @@ elements the selector really matches, and what they say:
 
 ```bash
 llm-browser explore --selector ".result" --extract title=h3 --extract url="a@href"
-{"count": 24, "sample": [{"title": "First", "url": "/a"}, ...],
+```
+
+```json
+{"count": 24,
+ "sample": [{"title": "First", "url": null}, {"title": "Second", "url": null}],
  "empty_fields": ["url"], "text_chars": 1840}
 ```
 

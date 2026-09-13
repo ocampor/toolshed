@@ -8,8 +8,19 @@
   an `ExploreResult` with the selector's `count`, the first `sample` rows,
   the `empty_fields` no sampled row filled in and their total `text_chars`.
   Never clicks, and a selector that never arrives is a count of zero.
+  Costs `sample x (fields + 1)` per-element reads, independent of `count`.
 - `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]`:
-  the same as JSON, exiting non-zero when nothing matched.
+  the same as JSON, exiting non-zero when nothing matched. A repeated
+  `--extract NAME=` is a `UsageError` naming the field, not a silent last-wins.
+
+### Fixed
+
+- `Driver.read_field` of a child selector nothing matches answers `None` now:
+  the Playwright family guards `read_property` / `get_attribute` by the count
+  like `text_content` already did (no 30 s auto-wait ending in the backend's
+  own `TimeoutError`), and nodriver's read paths resolve through the bare
+  query instead of `tab.select`'s retry. `explore` lists such a field in
+  `empty_fields`, which is what it always advertised.
 
 ## 0.13.0 — 2026-09-13
 

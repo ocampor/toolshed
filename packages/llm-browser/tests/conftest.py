@@ -45,20 +45,31 @@ ExploringSession = Callable[..., BrowserSession]
 def exploring_session(tmp_path: Path) -> ExploringSession:
     """Build a session whose driver answers ``explore`` from canned rows.
 
-    Each row maps a child selector (``None`` for the row element itself) to
-    what reading it returns, so a test states the page as the extract sees it.
+    Each row maps a child selector to what reading it returns, so a test
+    states the page as the extract sees it; a selector no key names reads as
+    ``None``, and ``text`` is what every row's own element says.
     """
 
     def build(
         rows: list[dict[str | None, str | None]], text: str = ""
     ) -> BrowserSession:
+        def read(target: tuple[int, str | None], name: str) -> str | None:
+            index, child_selector = target
+            if child_selector is None:
+                return rows[index].get(None, text)
+            return rows[index].get(child_selector)
+
         driver = MagicMock(spec=Driver)
         driver.count.return_value = len(rows)
-        driver.nth.side_effect = lambda locator, index: index
-        driver.read_field.side_effect = lambda index, field: rows[index].get(
-            field["child_selector"]
+        driver.nth.side_effect = lambda locator, index: (index, None)
+        driver.child.side_effect = lambda element, selector: (element[0], selector)
+        driver.read_property.side_effect = read
+        driver.get_attribute.side_effect = read
+        # The real default, so a canned page exercises the child/read split
+        # every driver inherits rather than a mock standing in for it.
+        driver.read_field.side_effect = lambda row, field: Driver.read_field(
+            driver, row, field
         )
-        driver.read_property.return_value = text
         session = BrowserSession(state_dir=tmp_path)
         session.driver = driver
         session._page = MagicMock()

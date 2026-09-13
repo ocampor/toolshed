@@ -867,6 +867,8 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
         name, separator, spec = value.partition("=")
         if not separator or not name:
             raise click.UsageError(f"--extract expects name=spec, got {value!r}.")
+        if name in pairs:
+            raise click.UsageError(f"--extract {name} given twice.")
         pairs[name] = spec
     return pairs
 

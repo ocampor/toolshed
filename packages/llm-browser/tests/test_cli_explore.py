@@ -90,3 +90,26 @@ def test_explore_rejects_an_extract_without_a_name(
 
     assert result.exit_code == 2
     assert "--extract expects name=spec" in result.output + result.stderr
+
+
+def test_explore_rejects_the_same_extract_name_twice(
+    cli_explore: ExploringSession,
+) -> None:
+    """A typo'd duplicate would otherwise discard the first spec in silence."""
+    cli_explore([{".label": "Alpha"}])
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "explore",
+            "--selector",
+            ".row",
+            "--extract",
+            "label=h3",
+            "--extract",
+            "label=h2",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--extract label given twice" in result.output + result.stderr
