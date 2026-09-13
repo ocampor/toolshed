@@ -270,7 +270,7 @@ llm-browser survey
 |---|---|
 | `landmarks` | Up to `max_items` elements that carry a name, deduped by selector and best first: a test id, then an aria label, then an ungenerated id, then a bare role. `count` is how many elements answer to that selector — `1` means it is already a step's worth |
 | `link_shapes` | Hrefs grouped by the section they point at rather than the page: `/mission/<id>` ×41, with the `a[href^=…]` that selects the family. Busiest first |
-| `repeats` | The structures the page uses more than twice — cards, rows, items — as the selector every member answers to, how many there are, and the controls inside one of them. This is the card detector: the `count` is the number a `read` is about to return. Siblings are grouped by tag **and** class, so a news table reads as `tr.athing` ×30 rather than `tbody > tr` ×96, and a run with a class of its own ranks above a bigger one without |
+| `repeats` | The structures the page uses more than twice — cards, rows, items — as the selector every member answers to, how many there are, and the controls inside one of them. This is the card detector: the `count` is the number a `read` is about to return. Siblings are grouped by tag **and** class, so a news table reads as `tr.athing` ×30 rather than `tbody > tr` ×96, and a run you can click into ranks above one you cannot, which ranks above a bigger one with no class of its own — a page's cards before the hundred syntax spans of its code sample |
 | `hydration` | `since_navigation_ms` off the page's own clock and `document.readyState` — the two numbers a `wait_for` timeout is sized from |
 
 A repeat is named by a class every member carries, preferring one the build did

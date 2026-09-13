@@ -12,6 +12,7 @@ from string import ascii_lowercase
 from lxml import html as lxml_html
 
 from llm_browser import constants
+from llm_browser.explore_models import NestedControl
 from llm_browser.survey import class_stem, survey_of
 from llm_browser.survey_models import (
     SurveyNodeRead,
@@ -114,10 +115,23 @@ def runs_of(parent: object) -> list[SurveyRepeatRead]:
                     testid=marker_of(parent)[1],
                     id=parent.get("id"),
                 ),
-                nested_controls=[],
+                nested_controls=controls_of(members[0]),
             )
         )
     return runs
+
+
+def controls_of(member: object) -> list[NestedControl]:
+    found = member.xpath(".//button | .//a | .//input")
+    return [
+        NestedControl(
+            tag=control.tag,
+            text=" ".join(control.text_content().split())[
+                : constants.EXPLORE_NESTED_TEXT_MAX_CHARS
+            ],
+        )
+        for control in found[: constants.EXPLORE_MAX_NESTED_CONTROLS]
+    ]
 
 
 def survey_page(source: str = PAGE, max_items: int = 60) -> object:
@@ -217,3 +231,17 @@ def test_a_table_of_rows_is_its_story_rows_not_its_spacers() -> None:
         ("tr.spacer", 4),
         ("tbody > tr", 4),
     ]
+
+
+def test_a_run_you_can_click_into_outranks_a_bigger_one_you_cannot() -> None:
+    """A page's cards are what an author came for; the fifty spans of its code
+    sample are not, however many of them there are."""
+    spans = "".join('<span class="tok">x</span>' for _ in range(50))
+    cards = "".join('<div class="card"><a href="/c">Open</a></div>' for _ in range(3))
+    found = survey_page(f"<body><pre>{spans}</pre><main>{cards}</main></body>")
+
+    assert [(run.selector, run.count) for run in found.repeats] == [
+        ("div.card", 3),
+        ("span.tok", 50),
+    ]
+    assert [c.text for c in found.repeats[0].nested_controls] == ["Open"]

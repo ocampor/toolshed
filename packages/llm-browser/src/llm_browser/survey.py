@@ -162,13 +162,18 @@ def repeats_of(runs: list[SurveyRepeatRead], max_repeats: int) -> list[Repeat]:
             )
         else:
             seen.count += run.count
-    # A run with a class of its own before a bigger one that has none: thirty
-    # story rows are what an author is after, the thirty-five `tbody > tr`
-    # around them are the table they sit in.
-    ranked = sorted(
-        merged.values(), key=lambda run: ("." not in run.selector, -run.count)
-    )
-    return ranked[:max_repeats]
+    return sorted(merged.values(), key=repeat_rank)[:max_repeats]
+
+
+def repeat_rank(run: Repeat) -> tuple[bool, bool, int]:
+    """What an author came for, before what merely repeats.
+
+    A run you can click into outranks one you cannot — a page's cards beat the
+    hundred syntax-highlight spans in its code sample — and a run with a class
+    of its own beats a bigger one without: thirty story rows are the answer,
+    the thirty-five `tbody > tr` around them are the table they sit in.
+    """
+    return (not run.nested_controls, "." not in run.selector, -run.count)
 
 
 def survey_of(read: SurveyRead, max_items: int) -> Survey:
