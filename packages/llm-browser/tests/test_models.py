@@ -4,13 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    DomStep,
     EvalStep,
     Flow,
     FlowData,
     FlowError,
     FlowSuccess,
     GotoStep,
+    ReadStep,
     ScrollStep,
     SessionInfo,
     validate_step,
@@ -201,3 +204,44 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[EvalStep(name="s1")])
     with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})
+
+
+def test_dom_step_sanitizes_at_low_unless_told_otherwise() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").level is SanitizeLevel.LOW
+    step = validate_step(
+        {"name": "s", "action": "dom", "selector": "#x", "level": "xhigh"}
+    )
+    assert isinstance(step, DomStep)
+    assert step.level is SanitizeLevel.XHIGH
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("td.name@href", ("td.name", "href")),
+        ("", (None, "textContent")),
+        ("@href", (None, "href")),
+        ("td.name", ("td.name", "textContent")),
+        ({"child_selector": "td.name", "attribute": "href"}, ("td.name", "href")),
+    ],
+)
+def test_a_read_takes_the_compact_extract_form_docs_advertise(
+    spec: object, expected: tuple[str | None, str]
+) -> None:
+    step = validate_step(
+        {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+    )
+    assert isinstance(step, ReadStep)
+    field = step.extract["a"]
+    assert (field.child_selector, field.attribute) == expected
+
+
+@pytest.mark.parametrize("spec", [["td.name"], 5, None])
+def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
+    spec: object,
+) -> None:
+    """It used to escape as a `TypeError` traceback out of `llm-browser validate`."""
+    with pytest.raises(ValidationError, match="invalid extract spec"):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+        )

@@ -344,6 +344,33 @@ def test_dom(session: BrowserSession) -> None:
     assert "Hello" in result.text
 
 
+def test_dom_sanitizes_at_the_level_the_step_asked_for(
+    session: BrowserSession,
+) -> None:
+    locator = _single_locator()
+    locator.first.evaluate.return_value = '<div><a href="/next">Next</a></div>'
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    step = DomStep(name="s", action="dom", selector="#content", level="high")
+    result = execute_action(session, step)
+    assert isinstance(result, TextResult)
+    assert "href" not in result.text
+
+
+def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> None:
+    """`<body>` outerHTML is the fragment lxml used to refuse."""
+    locator = _single_locator()
+    locator.first.evaluate.return_value = (
+        "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
+    )
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    result = execute_action(session, DomStep(name="s", action="dom", selector="body"))
+    assert isinstance(result, TextResult)
+    assert result.text.startswith("<body>")
+    assert "Hi" in result.text
+
+
 def test_dom_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:

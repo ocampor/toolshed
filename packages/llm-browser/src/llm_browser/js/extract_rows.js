@@ -1,17 +1,16 @@
-(rows, spec) =>
-  rows.map((row) => {
+(rows, spec) => {
+  const properties = EXTRACT_PROPERTIES_JSON;
+  return rows.map((row) => {
     const record = {};
     for (const [field, { child_selector, attribute }] of Object.entries(spec)) {
       const el = child_selector ? row.querySelector(child_selector) : row;
-      if (!el) {
-        record[field] = null;
-      } else if (attribute === "textContent") {
-        record[field] = el.textContent;
-      } else if (attribute === "value") {
-        record[field] = el.value;
-      } else {
-        record[field] = el.getAttribute(attribute);
-      }
+      const value = el
+        ? properties.includes(attribute)
+          ? el[attribute]
+          : el.getAttribute(attribute)
+        : null;
+      record[field] = value == null ? null : String(value);
     }
     return record;
   });
+};
