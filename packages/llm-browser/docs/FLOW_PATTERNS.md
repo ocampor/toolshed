@@ -36,7 +36,8 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
   **every** level — the levels differ only in attributes, killed tags and data-URI truncation.
 - `role` and `placeholder` survive at `xhigh` but **not** at `medium`; `data-*` and `aria-*`
   survive only at `low`. Pick the level from this table, not by stepping down through them.
-- The `dom` *step* has no `level:` field: in a flow it is always `low`.
+- The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
+  `session.dom(level=)` take the same four values.
 
 ## Autocomplete (jQuery UI and friends)
 

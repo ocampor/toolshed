@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.scripts import JS_DIR, extract_rows_js, load_script
 
 
@@ -17,14 +18,15 @@ def test_extract_rows_js_is_a_rows_spec_function() -> None:
     assert "getAttribute" in source
 
 
-@pytest.mark.parametrize("attribute", ["textContent", "value"])
-def test_extract_rows_js_handles_property_reads(attribute: str) -> None:
-    assert f'attribute === "{attribute}"' in extract_rows_js()
+def test_extract_rows_js_reads_the_property_allowlist_from_python() -> None:
+    """One list, substituted in, so the page-side rule cannot drift from
+    ``Driver.read_field``."""
+    assert json.dumps(list(EXTRACT_PROPERTIES)) in extract_rows_js()
 
 
 def test_load_script_is_cached_and_reads_from_js_dir() -> None:
     assert (JS_DIR / "extract_rows.js").is_file()
-    assert load_script("extract_rows") is extract_rows_js()
+    assert load_script("extract_rows") is load_script("extract_rows")
 
 
 def test_load_script_missing_file() -> None:
@@ -35,7 +37,10 @@ def test_load_script_missing_file() -> None:
 FAKE_DOM_HARNESS = """
 const makeEl = (attrs, text, value) => ({
   textContent: text,
+  innerText: text.trim(),
   value,
+  tagName: "TD",
+  childElementCount: 2,
   getAttribute: (name) => (name in attrs ? attrs[name] : null),
 });
 const child = makeEl({ href: "/a" }, "Alice", "typed");
@@ -44,6 +49,10 @@ const spec = {
   name: { child_selector: "td.name", attribute: "textContent" },
   url: { child_selector: "td.name", attribute: "href" },
   typed: { child_selector: "td.name", attribute: "value" },
+  rendered: { child_selector: "td.name", attribute: "innerText" },
+  tag: { child_selector: "td.name", attribute: "tagName" },
+  kids: { child_selector: "td.name", attribute: "childElementCount" },
+  gone: { child_selector: "td.name", attribute: "data-nope" },
   missing: { child_selector: "td.nope", attribute: "textContent" },
   self: { child_selector: null, attribute: "textContent" },
 };
@@ -68,6 +77,10 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "name": "Alice",
             "url": "/a",
             "typed": "typed",
+            "rendered": "Alice",
+            "tag": "TD",
+            "kids": "2",
+            "gone": None,
             "missing": None,
             "self": "whole row",
         }

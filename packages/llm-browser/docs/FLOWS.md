@@ -97,7 +97,7 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 |---|---|---|---|
 | `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `path` | Extract structured data as dicts |
 | `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
-| `dom` | — | `max_depth` (default 0 = no limit), `path` | Cleaned HTML snippet. Always sanitized at `low`; only the CLI's `dom --level` and `session.dom(level=)` pick another level (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
+| `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
 
 ### Composition
 
@@ -200,9 +200,18 @@ Skip a step unless every condition holds (AND'ed).
   extract:
     description: { child_selector: "td.desc", attribute: textContent }
     amount: { child_selector: "td.amount", attribute: textContent }
+    link: "td.desc a@href"          # compact form
 ```
 
-Attributes: `textContent`, `value`, or any HTML attribute name. The rows land in `FlowSuccess.outputs` under the step name; `path: <file>` on a `read` or `parse` step tells `llm-browser run` to JSON-dump them there as well.
+`attribute` is read as a DOM property when it is one of `textContent`
+(default), `innerText`, `value`, `tagName`, `childElementCount`, `outerHTML`,
+`innerHTML`; every other name is read with `getAttribute` (`href`, `id`,
+`data-*`, …). Either way the value comes back as a string, or `null` when the
+element or the value is missing. The compact form is
+`"child selector@attribute"` — `"td.name"`, `"@href"`, `"td.name@href"`, and
+`""` for the row's own text.
+
+The rows land in `FlowSuccess.outputs` under the step name; `path: <file>` on a `read` or `parse` step tells `llm-browser run` to JSON-dump them there as well.
 
 ## Patterns
 

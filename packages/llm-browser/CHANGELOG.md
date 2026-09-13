@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.13.0 — 2026-09-13
+
+### Added
+
+- `level` on the `dom` step: `low` (default), `medium`, `high`, `xhigh` — the
+  same levels the CLI's `dom --level` and `session.dom(level=)` take.
+- Extract `attribute` reads a DOM property for `innerText`, `tagName`,
+  `childElementCount`, `outerHTML`, `innerHTML` (plus `textContent` and
+  `value`); every other name stays an HTML attribute.
+- `Driver.read_property` reads every `EXTRACT_PROPERTIES` name per element
+  (see `docs/DRIVERS.md` for the nodriver cost).
+
+### Changed
+
+- `dom` on a `body`/`html` selector now returns the element itself, wrapper
+  included (previously a single-child body was unwrapped to that child).
+
+### Fixed
+
+- `dom` with `selector: body` (or `html`) raised
+  `ParserError: Multiple elements found`; `sanitize_html_fragment` now returns
+  the wrapper element itself.
+- An unparseable snippet raised `ParserError`, a `SyntaxError` that escaped
+  `is_step_failure` and aborted the run; it is a `ValueError` step failure.
+  A truncated `<body` parses into a document with no body at all — also a
+  `ValueError` now, not an `AttributeError`.
+- `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
+  row's own text.
+- Compact `extract` specs (`"td.name@href"`, `""`) raised `TypeError`;
+  `ExtractField.coerce` accepts string, mapping or field.
+
 ## 0.12.0 — 2026-09-12
 
 ### Changed

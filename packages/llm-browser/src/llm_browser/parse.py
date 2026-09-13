@@ -15,8 +15,9 @@ values coerced by Pydantic::
     first = User.extract_one(session, "tr.row")     # User | None
 
 The YAML ``read`` action keeps using the same ``ExtractField`` underneath —
-``ReadStep.extract`` accepts raw ``{child_selector, attribute}`` dicts and
-coerces them through this class.
+``ReadStep.extract`` accepts either the compact ``"td.name@href"`` string or a
+raw ``{child_selector, attribute}`` mapping, both through
+``ExtractField.coerce``.
 """
 
 from collections.abc import Mapping
@@ -37,7 +38,8 @@ class ExtractField(FieldInfo):
     Use as a default value, like Pydantic's ``Field()``. ``child_selector``
     descends into a child of the matched row; if ``None``, the value is
     read off the row element itself. ``attribute`` is what to read —
-    ``textContent`` (default), ``value``, or any HTML attribute name.
+    one of ``constants.EXTRACT_PROPERTIES`` (``textContent`` by default)
+    or any HTML attribute name.
     """
 
     def __init__(
@@ -55,20 +57,36 @@ class ExtractField(FieldInfo):
     def parse(cls, spec: str) -> "ExtractField":
         """Read the compact ``"child selector@attribute"`` form.
 
-        Both halves are optional: ``"td.name"`` reads that child's text,
-        ``"@href"`` reads the attribute off the row element itself, and
-        ``"td.name@href"`` does both.
+        Every half is optional: ``"td.name"`` reads that child's text,
+        ``"@href"`` reads the attribute off the row element itself,
+        ``"td.name@href"`` does both, and ``""`` is the row's own text.
         """
         child_selector, separator, attribute = spec.rpartition(
             constants.EXTRACT_ATTRIBUTE_SEPARATOR
         )
         if not separator:
             child_selector, attribute = attribute, ""
-        if not child_selector and not attribute:
-            raise ValueError(f"empty extract spec: {spec!r}")
         return cls(
             child_selector=child_selector or None,
             attribute=attribute or constants.DEFAULT_EXTRACT_ATTRIBUTE,
+        )
+
+    @classmethod
+    def coerce(cls, spec: Any) -> "ExtractField":
+        """One field from however a flow wrote it: compact string, mapping, or
+        an already-built field. Anything else is a `ValueError`, so a flow that
+        writes a list or a number fails validation rather than the run."""
+        if isinstance(spec, ExtractField):
+            return spec
+        if isinstance(spec, str):
+            return cls.parse(spec)
+        if isinstance(spec, Mapping):
+            try:
+                return cls(**spec)
+            except TypeError as exc:
+                raise ValueError(f"invalid extract spec {spec!r}: {exc}") from exc
+        raise ValueError(
+            f"invalid extract spec {spec!r}: expected a string or a mapping"
         )
 
 
@@ -79,7 +97,7 @@ def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField
     """
     if spec is None:
         return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
-    return {name: ExtractField.parse(value) for name, value in spec.items()}
+    return {name: ExtractField.coerce(value) for name, value in spec.items()}
 
 
 class ParseBase(BaseModel):

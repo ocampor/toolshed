@@ -16,8 +16,14 @@ def load_script(name: str) -> str:
 
 
 def extract_rows_js() -> str:
-    """``(rows, spec) => list[dict]`` — read every field off every row."""
-    return load_script("extract_rows")
+    """``(rows, spec) => list[dict]`` — read every field off every row.
+
+    The property allowlist is substituted in so the page-side rule and
+    ``Driver.read_field`` read the same names."""
+    return load_script("extract_rows").replace(
+        constants.EXTRACT_PROPERTIES_PLACEHOLDER,
+        json.dumps(list(constants.EXTRACT_PROPERTIES)),
+    )
 
 
 def select_option_js(value: str) -> str:

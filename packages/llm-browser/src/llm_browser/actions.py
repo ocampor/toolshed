@@ -212,7 +212,9 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
 
 @_registry.register("dom")
 def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
-    return TextResult(text=session.dom(step.selector, max_depth=step.max_depth))
+    return TextResult(
+        text=session.dom(step.selector, max_depth=step.max_depth, level=step.level)
+    )
 
 
 # --- File actions ---

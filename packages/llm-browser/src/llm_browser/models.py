@@ -22,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
 )
+from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
@@ -146,14 +147,11 @@ class ReadStep(SelectorStep):
     @field_validator("extract", mode="before")
     @classmethod
     def _coerce_extract(cls, v: Any) -> Any:
-        # YAML loads `extract` as a plain dict; coerce nested dicts into
-        # ExtractField.
+        # A flow writes each spec compactly ("td.name@href") or as a mapping;
+        # `ExtractField.coerce` is the one rule for both.
         if not isinstance(v, dict):
             return v
-        return {
-            k: spec if isinstance(spec, ExtractField) else ExtractField(**spec)
-            for k, spec in v.items()
-        }
+        return {k: ExtractField.coerce(spec) for k, spec in v.items()}
 
 
 class ParseStep(SelectorStep):
@@ -172,6 +170,7 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    level: SanitizeLevel = SanitizeLevel.LOW
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
