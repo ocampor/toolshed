@@ -41,6 +41,8 @@ list's selector and its real length come from, `link_shapes` where a
 the number to size the flow's first `wait_for` from. `explore --targets` then
 answers each one against its own `--intent`, exiting non-zero unless every
 verdict is `ok` — the flow failing at authoring time instead of on the run.
+Targets are CSS and at most twenty per call; one the page cannot parse answers
+`error: not css` and the rest still answer.
 See [API.md](API.md#surveying-before-exploring) for every field.
 
 `llm-browser explore --selector … --intent <what the step will do>` is the same

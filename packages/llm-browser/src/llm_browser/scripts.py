@@ -97,6 +97,17 @@ def survey_js() -> str:
     )
 
 
+def count_selectors_js(selectors: list[str]) -> str:
+    """``(el) => {selector: count}`` — what each selector matches page-wide.
+
+    The selectors ``survey`` reports are built in Python, so the page is asked
+    about them in a second call; one it cannot parse counts as zero.
+    """
+    return load_script("count_selectors").replace(
+        constants.SURVEY_COUNT_PLACEHOLDER, json.dumps(selectors)
+    )
+
+
 def select_option_js(value: str) -> str:
     """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(

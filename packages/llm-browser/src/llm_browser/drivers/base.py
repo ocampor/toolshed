@@ -252,9 +252,15 @@ class Driver(ABC):
         return None if value is None else str(value)
 
     @abstractmethod
-    def evaluate(self, target: Any, script: str) -> Any:
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
         """Run user-supplied JS against a page or element — the JS touchpoint
-        of rule 3, and the only one that is arbitrary."""
+        of rule 3, and the only one that is arbitrary.
+
+        ``timeout_ms`` bounds the call itself, for a script that waits in the
+        page: ``None`` leaves the backend's own default, which is what every
+        caller but the batch explore wants. A backend with no such knob says
+        so in ``docs/DRIVERS.md`` rather than raising.
+        """
 
     @abstractmethod
     def content(self, page: Any) -> str: ...

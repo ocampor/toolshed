@@ -19,7 +19,7 @@ from llm_browser.explore_selectors import (
     hashed_class,
     href_prefix,
 )
-from llm_browser.scripts import survey_js
+from llm_browser.scripts import count_selectors_js, survey_js
 from llm_browser.survey_models import (
     Hydration,
     Landmark,
@@ -77,14 +77,10 @@ def landmarks_of(nodes: list[SurveyNodeRead], max_items: int) -> list[Landmark]:
         if named is None:
             continue
         rank, selector = named
-        seen = found.get(selector)
-        if seen is None:
-            found[selector] = Landmark(
-                selector=selector, tag=node.tag, text=node.text, count=1
-            )
-            ranks[selector] = rank
-        else:
-            seen.count += 1
+        if selector in found:
+            continue
+        found[selector] = Landmark(selector=selector, tag=node.tag, text=node.text)
+        ranks[selector] = rank
     ranked = sorted(found.values(), key=lambda mark: ranks[mark.selector])
     return ranked[:max_items]
 
@@ -121,11 +117,14 @@ def link_shapes_of(hrefs: list[str], max_shapes: int) -> list[LinkShape]:
 
 
 def repeat_selector(repeat: SurveyRepeatRead) -> str:
-    """What to write against every member of the run.
+    """What to write against every member of the run, and nothing else.
 
-    A class every member carries is the whole selector, preferring one the
-    build did not number: `dense` outlives `sc-card-0-2-1`. Failing that the
-    run is named by what holds it, which is why the parent's test id is read.
+    Every class the members share goes in, preferring the ones the build did
+    not number: `dense` outlives `sc-card-0-2-1`. All of them, because one
+    utility class is a name two unrelated components both answer to —
+    `div.flex` is three cards and four footer rows, `div.flex.p-4.rounded` is
+    the cards. Failing that the run is named by what holds it, which is why
+    the parent's test id is read.
     """
     stable = [
         token
@@ -134,7 +133,7 @@ def repeat_selector(repeat: SurveyRepeatRead) -> str:
     ]
     named = stable or repeat.shared_classes
     if named:
-        return f"{repeat.tag}.{escaped_id(named[0])}"
+        return repeat.tag + "".join(f".{escaped_id(token)}" for token in named)
     parent = repeat.parent
     if parent.testid and parent.testid_attribute:
         return f"[{parent.testid_attribute}={css_quoted(parent.testid)}] > {repeat.tag}"
@@ -147,8 +146,10 @@ def repeats_of(runs: list[SurveyRepeatRead], max_repeats: int) -> list[Repeat]:
     """The repeated structures, the busiest first.
 
     Two grids of the same card are one card: they answer to the same selector,
-    so their counts are the same number — which is the number an author is
-    about to write a `read` against.
+    so they are reported once. Merging is on the whole selector — two runs that
+    merely share a utility class are two entries, because they are two things.
+    The summed run sizes rank them; what each is reported with is what its own
+    selector matches page-wide (see :func:`with_page_counts`).
     """
     merged: dict[str, Repeat] = {}
     for run in runs:
@@ -188,7 +189,42 @@ def survey_of(read: SurveyRead, max_items: int) -> Survey:
         landmarks=landmarks_of(read.landmarks, max_items),
         link_shapes=link_shapes_of(read.hrefs, constants.SURVEY_MAX_LINK_SHAPES),
         repeats=repeats_of(read.repeats, constants.SURVEY_MAX_REPEATS),
+        truncated=read.truncated,
     )
+
+
+def with_page_counts(found: Survey, counts: dict[str, int]) -> Survey:
+    """``found`` with every count replaced by what its own selector matches.
+
+    A landmark's rank decides which of its names it is reported under and a run
+    of siblings decides that it is a repeat; neither says how many elements the
+    reported selector finds, and that is the number a step is written against.
+    """
+    return found.model_copy(
+        update={
+            "landmarks": [
+                mark.model_copy(update={"count": counts.get(mark.selector, mark.count)})
+                for mark in found.landmarks
+            ],
+            "repeats": [
+                run.model_copy(update={"count": counts.get(run.selector, run.count)})
+                for run in found.repeats
+            ],
+        }
+    )
+
+
+def page_counts(session: "BrowserSession", found: Survey) -> dict[str, int]:
+    """One page call asking how many elements each reported selector matches.
+
+    A second call rather than a second list off the first: the selectors are
+    built here, so the page can only be asked about them once they exist. It
+    is one ``querySelectorAll`` per reported landmark and repeat, both capped.
+    """
+    selectors = [mark.selector for mark in found.landmarks]
+    selectors += [run.selector for run in found.repeats]
+    counted = session.evaluate_document(count_selectors_js(selectors))
+    return {str(selector): int(count) for selector, count in counted.items()}
 
 
 def survey(
@@ -203,6 +239,10 @@ def survey(
 
     Where ``explore`` answers "is this selector right", ``survey`` answers the
     question before it: which selectors are there to try.
+
+    Two page calls: one reads the page, one counts what the selectors it named
+    match — so every ``count`` is the number that selector is about to return.
     """
     read = SurveyRead.model_validate(session.evaluate_document(survey_js()))
-    return survey_of(read, max_items)
+    found = survey_of(read, max_items)
+    return with_page_counts(found, page_counts(session, found))

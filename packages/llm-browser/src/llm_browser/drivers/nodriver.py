@@ -721,9 +721,14 @@ class NodriverDriver(Driver):
             tab=locator.tab, selector=combined, parent=locator.parent
         )
 
-    def evaluate(self, target: Any, script: str) -> Any:
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
         """A function literal is invoked; anything else is a body or an
-        expression, the way the Playwright family reads the same string."""
+        expression, the way the Playwright family reads the same string.
+
+        ``timeout_ms`` is accepted and ignored: CDP `Runtime.callFunctionOn`
+        has no deadline of its own, so an awaited script ends when the page
+        ends it — see ``docs/DRIVERS.md``.
+        """
         if isinstance(target, NodriverLocator):
             declaration = (
                 script if is_function_literal(script) else f"(el) => {{ {script} }}"

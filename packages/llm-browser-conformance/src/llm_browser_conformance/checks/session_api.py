@@ -217,7 +217,7 @@ def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
     ctx.visit("explore-actionability.html")
 
     started = time.monotonic()
-    cards, button, gone = ctx.session.explore_many(
+    cards, button, gone, refused = ctx.session.explore_many(
         [
             ExploreTarget(
                 selector="article.tile",
@@ -225,6 +225,9 @@ def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
             ),
             ExploreTarget(selector="#clear", intent=Intent.CLICK),
             ExploreTarget(selector="#no-such-element"),
+            # A dangling combinator: Chromium auto-closes an unclosed bracket,
+            # but nothing makes this a selector.
+            ExploreTarget(selector="div >"),
         ],
         timeout_ms=MISSING_TIMEOUT_MS,
     )
@@ -244,6 +247,10 @@ def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
 
     assert gone.count == 0 and gone.verdict is Verdict.MISSING, gone
     assert gone.first is None and gone.candidates == [], gone
+
+    # A selector the page cannot parse costs its own answer, not the batch's.
+    assert refused.error == "not css" and refused.count == 0, refused
+    assert refused.verdict is Verdict.MISSING and refused.first is None, refused
     # One wait for the batch, not one per target: the missing selector never
     # spends a timeout of its own, because the others were there.
     budget = (MISSING_TIMEOUT_MS + SLACK_MS) / 1000
@@ -264,9 +271,17 @@ def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
     # selectors the page offers.
     assert found.landmarks[0].selector.startswith("[data-test"), found.landmarks
 
+    # Every count is page-wide, whatever named it: two elements answer to the
+    # pager's label, and saying `1` would promise a step that is ambiguous.
+    pagers = [
+        mark for mark in found.landmarks if mark.selector == '[aria-label="Pager"]'
+    ]
+    assert [mark.count for mark in pagers] == [2], found.landmarks
+
     tiles = [run for run in found.repeats if run.selector == "article.tile"]
     assert [run.count for run in tiles] == [3], found.repeats
     assert [control.text for control in tiles[0].nested_controls] == ["Save"], tiles
+    assert not found.truncated, found
 
     missions = [shape for shape in found.link_shapes if shape.shape == "/missions/<id>"]
     assert [shape.count for shape in missions] == [2], found.link_shapes

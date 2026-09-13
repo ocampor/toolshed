@@ -144,10 +144,18 @@ EXPLORE_ELEMENT_PLACEHOLDER = "EXPLORE_ELEMENT_JS"
 EXPLORE_BATCH_PLACEHOLDER = "EXPLORE_BATCH_JSON"
 # How often the batch wait looks again, in the page rather than over the wire.
 EXPLORE_MANY_POLL_MS = 100
+# One page call reads every target in turn, each settling for
+# EXPLORE_STABLE_DELAY_MS, so a batch has to stay small enough to finish inside
+# a driver timeout an author can reason about.
+EXPLORE_MANY_MAX_TARGETS = 20
+# What the batch evaluate is allowed on top of the wait and the settles:
+# the round trip itself, plus the reads of every target's first match.
+EXPLORE_MANY_MARGIN_MS = 5000
 
 # --- Survey ---
 
 SURVEY_LIMITS_PLACEHOLDER = "SURVEY_LIMITS_JSON"
+SURVEY_COUNT_PLACEHOLDER = "COUNT_SELECTORS_JSON"
 # How many named elements a survey reports. Enough to see what a page is made
 # of, few enough to read in one go.
 SURVEY_MAX_ITEMS = 60

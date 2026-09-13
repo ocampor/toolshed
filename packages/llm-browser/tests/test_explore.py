@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from llm_browser import constants
 from llm_browser.explore import explore_many
 from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 
@@ -48,11 +49,15 @@ class FakeSession:
         self.answers = answers
         self.counts = counts
         self.scripts: list[str] = []
+        self.timeouts: list[int | None] = []
         self.counted: list[str] = []
         self.driver = SimpleNamespace(supports_role_selector=True)
 
-    def evaluate_document(self, script: str) -> list[dict[str, object]]:
+    def evaluate_document(
+        self, script: str, timeout_ms: int | None = None
+    ) -> list[dict[str, object]]:
         self.scripts.append(script)
+        self.timeouts.append(timeout_ms)
         return self.answers
 
     def verified_candidates(
@@ -144,12 +149,51 @@ def test_a_timeout_is_a_page_with_none_of_them_on_it() -> None:
     assert session.counted == []
 
 
-def test_a_selector_the_page_cannot_parse_is_named() -> None:
-    """A typo is the author's, and silently reporting zero matches hides it."""
-    session = FakeSession([answer("a[href", 0, invalid=True)], counts={})
+def test_a_selector_the_page_cannot_parse_answers_for_itself_only() -> None:
+    """A typo is the author's, but it is one target's: the eleven answers the
+    page already computed are not thrown away with it."""
+    session = FakeSession(
+        [answer("div >", 0, invalid=True), answer(".card", 3)], counts={}
+    )
 
-    with pytest.raises(ValueError, match=r"a\[href"):
-        explore_many(session, [ExploreTarget(selector="a[href")])
+    refused, cards = explore_many(
+        session,
+        [ExploreTarget(selector="div >"), ExploreTarget(selector=".card")],
+    )
+
+    assert refused.error == "not css"
+    assert refused.count == 0 and refused.verdict is Verdict.MISSING
+    assert refused.first is None and refused.candidates == []
+    assert cards.count == 3 and cards.verdict is Verdict.OK and cards.error is None
+
+
+def test_the_driver_is_given_longer_than_the_wait_it_is_running() -> None:
+    """The wait happens inside the evaluate, so the evaluate outlives it — or
+    the driver's own default ends the call before the answer arrives."""
+    session = FakeSession([answer(".a", 1), answer(".b", 1)], counts={})
+
+    explore_many(
+        session,
+        [ExploreTarget(selector=".a"), ExploreTarget(selector=".b")],
+        timeout_ms=45_000,
+    )
+
+    settles = 2 * constants.EXPLORE_STABLE_DELAY_MS
+    assert session.timeouts == [45_000 + settles + constants.EXPLORE_MANY_MARGIN_MS]
+
+
+def test_more_targets_than_one_page_call_takes_is_refused() -> None:
+    """Each target settles in turn, so a hundred of them is a page call nobody
+    sized a timeout for."""
+    session = FakeSession([], counts={})
+    targets = [
+        ExploreTarget(selector=f".c{index}")
+        for index in range(constants.EXPLORE_MANY_MAX_TARGETS + 1)
+    ]
+
+    with pytest.raises(ValueError, match="at most 20 targets"):
+        explore_many(session, targets)
+    assert session.scripts == []
 
 
 def test_no_targets_is_no_page_call() -> None:

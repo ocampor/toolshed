@@ -275,6 +275,52 @@ def test_a_targets_file_that_is_not_a_list_is_a_usage_error(tmp_path: Path) -> N
     assert "expects a list" in result.output
 
 
+def test_an_empty_targets_file_is_a_usage_error(tmp_path: Path) -> None:
+    """Exploring nothing and exiting 0 reads as "every selector is fine"."""
+    path = targets_file(tmp_path, "[]\n")
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 2, result.output
+    assert "nothing to explore" in result.output
+
+
+def test_more_targets_than_one_page_call_takes_is_a_usage_error(
+    tmp_path: Path,
+) -> None:
+    body = "".join(f"- selector: .c{index}\n" for index in range(21))
+    path = targets_file(tmp_path, body)
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 2, result.output
+    assert "at most 20 targets" in result.output
+
+
+def test_a_target_the_page_cannot_parse_is_reported_with_the_rest(
+    cli_session: MagicMock, tmp_path: Path
+) -> None:
+    """One typo costs its own answer, not the batch's — and the exit code
+    still says something is wrong."""
+    refused = ExploreResult(
+        count=0,
+        sample=[],
+        empty_fields=[],
+        text_chars=0,
+        verdict=Verdict.MISSING,
+        error="not css",
+    )
+    cli_session.explore_many.return_value = [refused, explored(3)]
+    path = targets_file(tmp_path, '- selector: "div >"\n- selector: .row\n')
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 1, result.output
+    answers = json.loads(result.output)
+    assert [answer.get("error") for answer in answers] == ["not css", None]
+    assert answers[1]["count"] == 3
+
+
 def test_survey_outputs_what_the_page_is_made_of(cli_session: MagicMock) -> None:
     cli_session.survey.return_value = Survey(
         title="Missions",

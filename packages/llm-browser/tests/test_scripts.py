@@ -11,6 +11,7 @@ from llm_browser import constants
 from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.scripts import (
     JS_DIR,
+    count_selectors_js,
     explore_first_js,
     explore_many_js,
     extract_rows_js,
@@ -276,3 +277,13 @@ def test_survey_js_reads_every_cap_from_python() -> None:
     assert constants.SURVEY_LIMITS_PLACEHOLDER not in source
     # A survey never acts on the page: it is the read an author starts with.
     assert "click(" not in source and "scrollIntoView" not in source
+
+
+def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
+    """The selectors are built in Python, so the page is asked about them
+    rather than re-deriving them — one `querySelectorAll` each."""
+    source = count_selectors_js(["article.dense", '[aria-label="Next"]'])
+
+    assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
+    assert "doc.querySelectorAll(selector).length" in source
+    assert constants.SURVEY_COUNT_PLACEHOLDER not in source

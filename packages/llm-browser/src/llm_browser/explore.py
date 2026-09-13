@@ -192,11 +192,23 @@ def explore_many(
     ``EXPLORE_MAX_CANDIDATES`` counts per target: a proposal is only worth
     offering once something has checked what it matches.
 
-    Selectors are CSS: the page is asked with ``querySelectorAll``, and one it
-    cannot parse is a ``ValueError`` naming it rather than a silent zero.
+    Selectors are CSS: the page is asked with ``querySelectorAll``. One it
+    cannot parse gets its own answer — a count of zero, ``verdict: missing``
+    and ``error: "not css"`` — rather than costing the batch its other
+    answers.
+
+    The targets are read one after another and each settles for
+    ``EXPLORE_STABLE_DELAY_MS``, so the page call costs ``timeout_ms`` plus
+    100 ms per target; the driver is given that long plus a margin, and at
+    most ``EXPLORE_MANY_MAX_TARGETS`` targets are accepted.
     """
     if not targets:
         return []
+    if len(targets) > constants.EXPLORE_MANY_MAX_TARGETS:
+        raise ValueError(
+            f"explore_many takes at most {constants.EXPLORE_MANY_MAX_TARGETS} "
+            f"targets in one call, got {len(targets)}"
+        )
     specs = [row_spec(target.extract or parse_extract_spec(None)) for target in targets]
     reads = [
         ExploreManyRead.model_validate(answer)
@@ -209,14 +221,14 @@ def explore_many(
                 sample,
                 sample_chars,
                 timeout_ms,
-            )
+            ),
+            timeout_ms=batch_evaluate_timeout_ms(timeout_ms, len(targets)),
         )
     ]
-    refused = [read.selector for read in reads if read.invalid]
-    if refused:
-        raise ValueError(f"Not CSS the page can parse: {', '.join(refused)}")
     return [
-        explore_result(
+        refused_result(target)
+        if read.invalid
+        else explore_result(
             session,
             read=read.element,
             count=read.count,
@@ -229,6 +241,35 @@ def explore_many(
         )
         for target, spec, read in zip(targets, specs, reads)
     ]
+
+
+def batch_evaluate_timeout_ms(timeout_ms: int, targets: int) -> int:
+    """How long the driver is given for the whole batch evaluate.
+
+    The wait the page does, the settle every target does after it, and a margin
+    for the round trip — or the driver's own default timeout ends the call
+    before the wait the caller asked for does.
+    """
+    settles = targets * constants.EXPLORE_STABLE_DELAY_MS
+    return timeout_ms + settles + constants.EXPLORE_MANY_MARGIN_MS
+
+
+def refused_result(target: ExploreTarget) -> ExploreResult:
+    """The answer for a selector the page could not parse.
+
+    One target's typo is that target's answer — a count of zero, ``missing``
+    and the reason — never the batch's: the other targets were read in the same
+    page call and the author paid for them.
+    """
+    return ExploreResult(
+        count=0,
+        sample=[],
+        empty_fields=[],
+        text_chars=0,
+        stability=selector_stability(target.selector),
+        verdict=Verdict.MISSING,
+        error="not css",
+    )
 
 
 def first_match(session: "BrowserSession", locator: Any) -> ExploreRead:

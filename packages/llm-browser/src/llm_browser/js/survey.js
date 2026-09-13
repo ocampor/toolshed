@@ -23,9 +23,16 @@
     return { testid_attribute: null, testid: null };
   };
 
+  // True when a raw cap cut a list short: the answer is a sample of the page
+  // rather than the page, and `Survey.truncated` says so.
+  let truncated = false;
+
   const landmarks = [];
   for (const node of doc.querySelectorAll("*")) {
-    if (landmarks.length >= limits.max_raw_landmarks) break;
+    if (landmarks.length >= limits.max_raw_landmarks) {
+      truncated = true;
+      break;
+    }
     const { testid_attribute, testid } = testidOf(node);
     const aria_label = node.getAttribute("aria-label");
     const id = node.getAttribute("id");
@@ -42,7 +49,9 @@
     });
   }
 
-  const hrefs = Array.from(doc.querySelectorAll("a[href]"))
+  const anchors = Array.from(doc.querySelectorAll("a[href]"));
+  if (anchors.length > limits.max_hrefs) truncated = true;
+  const hrefs = anchors
     .slice(0, limits.max_hrefs)
     .map((anchor) => anchor.getAttribute("href"));
 
@@ -64,7 +73,10 @@
 
   const repeats = [];
   for (const parent of doc.querySelectorAll("*")) {
-    if (repeats.length >= limits.max_raw_repeats) break;
+    if (repeats.length >= limits.max_raw_repeats) {
+      truncated = true;
+      break;
+    }
     const children = Array.from(parent.children);
     if (children.length < limits.min_siblings) continue;
     const byKind = new Map();
@@ -114,5 +126,6 @@
     landmarks,
     hrefs,
     repeats,
+    truncated,
   };
 }

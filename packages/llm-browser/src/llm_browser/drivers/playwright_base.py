@@ -252,8 +252,12 @@ class PlaywrightDriverBase(Driver):
         rows = _pw_loc(locator).evaluate_all(extract_rows_js(), spec)
         return cast(list[dict[str, str | None]], rows)
 
-    def evaluate(self, target: Any, script: str) -> Any:
-        return cast(PwPage | PwLocator, target).evaluate(script)
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if timeout_ms is None:
+            return cast(PwPage | PwLocator, target).evaluate(script)
+        # Only the element path takes a timeout, and it is the one a waiting
+        # script runs on: `evaluate_document` resolves `<html>` first.
+        return _pw_loc(target).evaluate(script, timeout=timeout_ms)
 
     def content(self, page: Any) -> str:
         return _pw_page(page).content()

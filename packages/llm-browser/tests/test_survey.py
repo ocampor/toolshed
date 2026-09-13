@@ -2,8 +2,10 @@
 
 The rules are exercised over real markup. ``read_html`` is the collecting half
 of ``js/survey.js`` in Python — the same three lists, off an lxml tree instead
-of a live DOM — so the ranking and grouping can be tested without a browser;
-the script itself is covered by the `survey a page` conformance scenario.
+of a live DOM — and ``page_counts_of`` stands in for the counting call, with
+lxml's own CSS engine answering the selectors the rules named. So the ranking,
+the grouping and the counts can be tested without a browser; the scripts
+themselves are covered by the `survey a page` conformance scenario.
 """
 
 from itertools import product
@@ -13,7 +15,7 @@ from lxml import html as lxml_html
 
 from llm_browser import constants
 from llm_browser.explore_models import NestedControl
-from llm_browser.survey import class_stem, survey_of
+from llm_browser.survey import class_stem, survey_of, with_page_counts
 from llm_browser.survey_models import (
     SurveyNodeRead,
     SurveyParentRead,
@@ -46,8 +48,7 @@ PAGE = """
 """
 
 
-def read_html(source: str) -> SurveyRead:
-    tree = lxml_html.fromstring(source)
+def read_html(tree: object, truncated: bool = False) -> SurveyRead:
     return SurveyRead(
         title="Missions",
         url="https://example.com/missions",
@@ -56,6 +57,7 @@ def read_html(source: str) -> SurveyRead:
         landmarks=[node for node in map(landmark_of, tree.iter()) if node is not None],
         hrefs=[anchor.get("href") for anchor in tree.iter("a")],
         repeats=[run for parent in tree.iter() for run in runs_of(parent)],
+        truncated=truncated,
     )
 
 
@@ -135,7 +137,17 @@ def controls_of(member: object) -> list[NestedControl]:
 
 
 def survey_page(source: str = PAGE, max_items: int = 60) -> object:
-    return survey_of(read_html(source), max_items)
+    """The two calls a real survey makes, over one tree: the read, then the
+    count of every selector the rules named."""
+    tree = lxml_html.fromstring(source)
+    found = survey_of(read_html(tree), max_items)
+    return with_page_counts(found, page_counts_of(tree, found))
+
+
+def page_counts_of(tree: object, found: object) -> dict[str, int]:
+    selectors = [mark.selector for mark in found.landmarks]
+    selectors += [run.selector for run in found.repeats]
+    return {selector: len(tree.cssselect(selector)) for selector in selectors}
 
 
 def test_landmarks_lead_with_what_survives_a_redeploy() -> None:
@@ -201,7 +213,7 @@ def test_every_list_is_capped_so_the_answer_stays_one_page() -> None:
     links = "".join(
         f'<a href="/post/{index}/x{index}">post</a>' for index in range(200)
     )
-    found = survey_of(read_html(f"<html><body>{crowd}{links}</body></html>"), 60)
+    found = survey_page(f"<html><body>{crowd}{links}</body></html>")
 
     assert len(found.landmarks) == 60
     assert len(found.link_shapes) <= constants.SURVEY_MAX_LINK_SHAPES
@@ -226,10 +238,12 @@ def test_a_table_of_rows_is_its_story_rows_not_its_spacers() -> None:
 
     # The classless run reads last: it is the table's own rows, not the ones
     # an author came for.
+    # `tbody > tr` is the whole table, twelve rows: the count is what the
+    # selector returns, not the size of the run it was spotted in.
     assert [(run.selector, run.count) for run in found.repeats] == [
         ("tr.athing", 4),
         ("tr.spacer", 4),
-        ("tbody > tr", 4),
+        ("tbody > tr", 12),
     ]
 
 
@@ -245,3 +259,45 @@ def test_a_run_you_can_click_into_outranks_a_bigger_one_you_cannot() -> None:
         ("span.tok", 50),
     ]
     assert [c.text for c in found.repeats[0].nested_controls] == ["Open"]
+
+
+def test_one_utility_class_does_not_make_two_components_one_repeat() -> None:
+    """`div.flex` is three cards and four footer rows; the selector has to say
+    which of them it means, so every shared class goes into it."""
+    cards = "".join('<div class="flex p-4 rounded">card</div>' for _ in range(3))
+    chrome = "".join('<div class="flex gap-2 border">bit</div>' for _ in range(4))
+    found = survey_page(
+        f"<body><section>{cards}</section><footer>{chrome}</footer></body>"
+    )
+
+    # `p-4` and `gap-2` read as the build's numbering and drop out; what is
+    # left still tells the two runs apart, which is the whole point.
+    assert sorted((run.selector, run.count) for run in found.repeats) == [
+        ("div.flex.border", 4),
+        ("div.flex.rounded", 3),
+    ]
+
+
+def test_a_landmark_counts_every_element_that_answers_to_it() -> None:
+    """The rank picks which name a landmark is reported under; it says nothing
+    about how many elements answer to that name — and a `1` that is really a
+    `2` is the `ambiguous` a survey exists to catch before the run."""
+    page = """
+    <body>
+      <a aria-label="Next" href="/2">next</a>
+      <button data-testid="next-btn" aria-label="Next">Next</button>
+    </body>
+    """
+    found = survey_page(page)
+
+    counts = {mark.selector: mark.count for mark in found.landmarks}
+    assert counts == {'[data-testid="next-btn"]': 1, '[aria-label="Next"]': 2}
+
+
+def test_a_page_that_outgrew_the_caps_says_so() -> None:
+    """ "You got the top N" and "whole sections are missing" are different
+    answers, and only one of them is worth trusting."""
+    tree = lxml_html.fromstring(PAGE)
+
+    assert not survey_of(read_html(tree), 60).truncated
+    assert survey_of(read_html(tree, truncated=True), 60).truncated

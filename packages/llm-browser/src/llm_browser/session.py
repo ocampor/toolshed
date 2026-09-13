@@ -678,16 +678,17 @@ class BrowserSession:
         raw = self.driver.evaluate(self.get_page(), script)
         return PageProbe.model_validate(raw or {})
 
-    def evaluate_document(self, script: str) -> Any:
+    def evaluate_document(self, script: str, timeout_ms: int | None = None) -> Any:
         """Run a page-wide script against ``<html>`` rather than the page.
 
         The element path is the one every driver awaits, so a script that has
         to wait — ``explore_many``'s — answers with its value instead of a
         pending promise. The script reads the page through
-        ``el.ownerDocument``.
+        ``el.ownerDocument``. ``timeout_ms`` bounds the call for a script that
+        waits in the page; ``None`` keeps the driver's own default.
         """
         root = self.driver.first(resolve_selector(self.driver, self.get_page(), "html"))
-        return self.driver.evaluate(root, script)
+        return self.driver.evaluate(root, script, timeout_ms)
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

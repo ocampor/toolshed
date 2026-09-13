@@ -197,6 +197,7 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
 | `first.nested_controls` | Up to five `button`/`a`/`input` inside the match — what a loose click lands on instead of the match itself |
 | `since_navigation_ms` | How long the page had been up when the first match was read, off the page's own clock; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |
 | `since_call_ms` | The same wait measured from the call, which on a page that loaded seconds ago says only how fast this call was |
+| `error` | Why this target was never explored — `not css` for a selector the page refused to parse. Absent when the answer came from the page |
 | `candidates` | Up to three sturdier selectors — a `data-testid` on the match or an ancestor within three levels, an aria label or role+name, an ungenerated id, a link's section (`a[href^=…]`), a hashed class — one per kind and the best three checked to match that element and nothing else (or, for `--intent read`, the same number of rows the explored selector found — a candidate matching one of thirty rows is not a selector for the list). Interpolated values are escaped; `role=…` is Playwright's own syntax and is proposed only to drivers that parse it |
 | `stability` | What the selector you wrote leans on: `data-testid`, `aria`, `id`, `class-hash`, `positional`, `other` |
 | `verdict` | `ok`, `ambiguous`, `missing` or `not_actionable`, against `--intent` (`read` default, or `click` / `fill` / `wait`) |
@@ -244,9 +245,18 @@ quietly means nothing; `--sample`, `--sample-chars` and `--timeout` apply to
 the whole batch.
 
 Two things differ from `explore`. Selectors are CSS (the page is asked with
-`querySelectorAll`), and one the page cannot parse raises a `ValueError` naming
-it rather than reading as a count of zero. And `since_call_ms` is measured in
-the page, from the start of the batch, so every target shares the one wait.
+`querySelectorAll`) — no XPath, no selector-map alias — and one the page cannot
+parse is that target's own answer, `count: 0`, `verdict: missing` and
+`error: "not css"`, never the batch's exception: the other targets were read in
+the same page call and are worth keeping. And `since_call_ms` is measured in the
+page, from the start of the batch, so every target shares the one wait.
+
+What the batch costs: the wait, plus 100 ms of settle per target (each
+first-match read waits for its element to stop moving), all inside one
+`evaluate` the driver is given that long plus a margin — so a `--timeout 45000`
+is the wait it says it is rather than a driver timeout at 30 s. That per-target
+cost is why a batch takes **at most 20 targets**; more is a usage error, not a
+page call nobody sized.
 
 ### Surveying before exploring
 
@@ -263,19 +273,27 @@ llm-browser survey
  "landmarks": [{"selector": "[data-testid=\"grid\"]", "tag": "main", "text": "Top stories", "count": 1}],
  "link_shapes": [{"shape": "item?<query>", "selector": "a[href^=\"item\"]", "count": 60}],
  "repeats": [{"selector": "tr.athing", "count": 30,
-              "nested_controls": [{"tag": "a", "text": "upvote"}]}]}
+              "nested_controls": [{"tag": "a", "text": "upvote"}]}],
+ "truncated": false}
 ```
 
 | Field | What it answers |
 |---|---|
-| `landmarks` | Up to `max_items` elements that carry a name, deduped by selector and best first: a test id, then an aria label, then an ungenerated id, then a bare role. `count` is how many elements answer to that selector — `1` means it is already a step's worth |
+| `landmarks` | Up to `max_items` elements that carry a name, deduped by selector and best first: a test id, then an aria label, then an ungenerated id, then a bare role. `count` is how many elements answer to **that selector** page-wide — `1` means it is already a step's worth, and a `2` is the `ambiguous` you would otherwise meet at run time |
 | `link_shapes` | Hrefs grouped by the section they point at rather than the page: `/mission/<id>` ×41, with the `a[href^=…]` that selects the family. Busiest first |
-| `repeats` | The structures the page uses more than twice — cards, rows, items — as the selector every member answers to, how many there are, and the controls inside one of them. This is the card detector: the `count` is the number a `read` is about to return. Siblings are grouped by tag **and** class, so a news table reads as `tr.athing` ×30 rather than `tbody > tr` ×96, and a run you can click into ranks above one you cannot, which ranks above a bigger one with no class of its own — a page's cards before the hundred syntax spans of its code sample |
+| `repeats` | The structures the page uses more than twice — cards, rows, items — as the selector every member answers to, how many there are, and the controls inside one of them. This is the card detector: the `count` is the number a `read` is about to return. Siblings are grouped by tag and by **every** class they share, so a news table reads as `tr.athing` ×30 rather than `tbody > tr` ×96, and two components that merely share a utility class stay two entries (`div.flex.rounded`, `div.flex.border`) rather than one `div.flex` that is neither. A run you can click into ranks above one you cannot, which ranks above a bigger one with no class of its own — a page's cards before the hundred syntax spans of its code sample |
+| `truncated` | True when the page outgrew a raw cap, so the lists are a sample of it rather than all of it: narrow the page (or survey a frame) rather than trust the answer |
 | `hydration` | `since_navigation_ms` off the page's own clock and `document.readyState` — the two numbers a `wait_for` timeout is sized from |
 
-A repeat is named by a class every member carries, preferring one the build did
-not number (`.tile` over `.sc-card-0-2-1`); with no such class it is named by
-what holds it (`[data-testid="deck"] > article`). Every list is capped by
-construction — lists are truncated, never the fields inside them — so a page of
-ten thousand elements answers in the same breath as a page of ten.
+A repeat is named by the classes every member carries, preferring the ones the
+build did not number (`.tile` over `.sc-card-0-2-1`); with no such class it is
+named by what holds it (`[data-testid="deck"] > article`). Every list is capped
+by construction — lists are truncated, never the fields inside them — so a page
+of ten thousand elements answers in the same breath as a page of ten, and
+`truncated` says when that happened.
+
+Two page calls, not one: the first reads the page, the second counts what each
+selector the first named matches. So every `count` is the number that selector
+is about to return — `tbody > tr` says 96 even where the run it was spotted in
+was 30 — rather than the size of the run or the rank that named it.
 

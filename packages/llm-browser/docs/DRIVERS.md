@@ -85,7 +85,7 @@ because CDP exposes no equivalent:
 | `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
 | `read` / `parse` extraction | JS read of `el.<property>` (`textContent`, `value`, …), one `Runtime.callFunctionOn` per property field per row | One rule for every property name, shared with `js/extract_rows.js`, so what a spec means cannot differ by backend. The cost is real: a 50-row × 3-property read is 150 Runtime calls where the old `textContent` shortcut made none. Attribute fields stay on `attrs` — no Runtime traffic. |
 | `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only `visible`/`hidden` pay this: `wait_for_element(..., state="attached")` goes through `count` → `tab.query_selector_all`, a bare `DOM.querySelectorAll` with no Runtime traffic and no `Target.getTargets` refresh. |
-| `evaluate` / `dom` | User-supplied JS | Intentional. |
+| `evaluate` / `dom` | User-supplied JS | Intentional. `evaluate(..., timeout_ms=…)` is accepted and ignored: `Runtime.callFunctionOn` has no deadline of its own, so a script that waits in the page ends when the page ends it. The Playwright family passes it through to the locator call. |
 
 These are reads — they dispatch no DOM events and don't trip `isTrusted` checks. Only a
 detector that fingerprints Runtime-domain CDP traffic itself would catch them.

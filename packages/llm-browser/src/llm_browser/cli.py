@@ -9,27 +9,23 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
-from click.core import ParameterSource
 from pydantic import ValidationError
 from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
+from llm_browser.cli_explore import explore, survey
+from llm_browser.cli_output import output
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     DRIVER_ENV_VAR,
-    EXPLORE_SAMPLE_CHARS,
-    EXPLORE_SAMPLE_ROWS,
-    SURVEY_MAX_ITEMS,
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
-from llm_browser.parse import parse_extract_spec
-from llm_browser.explore_models import ExploreTarget, Intent, Verdict
 from llm_browser.models import (
     Flow,
     FlowError,
@@ -97,26 +93,6 @@ def contained_output_path(directory: Path, relative: str) -> Path:
             "a step path is relative to the output directory"
         )
     return target
-
-
-def _output(data: object) -> None:
-    """Print JSON to stdout, then exit non-zero if the payload is a
-    flow-level error. Supports Pydantic models and plain dicts.
-
-    A ``FlowError`` represents an expected runtime failure (selector
-    hidden, ambiguous, etc.) — surface it as a non-zero exit so
-    callers can detect it without parsing JSON.
-    """
-    from pydantic import BaseModel
-
-    from llm_browser.models import FlowError
-
-    if isinstance(data, BaseModel):
-        click.echo(data.model_dump_json(exclude_none=True))
-    else:
-        click.echo(json.dumps(data, ensure_ascii=False))
-    if isinstance(data, FlowError):
-        raise SystemExit(1)
 
 
 class _StructuredErrorGroup(click.Group):
@@ -248,7 +224,7 @@ def open(ctx: click.Context, url: str, headed: bool) -> None:
     session: BrowserSession = ctx.obj["session"]
     with url_argument_errors():
         result = session.launch(url=url, headed=headed)
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -269,7 +245,7 @@ def attach(ctx: click.Context, cdp_url: str | None) -> None:
     url = cdp_url or ctx.obj.get("cdp_url")
     if not url:
         raise click.UsageError("--cdp-url is required.")
-    _output(session.attach(url))
+    output(session.attach(url))
 
 
 @main.command()
@@ -301,7 +277,7 @@ def daemon(
         result = session.launch_detached(
             url=url, headed=headed, executable_path=executable, user_data_dir=profile
         )
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -310,7 +286,7 @@ def stop(ctx: click.Context) -> None:
     """Kill a detached Chromium started with `daemon`."""
     session: BrowserSession = ctx.obj["session"]
     result = session.stop_detached()
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -321,7 +297,7 @@ def goto(ctx: click.Context, url: str) -> None:
     session: BrowserSession = ctx.obj["session"]
     with url_argument_errors():
         session.goto(url)
-    _output({"url": session.driver.page_url(session.get_page())})
+    output({"url": session.driver.page_url(session.get_page())})
 
 
 @main.command()
@@ -520,15 +496,15 @@ def planned_outputs(
     run's output and an error.
     """
     planned: dict[str, tuple[Path, bytes | str]] = {}
-    for step, output in outputs.items():
+    for step, result in outputs.items():
         path = paths.get(step)
-        if isinstance(output, BytesResult):
+        if isinstance(result, BytesResult):
             # The fallback name is the server's `Content-Disposition`
             # filename: take the basename, never its directories.
-            target = contained_output_path(out_dir, path or Path(output.name).name)
-            planned[step] = (target, output.content)
+            target = contained_output_path(out_dir, path or Path(result.name).name)
+            planned[step] = (target, result.content)
         elif path:
-            planned[step] = (contained_output_path(out_dir, path), as_text(output))
+            planned[step] = (contained_output_path(out_dir, path), as_text(result))
     return planned
 
 
@@ -691,7 +667,6 @@ def validate(
     """
 
     import yaml as _yaml
-    from pydantic import ValidationError
 
     label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
@@ -721,7 +696,7 @@ def validate(
         )
         raise SystemExit(1) from exc
     subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
-    _output(
+    output(
         {
             "ok": True,
             "flow": label,
@@ -747,10 +722,10 @@ def screenshot(ctx: click.Context, path: str | None) -> None:
     content = session.screenshot_bytes()
     target = prepare_output_path(path or session.session_dir / "screenshot.png")
     target.write_bytes(content)
-    _output({"screenshot": str(target)})
+    output({"screenshot": str(target)})
 
 
-def _find_all_output(session: BrowserSession, selector: str) -> None:
+def find_all_output(session: BrowserSession, selector: str) -> None:
     locator = session.find_all(selector)
     driver = session.driver
     count = driver.count(locator)
@@ -758,7 +733,7 @@ def _find_all_output(session: BrowserSession, selector: str) -> None:
         driver.evaluate(driver.nth(locator, i), "el => el.outerHTML")
         for i in range(count)
     ]
-    _output({"count": count, "items": items})
+    output({"count": count, "items": items})
 
 
 @main.command()
@@ -769,11 +744,11 @@ def find(ctx: click.Context, selector: str, all_: bool) -> None:
     """Find an element (or all matches with --all) and output outer HTML."""
     session: BrowserSession = ctx.obj["session"]
     if all_:
-        _find_all_output(session, selector)
+        find_all_output(session, selector)
         return
     element = session.find(selector)
     html: str = session.driver.evaluate(element, "el => el.outerHTML")
-    _output({"html": html})
+    output({"html": html})
 
 
 @main.command("find-all")
@@ -782,7 +757,7 @@ def find(ctx: click.Context, selector: str, all_: bool) -> None:
 def find_all(ctx: click.Context, selector: str) -> None:
     """Find all matching elements and output their outer HTML (alias for `find --all`)."""
     session: BrowserSession = ctx.obj["session"]
-    _find_all_output(session, selector)
+    find_all_output(session, selector)
 
 
 @main.command("wait-for")
@@ -834,7 +809,7 @@ def wait_for(
         )
     except TimeoutError as exc:
         raise click.ClickException(str(exc)) from exc
-    _output({"selector": selector, "state": state})
+    output({"selector": selector, "state": state})
 
 
 @main.command("latest-tab")
@@ -843,7 +818,7 @@ def latest_tab(ctx: click.Context) -> None:
     """Switch to the most recently opened tab."""
     session: BrowserSession = ctx.obj["session"]
     page = session.latest_tab()
-    _output({"url": session.driver.page_url(page)})
+    output({"url": session.driver.page_url(page)})
 
 
 @main.command()
@@ -860,150 +835,11 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     """Output cleaned DOM snippet of an element."""
     session: BrowserSession = ctx.obj["session"]
     html = session.dom(selector, max_depth=max_depth, level=SanitizeLevel(level))
-    _output({"html": html})
+    output({"html": html})
 
 
-def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
-    """``--extract name=child selector@attribute`` pairs; ``None`` when unused."""
-    if not values:
-        return None
-    pairs: dict[str, str] = {}
-    for value in values:
-        name, separator, spec = value.partition("=")
-        if not separator or not name:
-            raise click.UsageError(f"--extract expects name=spec, got {value!r}.")
-        if name in pairs:
-            raise click.UsageError(f"--extract {name} given twice.")
-        pairs[name] = spec
-    return pairs
-
-
-def load_targets(path: str) -> list[ExploreTarget]:
-    """The `--targets` file: a YAML or JSON list of {selector, intent, extract}."""
-    import yaml as _yaml
-
-    try:
-        raw = _yaml.safe_load(Path(path).read_text())
-    except _yaml.YAMLError as exc:
-        raise click.UsageError(
-            f"--targets is not readable YAML or JSON: {exc}"
-        ) from exc
-    if not isinstance(raw, list):
-        raise click.UsageError("--targets expects a list of targets.")
-    try:
-        return [ExploreTarget.model_validate(target) for target in raw]
-    except ValidationError as exc:
-        raise click.UsageError(f"--targets has a bad entry: {exc}") from exc
-
-
-@main.command()
-@click.option("--selector", default=None, help="CSS, XPath, or ID selector.")
-@click.option(
-    "--targets",
-    "targets_path",
-    type=click.Path(exists=True, dir_okay=False),
-    default=None,
-    help="YAML/JSON file of targets to explore in one page call.",
-)
-@click.option(
-    "--extract",
-    "extract",
-    multiple=True,
-    metavar="NAME=SPEC",
-    help="Field to read off each sampled row, as name=child selector@attribute. Repeatable.",
-)
-@click.option(
-    "--sample",
-    type=click.IntRange(min=0),
-    default=EXPLORE_SAMPLE_ROWS,
-    help="How many matches to read.",
-)
-@click.option(
-    "--timeout",
-    type=click.IntRange(min=0),
-    default=DEFAULT_WAIT_TIMEOUT_MS,
-    help="How long to wait for the first match (ms).",
-)
-@click.option(
-    "--sample-chars",
-    type=click.IntRange(min=0),
-    default=EXPLORE_SAMPLE_CHARS,
-    help="How much of each sampled field to keep.",
-)
-@click.option(
-    "--intent",
-    type=click.Choice([intent.value for intent in Intent]),
-    default=Intent.READ.value,
-    help="What the step will do with the selector; decides the verdict.",
-)
-@click.pass_context
-def explore(
-    ctx: click.Context,
-    selector: str | None,
-    targets_path: str | None,
-    extract: tuple[str, ...],
-    sample: int,
-    timeout: int,
-    sample_chars: int,
-    intent: str,
-) -> None:
-    """Count and sample selectors before writing steps against them.
-
-    `--selector` explores one; `--targets FILE` explores a page's worth in a
-    single page call, answers in the order asked. Exits non-zero unless every
-    verdict is `ok`, so a shell can tell a usable selector from an ambiguous,
-    missing or unclickable one without parsing the JSON.
-    """
-    if (selector is None) == (targets_path is None):
-        raise click.UsageError("pass exactly one of --selector or --targets")
-    if targets_path is not None:
-        # A targets file carries an intent and an extract per entry, so a
-        # flag meant for all of them would quietly mean nothing.
-        for option in ("extract", "intent"):
-            if ctx.get_parameter_source(option) is ParameterSource.COMMANDLINE:
-                raise click.UsageError(f"--{option} is per target inside --targets")
-    session: BrowserSession = ctx.obj["session"]
-    if targets_path is not None:
-        results = session.explore_many(
-            load_targets(targets_path),
-            sample=sample,
-            sample_chars=sample_chars,
-            timeout_ms=timeout,
-        )
-        _output([result.model_dump(exclude_none=True) for result in results])
-    else:
-        assert selector is not None
-        results = [
-            session.explore(
-                selector,
-                extract=parse_extract_spec(extract_pairs(extract)),
-                sample=sample,
-                timeout_ms=timeout,
-                intent=Intent(intent),
-                sample_chars=sample_chars,
-            )
-        ]
-        _output(results[0])
-    if any(result.verdict is not Verdict.OK for result in results):
-        raise SystemExit(1)
-
-
-@main.command()
-@click.option(
-    "--max-items",
-    type=click.IntRange(min=1),
-    default=SURVEY_MAX_ITEMS,
-    help="How many named elements to report.",
-)
-@click.pass_context
-def survey(ctx: click.Context, max_items: int) -> None:
-    """Read what the page is made of before writing any selector.
-
-    The named elements, the link families, the structures the page repeats and
-    how long it has been up — one page call, no clicks and no scrolling.
-    """
-    session: BrowserSession = ctx.obj["session"]
-    _output(session.survey(max_items=max_items))
+main.add_command(explore)
+main.add_command(survey)
 
 
 @main.command()
@@ -1023,7 +859,7 @@ def download(ctx: click.Context, selector: str, path: str | None) -> None:
     result = session.download_file(selector)
     target = prepare_output_path(path or result.name)
     target.write_bytes(result.content)
-    _output({"path": str(target), "name": result.name, "bytes": len(result.content)})
+    output({"path": str(target), "name": result.name, "bytes": len(result.content)})
 
 
 @main.command()
@@ -1032,7 +868,7 @@ def close(ctx: click.Context) -> None:
     """Close the browser."""
     session: BrowserSession = ctx.obj["session"]
     result = session.close()
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -1041,4 +877,4 @@ def status(ctx: click.Context) -> None:
     """Check browser status."""
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
-    _output(result)
+    output(result)

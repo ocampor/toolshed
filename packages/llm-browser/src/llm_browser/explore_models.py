@@ -126,7 +126,9 @@ class ExploreResult(BaseModel):
     ``since_navigation_ms`` is how long the page had been up when the first
     match was read — the one a `wait_for` timeout should be sized from, since
     ``since_call_ms`` only counts from a call that may follow the load by
-    seconds.
+    seconds. ``error`` names what stopped this target from being explored at
+    all — ``"not css"`` for a selector the page refused to parse — and is
+    absent when the answer is the page's.
     """
 
     count: int
@@ -139,6 +141,7 @@ class ExploreResult(BaseModel):
     candidates: list[str] = Field(default_factory=list)
     stability: Stability = Stability.OTHER
     verdict: Verdict = Verdict.MISSING
+    error: str | None = None
 
 
 class ExploreTarget(BaseModel):

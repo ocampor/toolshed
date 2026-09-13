@@ -57,13 +57,15 @@ class SurveyRead(BaseModel):
     landmarks: list[SurveyNodeRead] = Field(default_factory=list)
     hrefs: list[str] = Field(default_factory=list)
     repeats: list[SurveyRepeatRead] = Field(default_factory=list)
+    truncated: bool = False
 
 
 class Landmark(BaseModel):
     """An element with a name worth writing a selector against.
 
     ``count`` is how many elements on the page answer to ``selector`` — one
-    means the selector is already a step's worth on its own.
+    means the selector is already a step's worth on its own. ``tag`` and
+    ``text`` are the first element reported under the name, whatever the count.
     """
 
     selector: str
@@ -83,8 +85,10 @@ class LinkShape(BaseModel):
 class Repeat(BaseModel):
     """A structure the page uses more than twice — a card, a row, an item.
 
-    ``nested_controls`` are the controls inside one of them: what a click on
-    the whole thing would land on instead.
+    ``count`` is how many elements ``selector`` matches page-wide — the number
+    a ``read`` against it is about to return, not the size of the run it was
+    found in. ``nested_controls`` are the controls inside one of them: what a
+    click on the whole thing would land on instead.
     """
 
     selector: str
@@ -106,9 +110,13 @@ class Hydration(BaseModel):
 class Survey(BaseModel):
     """What a page is made of, before any selector has been written.
 
-    One read, no clicks and no scrolling: the named elements to write steps
-    against, the link families the page navigates by, the structures it
-    repeats, and how long it had been up.
+    No clicks and no scrolling: the named elements to write steps against, the
+    link families the page navigates by, the structures it repeats, and how
+    long it had been up.
+
+    ``truncated`` is true when a raw cap cut the page short — the lists are a
+    sample of it rather than all of it, and a narrower page (or a frame) is
+    the way to see the rest.
     """
 
     title: str
@@ -117,3 +125,4 @@ class Survey(BaseModel):
     landmarks: list[Landmark] = Field(default_factory=list)
     link_shapes: list[LinkShape] = Field(default_factory=list)
     repeats: list[Repeat] = Field(default_factory=list)
+    truncated: bool = False

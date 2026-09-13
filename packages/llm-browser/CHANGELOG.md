@@ -5,59 +5,48 @@
 ### Added
 
 - `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
-  intent=Intent.READ, sample_chars=200)`: an `ExploreResult` with the
-  selector's `count`, the first `sample` rows, the `empty_fields` no sampled
-  row filled in and their total `text_chars`.
-- `explore` never clicks, and a selector that never arrives is a count of zero.
-- `explore` may scroll: a match outside the viewport is scrolled to the middle
-  of it before the hit test, as the click path does.
-- `explore` costs `sample x (fields + 1)` per-element reads, one page
-  evaluation and at most three candidate counts, all independent of `count`.
+  intent=Intent.READ, sample_chars=200)` → `ExploreResult`: `count`, the first
+  `sample` rows, `empty_fields` and `text_chars`.
+- `explore` never clicks; it may scroll a match into view to hit-test it, and a
+  selector that never arrives is a count of zero.
+- `explore` costs `sample x (fields + 1)` reads, one page evaluation and at most
+  three candidate counts, whatever `count` is.
 - `ExploreResult.first`: tag, text, role, aria-label, name, href, `visible`,
   `enabled`, `in_viewport`, `covered_by`, `hit_tested`, `stable`,
-  `pointer_events`, `nested_controls`, `why_not` and the `clickable` computed
-  from it.
-- `ExploreResult.since_navigation_ms` and `since_call_ms`: how long the match
-  took off the page's own clock, and off this call.
-- `ExploreResult.candidates`: up to three sturdier selectors, one per kind and
-  each checked to match that element alone — or, under `intent=read`, the same
-  number of rows the selector found.
-- `ExploreResult.stability` rates the selector that was explored;
-  `ExploreResult.verdict` is `ok` / `ambiguous` / `missing` / `not_actionable`
-  against an `intent` of `read` (default), `click`, `fill` or `wait`.
-- `docs/API.md` "Exploring before writing a step": what every field answers,
-  the candidate ranking and the rules behind `covered_by` and `clickable`.
+  `pointer_events`, `nested_controls`, `why_not`, `clickable`.
+- `ExploreResult.since_navigation_ms` and `since_call_ms`.
+- `ExploreResult.candidates`: up to three sturdier selectors, each checked.
+- `ExploreResult.stability` rates the selector; `ExploreResult.verdict` is
+  `ok` / `ambiguous` / `missing` / `not_actionable` against an `intent` of
+  `read` (default), `click`, `fill` or `wait`.
+- `ExploreResult.error` names a target the page never explored: `not css`.
 - `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
-  [--intent read|click|fill|wait] [--sample-chars]`: the same as JSON, exiting
-  non-zero unless the verdict is `ok`. Each sampled field is cut to
-  `--sample-chars` (200). A repeated `--extract NAME=` is a `UsageError` naming
-  the field, not a silent last-wins.
+  [--intent read|click|fill|wait] [--sample-chars]`, exiting non-zero unless the
+  verdict is `ok`; a repeated `--extract NAME=` is a `UsageError`.
 - `BrowserSession.explore_many(targets, sample=3, sample_chars=200,
   timeout_ms=3000)`: one `ExploreResult` per `ExploreTarget`
-  (`{selector, intent, extract}`), in the order asked, from a single page call.
-  The wait is the batch's — it ends when the first target appears — and
-  candidates are still verified from Python, at most three counts per target.
-- `explore_many` selectors are CSS; one the page cannot parse raises a
-  `ValueError` naming it rather than reading as a count of zero.
-- `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list of
-  targets, exiting non-zero unless every verdict is `ok`. Exactly one of
-  `--selector` and `--targets` is required, and `--extract` / `--intent`
-  alongside `--targets` is a `UsageError`: both belong to a target.
-- `BrowserSession.survey(max_items=60)`: what a page is made of, in one page
-  call and without clicking or scrolling — `landmarks` (named elements, deduped
-  by selector, test id > aria > id > role), `link_shapes` (hrefs grouped by the
-  section they point at, with the `a[href^=…]` for the family), `repeats` (the
-  cards, rows and items a page is built of, grouped by tag and class stem and
-  ranked by what an author came for — clickable runs, then named ones — with
-  their nested controls) and
-  `hydration` (`since_navigation_ms`, `readyState`). Every list is capped by
-  construction.
+  (`{selector, intent, extract}`), in the order asked, from one page call and
+  one wait.
+- `explore_many` selectors are CSS; one the page cannot parse answers
+  `count: 0`, `verdict: missing`, `error: "not css"` and leaves the batch alone.
+- `explore_many` takes at most 20 targets and gives the driver the wait plus
+  100 ms of settle per target plus a margin, so `timeout_ms` is honoured.
+- `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list,
+  exiting non-zero unless every verdict is `ok`. Exactly one of `--selector` and
+  `--targets` is required; `--extract` / `--intent` alongside `--targets`, an
+  empty list and more than 20 targets are `UsageError`s.
+- `BrowserSession.survey(max_items=60)` → `Survey`: `landmarks` (named elements,
+  test id > aria > id > role), `link_shapes` (hrefs grouped by the section they
+  point at), `repeats` (siblings grouped by tag and every class they share,
+  clickable runs first) and `hydration` (`since_navigation_ms`, `readyState`).
+- `Landmark.count` and `Repeat.count` are what that selector matches page-wide,
+  counted in a second page call.
+- `Survey.truncated` is true when a raw cap cut the page short.
 - `llm-browser survey [--max-items]`: the same as JSON.
-- `BrowserSession.evaluate_document(script)`: a page-wide script run against
-  `<html>`, the evaluate path every driver awaits.
-- `docs/API.md` "A page's worth of selectors in one call" and "Surveying before
-  exploring"; `docs/FLOW_PATTERNS.md` "Before writing a step" now opens with the
-  two-call recipe — survey, then `explore --targets`.
+- `BrowserSession.evaluate_document(script, timeout_ms=None)`: a page-wide
+  script run against `<html>`, the evaluate path every driver awaits.
+- `Driver.evaluate(target, script, timeout_ms=None)` bounds a script that waits
+  in the page; nodriver accepts and ignores it (see `docs/DRIVERS.md`).
 
 ### Fixed
 

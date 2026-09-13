@@ -500,6 +500,7 @@ provides-extras = ["camoufox", "nodriver"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cssselect", specifier = ">=1.5.0" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
