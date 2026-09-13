@@ -153,7 +153,7 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 |---|---|---|---|
 | `run-flow` | `flow` (reference or embedded flow) | `data` (dict, templated) | Runs another flow inline as one step |
 
-`flow:` is a repository-resolved reference (a path, relative to the parent flow's own directory for the CLI, or absolute) or the child written inline as a `params:`/`steps:` mapping; references are inlined before validation, so a loaded `Flow` always carries its children. **Leaf-only**: a child may not itself contain `run-flow` steps (rejected while resolving). **`optional: true`** on the step swallows child failures instead of bubbling them. **`when:`** on the step is honored before the child is loaded.
+`flow:` is a repository-resolved reference (a path, relative to the parent flow's own directory for the CLI, or absolute) or the child written inline as a `params:`/`steps:` mapping; references are inlined before validation, so a loaded `Flow` always carries its children. **Leaf-only**: a child may not itself contain `run-flow` steps (rejected while resolving). **`optional: true`** on the step swallows child failures instead of bubbling them. **`when:`** on the step is honored before the child is loaded. **Scope**: the child runs against the parent's params with `data:` merged over them, so a binding always wins over a parent param of the same name and an unbound parent param stays visible to the child.
 
 ```yaml
 # parent.yaml

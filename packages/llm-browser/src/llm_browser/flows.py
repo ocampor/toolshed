@@ -212,7 +212,9 @@ def run_subflow(
                 SkippedStep(name=resolved.qualified_name, reason=WHEN_SKIP_REASON)
             ],
         )
-    result = run_loaded_flow(session, resolved.flow, resolved.data, behavior=behavior)
+    result = run_loaded_flow(
+        session, resolved.flow, child_data(flow_data, resolved.data), behavior=behavior
+    )
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(
             step=resolved.name,
@@ -226,3 +228,10 @@ def run_subflow(
             ],
         )
     return result
+
+
+def child_data(parent: FlowData, bindings: dict[str, Any]) -> dict[str, object]:
+    """A parent param the step does not bind stays visible to the child; one it
+    binds is overridden, so ``data: { x: "{{ y }}" }`` reaches the child as the
+    bound value even when the parent has its own ``x``."""
+    return {**parent.to_template_dict(), **bindings}

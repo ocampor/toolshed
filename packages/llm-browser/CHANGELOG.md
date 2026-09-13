@@ -17,6 +17,14 @@
   `click` that a driver reports as intercepted is retried once with the target
   centred before failing with the original error plus a `dispatch: true` hint.
 
+### Fixed
+
+- `run-flow` no longer resolves the child's steps against the parent's params
+  before the child runs: a `data:` binding now wins over a parent param of the
+  same name, so `data: { mission_id: "{{ applied_id }}" }` reaches a child that
+  declares `mission_id` as the bound value. Unbound parent params stay visible
+  to the child.
+
 ### Changed
 
 - `is_timeout` (was `actions._is_timeout`) and `is_step_failure` moved to

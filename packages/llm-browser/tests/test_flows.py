@@ -323,6 +323,89 @@ def test_run_flow_param_passthrough(tmp_path: Path, mock_session: MagicMock) -> 
     assert "submit" in str(args[0])
 
 
+def _goto_child(param: str) -> dict[str, Any]:
+    """A one-step child whose only step echoes ``param`` into the URL."""
+    return {
+        "params": [param],
+        "steps": [
+            {"name": "go", "action": "goto", "url": "https://x/{{ %s }}" % param}
+        ],
+    }
+
+
+def _goto_url(mock_session: MagicMock) -> str:
+    args, _ = mock_session.goto.call_args
+    return str(args[0])
+
+
+def test_run_flow_data_binding_beats_a_parent_param_of_the_same_name(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "verify",
+                "action": "run-flow",
+                "data": {"mission_id": "{{ applied_id }}"},
+                "flow": _goto_child("mission_id"),
+            }
+        ],
+        params=["mission_id", "applied_id"],
+    )
+    result = run_flow_file(
+        mock_session, path, {"mission_id": "parent", "applied_id": "bound"}
+    )
+    assert isinstance(result, FlowSuccess)
+    assert _goto_url(mock_session) == "https://x/bound"
+
+
+def test_run_flow_passes_unbound_parent_params_through_to_the_child(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "verify",
+                "action": "run-flow",
+                "data": {"other": "x"},
+                "flow": _goto_child("mission_id"),
+            }
+        ],
+        params=["mission_id"],
+    )
+    result = run_flow_file(mock_session, path, {"mission_id": "parent"})
+    assert isinstance(result, FlowSuccess)
+    assert _goto_url(mock_session) == "https://x/parent"
+
+
+def test_a_repeated_subflow_binds_each_item_over_the_parent_param(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    """The deepest legal nesting — a `run-flow` inside a `repeat` — resolves the
+    same way: the pass's binding wins over the parent param it shadows."""
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "each",
+                "action": "run-flow",
+                "repeat": {"over": "applied_ids", "as": "applied_id"},
+                "data": {"mission_id": "{{ applied_id }}"},
+                "flow": _goto_child("mission_id"),
+            }
+        ],
+        params=["mission_id", "applied_ids"],
+    )
+    result = run_flow_file(
+        mock_session, path, {"mission_id": "parent", "applied_ids": ["a", "b"]}
+    )
+    assert isinstance(result, FlowSuccess)
+    urls = [str(call.args[0]) for call in mock_session.goto.call_args_list]
+    assert urls == ["https://x/a", "https://x/b"]
+
+
 def test_run_flow_optional_swallows_child_failure(
     tmp_path: Path,
     mock_session: MagicMock,
