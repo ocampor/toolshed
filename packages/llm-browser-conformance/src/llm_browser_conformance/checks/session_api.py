@@ -21,7 +21,7 @@ from typing import Any
 from llm_browser.behavior import Behavior
 from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
-from llm_browser.explore_models import Intent, Stability, Verdict
+from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
@@ -209,6 +209,72 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     assert below.first.clickable and below.verdict is Verdict.OK, below
     # Exploring scrolled it into view to hit-test it, and found nothing over it.
     assert below.first.hit_tested and below.first.covered_by is None, below
+
+
+def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
+    """A page's worth of selectors for the price of one wait: the counts, the
+    samples and the first-match reads all come back together."""
+    ctx.visit("explore-actionability.html")
+
+    started = time.monotonic()
+    cards, button, gone = ctx.session.explore_many(
+        [
+            ExploreTarget(
+                selector="article.tile",
+                extract={"title": ExtractField(child_selector="h3")},
+            ),
+            ExploreTarget(selector="#clear", intent=Intent.CLICK),
+            ExploreTarget(selector="#no-such-element"),
+        ],
+        timeout_ms=MISSING_TIMEOUT_MS,
+    )
+    elapsed = time.monotonic() - started
+
+    assert [row["title"] for row in cards.sample] == ["Alpha", "Bravo", "Charlie"], (
+        cards
+    )
+    assert cards.count == 3 and cards.verdict is Verdict.OK, cards
+    # The cards are named only by the build's numbering, so the section around
+    # them is what a selector can be written against.
+    assert cards.candidates == ['[data-testing-id="deck"] :is(article)'], cards
+    assert cards.since_navigation_ms is not None, cards
+
+    assert button.count == 1 and button.verdict is Verdict.OK, button
+    assert button.first is not None and button.first.clickable, button
+
+    assert gone.count == 0 and gone.verdict is Verdict.MISSING, gone
+    assert gone.first is None and gone.candidates == [], gone
+    # One wait for the batch, not one per target: the missing selector never
+    # spends a timeout of its own, because the others were there.
+    budget = (MISSING_TIMEOUT_MS + SLACK_MS) / 1000
+    assert elapsed <= budget, f"took {elapsed:.3f}s, budget {budget}s"
+
+
+def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
+    """The call before the first selector: what is named, what repeats, and
+    what the links point at — without touching the page."""
+    ctx.visit("explore-actionability.html")
+
+    found = ctx.session.survey()
+
+    named = {mark.selector for mark in found.landmarks}
+    assert '[data-testing-id="deck"]' in named, found.landmarks
+    assert '[data-testid="buy"]' in named, found.landmarks
+    # Test ids first: an author reading the top of the list reads the sturdiest
+    # selectors the page offers.
+    assert found.landmarks[0].selector.startswith("[data-test"), found.landmarks
+
+    tiles = [run for run in found.repeats if run.selector == "article.tile"]
+    assert [run.count for run in tiles] == [3], found.repeats
+    assert [control.text for control in tiles[0].nested_controls] == ["Save"], tiles
+
+    missions = [shape for shape in found.link_shapes if shape.shape == "/missions/<id>"]
+    assert [shape.count for shape in missions] == [2], found.link_shapes
+    assert missions[0].selector == 'a[href^="/missions/"]', missions
+
+    assert found.hydration.ready_state == "complete", found.hydration
+    assert found.hydration.since_navigation_ms > 0, found.hydration
+    assert found.title == "Buttons a click would miss", found
 
 
 # --- tabs ---
@@ -610,6 +676,18 @@ SCENARIOS = [
         Section.API,
         explore_counts_the_whole_list_and_reads_only_the_sample,
         covers=frozenset({"session:explore"}),
+    ),
+    Scenario(
+        "explore many",
+        Section.API,
+        explore_many_answers_every_target_in_one_page_call,
+        covers=frozenset({"session:explore_many", "session:evaluate_document"}),
+    ),
+    Scenario(
+        "survey a page",
+        Section.API,
+        survey_reads_what_the_page_is_made_of,
+        covers=frozenset({"session:survey"}),
     ),
     Scenario(
         "latest tab",

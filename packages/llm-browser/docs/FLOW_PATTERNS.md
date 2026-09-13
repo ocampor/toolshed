@@ -20,9 +20,31 @@ support](DRIVERS.md#selector-and-key-support)). Each pattern names its CSS equiv
 
 ## Before writing a step
 
-`llm-browser explore --selector … --intent <what the step will do>` answers, in
-one round trip, whether the selector is the right one. Exit 0 means the verdict
-is `ok`; anything else is the step failing now instead of on the run.
+Two calls per page, whatever the flow: **survey, then explore the targets it
+named.** The first says what the page is made of; the second checks every
+selector you are about to write, together.
+
+```bash
+llm-browser survey                      # landmarks, link shapes, repeats, hydration
+llm-browser explore --targets flow.yaml # every selector of the flow, one page call
+```
+
+```yaml
+# flow.yaml — one entry per step you are about to write
+- { selector: "tr.athing", extract: { title: ".titleline > a" } }   # from repeats
+- { selector: ".morelink", intent: click }                          # from landmarks
+```
+
+`survey` reads only: it never clicks and never scrolls. `repeats` is where a
+list's selector and its real length come from, `link_shapes` where a
+`a[href^=…]` for a whole section does, and `hydration.since_navigation_ms` is
+the number to size the flow's first `wait_for` from. `explore --targets` then
+answers each one against its own `--intent`, exiting non-zero unless every
+verdict is `ok` — the flow failing at authoring time instead of on the run.
+See [API.md](API.md#surveying-before-exploring) for every field.
+
+`llm-browser explore --selector … --intent <what the step will do>` is the same
+answer for one selector, when a step is all that is in question.
 
 | `--intent` | `ok` when | Read these |
 |---|---|---|

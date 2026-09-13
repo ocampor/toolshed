@@ -147,8 +147,11 @@ fresh.
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
 | `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ, sample_chars=200)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
+| `explore_many(targets, sample=3, sample_chars=200, timeout_ms=3000)` | The same answer for a list of `ExploreTarget`, from one page call and one wait — a list of `ExploreResult` in the order asked |
+| `survey(max_items=60)` | What the page is made of before any selector is written: a `Survey` of landmarks, link shapes, repeats and hydration. Never clicks, never scrolls |
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
+| `evaluate_document(script)` | Run a page-wide script against `<html>` — the evaluate path every driver awaits, which a script that waits needs |
 | `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
 | `screenshot_bytes(selector=None)` | The current page as PNG bytes, or just `selector`'s element when one is given; nothing is written |
 | `dom_snapshot(level=None)` | Sanitized HTML of the whole current page, as text; `level` defaults to the session's `capture_level` |
@@ -208,3 +211,66 @@ The command exits non-zero unless the verdict is `ok`, and drops null fields
 from its JSON like every other one — `role`, `aria_label` and `covered_by` are
 absent above. Nothing here is a flow step: it is for writing the step, not for
 running it.
+
+### A page's worth of selectors in one call
+
+`explore` per selector is one wait per selector, and a page is usually eight of
+them. `explore_many` asks them together: one page evaluation counts, samples
+and first-match-reads every target, and the wait ends when the **first** of
+them appears — so the selector that is simply not there costs nothing rather
+than another full timeout.
+
+```bash
+llm-browser explore --targets targets.yaml
+```
+
+```yaml
+# targets.yaml — one entry per selector, in the order the answers come back
+- selector: ".athing"
+  extract: { title: ".titleline > a", url: ".titleline > a@href" }
+- { selector: ".morelink", intent: click }
+- { selector: "#searchInput", intent: fill }
+```
+
+Each answer is the same `ExploreResult` as `explore`, with the same fields and
+the same `verdict` against that target's own `intent`; the command exits
+non-zero unless **every** verdict is `ok`. Candidates are still verified from
+Python — at most three counts per target — because a proposal nothing checked
+is not a candidate.
+
+Two things differ from `explore`. Selectors are CSS (the page is asked with
+`querySelectorAll`), and one the page cannot parse raises a `ValueError` naming
+it rather than reading as a count of zero. And `since_call_ms` is measured in
+the page, from the start of the batch, so every target shares the one wait.
+
+### Surveying before exploring
+
+`survey` is the call before the first selector: it reads what the page offers
+rather than checking what you guessed.
+
+```bash
+llm-browser survey
+```
+
+```json
+{"title": "Hacker News", "url": "https://news.ycombinator.com/",
+ "hydration": {"since_navigation_ms": 840, "ready_state": "complete"},
+ "landmarks": [{"selector": "[data-testid=\"grid\"]", "tag": "main", "text": "Top stories", "count": 1}],
+ "link_shapes": [{"shape": "item?<query>", "selector": "a[href^=\"item\"]", "count": 60}],
+ "repeats": [{"selector": "tr.athing", "count": 30,
+              "nested_controls": [{"tag": "a", "text": "upvote"}]}]}
+```
+
+| Field | What it answers |
+|---|---|
+| `landmarks` | Up to `max_items` elements that carry a name, deduped by selector and best first: a test id, then an aria label, then an ungenerated id, then a bare role. `count` is how many elements answer to that selector — `1` means it is already a step's worth |
+| `link_shapes` | Hrefs grouped by the section they point at rather than the page: `/mission/<id>` ×41, with the `a[href^=…]` that selects the family. Busiest first |
+| `repeats` | The structures the page uses more than twice — cards, rows, items — as the selector every member answers to, how many there are, and the controls inside one of them. This is the card detector: the `count` is the number a `read` is about to return |
+| `hydration` | `since_navigation_ms` off the page's own clock and `document.readyState` — the two numbers a `wait_for` timeout is sized from |
+
+A repeat is named by a class every member carries, preferring one the build did
+not number (`.tile` over `.sc-card-0-2-1`); with no such class it is named by
+what holds it (`[data-testid="deck"] > article`). Every list is capped by
+construction — lists are truncated, never the fields inside them — so a page of
+ten thousand elements answers in the same breath as a page of ten.
+

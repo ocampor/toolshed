@@ -1,10 +1,12 @@
 """What ``explore`` reports: the first match, its locators, and the verdict."""
 
 import enum
+from typing import Any
 
-from pydantic import BaseModel, computed_field, Field
+from pydantic import BaseModel, computed_field, ConfigDict, Field, field_validator
 
 from llm_browser.constants import EXPLORE_NON_BLOCKING
+from llm_browser.parse import ExtractField
 
 
 class Intent(enum.StrEnum):
@@ -137,3 +139,42 @@ class ExploreResult(BaseModel):
     candidates: list[str] = Field(default_factory=list)
     stability: Stability = Stability.OTHER
     verdict: Verdict = Verdict.MISSING
+
+
+class ExploreTarget(BaseModel):
+    """One selector of a batch, as an author writes it in a targets file.
+
+    ``extract`` follows ``ReadStep``: each spec is the compact
+    ``"child selector@attribute"`` string or the mapping it stands for.
+    """
+
+    # ExtractField is a FieldInfo subclass — see ReadStep for why this is here.
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    selector: str
+    intent: Intent = Intent.READ
+    extract: dict[str, ExtractField] | None = None
+
+    @field_validator("extract", mode="before")
+    @classmethod
+    def coerce_extract(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        return {name: ExtractField.coerce(spec) for name, spec in value.items()}
+
+
+class ExploreManyRead(BaseModel):
+    """What one page call answers about one target.
+
+    ``element`` is ``None`` when the target never matched: nothing was read,
+    rather than something empty. ``invalid`` is the selector the page refused
+    to parse, which is the author's typo rather than a missing element.
+    """
+
+    selector: str
+    invalid: bool = False
+    count: int
+    sample: list[dict[str, str | None]] = Field(default_factory=list)
+    text_chars: int = 0
+    element: ExploreRead | None = None
+    since_call_ms: int

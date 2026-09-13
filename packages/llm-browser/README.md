@@ -91,7 +91,9 @@ llm-browser open --url https://example.com
 llm-browser find --selector "#form"
 llm-browser wait-for --selector "#results" --state visible --timeout 10000
 llm-browser dom --selector "#content" --max-depth 2
+llm-browser survey
 llm-browser explore --selector ".result" --extract title=h3 --intent click
+llm-browser explore --targets targets.yaml
 llm-browser run --flow login.yaml --data '{"user": "admin"}'
 llm-browser close
 ```

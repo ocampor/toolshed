@@ -1,12 +1,16 @@
 """`llm-browser explore`: JSON on stdout, non-zero exit when nothing matched."""
 
 import json
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
 
 from llm_browser.cli import main
+from llm_browser.explore_models import ExploreResult, Intent, Verdict
 from llm_browser.session import BrowserSession
+from llm_browser.survey_models import Hydration, Landmark, Survey
 
 from tests.conftest import ExploringSession
 
@@ -191,3 +195,98 @@ def test_sample_chars_cuts_each_field_of_the_sample(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["sample"] == [{"label": "Alpha"}]
+
+
+@pytest.fixture
+def cli_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """A session the CLI drives, so these tests are about the wiring only."""
+    session = MagicMock(spec=BrowserSession)
+    monkeypatch.setattr("llm_browser.cli.build_session", lambda **kwargs: session)
+    return session
+
+
+def explored(count: int, verdict: Verdict = Verdict.OK) -> ExploreResult:
+    return ExploreResult(
+        count=count, sample=[], empty_fields=[], text_chars=0, verdict=verdict
+    )
+
+
+def targets_file(tmp_path: Path, body: str) -> str:
+    path = tmp_path / "targets.yaml"
+    path.write_text(body)
+    return str(path)
+
+
+def test_a_targets_file_explores_them_all_in_the_order_written(
+    cli_session: MagicMock, tmp_path: Path
+) -> None:
+    cli_session.explore_many.return_value = [explored(30), explored(1)]
+    path = targets_file(
+        tmp_path,
+        "- selector: .row\n"
+        "  extract:\n"
+        "    title: a\n"
+        "- selector: .morelink\n"
+        "  intent: click\n",
+    )
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 0, result.output
+    assert [answer["count"] for answer in json.loads(result.output)] == [30, 1]
+    targets = cli_session.explore_many.call_args.args[0]
+    assert [target.selector for target in targets] == [".row", ".morelink"]
+    assert targets[1].intent is Intent.CLICK
+    assert targets[0].extract["title"].child_selector == "a"
+
+
+def test_one_bad_verdict_in_a_batch_is_a_non_zero_exit(
+    cli_session: MagicMock, tmp_path: Path
+) -> None:
+    """The shell's question is "can I write these steps", and one no is a no."""
+    cli_session.explore_many.return_value = [
+        explored(1),
+        explored(0, Verdict.MISSING),
+    ]
+    path = targets_file(tmp_path, "- selector: .row\n- selector: .gone\n")
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 1, result.output
+
+
+@pytest.mark.parametrize("both", [False, True])
+def test_explore_takes_one_selector_or_one_file(tmp_path: Path, both: bool) -> None:
+    path = targets_file(tmp_path, "- selector: .row\n")
+    arguments = ["--selector", ".row", "--targets", path] if both else []
+
+    result = CliRunner().invoke(main, ["explore", *arguments])
+
+    assert result.exit_code == 2, result.output
+    assert "exactly one of --selector or --targets" in result.output
+
+
+def test_a_targets_file_that_is_not_a_list_is_a_usage_error(tmp_path: Path) -> None:
+    path = targets_file(tmp_path, "selector: .row\n")
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path])
+
+    assert result.exit_code == 2, result.output
+    assert "expects a list" in result.output
+
+
+def test_survey_outputs_what_the_page_is_made_of(cli_session: MagicMock) -> None:
+    cli_session.survey.return_value = Survey(
+        title="Missions",
+        url="https://example.com",
+        hydration=Hydration(since_navigation_ms=900, ready_state="complete"),
+        landmarks=[Landmark(selector='[data-testid="grid"]', tag="main", count=1)],
+    )
+
+    result = CliRunner().invoke(main, ["survey", "--max-items", "10"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["landmarks"][0]["selector"] == '[data-testid="grid"]'
+    assert payload["hydration"]["ready_state"] == "complete"
+    assert cli_session.survey.call_args.kwargs == {"max_items": 10}

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from llm_browser import explore, session_input, waits
+from llm_browser import explore, session_input, survey as survey_rules, waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -28,10 +28,16 @@ from llm_browser.constants import (
     EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
+    SURVEY_MAX_ITEMS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
-from llm_browser.explore_models import ExploreRead, ExploreResult, Intent
+from llm_browser.explore_models import (
+    ExploreRead,
+    ExploreResult,
+    ExploreTarget,
+    Intent,
+)
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
@@ -50,6 +56,7 @@ from llm_browser.selectors import (
     expect_single,
     resolve_selector,
 )
+from llm_browser.survey_models import Survey
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -610,6 +617,18 @@ class BrowserSession:
             sample_chars,
         )
 
+    def explore_many(
+        self,
+        targets: list[ExploreTarget],
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+    ) -> list[ExploreResult]:
+        return explore.explore_many(self, targets, sample, sample_chars, timeout_ms)
+
+    def survey(self, max_items: int = SURVEY_MAX_ITEMS) -> Survey:
+        return survey_rules.survey(self, max_items)
+
     def first_match(self, locator: Any) -> ExploreRead:
         return explore.first_match(self, locator)
 
@@ -658,6 +677,17 @@ class BrowserSession:
         )
         raw = self.driver.evaluate(self.get_page(), script)
         return PageProbe.model_validate(raw or {})
+
+    def evaluate_document(self, script: str) -> Any:
+        """Run a page-wide script against ``<html>`` rather than the page.
+
+        The element path is the one every driver awaits, so a script that has
+        to wait — ``explore_many``'s — answers with its value instead of a
+        pending promise. The script reads the page through
+        ``el.ownerDocument``.
+        """
+        root = self.driver.first(resolve_selector(self.driver, self.get_page(), "html"))
+        return self.driver.evaluate(root, script)
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

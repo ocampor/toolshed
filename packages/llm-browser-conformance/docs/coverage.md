@@ -118,7 +118,9 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
+| `session:evaluate_document` | explore many |
 | `session:explore` | explore a button, explore a click cost, explore a list |
+| `session:explore_many` | explore many |
 | `session:fill` | dynamic controls enable, fill/type/check, revealed control is fillable |
 | `session:find` | find rejects ambiguity, dynamic loading, hidden input is readable |
 | `session:find_all` | pick by text, find all |
@@ -139,6 +141,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:set_checked` | fill/type/check, checkbox and radio |
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
+| `session:survey` | survey a page |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
 | `session:verified_candidates` | explore a button |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |

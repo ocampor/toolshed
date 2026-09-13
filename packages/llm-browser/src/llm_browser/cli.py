@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from pydantic import ValidationError
 from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
@@ -20,13 +21,14 @@ from llm_browser.constants import (
     DRIVER_ENV_VAR,
     EXPLORE_SAMPLE_CHARS,
     EXPLORE_SAMPLE_ROWS,
+    SURVEY_MAX_ITEMS,
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import parse_extract_spec
-from llm_browser.explore_models import Intent, Verdict
+from llm_browser.explore_models import ExploreTarget, Intent, Verdict
 from llm_browser.models import (
     Flow,
     FlowError,
@@ -875,8 +877,33 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
     return pairs
 
 
+def load_targets(path: str) -> list[ExploreTarget]:
+    """The `--targets` file: a YAML or JSON list of {selector, intent, extract}."""
+    import yaml as _yaml
+
+    try:
+        raw = _yaml.safe_load(Path(path).read_text())
+    except _yaml.YAMLError as exc:
+        raise click.UsageError(
+            f"--targets is not readable YAML or JSON: {exc}"
+        ) from exc
+    if not isinstance(raw, list):
+        raise click.UsageError("--targets expects a list of targets.")
+    try:
+        return [ExploreTarget.model_validate(target) for target in raw]
+    except ValidationError as exc:
+        raise click.UsageError(f"--targets has a bad entry: {exc}") from exc
+
+
 @main.command()
-@click.option("--selector", required=True, help="CSS, XPath, or ID selector.")
+@click.option("--selector", default=None, help="CSS, XPath, or ID selector.")
+@click.option(
+    "--targets",
+    "targets_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="YAML/JSON file of targets to explore in one page call.",
+)
 @click.option(
     "--extract",
     "extract",
@@ -911,31 +938,65 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
 @click.pass_context
 def explore(
     ctx: click.Context,
-    selector: str,
+    selector: str | None,
+    targets_path: str | None,
     extract: tuple[str, ...],
     sample: int,
     timeout: int,
     sample_chars: int,
     intent: str,
 ) -> None:
-    """Count and sample a selector before writing a step against it.
+    """Count and sample selectors before writing steps against them.
 
-    Exits non-zero unless the verdict is `ok`, so a shell can tell a usable
-    selector from an ambiguous, missing or unclickable one without parsing
-    the JSON.
+    `--selector` explores one; `--targets FILE` explores a page's worth in a
+    single page call, answers in the order asked. Exits non-zero unless every
+    verdict is `ok`, so a shell can tell a usable selector from an ambiguous,
+    missing or unclickable one without parsing the JSON.
+    """
+    if (selector is None) == (targets_path is None):
+        raise click.UsageError("pass exactly one of --selector or --targets")
+    session: BrowserSession = ctx.obj["session"]
+    if targets_path is not None:
+        results = session.explore_many(
+            load_targets(targets_path),
+            sample=sample,
+            sample_chars=sample_chars,
+            timeout_ms=timeout,
+        )
+        _output([result.model_dump(exclude_none=True) for result in results])
+    else:
+        assert selector is not None
+        results = [
+            session.explore(
+                selector,
+                extract=parse_extract_spec(extract_pairs(extract)),
+                sample=sample,
+                timeout_ms=timeout,
+                intent=Intent(intent),
+                sample_chars=sample_chars,
+            )
+        ]
+        _output(results[0])
+    if any(result.verdict is not Verdict.OK for result in results):
+        raise SystemExit(1)
+
+
+@main.command()
+@click.option(
+    "--max-items",
+    type=click.IntRange(min=1),
+    default=SURVEY_MAX_ITEMS,
+    help="How many named elements to report.",
+)
+@click.pass_context
+def survey(ctx: click.Context, max_items: int) -> None:
+    """Read what the page is made of before writing any selector.
+
+    The named elements, the link families, the structures the page repeats and
+    how long it has been up — one page call, no clicks and no scrolling.
     """
     session: BrowserSession = ctx.obj["session"]
-    result = session.explore(
-        selector,
-        extract=parse_extract_spec(extract_pairs(extract)),
-        sample=sample,
-        timeout_ms=timeout,
-        intent=Intent(intent),
-        sample_chars=sample_chars,
-    )
-    _output(result)
-    if result.verdict is not Verdict.OK:
-        raise SystemExit(1)
+    _output(session.survey(max_items=max_items))
 
 
 @main.command()

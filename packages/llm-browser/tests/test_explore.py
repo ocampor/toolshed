@@ -1,158 +1,159 @@
-"""The selector rules behind `explore`: what to propose, and what it costs."""
+"""What `explore_many` costs and what it answers: one page call, every target."""
+
+import json
+from types import SimpleNamespace
 
 import pytest
 
-from llm_browser.explore import (
-    accepted_counts,
-    candidate_selectors,
-    css_quoted,
-    generated_id,
-    href_prefix,
-)
-from llm_browser.explore_models import Intent, Locators
+from llm_browser.explore import explore_many
+from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 
 
-def locators(**fields: object) -> Locators:
-    return Locators.model_validate({"tag": "a", **fields})
+def element(**over: object) -> dict[str, object]:
+    """One target's first-match read, as the page hands it back."""
+    first = {
+        "tag": "a",
+        "text": "Senior engineer",
+        "visible": True,
+        "enabled": True,
+        "in_viewport": True,
+        "stable": True,
+        "pointer_events": True,
+        "why_not": [],
+    }
+    locators = {"tag": "a", "testid_attribute": "data-testid", "testid": "mission"}
+    return {
+        "first": {**first, **over},
+        "locators": locators,
+        "since_navigation_ms": 900,
+    }
 
 
-def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
-    """A test id outlives a redesign, an aria label a restyle, an id both —
-    a link's section outlives the page, and a hashed class outlives nothing."""
-    proposed = candidate_selectors(
-        locators(
-            testid_attribute="data-testid",
-            testid="mission-card",
-            aria_label="Open mission",
-            role="link",
-            name="Open mission",
-            id="mission",
-            href="/missions/senior-eng-4821",
-            classes=["card", "css-1x2y3z"],
-        ),
-        role_selectors=True,
+def answer(selector: str, count: int, **over: object) -> dict[str, object]:
+    return {
+        "selector": selector,
+        "count": count,
+        "sample": [],
+        "text_chars": 0,
+        "element": element() if count else None,
+        "since_call_ms": 40,
+        **over,
+    }
+
+
+class FakeSession:
+    """A session that answers one page call with what the page would have."""
+
+    def __init__(self, answers: list[dict[str, object]], counts: dict[str, int]):
+        self.answers = answers
+        self.counts = counts
+        self.scripts: list[str] = []
+        self.counted: list[str] = []
+        self.driver = SimpleNamespace(supports_role_selector=True)
+
+    def evaluate_document(self, script: str) -> list[dict[str, object]]:
+        self.scripts.append(script)
+        return self.answers
+
+    def verified_candidates(
+        self, proposals: list[str], accepted: set[int]
+    ) -> list[str]:
+        from llm_browser import explore
+
+        return explore.verified_candidates(self, proposals, accepted)
+
+    def count_of(self, selector: str) -> int:
+        self.counted.append(selector)
+        return self.counts.get(selector, 0)
+
+
+def test_a_batch_is_one_page_call_whatever_it_asks_for() -> None:
+    """The whole point: three targets cost one evaluation, not three waits."""
+    session = FakeSession(
+        [answer(".card", 3), answer("#search", 1), answer(".gone", 0)],
+        counts={'[data-testid="mission"]': 3},
     )
 
-    assert proposed == [
-        '[data-testid="mission-card"]',
-        '[aria-label="Open mission"]',
-        'role=link[name="Open mission"]',
-        "#mission",
-        'a[href^="/missions/"]',
-        ".css-1x2y3z",
+    results = explore_many(
+        session,
+        [
+            ExploreTarget(selector=".card"),
+            ExploreTarget(selector="#search", intent=Intent.FILL),
+            ExploreTarget(selector=".gone"),
+        ],
+    )
+
+    assert len(session.scripts) == 1
+    assert [result.count for result in results] == [3, 1, 0]
+    # Answers come back in the order asked, so a caller can zip them with its
+    # own targets.
+    assert [result.verdict for result in results] == [
+        Verdict.OK,
+        Verdict.OK,
+        Verdict.MISSING,
     ]
+    assert results[0].candidates == ['[data-testid="mission"]']
+    assert results[0].since_navigation_ms == 900
+    assert results[0].since_call_ms == 40
+    assert results[0].stability is Stability.OTHER
+    assert results[2].first is None and results[2].candidates == []
 
 
-def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
-    """The id names the row; the match is what is inside it, so the candidate
-    has to descend — and `:is()` keeps the tail from adding specificity."""
-    proposed = candidate_selectors(
-        locators(testid_attribute="data-testing-id", testid="row", testid_depth=2),
-        role_selectors=True,
+def test_the_sample_and_its_empty_fields_come_back_per_target() -> None:
+    session = FakeSession(
+        [
+            answer(
+                ".row",
+                2,
+                sample=[
+                    {"title": "Alpha", "href": None},
+                    {"title": "Beta", "href": None},
+                ],
+                text_chars=11,
+            )
+        ],
+        counts={},
     )
 
-    assert proposed == ['[data-testing-id="row"] :is(a)']
-
-
-def test_a_test_id_on_the_match_itself_needs_no_scope() -> None:
-    proposed = candidate_selectors(
-        locators(testid_attribute="data-testid", testid="row", testid_depth=0),
-        role_selectors=True,
+    (result,) = explore_many(
+        session,
+        [ExploreTarget(selector=".row", extract={"title": "a", "href": "a@href"})],
     )
 
-    assert proposed == ['[data-testid="row"]']
+    assert [row["title"] for row in result.sample] == ["Alpha", "Beta"]
+    assert result.empty_fields == ["href"]
+    assert result.text_chars == 11
+    # The page reads the fields, so it is told the resolved spec.
+    spec = {"title": {"child_selector": "a", "attribute": "textContent"}}
+    assert json.dumps(spec)[1:-1] in session.scripts[0]
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("plain", '"plain"'),
-        # Unescaped, the quote ends the string and the rest is a syntax error
-        # or, worse, a selector for something else.
-        ('say "hi"', '"say \\"hi\\""'),
-        ("back\\slash", '"back\\\\slash"'),
-        ("two\nlines", '"two\\a lines"'),
-    ],
-)
-def test_an_attribute_value_is_escaped_as_a_css_string(
-    value: str, expected: str
-) -> None:
-    assert css_quoted(value) == expected
+def test_a_timeout_is_a_page_with_none_of_them_on_it() -> None:
+    """The wait is the batch's: when it runs out every target is a count of
+    zero rather than an exception, the same answer `explore` gives."""
+    session = FakeSession([answer(".a", 0), answer(".b", 0)], counts={})
 
-
-def test_only_the_best_hashed_class_is_proposed() -> None:
-    """A utility-class element carries eight of them; verifying each costs a
-    round trip and none of them outlives the next redeploy anyway."""
-    proposed = candidate_selectors(
-        locators(classes=["css-1x2y3z", "css-9a8b7c", "w-[42px]"]),
-        role_selectors=True,
+    results = explore_many(
+        session,
+        [ExploreTarget(selector=".a"), ExploreTarget(selector=".b")],
+        timeout_ms=50,
     )
 
-    assert proposed == [".css-1x2y3z"]
+    assert [result.count for result in results] == [0, 0]
+    assert all(result.verdict is Verdict.MISSING for result in results)
+    assert session.counted == []
 
 
-def test_a_class_is_escaped_before_it_becomes_a_selector() -> None:
-    """`.w-[42px]` unescaped is a syntax error, not a candidate."""
-    proposed = candidate_selectors(locators(classes=["w-[42px]"]), role_selectors=True)
+def test_a_selector_the_page_cannot_parse_is_named() -> None:
+    """A typo is the author's, and silently reporting zero matches hides it."""
+    session = FakeSession([answer("a[href", 0, invalid=True)], counts={})
 
-    assert proposed == [r".w-\[42px\]"]
-
-
-def test_a_driver_that_cannot_parse_role_is_not_offered_one() -> None:
-    """`role=` is Playwright's own syntax; elsewhere it is a syntax error in
-    the flow the author writes next."""
-    offers = locators(role="link", name="Open mission", id="mission")
-
-    assert candidate_selectors(offers, role_selectors=False) == ["#mission"]
+    with pytest.raises(ValueError, match=r"a\[href"):
+        explore_many(session, [ExploreTarget(selector="a[href")])
 
 
-def test_a_generated_id_is_not_proposed() -> None:
-    assert (
-        candidate_selectors(locators(id="react-select-2-input"), role_selectors=True)
-        == []
-    )
+def test_no_targets_is_no_page_call() -> None:
+    session = FakeSession([], counts={})
 
-
-@pytest.mark.parametrize(
-    ("value", "generated"),
-    [
-        ("searchInput", False),
-        ("mw-content-text", False),
-        ("react-select-2-input", True),
-        ("46150879", True),
-        ("a" * 41, True),
-    ],
-)
-def test_which_ids_read_as_generated(value: str, generated: bool) -> None:
-    assert generated_id(value) is generated
-
-
-@pytest.mark.parametrize(
-    ("href", "expected"),
-    [
-        # The page is the number; the section is what is left.
-        ("/missions/senior-eng-4821", "/missions/"),
-        ("/item?id=46150879", "/item"),
-        # Nothing to generalize: the prefix would be the link itself.
-        ("/learn/thinking-in-react", None),
-        ("https://iana.org/domains/example", None),
-        # The query is the page; the path is the section.
-        ("login?goto=news", "login"),
-        ("?p=2", None),
-        ("/", None),
-        ("", None),
-        ("/2026/", None),
-    ],
-)
-def test_the_href_prefix_is_the_section_not_the_page(
-    href: str, expected: str | None
-) -> None:
-    assert href_prefix(href) == expected
-
-
-def test_a_read_wants_a_candidate_that_matches_every_row() -> None:
-    """`.card` finding all 30 rows is the selector to write for a `read`; one
-    that finds a single row is not a replacement for the list."""
-    assert accepted_counts(Intent.READ, 30) == {30}
-    assert accepted_counts(Intent.READ, 1) == {1}
-    assert accepted_counts(Intent.CLICK, 30) == {1}
+    assert explore_many(session, []) == []
+    assert session.scripts == []

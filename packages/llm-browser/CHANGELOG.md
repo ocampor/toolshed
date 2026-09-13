@@ -32,6 +32,29 @@
   non-zero unless the verdict is `ok`. Each sampled field is cut to
   `--sample-chars` (200). A repeated `--extract NAME=` is a `UsageError` naming
   the field, not a silent last-wins.
+- `BrowserSession.explore_many(targets, sample=3, sample_chars=200,
+  timeout_ms=3000)`: one `ExploreResult` per `ExploreTarget`
+  (`{selector, intent, extract}`), in the order asked, from a single page call.
+  The wait is the batch's — it ends when the first target appears — and
+  candidates are still verified from Python, at most three counts per target.
+- `explore_many` selectors are CSS; one the page cannot parse raises a
+  `ValueError` naming it rather than reading as a count of zero.
+- `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list of
+  targets, exiting non-zero unless every verdict is `ok`. Exactly one of
+  `--selector` and `--targets` is required.
+- `BrowserSession.survey(max_items=60)`: what a page is made of, in one page
+  call and without clicking or scrolling — `landmarks` (named elements, deduped
+  by selector, test id > aria > id > role), `link_shapes` (hrefs grouped by the
+  section they point at, with the `a[href^=…]` for the family), `repeats` (the
+  cards, rows and items a page is built of, with their nested controls) and
+  `hydration` (`since_navigation_ms`, `readyState`). Every list is capped by
+  construction.
+- `llm-browser survey [--max-items]`: the same as JSON.
+- `BrowserSession.evaluate_document(script)`: a page-wide script run against
+  `<html>`, the evaluate path every driver awaits.
+- `docs/API.md` "A page's worth of selectors in one call" and "Surveying before
+  exploring"; `docs/FLOW_PATTERNS.md` "Before writing a step" now opens with the
+  two-call recipe — survey, then `explore --targets`.
 
 ### Fixed
 

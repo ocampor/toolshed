@@ -140,6 +140,28 @@ TESTID_ATTRIBUTES = ("data-testid", "data-testing-id")
 # them scrolls the target into view first.
 EXPLORE_NON_BLOCKING = ("offscreen",)
 
+EXPLORE_ELEMENT_PLACEHOLDER = "EXPLORE_ELEMENT_JS"
+EXPLORE_BATCH_PLACEHOLDER = "EXPLORE_BATCH_JSON"
+# How often the batch wait looks again, in the page rather than over the wire.
+EXPLORE_MANY_POLL_MS = 100
+
+# --- Survey ---
+
+SURVEY_LIMITS_PLACEHOLDER = "SURVEY_LIMITS_JSON"
+# How many named elements a survey reports. Enough to see what a page is made
+# of, few enough to read in one go.
+SURVEY_MAX_ITEMS = 60
+SURVEY_MAX_LINK_SHAPES = 15
+SURVEY_MAX_REPEATS = 10
+SURVEY_TEXT_MAX_CHARS = 60
+# What the page hands over before any ranking or grouping is applied. The
+# output is capped again after it, so these only bound the transfer.
+SURVEY_MAX_RAW_LANDMARKS = 400
+SURVEY_MAX_RAW_REPEATS = 200
+SURVEY_MAX_HREFS = 500
+# Three of a kind is a pattern; two is a pair.
+SURVEY_MIN_SIBLINGS = 3
+
 # What counts as an element a click means something to, when no `onclick` and
 # no `cursor: pointer` says so.
 INTERACTIVE_TAGS = (
