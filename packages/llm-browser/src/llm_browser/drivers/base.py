@@ -56,6 +56,9 @@ class Driver(ABC):
 
     name: ClassVar[str]
     supports_reconnect: ClassVar[bool] = False
+    # `role=button[name="Go"]` is Playwright's own selector syntax; everywhere
+    # else it reaches `querySelectorAll` as a syntax error.
+    supports_role_selector: ClassVar[bool] = False
 
     # --- Lifecycle ---
 

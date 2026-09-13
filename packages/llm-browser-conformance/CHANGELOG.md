@@ -10,6 +10,9 @@ Tracks `llm-browser` 0.14.0.
 - `explore a button` scenario on `explore-actionability.html`: a button under a
   sticky banner and a disabled one, for the verdict, `why_not` and `covered_by`
   a `count` cannot answer.
+- `explore a click cost` scenario on the same page: below the fold, a label
+  and its own checkbox, a `<fieldset>`-disabled input, a box of no size and a
+  card that swallows a dismiss button.
 
 ## 0.5.0 — 2026-09-13
 

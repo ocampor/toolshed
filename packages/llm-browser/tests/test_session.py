@@ -341,40 +341,49 @@ def test_a_read_drops_a_candidate_that_finds_one_row_of_many(
     assert session.explore(".row").candidates == []
 
 
-def test_only_three_candidates_are_kept(exploring_session: ExploringSession) -> None:
-    session = exploring_session(
-        ONE_ROW,
-        locators={
-            "testid_attribute": "data-testid",
-            "testid": "buy",
-            "aria_label": "Buy",
-            "role": "link",
-            "name": "Buy",
-            "id": "buy-now",
-        },
-    )
+ALL_THE_NAMES: dict[str, object] = {
+    "testid_attribute": "data-testid",
+    "testid": "buy",
+    "aria_label": "Buy",
+    "role": "link",
+    "name": "Buy",
+    "id": "buy-now",
+}
 
-    assert session.explore(".row").candidates == [
+
+def test_only_the_best_three_candidates_are_verified(
+    exploring_session: ExploringSession,
+) -> None:
+    """The fourth proposal is never counted: `explore` is sold as a bounded
+    number of round trips, and the element's own id is its fourth-best name."""
+    session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
+
+    result = session.explore(".row")
+
+    best_three = [
         '[data-testid="buy"]',
         '[aria-label="Buy"]',
         'role=link[name="Buy"]',
     ]
+    assert result.candidates == best_three
+    # `#buy-now` is proposed and never counted: three round trips, not four.
+    counted = [call.args[0] for call in session.driver.count.call_args_list]
+    assert [selector for selector in counted if selector != ".row"] == best_three
 
 
-def test_a_candidate_no_driver_can_parse_is_not_one(
+def test_a_driver_that_cannot_parse_role_is_never_offered_one(
     exploring_session: ExploringSession,
 ) -> None:
-    session = exploring_session(ONE_ROW, locators={"role": "button", "name": "Go"})
-    resolve = session.driver.resolve.side_effect
+    """Under nodriver `role=…` reaches `querySelectorAll` as a syntax error,
+    so it is not a selector to hand the author."""
+    session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
+    session.driver.supports_role_selector = False
 
-    def refuse_the_role_engine(page: object, selector: str) -> object:
-        if selector.startswith("role="):
-            raise ValueError("unknown engine: role")
-        return resolve(page, selector)
-
-    session.driver.resolve.side_effect = refuse_the_role_engine
-
-    assert session.explore(".row").candidates == []
+    assert session.explore(".row").candidates == [
+        '[data-testid="buy"]',
+        '[aria-label="Buy"]',
+        "#buy-now",
+    ]
 
 
 def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(

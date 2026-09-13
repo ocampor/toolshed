@@ -617,7 +617,10 @@ class BrowserSession:
         intent: Intent = Intent.READ,
         sample_chars: int = EXPLORE_SAMPLE_CHARS,
     ) -> ExploreResult:
-        """Count and sample what ``selector`` matches, without touching it.
+        """Count and sample what ``selector`` matches.
+
+        Never clicks; scrolls an offscreen match into view so the hit test has
+        an answer, which is what the click path does before it clicks.
 
         For writing a step against a page you have not read yet: how many
         elements the selector really finds, what the first ``sample`` of them
@@ -662,7 +665,12 @@ class BrowserSession:
             since_navigation_ms=found.since_navigation_ms if found else None,
             since_call_ms=since_call_ms,
             candidates=self.verified_candidates(
-                candidate_selectors(found.locators) if found else [],
+                candidate_selectors(
+                    found.locators,
+                    role_selectors=self.driver.supports_role_selector,
+                )
+                if found
+                else [],
                 accepted_counts(intent, count),
             ),
             stability=stability,
@@ -678,29 +686,31 @@ class BrowserSession:
     def verified_candidates(
         self, proposals: list[str], accepted: Collection[int]
     ) -> list[str]:
-        """The proposals whose own count is one ``accepted`` here, at most
-        ``EXPLORE_MAX_CANDIDATES`` of them — one count each.
+        """The proposals whose own count is one ``accepted`` here.
+
+        Only the best ``EXPLORE_MAX_CANDIDATES`` proposals are checked — one
+        count each, so ``explore`` costs a bounded number of round trips
+        however many things the element could be called.
 
         A unique match *is* the first match: every proposal was built from
         something read off it (or off the row carrying it).
         """
-        kept: list[str] = []
-        for candidate in proposals:
-            if len(kept) == EXPLORE_MAX_CANDIDATES:
-                break
-            if self.count_of(candidate) in accepted:
-                kept.append(candidate)
-        return kept
+        checked = proposals[:EXPLORE_MAX_CANDIDATES]
+        return [
+            candidate for candidate in checked if self.count_of(candidate) in accepted
+        ]
 
     def count_of(self, selector: str) -> int:
-        """How many elements a proposed selector matches; ``-1`` when a driver
-        cannot even parse it — ``role=`` off the Playwright family — so it is
-        not a candidate rather than an error."""
-        try:
-            locator = resolve_selector(self.driver, self.get_page(), selector)
-            return self.driver.count(locator)
-        except Exception:
-            return -1
+        """How many elements a proposed selector matches.
+
+        Every proposal is syntax the driver parses — ``candidate_selectors``
+        escapes what it interpolates and withholds ``role=`` from drivers that
+        do not take it — so a raised error here is a dead session or a closed
+        page, and belongs to the caller.
+        """
+        return self.driver.count(
+            resolve_selector(self.driver, self.get_page(), selector)
+        )
 
     def dom(
         self,

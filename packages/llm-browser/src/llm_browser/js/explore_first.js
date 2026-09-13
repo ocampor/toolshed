@@ -15,18 +15,22 @@ async (el) => {
   const since_navigation_ms = Math.round(performance.now());
 
   // `in_viewport` is what was true before this function touched anything.
+  // Inclusive: an element flush against an edge is in view, not off it.
   const start = el.getBoundingClientRect();
+  const boxless = start.width === 0 || start.height === 0;
   const in_viewport =
-    start.bottom > 0 &&
-    start.right > 0 &&
-    start.top < innerHeight &&
-    start.left < innerWidth;
+    start.bottom >= 0 &&
+    start.right >= 0 &&
+    start.top <= innerHeight &&
+    start.left <= innerWidth;
 
   // Exploring may scroll. The hit-test only answers inside the viewport, and
   // scrolling first is what every driver does before it clicks, so this asks
   // the question the click would ask. Nothing with no box to scroll to.
-  const boxless = start.width === 0 || start.height === 0;
-  if (!in_viewport && !boxless) el.scrollIntoView({ block: "center" });
+  // `instant`: a page with `scroll-behavior: smooth` would still be animating
+  // when the two rects below are read, and report the element as `moving`.
+  if (!in_viewport && !boxless)
+    el.scrollIntoView({ block: "center", behavior: "instant" });
 
   // Two reads a beat apart: an element still sliding into place is one a click
   // would land beside, and a single rect cannot tell.
@@ -61,14 +65,17 @@ async (el) => {
   const pointer_events = style.pointerEvents !== "none";
 
   // A label and the control it labels are one target: clicking either drives
-  // the same thing, so neither covers the other.
-  const labels = (a, b) => a.tagName === "LABEL" && a.control === b;
-  const at = sizeless
-    ? null
-    : document.elementFromPoint(
-        rect.left + rect.width / 2,
-        rect.top + rect.height / 2,
-      );
+  // the same thing, so neither covers the other. `closest` because the hit
+  // test lands on the innermost node -- the span inside the label, usually.
+  const labels = (a, b) => a.closest?.("label")?.control === b;
+  // `elementFromPoint` answers null outside the viewport, which reads as
+  // "nothing over it" rather than "not asked": `hit_tested` says which.
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const probeable =
+    !sizeless && x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight;
+  const at = probeable ? document.elementFromPoint(x, y) : null;
+  const hit_tested = at !== null;
   // An ancestor at the centre means the point fell in a gap in the element's
   // own box -- a line-box gap, a wrapper around its children -- not that
   // something is painted over it. A real cover is never an ancestor.
@@ -96,7 +103,8 @@ async (el) => {
   if (!visible) why_not.push("hidden");
   if (!enabled) why_not.push("disabled");
   if (covered_by) why_not.push("covered");
-  if (!in_viewport) why_not.push("offscreen");
+  // A box of no size is nowhere, not off-screen: `hidden` is the whole story.
+  if (!in_viewport && !boxless) why_not.push("offscreen");
   if (!stable) why_not.push("moving");
   if (!pointer_events) why_not.push("no-pointer-events");
   if (!interactive) why_not.push("not-interactive");
@@ -107,7 +115,10 @@ async (el) => {
     .slice(0, limits.max_nested_controls)
     .map((child) => ({
       tag: child.tagName.toLowerCase(),
-      text: squeeze(child.innerText || child.value || child.textContent, limits.nested_text_max),
+      text: squeeze(
+        child.innerText || child.value || child.textContent,
+        limits.nested_text_max,
+      ),
     }));
 
   // Raw material for the caller's selector rules, which own what counts as a
@@ -139,6 +150,7 @@ async (el) => {
       enabled,
       in_viewport,
       covered_by,
+      hit_tested,
       stable,
       pointer_events,
       why_not,

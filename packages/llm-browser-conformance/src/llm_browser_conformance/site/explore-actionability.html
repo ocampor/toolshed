@@ -4,12 +4,15 @@
 <style>
   body { margin: 0; font: 16px/1.4 system-ui; }
   .banner {
-    position: fixed; top: 0; left: 0; right: 0; height: 120px;
+    position: fixed; top: 0; left: 0; right: 0; height: 40px;
+    box-sizing: border-box;
     background: #222; color: #fff; padding: 8px 12px;
   }
-  /* Enough that only the first button's centre falls under the banner. */
-  main { padding-top: 100px; }
-  button { display: block; margin: 18px 12px; }
+  /* The arithmetic the `covered` scenario rests on: the first button's box is
+     [18, 42) -- its 18px margin collapses through the unpadded `main` -- so
+     its centre (y = 30) is under the banner's [0, 40) and the next button's
+     (y = 72) is not. */
+  button { display: block; margin: 18px 12px; height: 24px; }
   .hack { position: relative; display: inline-block; margin: 18px 12px; }
   .over {
     position: absolute; inset: 0; width: 100%; height: 100%;

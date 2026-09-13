@@ -149,6 +149,11 @@ def is_function_literal(script: str) -> bool:
     return FUNCTION_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
+def is_async_literal(script: str) -> bool:
+    """Whether ``script`` is a function whose result has to be awaited."""
+    return ASYNC_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
+
+
 def key_triplet(key: str) -> tuple[str, str, int]:
     """DOM `key`, DOM `code` and the Windows virtual-key code CDP needs.
 
@@ -451,7 +456,7 @@ class NodriverDriver(Driver):
         el = await self.resolve_now(loc)
         if el is None:
             return None
-        if ASYNC_LITERAL.match(script):
+        if is_async_literal(script):
             return await apply_awaiting(el, script)
         return await el.apply(script)
 
@@ -811,16 +816,21 @@ async def apply_awaiting(element: Any, script: str) -> Any:
     remote = await element.tab.send(
         cdp.dom.resolve_node(backend_node_id=element.backend_node_id)
     )
-    value, exception = await element.tab.send(
-        cdp.runtime.call_function_on(
-            script,
-            object_id=remote.object_id,
-            arguments=[cdp.runtime.CallArgument(object_id=remote.object_id)],
-            return_by_value=True,
-            user_gesture=True,
-            await_promise=True,
+    try:
+        value, exception = await element.tab.send(
+            cdp.runtime.call_function_on(
+                script,
+                object_id=remote.object_id,
+                arguments=[cdp.runtime.CallArgument(object_id=remote.object_id)],
+                return_by_value=True,
+                user_gesture=True,
+                await_promise=True,
+            )
         )
-    )
+    finally:
+        # The handle outlives the call and keeps the node alive in the page's
+        # object group: one leak per `explore` for the life of the tab.
+        await element.tab.send(cdp.runtime.release_object(object_id=remote.object_id))
     if exception is not None:
         raise RuntimeError(f"evaluate failed: {exception}")
     return value.value if value else None

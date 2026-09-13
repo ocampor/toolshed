@@ -5,36 +5,28 @@
 ### Added
 
 - `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
-  intent=Intent.READ, sample_chars=200)`:
-  an `ExploreResult` with the selector's `count`, the first `sample` rows,
-  the `empty_fields` no sampled row filled in and their total `text_chars`.
-  Never clicks, and a selector that never arrives is a count of zero.
-  Costs `sample x (fields + 1)` per-element reads, independent of `count`.
-- `explore` also answers "is this the element, and would a click land on it":
-  `first` (tag, text, role, aria-label, name, href, visible, enabled,
-  in-viewport, `covered_by`, `stable`, pointer-events, `nested_controls`, the
-  `why_not` list and the `clickable` computed from it), `since_navigation_ms`
-  and `since_call_ms`, up to three sturdier `candidates`, the selector's
-  `stability`, and a `verdict` of `ok` / `ambiguous` / `missing` /
-  `not_actionable` against an `intent` of `read` (default), `click`, `fill` or
-  `wait`. One page evaluation, two rects 100 ms apart, still never a click.
-  - `clickable` ignores `offscreen`: every driver scrolls before it clicks.
-  - `covered_by` is what is painted over the match: never a descendant, never
-    an ancestor showing through a gap in the match's own box, and never the
-    control a `label` labels.
-  - `enabled` reads `:disabled`, so a control the `<fieldset>` around it
-    disabled is disabled.
-  - A match outside the viewport is scrolled to the middle of it and measured
-    again before the hit-test — exploring may scroll, as a click would. One
-    with no box is `hidden` and is not hit-tested at all.
-  - Candidate values are escaped as CSS strings, and a test id found on an
-    ancestor scopes down to the match (`[data-testid="row"] :is(a)`).
-  - `candidates` rank `data-testid` (on the match or an ancestor within three
-    levels) > aria label or role+name > an ungenerated id > a link's section
-    (`a[href^=…]`) > a hashed class, each checked to match that element alone —
-    or, under `intent=read`, the same number of rows the selector found.
-  - `nested_controls` names the `button`/`a`/`input` inside the match that a
-    loose click lands on instead.
+  intent=Intent.READ, sample_chars=200)`: an `ExploreResult` with the
+  selector's `count`, the first `sample` rows, the `empty_fields` no sampled
+  row filled in and their total `text_chars`.
+- `explore` never clicks, and a selector that never arrives is a count of zero.
+- `explore` may scroll: a match outside the viewport is scrolled to the middle
+  of it before the hit test, as the click path does.
+- `explore` costs `sample x (fields + 1)` per-element reads, one page
+  evaluation and at most three candidate counts, all independent of `count`.
+- `ExploreResult.first`: tag, text, role, aria-label, name, href, `visible`,
+  `enabled`, `in_viewport`, `covered_by`, `hit_tested`, `stable`,
+  `pointer_events`, `nested_controls`, `why_not` and the `clickable` computed
+  from it.
+- `ExploreResult.since_navigation_ms` and `since_call_ms`: how long the match
+  took off the page's own clock, and off this call.
+- `ExploreResult.candidates`: up to three sturdier selectors, one per kind and
+  each checked to match that element alone — or, under `intent=read`, the same
+  number of rows the selector found.
+- `ExploreResult.stability` rates the selector that was explored;
+  `ExploreResult.verdict` is `ok` / `ambiguous` / `missing` / `not_actionable`
+  against an `intent` of `read` (default), `click`, `fill` or `wait`.
+- `docs/API.md` "Exploring before writing a step": what every field answers,
+  the candidate ranking and the rules behind `covered_by` and `clickable`.
 - `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
   [--intent read|click|fill|wait] [--sample-chars]`: the same as JSON, exiting
   non-zero unless the verdict is `ok`. Each sampled field is cut to

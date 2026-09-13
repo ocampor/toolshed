@@ -477,7 +477,9 @@ class FirstMatch(BaseModel):
     """The first match as a click would find it.
 
     Each name in ``why_not`` is one reason a click would miss — see
-    ``docs/API.md`` for the list.
+    ``docs/API.md`` for the list. ``hit_tested`` is false when the centre was
+    not a point the page could be asked about, so ``covered_by`` of ``None``
+    means "not asked" rather than "nothing over it".
     """
 
     tag: str
@@ -490,6 +492,7 @@ class FirstMatch(BaseModel):
     enabled: bool
     in_viewport: bool
     covered_by: Covering | None = None
+    hit_tested: bool = True
     stable: bool
     pointer_events: bool
     why_not: list[str] = Field(default_factory=list)

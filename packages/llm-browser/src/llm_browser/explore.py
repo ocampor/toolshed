@@ -140,25 +140,33 @@ def scoped_testid(locators: Locators) -> str:
     return f"{attribute} :is({locators.tag})"
 
 
-def candidate_selectors(locators: Locators) -> list[str]:
-    """Sturdier selectors for the first match, best first.
+def candidate_selectors(locators: Locators, *, role_selectors: bool) -> list[str]:
+    """Sturdier selectors for the first match, best first — one per kind.
 
     A test id survives a redesign; an aria label survives a restyle; an id
     survives both unless it was generated; a link's section outlives the page
     it points at; a hashed class outlives nothing but the markup around it.
+    One proposal per kind, so an element carrying eight hashed classes still
+    offers the caller three verifiable candidates rather than three classes.
     Nothing here is checked to match — that is the caller's count.
+
+    ``role_selectors`` is the driver's: ``role=…`` is Playwright's own syntax,
+    and a candidate an author cannot run under their driver is not one.
     """
     proposals: list[str] = []
     if locators.testid and locators.testid_attribute:
         proposals.append(scoped_testid(locators))
     if locators.aria_label:
         proposals.append(f"[aria-label={css_quoted(locators.aria_label)}]")
-    if locators.role and locators.name:
+    if role_selectors and locators.role and locators.name:
         proposals.append(f"role={locators.role}[name={css_quoted(locators.name)}]")
     if locators.id and not generated_id(locators.id):
         proposals.append(f"#{escaped_id(locators.id)}")
     prefix = href_prefix(locators.href) if locators.href else None
     if prefix:
         proposals.append(f"a[href^={css_quoted(prefix)}]")
-    proposals += [f".{token}" for token in locators.classes if hashed_class(token)]
+    hashed = [token for token in locators.classes if hashed_class(token)]
+    # Escaped: a Tailwind bracket class (`w-[42px]`) reads as hashed and is
+    # not a selector until its brackets are.
+    proposals += [f".{escaped_id(token)}" for token in hashed[:1]]
     return proposals

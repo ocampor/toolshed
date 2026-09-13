@@ -53,6 +53,7 @@ CLICKABLE_FIRST: dict[str, object] = {
     "enabled": True,
     "in_viewport": True,
     "covered_by": None,
+    "hit_tested": True,
     "stable": True,
     "pointer_events": True,
     "why_not": [],
@@ -102,6 +103,7 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
 
         counts = matches or {}
         driver = MagicMock(spec=Driver)
+        driver.supports_role_selector = True
         driver.resolve.side_effect = lambda page, selector: selector
         driver.count.side_effect = lambda locator: counts.get(locator, len(rows))
         driver.evaluate.return_value = {

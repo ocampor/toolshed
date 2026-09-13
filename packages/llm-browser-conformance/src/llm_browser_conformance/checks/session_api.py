@@ -143,8 +143,13 @@ def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
     assert buried.first is not None and buried.first.why_not == ["covered"], buried
     assert buried.first.covered_by is not None, buried
     assert buried.first.covered_by.tag == "div", buried
-    # Built from the element's own attribute, checked to match only it.
-    assert buried.candidates == ['[data-testid="buy"]'], buried
+    # Every proposal the button offers, best first, each checked to match it
+    # and nothing else -- `role=` included, which Playwright resolves natively.
+    assert buried.candidates == [
+        '[data-testid="buy"]',
+        'role=button[name="Buy now"]',
+        "#buried",
+    ], buried
     assert buried.stability is Stability.ID, buried
 
     off = ctx.session.explore("#off", intent=Intent.CLICK)
@@ -167,12 +172,6 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     checkbox, and a card that swallows a dismiss button says so."""
     ctx.visit("explore-actionability.html")
 
-    below = ctx.session.explore("#below", intent=Intent.CLICK)
-    assert below.first is not None and below.first.why_not == ["offscreen"], below
-    assert below.first.clickable and below.verdict is Verdict.OK, below
-    # Exploring scrolled it into view to hit-test it, and found nothing over it.
-    assert below.first.covered_by is None, below
-
     # `disabled` on the fieldset, nothing on the input: only `:disabled` sees it.
     in_fieldset = ctx.session.explore("#in-fieldset", intent=Intent.FILL)
     assert in_fieldset.first is not None, in_fieldset
@@ -183,7 +182,8 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     sizeless = ctx.session.explore("#sizeless", intent=Intent.CLICK)
     assert sizeless.first is not None and not sizeless.first.visible, sizeless
     assert sizeless.first.why_not == ["hidden"], sizeless
-    # No box to hit-test: the element at the centre of nothing is not a cover.
+    # No box to hit-test: `covered_by` is "not asked", not "nothing over it".
+    assert not sizeless.first.hit_tested, sizeless
     assert sizeless.first.covered_by is None, sizeless
 
     tick = ctx.session.explore("#tick", intent=Intent.CLICK)
@@ -201,6 +201,14 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     assert len(card.candidates) <= 3, card
     assert card.since_navigation_ms is not None, card
     assert card.since_call_ms is not None, card
+
+    # Last, because the scroll it takes outlives the call: every match read
+    # after it would be `offscreen` too.
+    below = ctx.session.explore("#below", intent=Intent.CLICK)
+    assert below.first is not None and below.first.why_not == ["offscreen"], below
+    assert below.first.clickable and below.verdict is Verdict.OK, below
+    # Exploring scrolled it into view to hit-test it, and found nothing over it.
+    assert below.first.hit_tested and below.first.covered_by is None, below
 
 
 # --- tabs ---

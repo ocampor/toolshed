@@ -29,7 +29,8 @@ def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
             id="mission",
             href="/missions/senior-eng-4821",
             classes=["card", "css-1x2y3z"],
-        )
+        ),
+        role_selectors=True,
     )
 
     assert proposed == [
@@ -46,7 +47,8 @@ def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
     """The id names the row; the match is what is inside it, so the candidate
     has to descend — and `:is()` keeps the tail from adding specificity."""
     proposed = candidate_selectors(
-        locators(testid_attribute="data-testing-id", testid="row", testid_depth=2)
+        locators(testid_attribute="data-testing-id", testid="row", testid_depth=2),
+        role_selectors=True,
     )
 
     assert proposed == ['[data-testing-id="row"] :is(a)']
@@ -54,7 +56,8 @@ def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
 
 def test_a_test_id_on_the_match_itself_needs_no_scope() -> None:
     proposed = candidate_selectors(
-        locators(testid_attribute="data-testid", testid="row", testid_depth=0)
+        locators(testid_attribute="data-testid", testid="row", testid_depth=0),
+        role_selectors=True,
     )
 
     assert proposed == ['[data-testid="row"]']
@@ -77,8 +80,37 @@ def test_an_attribute_value_is_escaped_as_a_css_string(
     assert css_quoted(value) == expected
 
 
+def test_only_the_best_hashed_class_is_proposed() -> None:
+    """A utility-class element carries eight of them; verifying each costs a
+    round trip and none of them outlives the next redeploy anyway."""
+    proposed = candidate_selectors(
+        locators(classes=["css-1x2y3z", "css-9a8b7c", "w-[42px]"]),
+        role_selectors=True,
+    )
+
+    assert proposed == [".css-1x2y3z"]
+
+
+def test_a_class_is_escaped_before_it_becomes_a_selector() -> None:
+    """`.w-[42px]` unescaped is a syntax error, not a candidate."""
+    proposed = candidate_selectors(locators(classes=["w-[42px]"]), role_selectors=True)
+
+    assert proposed == [r".w-\[42px\]"]
+
+
+def test_a_driver_that_cannot_parse_role_is_not_offered_one() -> None:
+    """`role=` is Playwright's own syntax; elsewhere it is a syntax error in
+    the flow the author writes next."""
+    offers = locators(role="link", name="Open mission", id="mission")
+
+    assert candidate_selectors(offers, role_selectors=False) == ["#mission"]
+
+
 def test_a_generated_id_is_not_proposed() -> None:
-    assert candidate_selectors(locators(id="react-select-2-input")) == []
+    assert (
+        candidate_selectors(locators(id="react-select-2-input"), role_selectors=True)
+        == []
+    )
 
 
 @pytest.mark.parametrize(

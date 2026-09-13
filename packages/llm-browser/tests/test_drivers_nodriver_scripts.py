@@ -9,6 +9,7 @@ invoked and which gets evaluated.
 import asyncio
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -18,6 +19,8 @@ from llm_browser.drivers import nodriver as nodriver_driver
 from llm_browser.drivers.nodriver import (
     NodriverDriver,
     NodriverLocator,
+    apply_awaiting,
+    is_async_literal,
     is_function_literal,
 )
 
@@ -368,3 +371,102 @@ def test_a_script_behind_a_comment_is_still_a_function() -> None:
     """Not detecting it costs a silent `undefined`, not an error."""
     assert is_function_literal("// what this reads\nel => el.value")
     assert not is_function_literal("// a note\ndocument.readyState")
+
+
+# --- an async script is awaited, however it is written ---
+
+
+@pytest.mark.parametrize(
+    ("script", "asynchronous"),
+    [
+        ("async (el) => el.value", True),
+        ("// two rects a beat apart\nasync (el) => el.value", True),
+        ("//no space before the comment\n  async (el) => 1", True),
+        ("el => el.value", False),
+        ("// a note\nel => el.value", False),
+    ],
+)
+def test_an_async_literal_is_recognised_behind_its_comments(
+    script: str, asynchronous: bool
+) -> None:
+    """Missed, the promise comes back unresolved and serializes to `{}` — a
+    validation error pointing at the page rather than at the driver."""
+    assert is_async_literal(script) is asynchronous
+
+
+def test_a_commented_async_script_takes_the_awaiting_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    awaited: list[str] = []
+
+    async def record(element: Any, script: str) -> None:
+        awaited.append(script)
+
+    monkeypatch.setattr(nodriver_driver, "apply_awaiting", record)
+    element = RecordingElement()
+    script = "// two rects a beat apart\nasync (el) => el.value"
+
+    driver_with_loop().evaluate(NodriverLocator(tab=None, element=element), script)
+
+    assert awaited == [script]
+    assert element.scripts == []
+
+
+class RemoteTab:
+    """Answers the three CDP calls `apply_awaiting` makes, in order."""
+
+    def __init__(self, value: Any) -> None:
+        self.sent: list[Any] = []
+        self.replies: list[Any] = [
+            SimpleNamespace(object_id="obj-1"),
+            (SimpleNamespace(value=value), None),
+            None,
+        ]
+
+    async def send(self, command: Any) -> Any:
+        self.sent.append(command)
+        return self.replies.pop(0)
+
+
+class RemoteElement:
+    backend_node_id = 11
+
+    def __init__(self, tab: RemoteTab) -> None:
+        self.tab = tab
+
+
+@pytest.fixture
+def cdp_module(monkeypatch: pytest.MonkeyPatch) -> Any:
+    module = MagicMock()
+    monkeypatch.setattr(nodriver_driver, "load_optional_module", lambda *names: module)
+    return module
+
+
+def test_an_async_script_is_awaited_and_its_handle_released(cdp_module: Any) -> None:
+    """Without `awaitPromise` the value is an unresolved promise; without the
+    release, every `explore` leaks a node handle for the life of the tab."""
+    tab = RemoteTab({"first": {"tag": "a"}})
+    result = asyncio.new_event_loop().run_until_complete(
+        apply_awaiting(RemoteElement(tab), "async (el) => el.getBoundingClientRect()")
+    )
+
+    assert result == {"first": {"tag": "a"}}
+    assert cdp_module.cdp.runtime.call_function_on.call_args.kwargs["await_promise"]
+    assert cdp_module.cdp.runtime.release_object.call_args.kwargs == {
+        "object_id": "obj-1"
+    }
+    assert len(tab.sent) == 3
+
+
+def test_a_failed_async_script_still_releases_its_handle(cdp_module: Any) -> None:
+    tab = RemoteTab(None)
+    tab.replies[1] = (None, "ReferenceError: nope")
+
+    with pytest.raises(RuntimeError, match="evaluate failed"):
+        asyncio.new_event_loop().run_until_complete(
+            apply_awaiting(RemoteElement(tab), "async (el) => nope")
+        )
+
+    assert cdp_module.cdp.runtime.release_object.call_args.kwargs == {
+        "object_id": "obj-1"
+    }

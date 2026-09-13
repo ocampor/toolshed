@@ -11,7 +11,7 @@ and never touch these Protocols.
 """
 
 from pathlib import Path
-from typing import Any, Callable, Protocol, cast
+from typing import Any, Callable, ClassVar, Protocol, cast
 
 from llm_browser.behavior import (
     Behavior,
@@ -112,6 +112,8 @@ def _pw_loc(locator: Any) -> PwLocator:
 
 class PlaywrightDriverBase(Driver):
     """Interaction methods shared by every Playwright-compatible driver."""
+
+    supports_role_selector: ClassVar[bool] = True
 
     # --- Selector resolution ---
 

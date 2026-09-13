@@ -175,8 +175,8 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
  "empty_fields": ["url"], "text_chars": 1840,
  "first": {"tag": "a", "text": "First", "name": "First", "href": "/1",
            "visible": true, "enabled": true, "in_viewport": true,
-           "stable": true, "pointer_events": true, "clickable": true,
-           "why_not": []},
+           "hit_tested": true, "stable": true, "pointer_events": true,
+           "clickable": true, "why_not": []},
  "since_navigation_ms": 620, "since_call_ms": 41,
  "candidates": ["#first-result", "a[href^=\"/results/\"]"],
  "stability": "other", "verdict": "ok"}
@@ -186,19 +186,23 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
 |---|---|
 | `count` / `sample` / `empty_fields` / `text_chars` | How many matched, what the first `sample` of them say under `extract`, which fields no sampled row filled in (a wrong child selector, or a page still hydrating), and how much rendered text they carry |
 | `first` | The first match as a click would find it, `null` when nothing matched |
-| `first.why_not` | Empty exactly when `clickable`; one or more of `hidden`, `disabled`, `covered`, `offscreen`, `moving`, `no-pointer-events`, `not-interactive` |
-| `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre — never the element itself, a descendant, an ancestor (the centre fell in a gap in its own box) or the control a `label` labels |
+| `first.why_not` | Empty, or only `offscreen`, exactly when `clickable`; one or more of `hidden`, `disabled`, `covered`, `offscreen`, `moving`, `no-pointer-events`, `not-interactive` |
+| `first.enabled` | The platform's own `:disabled`, so a control the `<fieldset>` around it disabled reads as disabled |
+| `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre — never the element itself, a descendant, an ancestor (the centre fell in a gap in its own box) or the control a `label` around that point labels |
+| `first.hit_tested` | Whether the centre was a point the page could be asked about — `false` for a box of no size, or a centre still outside the viewport after the scroll, where `covered_by` is "not asked" rather than "nothing over it" |
 | `first.stable` | Whether two rects 100 ms apart are the same box — an element still animating is one a click lands beside |
 | `first.nested_controls` | Up to five `button`/`a`/`input` inside the match — what a loose click lands on instead of the match itself |
 | `since_navigation_ms` | How long the page had been up when the first match was read, off the page's own clock; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |
 | `since_call_ms` | The same wait measured from the call, which on a page that loaded seconds ago says only how fast this call was |
-| `candidates` | Up to three sturdier selectors — a `data-testid` on the match or an ancestor within three levels, an aria label or role+name, an ungenerated id, a link's section (`a[href^=…]`), a hashed class — each checked to match that element and nothing else (or, for `--intent read`, the same number of rows the explored selector found — a candidate matching one of thirty rows is not a selector for the list) |
+| `candidates` | Up to three sturdier selectors — a `data-testid` on the match or an ancestor within three levels, an aria label or role+name, an ungenerated id, a link's section (`a[href^=…]`), a hashed class — one per kind and the best three checked to match that element and nothing else (or, for `--intent read`, the same number of rows the explored selector found — a candidate matching one of thirty rows is not a selector for the list). Interpolated values are escaped; `role=…` is Playwright's own syntax and is proposed only to drivers that parse it |
 | `stability` | What the selector you wrote leans on: `data-testid`, `aria`, `id`, `class-hash`, `positional`, `other` |
 | `verdict` | `ok`, `ambiguous`, `missing` or `not_actionable`, against `--intent` (`read` default, or `click` / `fill` / `wait`) |
 
 `first.clickable` is `why_not` being empty bar `offscreen`, which every driver
-handles by scrolling before it clicks. Each sampled field is cut to
-`--sample-chars` (200); reading a row whole is what `read` is for.
+handles by scrolling before it clicks — and which `explore` does itself, so the
+hit test has an answer: exploring never clicks, but it may scroll the viewport.
+Each sampled field is cut to `--sample-chars` (200); reading a row whole is what
+`read` is for.
 
 The command exits non-zero unless the verdict is `ok`, and drops null fields
 from its JSON like every other one — `role`, `aria_label` and `covered_by` are
