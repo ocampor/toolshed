@@ -300,6 +300,35 @@ steps:
     assert (cwd / "out" / "run7.png").read_bytes() == PNG
 
 
+PASSTHROUGH_FLOW = """
+params: [x]
+steps:
+  - name: child
+    action: run-flow
+    flow:
+      params: [x]
+      steps:
+        - name: snap
+          action: dom
+          selector: "#main"
+          path: "out/{{ x }}.html"
+"""
+
+
+def test_a_run_flow_child_sees_a_param_only_the_parent_passed(cli_run: Any) -> None:
+    """A ``run-flow`` step with no ``data:`` still passes the parent's params
+    through; ``declared_paths`` must resolve the child with that passthrough
+    too, or a required child param it never binds crashes the run."""
+    outcome, cwd = cli_run(
+        FlowSuccess(step="child/snap", outputs={"child/snap": "<p>hi</p>"}),
+        "--data",
+        '{"x": "run7"}',
+        flow=PASSTHROUGH_FLOW,
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert (cwd / "out" / "run7.html").read_text() == "<p>hi</p>"
+
+
 # --- rows a schema declared as Decimal/date ---
 
 

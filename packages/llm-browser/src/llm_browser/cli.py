@@ -25,7 +25,7 @@ from llm_browser.constants import (
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flow_passes import unindexed
-from llm_browser.flows import load_flow_document, run_flow, with_flow_path
+from llm_browser.flows import child_data, load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
@@ -461,7 +461,9 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     for step in flow.steps:
         resolved = resolve_step(step, flow_data)
         if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
-            paths.update(declared_paths(resolved.flow, resolved.data))
+            paths.update(
+                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
+            )
             continue
         path = getattr(resolved, "path", None)
         if path:
