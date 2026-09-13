@@ -12,6 +12,11 @@
 - `Driver.read_property` reads every `EXTRACT_PROPERTIES` name per element
   (see `docs/DRIVERS.md` for the nodriver cost).
 
+### Changed
+
+- `dom` on a `body`/`html` selector now returns the element itself, wrapper
+  included (previously a single-child body was unwrapped to that child).
+
 ### Fixed
 
 - `dom` with `selector: body` (or `html`) raised
