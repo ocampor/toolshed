@@ -34,9 +34,7 @@ from llm_browser.survey_models import (
 if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
 
-# A build's numbering on the end of a class name: `card-0-2-3`, `title-17`,
-# `css-1x2y3z`. What is left is what the next deploy will still call it.
-CLASS_SUFFIX = re.compile(r"(?:-(?:\d+|[A-Za-z0-9]*\d[A-Za-z0-9]*))+$")
+CLASS_SUFFIX = re.compile(constants.CLASS_SUFFIX_PATTERN)
 
 # Hrefs that go nowhere a step could follow.
 DEAD_HREF_SCHEMES = ("#", "javascript:", "mailto:", "tel:")
@@ -164,7 +162,12 @@ def repeats_of(runs: list[SurveyRepeatRead], max_repeats: int) -> list[Repeat]:
             )
         else:
             seen.count += run.count
-    ranked = sorted(merged.values(), key=lambda run: -run.count)
+    # A run with a class of its own before a bigger one that has none: thirty
+    # story rows are what an author is after, the thirty-five `tbody > tr`
+    # around them are the table they sit in.
+    ranked = sorted(
+        merged.values(), key=lambda run: ("." not in run.selector, -run.count)
+    )
     return ranked[:max_repeats]
 
 

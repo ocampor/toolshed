@@ -88,6 +88,7 @@ def survey_js() -> str:
         "max_raw_repeats": constants.SURVEY_MAX_RAW_REPEATS,
         "max_hrefs": constants.SURVEY_MAX_HREFS,
         "min_siblings": constants.SURVEY_MIN_SIBLINGS,
+        "class_suffix": constants.CLASS_SUFFIX_PATTERN,
         "max_nested_controls": constants.EXPLORE_MAX_NESTED_CONTROLS,
         "nested_text_max": constants.EXPLORE_NESTED_TEXT_MAX_CHARS,
     }

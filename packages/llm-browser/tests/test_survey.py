@@ -89,15 +89,18 @@ def runs_of(parent: object) -> list[SurveyRepeatRead]:
     children = [child for child in parent if isinstance(child.tag, str)]
     if len(children) < constants.SURVEY_MIN_SIBLINGS:
         return []
+    kinds: dict[str, list[object]] = {}
+    for child in children:
+        stems = sorted(class_stem(token) for token in child.classes)
+        kinds.setdefault(f"{child.tag}|{' '.join(stems)}", []).append(child)
     runs = []
-    for tag in dict.fromkeys(child.tag for child in children):
-        members = [child for child in children if child.tag == tag]
+    for members in kinds.values():
         if len(members) < constants.SURVEY_MIN_SIBLINGS:
             continue
         classes = [list(member.classes) for member in members]
         runs.append(
             SurveyRepeatRead(
-                tag=tag,
+                tag=members[0].tag,
                 count=len(members),
                 classes=classes[0],
                 shared_classes=[
@@ -196,3 +199,21 @@ def test_a_class_stem_drops_the_build_numbering_only() -> None:
     assert class_stem("sc-card-0-2-1") == "sc-card"
     assert class_stem("css-1x2y3z") == "css"
     assert class_stem("mission-card") == "mission-card"
+
+
+def test_a_table_of_rows_is_its_story_rows_not_its_spacers() -> None:
+    """Grouping by tag alone reads a news table as ninety `tr`; the rows an
+    author is after are the ones that share a class."""
+    rows = "".join(
+        '<tr class="athing"><td>story</td></tr><tr class="spacer"></tr><tr></tr>'
+        for _ in range(4)
+    )
+    found = survey_page(f"<table><tbody>{rows}</tbody></table>")
+
+    # The classless run reads last: it is the table's own rows, not the ones
+    # an author came for.
+    assert [(run.selector, run.count) for run in found.repeats] == [
+        ("tr.athing", 4),
+        ("tr.spacer", 4),
+        ("tbody > tr", 4),
+    ]

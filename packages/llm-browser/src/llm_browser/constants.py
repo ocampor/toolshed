@@ -161,6 +161,11 @@ SURVEY_MAX_RAW_REPEATS = 200
 SURVEY_MAX_HREFS = 500
 # Three of a kind is a pattern; two is a pair.
 SURVEY_MIN_SIBLINGS = 3
+# A build's numbering on the end of a class name: `card-0-2-3`, `title-17`,
+# `css-1x2y3z`. What is left is what the next deploy will still call it. One
+# pattern, applied on both sides: the page groups siblings by it and
+# ``llm_browser.survey`` names the group by it.
+CLASS_SUFFIX_PATTERN = r"(?:-(?:\d+|[A-Za-z0-9]*\d[A-Za-z0-9]*))+$"
 
 # What counts as an element a click means something to, when no `onclick` and
 # no `cursor: pointer` says so.

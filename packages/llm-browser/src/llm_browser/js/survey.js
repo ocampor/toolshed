@@ -49,19 +49,33 @@
   // A repeat is a run of siblings of the same tag: the cards, rows and list
   // items a page is built of. Their classes come along so the caller can tell
   // one component's cards from the next one's.
+  // Grouped by tag *and* class, or a table of thirty story rows mixed in with
+  // its spacers reads as ninety-six `tr` rather than thirty of one kind. The
+  // build's numbering comes off first, so cards the bundler numbered
+  // one-by-one still group together.
+  const suffix = new RegExp(limits.class_suffix);
+  const kindOf = (node) =>
+    node.tagName.toLowerCase() +
+    "|" +
+    classesOf(node)
+      .map((token) => token.replace(suffix, "") || token)
+      .sort()
+      .join(" ");
+
   const repeats = [];
   for (const parent of doc.querySelectorAll("*")) {
     if (repeats.length >= limits.max_raw_repeats) break;
     const children = Array.from(parent.children);
     if (children.length < limits.min_siblings) continue;
-    const byTag = new Map();
+    const byKind = new Map();
     for (const child of children) {
-      const tag = child.tagName.toLowerCase();
-      if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push(child);
+      const kind = kindOf(child);
+      if (!byKind.has(kind)) byKind.set(kind, []);
+      byKind.get(kind).push(child);
     }
     const parentTestid = testidOf(parent);
-    for (const [tag, members] of byTag) {
+    for (const members of byKind.values()) {
+      const tag = members[0].tagName.toLowerCase();
       if (members.length < limits.min_siblings) continue;
       const shared = classesOf(members[0]).filter((token) =>
         members.every((member) => member.classList.contains(token)),

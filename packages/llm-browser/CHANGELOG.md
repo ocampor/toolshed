@@ -47,7 +47,8 @@
   call and without clicking or scrolling — `landmarks` (named elements, deduped
   by selector, test id > aria > id > role), `link_shapes` (hrefs grouped by the
   section they point at, with the `a[href^=…]` for the family), `repeats` (the
-  cards, rows and items a page is built of, with their nested controls) and
+  cards, rows and items a page is built of, grouped by tag and class stem and
+  ranked with named runs first, with their nested controls) and
   `hydration` (`since_navigation_ms`, `readyState`). Every list is capped by
   construction.
 - `llm-browser survey [--max-items]`: the same as JSON.
