@@ -47,10 +47,12 @@ fingerprint.
 `humanize` switches the session's humanization on or off for one step: `true`
 clicks on a curved path with a hover dwell, an in-box offset and a jittered
 press even when the session runs with humanization off, `false` takes the plain
-path even when it is on, and leaving it out follows the session. The rest of
-the session's behavior config stays — the rate limit (`min_gap_ms`) it was
-given, and a driver's own opt-out (camoufox leaves the mouse path to its native
-engine, so `humanize: true` does not stack ours on top).
+path even when it is on, and leaving it out follows the session. `true` only
+switches on what is still off: a knob the session tuned (a slower
+`type_char_delay`, a tighter `click_offset_ratio`) is left as it was, and so is
+a driver's own opt-out — camoufox leaves the mouse path to its native engine,
+so `humanize: true` does not stack ours on top. The rate limit (`min_gap_ms`)
+is never a humanization knob and survives either way.
 
 `humanize: false` turns off the mouse path and the humanized pacing, not an
 explicit `delay: [min, max]`: a pair you wrote is a cadence you asked for, so
