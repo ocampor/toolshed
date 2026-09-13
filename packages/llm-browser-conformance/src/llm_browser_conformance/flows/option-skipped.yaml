@@ -1,0 +1,25 @@
+# One step gated by `when:`, one optional step whose minimum cannot be met:
+# both leave their name and a reason in `FlowSuccess.skipped`.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - { element_exists: { selector: "#absent" } }
+    extract:
+      text:
+        attribute: textContent
+  - name: missing
+    action: read
+    selector: "#absent"
+    optional: true
+    min_rows: 1
+    extract:
+      text:
+        attribute: textContent
+  - name: present
+    action: read
+    selector: "#present"
+    extract:
+      text:
+        attribute: textContent

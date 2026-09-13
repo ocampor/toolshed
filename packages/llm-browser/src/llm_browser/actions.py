@@ -39,6 +39,8 @@ from llm_browser.results import (
     SkippedResult,
     TextResult,
     VoidResult,
+    is_step_failure,
+    is_timeout,
 )
 from llm_browser.session import BrowserSession
 
@@ -55,29 +57,6 @@ def get_registry() -> Registry[ActionHandler]:
 
 
 _registry = get_registry()
-
-
-def _is_timeout(exc: BaseException) -> bool:
-    """Treat any exception class named ``TimeoutError`` as a timeout.
-    Patchright (and similar driver libs) raise their own TimeoutError
-    that does NOT inherit from the Python builtin, so a bare
-    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
-    and the optional-swallow / ErrorResult contract was violated."""
-    if isinstance(exc, TimeoutError):
-        return True
-    return type(exc).__name__ == "TimeoutError"
-
-
-def is_step_failure(exc: BaseException) -> bool:
-    """Whether ``exc`` is a step result rather than a library bug.
-
-    Deliberately narrow. Anything a step can legitimately hit — a wait that
-    expired, a value the page did not provide, an output it cannot write — is
-    raised as one of these two at the place it happens. A ``TypeError`` or an
-    ``AttributeError`` reaching here is a bug in the library, and it belongs
-    in a traceback rather than in a truncated ``reason=`` on a skipped step.
-    """
-    return _is_timeout(exc) or isinstance(exc, ValueError)
 
 
 def execute_action(session: BrowserSession, step: Step) -> ActionResult:
@@ -101,7 +80,7 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
             selector=repr(selector) if selector is not None else None,
             hint=(
                 "element hidden, missing, or slow to render"
-                if _is_timeout(exc)
+                if is_timeout(exc)
                 else None
             ),
         )

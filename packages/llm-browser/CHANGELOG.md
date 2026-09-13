@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.15.0 — 2026-09-13
+
+### Added
+
+- `wait_for` states `enabled` and `disabled`: `Driver.is_enabled(locator)` reads
+  the `disabled` attribute and `aria-disabled="true"`, defaulted on the ABC so
+  no driver has to implement it.
+- `repeat: { over: <param>, as: <name> }` on any step, `run-flow` included: one
+  pass per item of a list param, binding `<name>` and `<name>_index`, keying
+  outputs `<step>[<index>]`.
+- `FlowSuccess.skipped` / `FlowError.skipped`: a `SkippedStep(name, reason)` per
+  step the run passed over — `when:` misses and `optional:` failures alike,
+  child skips merged into the parent's list.
+- `Driver.scroll_into_view(locator)`, defaulted via `evaluate`, and a plain
+  `click` that a driver reports as intercepted is retried once with the target
+  centred before failing with the original error plus a `dispatch: true` hint.
+
+### Changed
+
+- `is_timeout` (was `actions._is_timeout`) and `is_step_failure` moved to
+  `llm_browser.results`, so the input layer can classify a driver error without
+  importing the action registry.
+
 ## 0.14.0 — 2026-09-13
 
 ### Added

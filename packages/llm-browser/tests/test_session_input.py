@@ -375,3 +375,55 @@ def test_humanize_true_leaves_a_tuned_knob_alone(session: BrowserSession) -> Non
     assert forced.type_char_delay == tuned
     assert forced.mouse_move is True
     assert forced.pre_click_pause == Behavior.human().pre_click_pause
+
+
+# --- a click a sticky banner swallowed ---
+
+
+def clicks_that_fail(session: BrowserSession, failures: int) -> None:
+    """The driver's click raises ``failures`` times, then lands."""
+    remaining = iter(range(failures))
+
+    def click(element: Any) -> None:
+        if next(remaining, None) is not None:
+            raise TimeoutError("intercepts pointer events")
+
+    driver(session).click.side_effect = click
+
+
+def test_an_intercepted_click_is_centred_and_retried(
+    session: BrowserSession,
+) -> None:
+    clicks_that_fail(session, 1)
+
+    session.click("#btn")
+
+    driver(session).scroll_into_view.assert_called_once_with("element")
+    assert driver(session).click.call_count == 2
+
+
+def test_a_click_that_lands_never_scrolls(session: BrowserSession) -> None:
+    session.click("#btn")
+
+    driver(session).scroll_into_view.assert_not_called()
+
+
+def test_a_click_intercepted_twice_reports_the_first_error_and_the_hatch(
+    session: BrowserSession,
+) -> None:
+    clicks_that_fail(session, 2)
+
+    with pytest.raises(TimeoutError) as failure:
+        session.click("#btn")
+
+    assert "intercepts pointer events" in str(failure.value)
+    assert "dispatch: true" in str(failure.value)
+
+
+def test_a_library_bug_is_not_retried(session: BrowserSession) -> None:
+    driver(session).click.side_effect = AttributeError("bug")
+
+    with pytest.raises(AttributeError):
+        session.click("#btn")
+
+    driver(session).scroll_into_view.assert_not_called()

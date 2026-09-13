@@ -181,6 +181,29 @@ class Driver(ABC):
         """
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
+    def is_enabled(self, locator: Any) -> bool:
+        """Whether the first match would accept input right now.
+
+        One rule, both spellings a page uses to lock a control: the ``disabled``
+        attribute for native controls and ``aria-disabled="true"`` for the
+        div-and-role widgets that cannot carry it. Anything else — a class, a
+        pointer-events rule, a listener that returns early — is invisible here
+        and always was.
+        """
+        return (
+            self.get_attribute(locator, "disabled") is None
+            and self.get_attribute(locator, "aria-disabled") != "true"
+        )
+
+    def scroll_into_view(self, locator: Any) -> None:
+        """Bring the first match to the middle of the viewport.
+
+        Centring rather than the browser's minimal scroll: the caller is here
+        because a fixed header or footer swallowed a click, and only the middle
+        is clear of both.
+        """
+        self.evaluate(locator, "(el) => el.scrollIntoView({block: 'center'})")
+
     @abstractmethod
     def is_visible(self, locator: Any) -> bool:
         """Whether the first match is rendered right now; ``False`` for a miss.

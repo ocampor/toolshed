@@ -123,6 +123,17 @@ def redact_replaces_the_secret_everywhere_it_would_have_escaped(ctx: Context) ->
     assert REDACTED in hint.error
 
 
+def skipped_names_every_step_the_run_passed_over(ctx: Context) -> None:
+    """Both kinds of skip, in the order the run made them: a `when:` that did
+    not hold and an `optional:` step whose minimum went unmet. Without this
+    list a miss is indistinguishable from a step that ran."""
+    success = succeeded(run(ctx, "option-steps.html", "option-skipped"))
+    assert list(success.outputs) == ["present"]
+    assert [step.name for step in success.skipped] == ["gated", "missing"]
+    assert success.skipped[0].reason == "when condition not satisfied"
+    assert "Expected" in success.skipped[1].reason
+
+
 def from_step_starts_the_flow_at_a_later_step(ctx: Context) -> None:
     whole = succeeded(run(ctx, "result-rows.html", "result-from-step"))
     assert set(whole.outputs) == {"panel", "rows"}
@@ -170,6 +181,12 @@ SCENARIOS = [
         Section.RESULTS,
         redact_replaces_the_secret_everywhere_it_would_have_escaped,
         covers=frozenset({"api:redact"}),
+    ),
+    Scenario(
+        "skipped steps",
+        Section.RESULTS,
+        skipped_names_every_step_the_run_passed_over,
+        covers=frozenset({"api:skipped"}),
     ),
     Scenario(
         "from_step",

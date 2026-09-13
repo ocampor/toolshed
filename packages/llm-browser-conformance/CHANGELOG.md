@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0 — 2026-09-13
+
+Tracks `llm-browser` 0.15.0.
+
+### Added
+
+- `wait enabled`, `wait aria-disabled` and `fill waits for enabled` scenarios on
+  `site/unlock-input.html`: an input and an `aria-disabled` button that unlock
+  after the checkbox, claiming `field:wait_for.state`.
+- `repeat a step` and `repeat a sub-flow` scenarios on `site/repeat-list.html`,
+  claiming `option:repeat`.
+- `skipped steps` scenario: `flows/option-skipped.yaml` runs a `when:` miss and
+  an `optional:` miss, claiming the new `api:skipped` key.
+- `sticky bands` scenario: `site/sticky-bands.html` covers the top and bottom of
+  the viewport, recording per driver whether a plain click reaches the middle.
+
 ## 0.6.0 — 2026-09-13
 
 Tracks `llm-browser` 0.14.0.

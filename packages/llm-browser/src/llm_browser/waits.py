@@ -51,11 +51,23 @@ def is_hidden(driver: Driver, locator: Any) -> bool:
     return not is_visible(driver, locator)
 
 
+def is_enabled(driver: Driver, locator: Any) -> bool:
+    """Attached first: an element that is not there yet is neither enabled nor
+    disabled, and asking a driver about a missing node is what raises."""
+    return is_attached(driver, locator) and driver.is_enabled(driver.first(locator))
+
+
+def is_disabled(driver: Driver, locator: Any) -> bool:
+    return is_attached(driver, locator) and not driver.is_enabled(driver.first(locator))
+
+
 STATE_PREDICATES: dict[WaitState, StatePredicate] = {
     "attached": is_attached,
     "detached": is_detached,
     "visible": is_visible,
     "hidden": is_hidden,
+    "enabled": is_enabled,
+    "disabled": is_disabled,
 }
 
 

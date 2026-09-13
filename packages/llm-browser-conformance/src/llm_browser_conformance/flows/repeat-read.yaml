@@ -1,0 +1,11 @@
+# One `read` step, once per id in `ids`: each pass keys its own output.
+params:
+  - ids
+steps:
+  - name: row
+    action: read
+    selector: "#{{ id }}"
+    repeat: { over: ids, as: id }
+    extract:
+      text:
+        attribute: textContent

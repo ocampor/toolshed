@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
 from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS
+from llm_browser.results import is_step_failure, is_timeout
 from llm_browser.scripts import select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
 
@@ -110,7 +111,40 @@ def click_element(
             session.get_page(), element, behavior, session.behavior_runtime
         )
     else:
+        click_or_centre_and_retry(session, element)
+
+
+DISPATCH_HINT = "still intercepted after scrolling it into view; try dispatch: true"
+
+
+def click_or_centre_and_retry(session: "BrowserSession", element: Any) -> None:
+    """A click a fixed header or footer swallowed is worth one more try.
+
+    Drivers scroll a target just far enough to be in view, which is exactly
+    where a sticky banner sits; centring it moves it clear. The second failure
+    is reported as the first one plus the escape hatch, because the original
+    error is what says *why* the click never landed.
+    """
+    intercepted = failed_click(session, element)
+    if intercepted is None:
+        return
+    session.driver.scroll_into_view(element)
+    if failed_click(session, element) is None:
+        return
+    failure = TimeoutError if is_timeout(intercepted) else ValueError
+    raise failure(f"{intercepted}; {DISPATCH_HINT}") from intercepted
+
+
+def failed_click(session: "BrowserSession", element: Any) -> Exception | None:
+    """The step failure the click raised, or ``None`` if it landed. A library
+    bug is not a step failure and still propagates."""
+    try:
         session.driver.click(element)
+    except Exception as exc:
+        if not is_step_failure(exc):
+            raise
+        return exc
+    return None
 
 
 def fill(

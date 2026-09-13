@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Unlocked input</title>
+<label><input type="checkbox" id="agree"> I agree</label>
+<input type="text" id="field" disabled>
+<button id="submit" aria-disabled="true">Submit</button>
+<div id="result"></div>
+<script>
+  // The gap between the click and the unlock is the whole point: a `fill`
+  // that does not wait for `enabled` reaches a control that still refuses it.
+  const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+  document.getElementById("agree").addEventListener("change", () => {
+    setTimeout(() => {
+      document.getElementById("field").removeAttribute("disabled");
+      document.getElementById("submit").setAttribute("aria-disabled", "false");
+    }, delay);
+  });
+  document.getElementById("field").addEventListener("input", (e) => {
+    document.getElementById("result").textContent = e.target.value;
+  });
+</script>
