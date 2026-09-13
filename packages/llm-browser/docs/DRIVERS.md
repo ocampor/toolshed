@@ -83,6 +83,7 @@ because CDP exposes no equivalent:
 | `input_value` | JS read of `.value` | CDP has no live-property accessor; `attrs["value"]` is the HTML attribute and diverges after typing. |
 | `set_checked` | JS read of `.checked` | Same — read before click avoids flipping an already-correct checkbox. |
 | `wait_for_load` | Polls `document.readyState` every 250ms | nodriver 0.48 has no CDP lifecycle hook; `tab.wait()` is a plain sleep. |
+| `read` / `parse` extraction | JS read of `el.<property>` (`textContent`, `value`, …), one `Runtime.callFunctionOn` per property field per row | One rule for every property name, shared with `js/extract_rows.js`, so what a spec means cannot differ by backend. The cost is real: a 50-row × 3-property read is 150 Runtime calls where the old `textContent` shortcut made none. Attribute fields stay on `attrs` — no Runtime traffic. |
 | `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only `visible`/`hidden` pay this: `wait_for_element(..., state="attached")` goes through `count` → `tab.query_selector_all`, a bare `DOM.querySelectorAll` with no Runtime traffic and no `Target.getTargets` refresh. |
 | `evaluate` / `dom` | User-supplied JS | Intentional. |
 

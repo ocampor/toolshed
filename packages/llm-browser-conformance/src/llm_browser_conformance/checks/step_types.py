@@ -344,6 +344,22 @@ def a_read_step_fails_below_its_minimums(ctx: Context) -> None:
     assert "Expected \u22659 rows, got 3" in error_message(failure)
 
 
+def a_parse_step_fails_below_its_minimums(ctx: Context) -> None:
+    """`parse` is "like `read`", minimums included."""
+    schema = str(SCHEMAS_DIR / "table-row.yaml")
+    outputs = expect_success(
+        ctx, "parse-table.html", "parse-minimums", schema_path=schema
+    )
+    typed: Any = outputs["typed"]
+    assert len(typed) == 2
+
+    failure = expect_failure(
+        ctx, "parse-table.html", "parse-minimums-short", schema_path=schema
+    )
+    assert failure.step == "typed"
+    assert "Expected \u22659 rows, got 2" in error_message(failure)
+
+
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
@@ -431,6 +447,12 @@ SCENARIOS = [
         Section.STEPS,
         a_read_step_fails_below_its_minimums,
         covers=frozenset({"field:read.min_chars", "field:read.min_rows"}),
+    ),
+    Scenario(
+        "parse minimums",
+        Section.STEPS,
+        a_parse_step_fails_below_its_minimums,
+        covers=frozenset({"field:parse.min_chars", "field:parse.min_rows"}),
     ),
     Scenario(
         "read properties",

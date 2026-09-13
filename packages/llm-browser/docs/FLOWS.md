@@ -31,9 +31,15 @@ steps:
 | `type` | — | `value`, `delay` (ms, default 0) | Types character by character |
 | `select` | — | `value` | Picks a `<select>` option |
 | `check` | — | `checked` (bool, default true) | Sets checkbox state |
-| `pick` | — | `value` | Clicks the list item matching this text. `selector` must match the item container itself: a broader one (`main p`) matches hundreds of nodes, and past 200 the step is refused with `Expected list items, scanned N` instead of walked |
+| `pick` | — | `value` | Clicks the list item whose text matches `value` (see [below](#picking-from-a-list)) |
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
+
+#### Picking from a list
+
+`pick`'s `selector` must match the item container itself. A broader one
+(`main p`) matches hundreds of nodes, and past 200 the step is refused with
+`Expected list items, scanned N` rather than walked.
 
 ### Page actions (no selector)
 
@@ -96,7 +102,7 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `min_chars`, `min_rows`, `path` | Extract structured data as dicts |
-| `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
+| `parse` | `schema_path` | `min_chars`, `min_rows`, `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
 | `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `min_chars`, `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
 
 #### Minimums
@@ -108,9 +114,14 @@ in `capture`.
 
 | Option | On | Counts |
 |---|---|---|
-| `min_rows` | `read` | rows that yielded at least one non-null value |
-| `min_chars` | `read` | every extracted value of every row, joined |
+| `min_rows` | `read`, `parse` | rows that yielded at least one non-null value |
+| `min_chars` | `read`, `parse` | every extracted value of every row, joined |
 | `min_chars` | `dom` | the length of the sanitized snippet |
+
+A row with no values is not a row, so `min_rows` on a `read` needs an
+`extract`: without one every row comes back empty and no minimum above 0 could
+ever be met. Such a flow is rejected when it loads, with `min_rows requires
+extract`. `parse` always has its schema, so it has nothing to declare.
 
 `optional: true` downgrades an unmet minimum to a skipped step, the same as any
 other step failure — which is the way to say "read it if it rendered".

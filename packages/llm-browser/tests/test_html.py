@@ -264,8 +264,10 @@ def test_an_html_fragment_sanitizes_to_the_html_element() -> None:
     assert "Hi" in result
 
 
-def test_unparseable_html_is_a_step_failure() -> None:
-    """lxml raises a ParserError, which is a SyntaxError: it would escape
+@pytest.mark.parametrize("html", ["", "<body"])
+def test_unparseable_html_is_a_step_failure(html: str) -> None:
+    """lxml raises a ParserError (a SyntaxError) for one and hands back a
+    document with no `.body` for the other; both would escape
     `is_step_failure` and crash the run instead of failing the step."""
     with pytest.raises(ValueError, match="cannot parse HTML"):
-        sanitize_html_fragment("")
+        sanitize_html_fragment(html)

@@ -207,6 +207,17 @@ def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> Mag
     return locator
 
 
+def _read_step(**kwargs: object) -> ReadStep:
+    """A read whose `extract` is the one `min_rows` needs to be satisfiable."""
+    return ReadStep(
+        name="s",
+        action="read",
+        selector="tr",
+        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
 # --- read ---
 
 
@@ -239,7 +250,7 @@ def test_read_fails_when_the_page_answered_with_too_few_rows(
     from llm_browser.actions import ErrorResult
 
     _rows_locator(session, [{"name": "Alice"}, {"name": None}])
-    step = ReadStep(name="s", action="read", selector="tr", min_rows=2)
+    step = _read_step(min_rows=2)
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert result.message == "Expected \u22652 rows, got 1"
@@ -251,7 +262,7 @@ def test_read_fails_when_the_rows_hold_too_little_text(
     from llm_browser.actions import ErrorResult
 
     _rows_locator(session, [{"name": "Alice"}])
-    step = ReadStep(name="s", action="read", selector="tr", min_chars=20)
+    step = _read_step(min_chars=20)
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert result.message == "Expected \u226520 chars, got 5"
@@ -259,7 +270,7 @@ def test_read_fails_when_the_rows_hold_too_little_text(
 
 def test_a_minimum_a_row_meets_is_no_failure(session: BrowserSession) -> None:
     _rows_locator(session, [{"name": "Alice"}])
-    step = ReadStep(name="s", action="read", selector="tr", min_rows=1, min_chars=5)
+    step = _read_step(min_rows=1, min_chars=5)
     assert isinstance(execute_action(session, step), ParsedResult)
 
 
@@ -269,7 +280,7 @@ def test_an_optional_read_downgrades_an_unmet_minimum_to_a_skip(
     from llm_browser.actions import SkippedResult
 
     _rows_locator(session, [{"name": None}])
-    step = ReadStep(name="s", action="read", selector="tr", min_rows=1, optional=True)
+    step = _read_step(min_rows=1, optional=True)
     result = execute_action(session, step)
     assert isinstance(result, SkippedResult)
     assert result.reason == "ValueError: Expected \u22651 rows, got 0"
@@ -313,6 +324,38 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
     assert row.name == "foo"
     assert row.stars == 42
     assert isinstance(row.stars, int)
+
+
+def test_parse_fails_when_the_page_answered_with_too_few_rows(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """`parse` is "like `read`", minimums included."""
+    import yaml
+
+    from llm_browser.actions import ErrorResult
+    from llm_browser.models import ParseStep
+
+    schema = tmp_path / "repo.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Repo",
+                "fields": {"name": {"type": "str", "child_selector": "td"}},
+            }
+        )
+    )
+    _rows_locator(session, [{"name": "foo"}, {"name": None}])
+
+    step = ParseStep(
+        name="s",
+        action="parse",
+        selector="tr.row",
+        schema_path=str(schema),
+        min_rows=2,
+    )
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.message == "Expected \u22652 rows, got 1"
 
 
 def test_read_path_is_ignored_by_the_runner(

@@ -1,0 +1,9 @@
+# More rows than the page has: a hydration-empty parse, made loud.
+params:
+  - schema_path
+steps:
+  - name: typed
+    action: parse
+    selector: "tr.item"
+    schema_path: "{{ schema_path }}"
+    min_rows: 9

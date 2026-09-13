@@ -1,0 +1,10 @@
+# What the parse table holds, stated as the step's expectation.
+params:
+  - schema_path
+steps:
+  - name: typed
+    action: parse
+    selector: "tr.item"
+    schema_path: "{{ schema_path }}"
+    min_rows: 2
+    min_chars: 20

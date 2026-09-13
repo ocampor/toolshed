@@ -13,6 +13,7 @@ from llm_browser.models import (
     FlowError,
     FlowSuccess,
     GotoStep,
+    ParseStep,
     ReadStep,
     ScrollStep,
     SessionInfo,
@@ -215,8 +216,39 @@ def test_dom_step_sanitizes_at_low_unless_told_otherwise() -> None:
     assert step.level is SanitizeLevel.XHIGH
 
 
+def _read_with_extract(**kwargs: object) -> ReadStep:
+    return ReadStep(
+        name="s",
+        action="read",
+        selector="#x",
+        extract={"name": {"attribute": "textContent"}},
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
 def test_a_step_expects_nothing_until_a_minimum_is_declared() -> None:
     assert DomStep(name="s", action="dom", selector="#x").min_chars == 0
     read = ReadStep(name="s", action="read", selector="#x")
     assert (read.min_chars, read.min_rows) == (0, 0)
-    assert ReadStep(name="s", action="read", selector="#x", min_rows=3).min_rows == 3
+    assert _read_with_extract(min_rows=3).min_rows == 3
+
+
+def test_min_rows_without_extract_is_rejected_when_the_flow_loads() -> None:
+    """Every row of an extract-less read is empty, so no minimum could be met."""
+    with pytest.raises(ValidationError, match="min_rows requires extract"):
+        validate_step({"name": "s", "action": "read", "selector": "#x", "min_rows": 3})
+
+
+def test_parse_takes_the_same_minimums_as_read() -> None:
+    step = validate_step(
+        {
+            "name": "s",
+            "action": "parse",
+            "selector": "#x",
+            "schema_path": "repo.yaml",
+            "min_rows": 2,
+            "min_chars": 5,
+        }
+    )
+    assert isinstance(step, ParseStep)
+    assert (step.min_rows, step.min_chars) == (2, 5)

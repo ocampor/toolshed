@@ -144,7 +144,13 @@ def parse_fragment(html: str) -> HtmlElement:
         document: HtmlElement = document_fromstring(html, parser=_page_parser)
     except etree.ParserError as exc:
         raise ValueError(f"cannot parse HTML: {exc}") from exc
-    return document if match.group(1).lower() == "html" else document.body
+    if match.group(1).lower() == "html":
+        return document
+    # A truncated `<body` parses into a document with no body element at all.
+    body: HtmlElement | None = document.body
+    if body is None:
+        raise ValueError("cannot parse HTML: no body element")
+    return body
 
 
 def sanitize_html_fragment(

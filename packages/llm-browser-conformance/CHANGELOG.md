@@ -8,8 +8,9 @@ Tracks `llm-browser` 0.13.0.
 
 - `dom body` scenario: `site/body-fragment.html` plus `flows/dom-body.yaml` —
   the `<body>` outerHTML lxml refused, at two `level`s.
-- `dom min_chars` and `read minimums` scenarios, claiming `field:dom.level`,
-  `field:dom.min_chars`, `field:read.min_chars` and `field:read.min_rows`.
+- `dom min_chars`, `read minimums` and `parse minimums` scenarios, claiming
+  `field:dom.level`, `field:dom.min_chars`, `field:read.min_chars`,
+  `field:read.min_rows`, `field:parse.min_chars` and `field:parse.min_rows`.
 - `read properties` scenario: `innerText`, `tagName` and `childElementCount`
   read off the same rows as an `href` attribute.
 

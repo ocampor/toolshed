@@ -132,7 +132,19 @@ class ScreenshotStep(BaseStep):
     selector: Selector | None = None
 
 
-class ReadStep(SelectorStep):
+class RowStep(SelectorStep):
+    """A step that answers with rows.
+
+    A hydrating page answers one with nothing and looks successful; the
+    minimums say how much the step was expecting. Both count only rows that
+    yielded at least one non-null value.
+    """
+
+    min_chars: int = 0
+    min_rows: int = 0
+
+
+class ReadStep(RowStep):
     # ExtractField is a FieldInfo subclass (not a Pydantic model), so the
     # default schema generator can't introspect it. ``arbitrary_types_allowed``
     # tells Pydantic to skip schema generation and trust runtime-validated
@@ -141,12 +153,15 @@ class ReadStep(SelectorStep):
 
     action: Literal["read"]
     extract: dict[str, ExtractField] = {}
-    # A hydrating page answers a read with nothing and looks successful; these
-    # say how much the step was expecting.
-    min_chars: int = 0
-    min_rows: int = 0
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
+
+    @model_validator(mode="after")
+    def _min_rows_needs_extract(self) -> "ReadStep":
+        # With no `extract` every row is empty, so no row ever counts.
+        if self.min_rows > 0 and not self.extract:
+            raise ValueError("min_rows requires extract")
+        return self
 
     @field_validator("extract", mode="before")
     @classmethod
@@ -161,7 +176,7 @@ class ReadStep(SelectorStep):
         }
 
 
-class ParseStep(SelectorStep):
+class ParseStep(RowStep):
     """Parse rows into typed instances using a YAML schema.
 
     Like ``read``, but every row is validated against the schema and
