@@ -1,0 +1,6 @@
+# `humanize: true` forces the curved-path click on a session with no behavior.
+steps:
+  - name: click
+    action: click
+    selector: "#reveal"
+    humanize: true

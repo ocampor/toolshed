@@ -19,7 +19,7 @@ Two subclasses, split by driver:
 - :class:`CamoufoxBehaviorConfig` — camoufox's native C++ Bézier
   owns mouse humanization, so ``mouse_move`` and ``focus_drift``
   default to ``False`` here. Users can set them ``True`` explicitly.
-  Note that ``mouse_move_steps`` and ``click_offset_px`` are still
+  Note that ``mouse_move_steps`` and ``click_offset_ratio`` are still
   accepted by the schema (inherited from Behavior) but are a no-op
   on camoufox when ``mouse_move`` is False.
 
