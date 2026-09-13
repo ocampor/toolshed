@@ -15,8 +15,9 @@ values coerced by Pydantic::
     first = User.extract_one(session, "tr.row")     # User | None
 
 The YAML ``read`` action keeps using the same ``ExtractField`` underneath —
-``ReadStep.extract`` accepts raw ``{child_selector, attribute}`` dicts and
-coerces them through this class.
+``ReadStep.extract`` accepts either the compact ``"td.name@href"`` string or a
+raw ``{child_selector, attribute}`` mapping, both through
+``ExtractField.coerce``.
 """
 
 from collections.abc import Mapping
@@ -70,6 +71,24 @@ class ExtractField(FieldInfo):
             attribute=attribute or constants.DEFAULT_EXTRACT_ATTRIBUTE,
         )
 
+    @classmethod
+    def coerce(cls, spec: Any) -> "ExtractField":
+        """One field from however a flow wrote it: compact string, mapping, or
+        an already-built field. Anything else is a `ValueError`, so a flow that
+        writes a list or a number fails validation rather than the run."""
+        if isinstance(spec, ExtractField):
+            return spec
+        if isinstance(spec, str):
+            return cls.parse(spec)
+        if isinstance(spec, Mapping):
+            try:
+                return cls(**spec)
+            except TypeError as exc:
+                raise ValueError(f"invalid extract spec {spec!r}: {exc}") from exc
+        raise ValueError(
+            f"invalid extract spec {spec!r}: expected a string or a mapping"
+        )
+
 
 def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField]:
     """Turn ``{field: "child selector@attribute"}`` into extraction fields.
@@ -78,7 +97,7 @@ def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField
     """
     if spec is None:
         return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
-    return {name: ExtractField.parse(value) for name, value in spec.items()}
+    return {name: ExtractField.coerce(value) for name, value in spec.items()}
 
 
 class ParseBase(BaseModel):

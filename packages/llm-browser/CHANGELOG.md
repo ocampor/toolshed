@@ -30,6 +30,12 @@
   `ValueError` now, not an `AttributeError`.
 - `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
   row's own text.
+- `read`'s compact `extract` form (`"td.name@href"`, `""`) — documented in
+  `docs/FLOWS.md` but never implemented — raised `TypeError: ExtractField()
+  argument after ** must be a mapping, not str` as an unhandled traceback out
+  of `llm-browser validate`. `ExtractField.coerce` is now the one rule for the
+  string form, the mapping form and an already-built field; anything else is a
+  pydantic validation error.
 
 ## 0.12.0 — 2026-09-12
 

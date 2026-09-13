@@ -252,3 +252,35 @@ def test_parse_takes_the_same_minimums_as_read() -> None:
     )
     assert isinstance(step, ParseStep)
     assert (step.min_rows, step.min_chars) == (2, 5)
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("td.name@href", ("td.name", "href")),
+        ("", (None, "textContent")),
+        ("@href", (None, "href")),
+        ("td.name", ("td.name", "textContent")),
+        ({"child_selector": "td.name", "attribute": "href"}, ("td.name", "href")),
+    ],
+)
+def test_a_read_takes_the_compact_extract_form_docs_advertise(
+    spec: object, expected: tuple[str | None, str]
+) -> None:
+    step = validate_step(
+        {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+    )
+    assert isinstance(step, ReadStep)
+    field = step.extract["a"]
+    assert (field.child_selector, field.attribute) == expected
+
+
+@pytest.mark.parametrize("spec", [["td.name"], 5, None])
+def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
+    spec: object,
+) -> None:
+    """It used to escape as a `TypeError` traceback out of `llm-browser validate`."""
+    with pytest.raises(ValidationError, match="invalid extract spec"):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+        )

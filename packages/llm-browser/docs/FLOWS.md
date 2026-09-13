@@ -227,6 +227,7 @@ Skip a step unless every condition holds (AND'ed).
   extract:
     description: { child_selector: "td.desc", attribute: textContent }
     amount: { child_selector: "td.amount", attribute: textContent }
+    link: "td.desc a@href"          # compact form
 ```
 
 `attribute` is read as a DOM property when it is one of `textContent`

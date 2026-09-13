@@ -166,14 +166,11 @@ class ReadStep(RowStep):
     @field_validator("extract", mode="before")
     @classmethod
     def _coerce_extract(cls, v: Any) -> Any:
-        # YAML loads `extract` as a plain dict; coerce nested dicts into
-        # ExtractField.
+        # A flow writes each spec compactly ("td.name@href") or as a mapping;
+        # `ExtractField.coerce` is the one rule for both.
         if not isinstance(v, dict):
             return v
-        return {
-            k: spec if isinstance(spec, ExtractField) else ExtractField(**spec)
-            for k, spec in v.items()
-        }
+        return {k: ExtractField.coerce(spec) for k, spec in v.items()}
 
 
 class ParseStep(RowStep):
