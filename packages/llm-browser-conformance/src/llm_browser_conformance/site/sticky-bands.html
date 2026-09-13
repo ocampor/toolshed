@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sticky bands</title>
+<header id="header" style="position:fixed; top:0; left:0; right:0; height:45vh; z-index:5; background:#ddd">Header</header>
+<footer id="footer" style="position:fixed; bottom:0; left:0; right:0; height:45vh; z-index:5; background:#ddd">Footer</footer>
+<div style="height:3000px"></div>
+<button id="btn">Click me</button>
+<div style="height:3000px"></div>
+<div id="result" style="position:fixed; top:0; left:0; z-index:9">nothing</div>
+<script>
+const result = document.getElementById("result");
+for (const id of ["header", "footer"]) {
+  document.getElementById(id).addEventListener("click", () => {
+    result.textContent = id;
+  });
+}
+document.getElementById("btn").addEventListener("click", () => {
+  result.textContent = "clicked";
+});
+</script>

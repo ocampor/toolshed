@@ -2,7 +2,7 @@
 out) and stage three (run it). Neither stage touches the filesystem — every
 ``run-flow`` reference is inlined by :mod:`llm_browser.flow_pipeline` first."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 from llm_browser.behavior import Behavior, profile
@@ -10,9 +10,10 @@ from llm_browser.results import (
     ActionResult,
     BytesResult,
     ParsedResult,
+    SkippedResult,
     TextResult,
 )
-from llm_browser.constants import OUTPUT_ACTIONS
+from llm_browser.constants import OUTPUT_ACTIONS, WHEN_SKIP_REASON
 from llm_browser.flow_pipeline import parse_flow_yaml
 from llm_browser.models import (
     Flow,
@@ -22,6 +23,7 @@ from llm_browser.models import (
     FlowSuccess,
     RetryHint,
     RunFlowStep,
+    SkippedStep,
     Step,
     SubFlow,
 )
@@ -102,6 +104,7 @@ def run_flow(
         return FlowSuccess(
             step=result.step,
             outputs=redact_secrets(result.outputs, secrets),
+            skipped=redact_secrets(result.skipped, secrets),
             behavior=ran_as,
         )
     # `result.step` is qualified; its first segment is the top-level step
@@ -110,6 +113,7 @@ def run_flow(
         step=result.step,
         data=redact_secrets(result.data, secrets),
         outputs=redact_secrets(result.outputs, secrets),
+        skipped=redact_secrets(result.skipped, secrets),
         screenshot=result.screenshot,
         dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
@@ -154,6 +158,66 @@ def step_output(step: Step, result: ActionResult) -> object | None:
             return None
 
 
+def indexed(name: str, index: int | None) -> str:
+    """``name`` as one ``repeat`` pass keys it, so passes never collide."""
+    return name if index is None else f"{name}[{index}]"
+
+
+def repeat_passes(step: Step, data: FlowData) -> Iterator[tuple[int | None, FlowData]]:
+    """The data each pass of ``step`` runs against — one pass unless it repeats.
+
+    Each item is bound under ``repeat.bind``, with its position under
+    ``<bind>_index``, so a step can name either.
+    """
+    if step.repeat is None:
+        yield None, data
+        return
+    items = data.to_template_dict().get(step.repeat.over)
+    if not isinstance(items, list):
+        raise ValueError(
+            f"step {step.name!r} repeats over {step.repeat.over!r}, which is "
+            f"{'missing' if items is None else type(items).__name__}, not a list"
+        )
+    for index, item in enumerate(items):
+        yield (
+            index,
+            FlowData.model_validate(
+                {
+                    **data.model_dump(),
+                    step.repeat.bind: item,
+                    f"{step.repeat.bind}_index": index,
+                }
+            ),
+        )
+
+
+def record_outcome(
+    step: Step,
+    outcome: ActionResult | FlowSuccess,
+    index: int | None,
+    outputs: dict[str, object],
+    skipped: list[SkippedStep],
+) -> None:
+    """Fold one pass's result into the run's outputs and skip list."""
+    match outcome:
+        case FlowSuccess():
+            outputs.update({indexed(k, index): v for k, v in outcome.outputs.items()})
+            skipped.extend(
+                s.model_copy(update={"name": indexed(s.name, index)})
+                for s in outcome.skipped
+            )
+        case SkippedResult():
+            skipped.append(
+                SkippedStep(
+                    name=indexed(step.qualified_name, index), reason=outcome.reason
+                )
+            )
+        case _:
+            output = step_output(step, outcome)
+            if output is not None:
+                outputs[indexed(step.qualified_name, index)] = output
+
+
 def run_loaded_flow(
     session: BrowserSession,
     flow: Flow,
@@ -166,27 +230,26 @@ def run_loaded_flow(
     ``behavior`` defaults every step of this flow and its sub-flows."""
     flow_data = flow.validate_data(data)
     outputs: dict[str, object] = {}
+    skipped: list[SkippedStep] = []
     for step in select_steps(flow.steps, from_step):
-        outcome: ActionResult | FlowSuccess | FlowError = (
-            run_subflow(session, step, flow_data, behavior)
-            if isinstance(step, RunFlowStep)
-            else execute_step(session, step, flow_data, behavior)
-        )
-        match outcome:
-            case FlowError():
+        for index, pass_data in repeat_passes(step, flow_data):
+            outcome: ActionResult | FlowSuccess | FlowError = (
+                run_subflow(session, step, pass_data, behavior)
+                if isinstance(step, RunFlowStep)
+                else execute_step(session, step, pass_data, behavior)
+            )
+            if isinstance(outcome, FlowError):
                 # A sub-flow failure already carries the child's outputs;
                 # keep both sides, qualified names keep the keys distinct.
                 return outcome.model_copy(
-                    update={"outputs": {**outputs, **outcome.outputs}}
+                    update={
+                        "outputs": {**outputs, **outcome.outputs},
+                        "skipped": [*skipped, *outcome.skipped],
+                    }
                 )
-            case FlowSuccess():
-                outputs.update(outcome.outputs)
-            case _:
-                output = step_output(step, outcome)
-                if output is not None:
-                    outputs[step.qualified_name] = output
+            record_outcome(step, outcome, index, outputs, skipped)
     last_name = flow.steps[-1].name if flow.steps else "end"
-    return FlowSuccess(step=last_name, outputs=outputs)
+    return FlowSuccess(step=last_name, outputs=outputs, skipped=skipped)
 
 
 def run_subflow(
@@ -197,13 +260,29 @@ def run_subflow(
 ) -> FlowSuccess | FlowError:
     """A skipped step comes back as an empty success; a swallowed
     ``optional:`` failure comes back as a success carrying the child's
-    partial outputs, so the parent advances without losing that work."""
+    partial outputs, so the parent advances without losing that work. Either
+    way the step is named in ``skipped``, child skips included."""
     resolved = resolve_step(step, flow_data)
     if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
         raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
-        return FlowSuccess(step=resolved.name)
+        return FlowSuccess(
+            step=resolved.name,
+            skipped=[
+                SkippedStep(name=resolved.qualified_name, reason=WHEN_SKIP_REASON)
+            ],
+        )
     result = run_loaded_flow(session, resolved.flow, resolved.data, behavior=behavior)
     if isinstance(result, FlowError) and resolved.optional:
-        return FlowSuccess(step=resolved.name, outputs=result.outputs)
+        return FlowSuccess(
+            step=resolved.name,
+            outputs=result.outputs,
+            skipped=[
+                *result.skipped,
+                SkippedStep(
+                    name=resolved.qualified_name,
+                    reason=f"sub-flow failed at {result.step}",
+                ),
+            ],
+        )
     return result

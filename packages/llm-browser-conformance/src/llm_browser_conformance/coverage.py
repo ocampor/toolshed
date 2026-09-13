@@ -72,6 +72,7 @@ REQUIRED_API = (
     "sanitize.low",
     "sanitize.medium",
     "sanitize.xhigh",
+    "skipped",
     "templating.selector",
     "templating.value",
     "type.delay_jitter",

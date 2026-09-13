@@ -1,0 +1,23 @@
+# One step gated by `when:`, one optional step whose element never arrives:
+# both leave their name and a reason in `FlowSuccess.skipped`.
+steps:
+  - name: gated
+    action: read
+    selector: "#present"
+    when:
+      - { element_exists: { selector: "#absent" } }
+    extract:
+      text:
+        attribute: textContent
+  - name: missing
+    action: wait_for
+    selector: "#absent"
+    state: attached
+    timeout: 500
+    optional: true
+  - name: present
+    action: read
+    selector: "#present"
+    extract:
+      text:
+        attribute: textContent

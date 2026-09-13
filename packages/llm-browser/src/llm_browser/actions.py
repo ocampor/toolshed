@@ -13,7 +13,6 @@ from llm_browser.action_dispatch import (
     ActionHandler,
     execute_action,
     get_registry,
-    is_step_failure,
     step_behavior,
 )
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep
@@ -42,6 +41,7 @@ from llm_browser.results import (
     ParsedResult,
     TextResult,
     VoidResult,
+    is_step_failure,
 )
 from llm_browser.session import BrowserSession
 

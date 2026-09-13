@@ -133,6 +133,29 @@ def a_step_timeout_bounds_the_search(ctx: Context) -> None:
     assert took <= BUDGET_MS / 1000, f"failed after {took:.3f}s, budget {BUDGET_MS}ms"
 
 
+def repeat_runs_one_step_once_per_item(ctx: Context) -> None:
+    outputs = expect_success(
+        ctx, "repeat-list.html", "repeat-read", ids=["alpha", "beta", "gamma"]
+    )
+    assert [one_text(outputs, f"row[{n}]") for n in range(3)] == [
+        "first",
+        "second",
+        "third",
+    ]
+
+
+def repeat_indexes_a_sub_flows_outputs_too(ctx: Context) -> None:
+    """The child keys stay qualified *and* indexed, so two passes of the same
+    sub-flow cannot overwrite each other."""
+    outputs = expect_success(
+        ctx, "repeat-list.html", "repeat-subflow", ids=["alpha", "gamma"]
+    )
+    assert [one_text(outputs, f"each/row[{n}]") for n in range(2)] == [
+        "first",
+        "third",
+    ]
+
+
 # --- Templating and params ---
 
 
@@ -222,6 +245,18 @@ SCENARIOS = [
         Section.OPTIONS,
         a_step_timeout_bounds_the_search,
         covers=frozenset({"option:timeout"}),
+    ),
+    Scenario(
+        "repeat a step",
+        Section.OPTIONS,
+        repeat_runs_one_step_once_per_item,
+        covers=frozenset({"option:repeat"}),
+    ),
+    Scenario(
+        "repeat a sub-flow",
+        Section.OPTIONS,
+        repeat_indexes_a_sub_flows_outputs_too,
+        covers=frozenset({"field:run-flow.data", "field:run-flow.flow"}),
     ),
     Scenario(
         "templating",

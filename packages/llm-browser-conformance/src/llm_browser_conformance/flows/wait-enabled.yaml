@@ -1,0 +1,17 @@
+# The input unlocks some time after the checkbox; `state: enabled` is what
+# stands between the click and a fill the control would have refused.
+steps:
+  - { name: agree, action: check, selector: "#agree" }
+  - name: unlocked
+    action: wait_for
+    selector: "#field"
+    state: enabled
+    timeout: 8000
+    interval: 200
+  - { name: fill, action: fill, selector: "#field", value: "typed" }
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

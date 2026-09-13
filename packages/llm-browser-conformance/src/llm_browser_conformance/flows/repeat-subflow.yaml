@@ -1,0 +1,17 @@
+# The same repeat one level down: every child output keeps the pass index.
+params:
+  - ids
+steps:
+  - name: each
+    action: run-flow
+    repeat: { over: ids, as: id }
+    data: { id: "{{ id }}" }
+    flow:
+      params: [id]
+      steps:
+        - name: row
+          action: read
+          selector: "#{{ id }}"
+          extract:
+            text:
+              attribute: textContent
