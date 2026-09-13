@@ -256,7 +256,9 @@ SCENARIOS = [
         "repeat a sub-flow",
         Section.OPTIONS,
         repeat_indexes_a_sub_flows_outputs_too,
-        covers=frozenset({"field:run-flow.data", "field:run-flow.flow"}),
+        covers=frozenset(
+            {"option:repeat", "field:run-flow.data", "field:run-flow.flow"}
+        ),
     ),
     Scenario(
         "templating",
