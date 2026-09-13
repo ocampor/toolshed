@@ -99,7 +99,8 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
 - On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
-  before writing the `read`.
+  before writing the `read`. The run never raises that mistake — a child
+  selector matching nothing reads as `None` and the step still passes.
 
 ## Autocomplete (jQuery UI and friends)
 
