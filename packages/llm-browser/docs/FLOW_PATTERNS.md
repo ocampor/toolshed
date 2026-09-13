@@ -268,12 +268,13 @@ steps:
 - The record's id exists only after the click — it surfaces as the suffix of
   `[componentkey^='JobMatchRef_']` and inside the detail link's `href`. Read it back, never
   build it.
-- CSS equivalent of the click: `pick` with the card's exact title, over a selector matching the
-  card container itself. A broad one like `main p` matches hundreds of nodes, and past 200 the
-  step is refused with `Expected list items, scanned N`.
-- There is no `back` action. Click the site's own back control, or re-enter the list as a
-  `run-flow` step on the search flow — cheaper than a second `goto` on a site that counts
-  navigations.
+- No CSS equivalent of the click: `pick` needs a selector matching each card's own container,
+  and this list has none — it's a flat `<p>` run (see Pagination above). Aiming `pick` at
+  `main p` matches hundreds of nodes and past 200 the step is refused with
+  `Expected list items, scanned N`; the XPath click is the only option here.
+- There is no `back` action. Click the site's own back control, or page back within the same
+  tab — re-entering the list via a `run-flow` step re-runs that flow's own `goto`, so it costs
+  the same navigation, not less.
 
 ## SPA hydration
 
@@ -305,7 +306,8 @@ steps:
   announces.
 - A half-hydrated page answers a read with nav chrome, a skeleton or `Loading…`, and the step
   still succeeds. `min_chars` and `min_rows` turn that into a failure carrying the page in
-  `capture`; `min_rows` counts extracted rows, so it needs an `extract`.
+  `capture`; both count extracted output on `read` (see FLOWS.md's
+  [minimums table](FLOWS.md#minimums)), so both need an `extract`.
 - When the stub has the right shape but placeholder text, `wait_for` `state: stable` with
   `settle: 1000` on the container waits for the text to stop changing instead.
 
