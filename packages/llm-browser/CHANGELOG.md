@@ -4,17 +4,29 @@
 
 ### Added
 
-- `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000)`:
+- `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
+  intent=Intent.READ)`:
   an `ExploreResult` with the selector's `count`, the first `sample` rows,
   the `empty_fields` no sampled row filled in and their total `text_chars`.
   Never clicks, and a selector that never arrives is a count of zero.
   Costs `sample x (fields + 1)` per-element reads, independent of `count`.
-- `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]`:
-  the same as JSON, exiting non-zero when nothing matched. A repeated
-  `--extract NAME=` is a `UsageError` naming the field, not a silent last-wins.
+- `explore` also answers "is this the element, and would a click land on it":
+  `first` (tag, text, role, aria-label, name, href, visible, enabled,
+  in-viewport, `covered_by`, `stable`, pointer-events, `clickable` and the
+  `why_not` list behind it), `appeared_after_ms`, up to three sturdier
+  `candidates` checked to match that element and nothing else, the selector's
+  `stability`, and a `verdict` of `ok` / `ambiguous` / `missing` /
+  `not_actionable` against an `intent` of `read` (default), `click`, `fill` or
+  `wait`. One page evaluation, two rects 100 ms apart, still never a click.
+- `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
+  [--intent read|click|fill|wait]`: the same as JSON, exiting non-zero unless
+  the verdict is `ok`. A repeated `--extract NAME=` is a `UsageError` naming the
+  field, not a silent last-wins.
 
 ### Fixed
 
+- nodriver ran an `async` element script without `awaitPromise`, so the caller
+  got the unresolved promise (`{}`) and no error; the async path now awaits.
 - `Driver.read_field` of a child selector nothing matches answers `None` now:
   the Playwright family guards `read_property` / `get_attribute` by the count
   like `text_content` already did (no 30 s auto-wait ending in the backend's

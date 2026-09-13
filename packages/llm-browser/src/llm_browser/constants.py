@@ -120,6 +120,37 @@ DEFAULT_EXTRACT_FIELD = "text"
 # rows differ from each other, few enough to stay one round-trip per row.
 EXPLORE_SAMPLE_ROWS = 3
 
+EXPLORE_LIMITS_PLACEHOLDER = "EXPLORE_LIMITS_JSON"
+EXPLORE_TEXT_MAX_CHARS = 120
+EXPLORE_COVER_TEXT_MAX_CHARS = 60
+# Long enough for a transition or a reflow to show up in the second rect,
+# short enough to sit inside one `explore` without being felt.
+EXPLORE_STABLE_DELAY_MS = 100
+EXPLORE_MAX_CANDIDATES = 3
+
+# What counts as an element a click means something to, when no `onclick` and
+# no `cursor: pointer` says so.
+INTERACTIVE_TAGS = (
+    "a",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "label",
+    "summary",
+)
+# The role a `role=` selector matches when the element spells out none.
+IMPLICIT_ROLES = {"a": "link", "button": "button"}
+
+INTERACTIVE_ROLES = (
+    "button",
+    "link",
+    "tab",
+    "menuitem",
+    "checkbox",
+    "option",
+)
+
 # --- YAML schema types ---
 
 # The only names a schema `type:` string may use; see `schema_types.py`.

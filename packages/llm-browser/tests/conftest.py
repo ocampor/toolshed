@@ -40,6 +40,24 @@ def mock_session(tmp_path: Path) -> MagicMock:
 
 ExploringSession = Callable[..., BrowserSession]
 
+# A first match nothing is wrong with; a test states only what it changes.
+CLICKABLE_FIRST: dict[str, object] = {
+    "tag": "a",
+    "text": "Alpha",
+    "role": None,
+    "aria_label": None,
+    "name": "Alpha",
+    "href": "/alpha",
+    "visible": True,
+    "enabled": True,
+    "in_viewport": True,
+    "covered_by": None,
+    "stable": True,
+    "pointer_events": True,
+    "clickable": True,
+    "why_not": [],
+}
+
 
 @pytest.fixture
 def exploring_session(tmp_path: Path) -> ExploringSession:
@@ -47,11 +65,18 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
 
     Each row maps a child selector to what reading it returns, so a test
     states the page as the extract sees it; a selector no key names reads as
-    ``None``, and ``text`` is what every row's own element says.
+    ``None``, and ``text`` is what every row's own element says. ``first``
+    overrides the in-page read of the first match, ``candidates`` are what
+    that read proposes, and ``matches`` says how many elements a selector
+    other than the explored one finds.
     """
 
     def build(
-        rows: list[dict[str | None, str | None]], text: str = ""
+        rows: list[dict[str | None, str | None]],
+        text: str = "",
+        first: dict[str, object] | None = None,
+        candidates: list[str] | None = None,
+        matches: dict[str, int] | None = None,
     ) -> BrowserSession:
         def read(target: tuple[int, str | None], name: str) -> str | None:
             index, child_selector = target
@@ -59,8 +84,14 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
                 return rows[index].get(None, text)
             return rows[index].get(child_selector)
 
+        counts = matches or {}
         driver = MagicMock(spec=Driver)
-        driver.count.return_value = len(rows)
+        driver.resolve.side_effect = lambda page, selector: selector
+        driver.count.side_effect = lambda locator: counts.get(locator, len(rows))
+        driver.evaluate.return_value = {
+            "first": CLICKABLE_FIRST | (first or {}),
+            "candidates": candidates or [],
+        }
         driver.nth.side_effect = lambda locator, index: (index, None)
         driver.child.side_effect = lambda element, selector: (element[0], selector)
         driver.read_property.side_effect = read

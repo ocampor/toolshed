@@ -117,16 +117,18 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |
 | `session:evaluate` | iframe form |
-| `session:explore` | explore a list |
+| `session:explore` | explore a button, explore a list |
 | `session:fill` | dynamic controls enable, fill/type/check, revealed control is fillable |
 | `session:find` | find rejects ambiguity, dynamic loading, hidden input is readable |
 | `session:find_all` | pick by text, find all |
+| `session:first_match` | explore a button |
 | `session:frame` | iframe click, iframe form |
 | `session:get_page` | iframe form, new tab |
 | `session:goto` | wait attached |
 | `session:latest_tab` | latest tab |
 | `session:launch` | attach over cdp |
 | `session:launch_detached` | attach over cdp |
+| `session:matches_once` | explore a button |
 | `session:parse_elements` | overlay intercepts click, read attributes |
 | `session:pick` | pick by text |
 | `session:press` | press is trusted, tab order |
@@ -138,6 +140,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
+| `session:verified_candidates` | explore a button |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
 

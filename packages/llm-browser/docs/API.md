@@ -146,7 +146,7 @@ fresh.
 | `pick(selector, value)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
-| `explore(selector, extract=None, sample=3, timeout_ms=3000)` | Count and sample what a selector matches, without touching it — an `ExploreResult`, never a click |
+| `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
 | `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
@@ -160,20 +160,40 @@ fresh.
 
 ### Exploring before writing a step
 
-A `read` written against a selector you have not checked fails on the run, not
-at authoring time. `explore` answers the two questions first — how many
-elements the selector really matches, and what they say:
+A step written against a selector you have not checked fails on the run, not at
+authoring time. `explore` answers it first — how many elements the selector
+really matches, what they say, and whether the first of them is one a click or
+a fill would land on:
 
 ```bash
-llm-browser explore --selector ".result" --extract title=h3 --extract url="a@href"
+llm-browser explore --selector ".result" --extract title=h3 --extract url="a@href" --intent click
 ```
 
 ```json
 {"count": 24,
  "sample": [{"title": "First", "url": null}, {"title": "Second", "url": null}],
- "empty_fields": ["url"], "text_chars": 1840}
+ "empty_fields": ["url"], "text_chars": 1840,
+ "first": {"tag": "a", "text": "First", "name": "First", "href": "/1",
+           "visible": true, "enabled": true, "in_viewport": true,
+           "stable": true, "pointer_events": true, "clickable": true,
+           "why_not": []},
+ "appeared_after_ms": 41, "candidates": ["#first-result"],
+ "stability": "other", "verdict": "ok"}
 ```
 
-`empty_fields` names what no sampled row filled in — the wrong child selector,
-or a page still hydrating — and the command exits non-zero when `count` is 0.
-Nothing here is a flow step: it is for writing the step, not for running it.
+| Field | What it answers |
+|---|---|
+| `count` / `sample` / `empty_fields` / `text_chars` | How many matched, what the first `sample` of them say under `extract`, which fields no sampled row filled in (a wrong child selector, or a page still hydrating), and how much rendered text they carry |
+| `first` | The first match as a click would find it, `null` when nothing matched |
+| `first.why_not` | Empty exactly when `clickable`; one or more of `hidden`, `disabled`, `covered`, `offscreen`, `moving`, `no-pointer-events`, `not-interactive` |
+| `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre, when that is neither the element nor a descendant |
+| `first.stable` | Whether two rects 100 ms apart are the same box — an element still animating is one a click lands beside |
+| `appeared_after_ms` | How long the first match took to arrive; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |
+| `candidates` | Up to three sturdier selectors, each checked to match that element and nothing else |
+| `stability` | What the selector you wrote leans on: `data-testid`, `aria`, `id`, `class-hash`, `positional`, `other` |
+| `verdict` | `ok`, `ambiguous`, `missing` or `not_actionable`, against `--intent` (`read` default, or `click` / `fill` / `wait`) |
+
+The command exits non-zero unless the verdict is `ok`, and drops null fields
+from its JSON like every other one — `role`, `aria_label` and `covered_by` are
+absent above. Nothing here is a flow step: it is for writing the step, not for
+running it.

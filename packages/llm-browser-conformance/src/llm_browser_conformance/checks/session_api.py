@@ -22,6 +22,7 @@ from llm_browser.behavior import Behavior
 from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
 from llm_browser.html import SanitizeLevel
+from llm_browser.models import Intent, Stability, Verdict
 from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
 from llm_browser.session import BrowserSession
@@ -128,6 +129,37 @@ def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> Non
     missing = ctx.session.explore("#no-such-element", timeout_ms=MISSING_TIMEOUT_MS)
     assert missing.count == 0, missing
     assert missing.sample == [], missing
+    assert missing.verdict is Verdict.MISSING, missing
+    assert missing.first is None, missing
+
+
+def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
+    """The question `count` cannot answer: the selector is right, and the
+    click still lands on the banner sitting over it."""
+    ctx.visit("explore-actionability.html")
+
+    buried = ctx.session.explore("#buried", intent=Intent.CLICK)
+    assert buried.verdict is Verdict.NOT_ACTIONABLE, buried
+    assert buried.first is not None and buried.first.why_not == ["covered"], buried
+    assert buried.first.covered_by is not None, buried
+    assert buried.first.covered_by.tag == "div", buried
+    # Built from the element's own attribute, checked to match only it.
+    assert buried.candidates == ['[data-testid="buy"]'], buried
+    assert buried.stability is Stability.ID, buried
+
+    off = ctx.session.explore("#off", intent=Intent.CLICK)
+    assert off.first is not None and off.first.why_not == ["disabled"], off
+    assert off.verdict is Verdict.NOT_ACTIONABLE, off
+    # A disabled button is still a fine thing to wait for.
+    assert ctx.session.explore("#off", intent=Intent.WAIT).verdict is Verdict.OK, off
+
+    clear = ctx.session.explore("#clear", intent=Intent.CLICK)
+    assert clear.first is not None and clear.first.clickable, clear
+    assert clear.verdict is Verdict.OK, clear
+    assert clear.appeared_after_ms is not None, clear
+
+    both = ctx.session.explore("button[data-testid]", intent=Intent.CLICK)
+    assert both.count == 2 and both.verdict is Verdict.AMBIGUOUS, both
 
 
 # --- tabs ---
@@ -504,6 +536,19 @@ SCENARIOS = [
         Section.API,
         find_all_returns_what_find_refuses,
         covers=frozenset({"session:find_all"}),
+    ),
+    Scenario(
+        "explore a button",
+        Section.API,
+        explore_says_which_button_a_click_would_miss,
+        covers=frozenset(
+            {
+                "session:explore",
+                "session:first_match",
+                "session:verified_candidates",
+                "session:matches_once",
+            }
+        ),
     ),
     Scenario(
         "explore a list",

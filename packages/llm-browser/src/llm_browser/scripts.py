@@ -26,6 +26,24 @@ def extract_rows_js() -> str:
     )
 
 
+def explore_first_js() -> str:
+    """``async (el) => {first, candidates}`` — what one element is right now.
+
+    Every limit and vocabulary the page side applies is substituted in, so
+    ``FirstMatch.why_not`` and the JS agree on one list of names."""
+    limits = {
+        "text_max": constants.EXPLORE_TEXT_MAX_CHARS,
+        "cover_text_max": constants.EXPLORE_COVER_TEXT_MAX_CHARS,
+        "stable_delay_ms": constants.EXPLORE_STABLE_DELAY_MS,
+        "interactive_tags": list(constants.INTERACTIVE_TAGS),
+        "interactive_roles": list(constants.INTERACTIVE_ROLES),
+        "implicit_roles": constants.IMPLICIT_ROLES,
+    }
+    return load_script("explore_first").replace(
+        constants.EXPLORE_LIMITS_PLACEHOLDER, json.dumps(limits)
+    )
+
+
 def select_option_js(value: str) -> str:
     """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(

@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from llm_browser import constants
 from llm_browser.constants import EXTRACT_PROPERTIES
-from llm_browser.scripts import JS_DIR, extract_rows_js, load_script
+from llm_browser.scripts import JS_DIR, explore_first_js, extract_rows_js, load_script
 
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
@@ -201,3 +202,21 @@ def test_the_control_tag_script_resolves_a_label() -> None:
     source = select_control_tag_js()
     assert 'el.tagName === "LABEL"' in source
     assert "el.control" in source
+
+
+def test_explore_first_js_is_an_async_element_function() -> None:
+    """It has to be async: `stable` is two rects a beat apart, in one call."""
+    source = explore_first_js()
+    assert source.startswith("async (el) =>")
+    assert constants.EXPLORE_LIMITS_PLACEHOLDER not in source
+
+
+def test_explore_first_js_reads_every_limit_from_python() -> None:
+    """One source for the limits, so the page side and `FirstMatch` cannot
+    disagree about what counts as interactive or how long "still" is."""
+    source = explore_first_js()
+    assert f'"stable_delay_ms": {constants.EXPLORE_STABLE_DELAY_MS}' in source
+    assert f'"text_max": {constants.EXPLORE_TEXT_MAX_CHARS}' in source
+    assert f'"cover_text_max": {constants.EXPLORE_COVER_TEXT_MAX_CHARS}' in source
+    assert json.dumps(list(constants.INTERACTIVE_TAGS)) in source
+    assert json.dumps(list(constants.INTERACTIVE_ROLES)) in source

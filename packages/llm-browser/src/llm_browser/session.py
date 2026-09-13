@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Collection
 from pathlib import Path
 from typing import Any
@@ -22,16 +23,20 @@ from llm_browser.constants import (
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
+    EXPLORE_MAX_CANDIDATES,
     EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
+from llm_browser.explore import selector_stability, verdict_for
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
     ExploreResult,
+    FirstMatch,
+    Intent,
     PageProbe,
     SessionInfo,
     SessionResult,
@@ -40,10 +45,11 @@ from llm_browser.models import (
 from llm_browser.parse import ExtractField, parse_extract_spec, row_spec
 from llm_browser.results import BytesResult
 from llm_browser.state import STATE_FILENAME, SessionState
-from llm_browser.scripts import page_probe_js
+from llm_browser.scripts import explore_first_js, page_probe_js
 from llm_browser.selectors import (
     Selector,
     css_string,
+    describe_selector,
     expect_single,
     resolve_selector,
 )
@@ -597,19 +603,27 @@ class BrowserSession:
         extract: dict[str, ExtractField] | None = None,
         sample: int = EXPLORE_SAMPLE_ROWS,
         timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+        intent: Intent = Intent.READ,
     ) -> ExploreResult:
         """Count and sample what ``selector`` matches, without touching it.
 
         For writing a step against a page you have not read yet: how many
         elements the selector really finds, what the first ``sample`` of them
-        say under ``extract`` (the row's own text when it is omitted), and
-        which fields stayed empty. A selector that never arrives is a count of
-        zero, not a ``TimeoutError`` — "nothing here" is the answer.
+        say under ``extract`` (the row's own text when it is omitted), which
+        fields stayed empty, and — in ``first`` — whether a click or a fill
+        would actually land. ``verdict`` reads all of that against ``intent``.
+        A selector that never arrives is a count of zero, not a
+        ``TimeoutError`` — "nothing here" is the answer.
         """
+        stability = selector_stability(describe_selector(selector))
+        started = time.monotonic()
         try:
             locator = self.find_all(selector, timeout=timeout_ms)
         except TimeoutError:
-            return ExploreResult(count=0, sample=[], empty_fields=[], text_chars=0)
+            return ExploreResult(
+                count=0, sample=[], empty_fields=[], text_chars=0, stability=stability
+            )
+        appeared_after_ms = round((time.monotonic() - started) * 1000)
         count = self.driver.count(locator)
         spec = row_spec(extract or parse_extract_spec(None))
         # Only the sampled elements are read: `sample x (fields + 1)`
@@ -622,6 +636,7 @@ class BrowserSession:
             }
             for element in elements
         ]
+        first, proposals = self.first_match(locator) if count else (None, [])
         return ExploreResult(
             count=count,
             sample=rows,
@@ -629,7 +644,42 @@ class BrowserSession:
             text_chars=sum(
                 len(self.driver.read_property(el, "innerText") or "") for el in elements
             ),
+            first=first,
+            appeared_after_ms=appeared_after_ms,
+            candidates=self.verified_candidates(proposals),
+            stability=stability,
+            verdict=verdict_for(intent, count, first),
         )
+
+    def first_match(self, locator: Any) -> tuple[FirstMatch, list[str]]:
+        """The first match as a click would find it, plus selectors proposed
+        from its own attributes — one page evaluation for both."""
+        raw = self.driver.evaluate(self.driver.first(locator), explore_first_js())
+        return FirstMatch.model_validate(raw["first"]), list(raw["candidates"])
+
+    def verified_candidates(self, proposals: list[str]) -> list[str]:
+        """The proposals that match exactly one element, at most
+        ``EXPLORE_MAX_CANDIDATES`` of them — one count each.
+
+        A unique match *is* the first match: every proposal was built from an
+        attribute read off it.
+        """
+        kept: list[str] = []
+        for candidate in proposals:
+            if len(kept) == EXPLORE_MAX_CANDIDATES:
+                break
+            if self.matches_once(candidate):
+                kept.append(candidate)
+        return kept
+
+    def matches_once(self, selector: str) -> bool:
+        """A selector a driver cannot even parse — ``role=`` off the
+        Playwright family — is not a candidate, rather than an error."""
+        try:
+            locator = resolve_selector(self.driver, self.get_page(), selector)
+            return self.driver.count(locator) == 1
+        except Exception:
+            return False
 
     def dom(
         self,

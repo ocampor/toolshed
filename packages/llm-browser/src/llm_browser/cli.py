@@ -29,8 +29,10 @@ from llm_browser.models import (
     Flow,
     FlowError,
     FlowResult,
+    Intent,
     RunFlowStep,
     SubFlow,
+    Verdict,
     WaitState,
     check_settle_budget,
 )
@@ -894,6 +896,12 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
     default=DEFAULT_WAIT_TIMEOUT_MS,
     help="How long to wait for the first match (ms).",
 )
+@click.option(
+    "--intent",
+    type=click.Choice([intent.value for intent in Intent]),
+    default=Intent.READ.value,
+    help="What the step will do with the selector; decides the verdict.",
+)
 @click.pass_context
 def explore(
     ctx: click.Context,
@@ -901,11 +909,13 @@ def explore(
     extract: tuple[str, ...],
     sample: int,
     timeout: int,
+    intent: str,
 ) -> None:
     """Count and sample a selector before writing a step against it.
 
-    Exits non-zero when nothing matched, so a shell can tell "wrong
-    selector" from "empty page" without parsing the JSON.
+    Exits non-zero unless the verdict is `ok`, so a shell can tell a usable
+    selector from an ambiguous, missing or unclickable one without parsing
+    the JSON.
     """
     session: BrowserSession = ctx.obj["session"]
     result = session.explore(
@@ -913,9 +923,10 @@ def explore(
         extract=parse_extract_spec(extract_pairs(extract)),
         sample=sample,
         timeout_ms=timeout,
+        intent=Intent(intent),
     )
     _output(result)
-    if result.count == 0:
+    if result.verdict is not Verdict.OK:
         raise SystemExit(1)
 
 

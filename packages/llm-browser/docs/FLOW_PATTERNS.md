@@ -18,6 +18,28 @@ support](DRIVERS.md#selector-and-key-support)). Each pattern names its CSS equiv
 | Enumerating `<select>` options | `dom` with the select's selector |
 | Reading a generated id | [Rotating-prefix ids](#rotating-prefix-ids) |
 
+## Before writing a step
+
+`llm-browser explore --selector … --intent <what the step will do>` answers, in
+one round trip, whether the selector is the right one. Exit 0 means the verdict
+is `ok`; anything else is the step failing now instead of on the run.
+
+| `--intent` | `ok` when | Read these |
+|---|---|---|
+| `read` | `count >= 1` | `count`, `sample`, `empty_fields` |
+| `wait` | `count == 1` | `count`, `appeared_after_ms` |
+| `click` | `count == 1` and `first.clickable` | `first.why_not`, `first.covered_by`, `candidates` |
+| `fill` | `count == 1`, visible and enabled | `first.visible`, `first.enabled`, `first.tag` |
+
+- `wait_for` timeout: **3x `appeared_after_ms`, minimum 3000** — the measured
+  arrival with room for a cold cache, rather than a number picked out of the air.
+- `first.why_not` names what a click would hit instead: `covered` (with
+  `covered_by`), `offscreen`, `moving`, `hidden`, `disabled`,
+  `no-pointer-events`, `not-interactive`.
+- `candidates` are selectors checked to match that same element and nothing
+  else; `stability` says how much of the one you wrote a redeploy is likely to
+  take with it (`data-testid` > `aria` > `id` > `class-hash` > `positional`).
+
 ## Reading the page
 
 `dom` sanitizes; `find` does not. `find --selector … --all` returns each match's raw `outerHTML`,
@@ -38,10 +60,8 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
   survive only at `low`. Pick the level from this table, not by stepping down through them.
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
-- On an SPA that hydrates late, run `llm-browser explore --selector …` before
-  writing the `read`: it says how many rows the selector matches right now and
-  which fields come back empty, which is the mistake a `read` against a stub
-  otherwise only shows at run time.
+- On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
+  before writing the `read`.
 
 ## Autocomplete (jQuery UI and friends)
 

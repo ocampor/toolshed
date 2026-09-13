@@ -16,9 +16,9 @@ def cli_explore(
     exploring_session: ExploringSession, monkeypatch: pytest.MonkeyPatch
 ) -> ExploringSession:
     def build(
-        rows: list[dict[str | None, str | None]], text: str = ""
+        rows: list[dict[str | None, str | None]], **canned: object
     ) -> BrowserSession:
-        session = exploring_session(rows, text=text)
+        session = exploring_session(rows, **canned)
         monkeypatch.setattr("llm_browser.cli.build_session", lambda **kwargs: session)
         return session
 
@@ -35,12 +35,12 @@ def test_explore_outputs_the_count_and_the_sampled_rows(
     )
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == {
-        "count": 2,
-        "sample": [{"label": "Alpha"}, {"label": "Beta"}],
-        "empty_fields": [],
-        "text_chars": 10,
-    }
+    payload = json.loads(result.output)
+    assert payload["count"] == 2
+    assert payload["sample"] == [{"label": "Alpha"}, {"label": "Beta"}]
+    assert payload["empty_fields"] == []
+    assert payload["text_chars"] == 10
+    assert payload["verdict"] == "ok"
 
 
 def test_explore_keeps_a_null_field_in_the_json_so_empty_fields_can_be_checked(
@@ -76,7 +76,63 @@ def test_explore_exits_non_zero_when_the_selector_matched_nothing(
     )
 
     assert result.exit_code == 1
-    assert json.loads(result.output)["count"] == 0
+    payload = json.loads(result.output)
+    assert payload["count"] == 0
+    assert payload["verdict"] == "missing"
+    # `_output` drops nulls, so a missing selector has neither key at all.
+    assert "first" not in payload and "appeared_after_ms" not in payload
+
+
+def test_intent_click_on_one_clickable_match_exits_zero(
+    cli_explore: ExploringSession,
+) -> None:
+    cli_explore([{".label": "Alpha"}])
+
+    result = CliRunner().invoke(
+        main, ["explore", "--selector", ".row", "--intent", "click"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["verdict"] == "ok"
+
+
+def test_intent_click_on_a_covered_match_exits_one(
+    cli_explore: ExploringSession,
+) -> None:
+    """The read exits zero on the same element: only a click is refused."""
+    cli_explore(
+        [{".label": "Alpha"}],
+        first={
+            "clickable": False,
+            "why_not": ["covered"],
+            "covered_by": {"tag": "div", "text": "Cookies"},
+        },
+    )
+
+    refused = CliRunner().invoke(
+        main, ["explore", "--selector", ".row", "--intent", "click"]
+    )
+    read = CliRunner().invoke(main, ["explore", "--selector", ".row"])
+
+    assert refused.exit_code == 1
+    payload = json.loads(refused.output)
+    assert payload["verdict"] == "not_actionable"
+    assert payload["first"]["why_not"] == ["covered"]
+    assert payload["first"]["covered_by"] == {"tag": "div", "text": "Cookies"}
+    assert read.exit_code == 0, read.output
+
+
+def test_intent_click_on_two_matches_exits_one(
+    cli_explore: ExploringSession,
+) -> None:
+    cli_explore([{".label": "Alpha"}, {".label": "Beta"}])
+
+    result = CliRunner().invoke(
+        main, ["explore", "--selector", ".row", "--intent", "click"]
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.output)["verdict"] == "ambiguous"
 
 
 def test_explore_rejects_an_extract_without_a_name(

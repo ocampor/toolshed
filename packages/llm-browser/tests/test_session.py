@@ -7,7 +7,7 @@ import pytest
 
 from llm_browser.chrome import is_process_alive
 from llm_browser.drivers.base import Driver
-from llm_browser.models import SessionInfo
+from llm_browser.models import Intent, SessionInfo, Stability, Verdict
 from llm_browser.parse import ExtractField
 from llm_browser.session import BrowserSession
 
@@ -244,3 +244,128 @@ def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
     assert result.count == 0
     assert result.sample == []
     assert result.text_chars == 0
+
+
+# --- explore: the first match, the verdict, the candidates ---
+
+ONE_ROW: list[dict[str | None, str | None]] = [{".label": "Alpha"}]
+TWO_ROWS: list[dict[str | None, str | None]] = [{".label": "Alpha"}, {".label": "Beta"}]
+
+COVERED = {"clickable": False, "why_not": ["covered"]}
+DISABLED = {"clickable": False, "enabled": False, "why_not": ["disabled"]}
+
+
+@pytest.mark.parametrize(
+    ("intent", "rows", "first", "expected"),
+    [
+        (Intent.READ, TWO_ROWS, {}, Verdict.OK),
+        (Intent.READ, [], {}, Verdict.MISSING),
+        (Intent.WAIT, ONE_ROW, COVERED, Verdict.OK),
+        (Intent.WAIT, TWO_ROWS, {}, Verdict.AMBIGUOUS),
+        (Intent.CLICK, ONE_ROW, {}, Verdict.OK),
+        (Intent.CLICK, ONE_ROW, COVERED, Verdict.NOT_ACTIONABLE),
+        (Intent.CLICK, TWO_ROWS, {}, Verdict.AMBIGUOUS),
+        (Intent.FILL, ONE_ROW, COVERED, Verdict.OK),
+        (Intent.FILL, ONE_ROW, DISABLED, Verdict.NOT_ACTIONABLE),
+        (Intent.FILL, ONE_ROW, {"visible": False}, Verdict.NOT_ACTIONABLE),
+    ],
+)
+def test_the_verdict_answers_the_intent(
+    intent: Intent,
+    rows: list[dict[str | None, str | None]],
+    first: dict[str, object],
+    expected: Verdict,
+    exploring_session: ExploringSession,
+) -> None:
+    """A `read` is happy with any number of matches; a covered element is
+    still fine to wait for or to fill, and only a click cares."""
+    session = exploring_session(rows, first=first)
+
+    assert session.explore(".row", timeout_ms=0, intent=intent).verdict == expected
+
+
+def test_explore_reads_the_first_match_once(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(TWO_ROWS, first={"text": "Alpha", "href": "/alpha"})
+
+    result = session.explore(".row")
+
+    assert result.first is not None
+    assert (result.first.text, result.first.href) == ("Alpha", "/alpha")
+    assert session.driver.evaluate.call_count == 1
+
+
+def test_a_candidate_has_to_match_exactly_one_element(
+    exploring_session: ExploringSession,
+) -> None:
+    """The proposals come off the first match's own attributes, so a unique
+    match is that element; one that matches twice names something else too."""
+    session = exploring_session(
+        ONE_ROW,
+        candidates=["#alpha", '[aria-label="Go"]'],
+        matches={"#alpha": 1, '[aria-label="Go"]': 2},
+    )
+
+    assert session.explore(".row").candidates == ["#alpha"]
+
+
+def test_only_three_candidates_are_kept(exploring_session: ExploringSession) -> None:
+    proposals = ["#a", "#b", "#c", "#d"]
+    session = exploring_session(ONE_ROW, candidates=proposals)
+
+    assert session.explore(".row").candidates == proposals[:3]
+
+
+def test_a_candidate_no_driver_can_parse_is_not_one(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(ONE_ROW, candidates=["role=button[name=Go]"])
+    resolve = session.driver.resolve.side_effect
+
+    def refuse_the_role_engine(page: object, selector: str) -> object:
+        if selector.startswith("role="):
+            raise ValueError("unknown engine: role")
+        return resolve(page, selector)
+
+    session.driver.resolve.side_effect = refuse_the_role_engine
+
+    assert session.explore(".row").candidates == []
+
+
+def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(
+    exploring_session: ExploringSession,
+) -> None:
+    result = exploring_session([]).explore(".row", timeout_ms=0, intent=Intent.CLICK)
+
+    assert (result.first, result.appeared_after_ms) == (None, None)
+    assert result.verdict == Verdict.MISSING
+
+
+def test_explore_times_how_long_the_first_match_took(
+    exploring_session: ExploringSession,
+) -> None:
+    result = exploring_session(ONE_ROW).explore(".row")
+
+    assert result.appeared_after_ms is not None and result.appeared_after_ms >= 0
+
+
+@pytest.mark.parametrize(
+    ("selector", "expected"),
+    [
+        ('[data-testid="row"]', Stability.DATA_TESTID),
+        ('[aria-label="Search"]', Stability.ARIA),
+        ("role=button[name=Go]", Stability.ARIA),
+        ("#searchInput", Stability.ID),
+        (".css-1x2y3z button", Stability.CLASS_HASH),
+        (".grid-cols-12", Stability.OTHER),
+        ("ul > li:nth-child(2)", Stability.POSITIONAL),
+        ("tr.athing", Stability.OTHER),
+    ],
+)
+def test_stability_reads_the_selector_a_redeploy_would_break(
+    selector: str, expected: Stability, exploring_session: ExploringSession
+) -> None:
+    session = exploring_session(ONE_ROW)
+
+    assert session.explore(selector).stability == expected

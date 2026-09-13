@@ -128,6 +128,12 @@ FUNCTION_LITERAL = re.compile(
     r"^\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
 )
 
+# An async script needs `awaitPromise`, which nodriver's own `Element.apply`
+# does not pass: the promise comes back unresolved and serializes to `{}`, with
+# no error. Only the async path takes the CDP call below, so the ordinary reads
+# keep nodriver's own semantics.
+ASYNC_LITERAL = re.compile(r"^\s*async\b")
+
 # `// what this reads\nel => el.value` is a function too, and the cost of not
 # knowing it is a silent `undefined` rather than an error. Block comments are
 # not handled: the same caveat applies to `/* ... */ el => ...`.
@@ -445,6 +451,8 @@ class NodriverDriver(Driver):
         el = await self.resolve_now(loc)
         if el is None:
             return None
+        if ASYNC_LITERAL.match(script):
+            return await apply_awaiting(el, script)
         return await el.apply(script)
 
     # --- Interactions ---
@@ -794,3 +802,25 @@ async def _evaluate_by_value(tab: Any, expression: str) -> Any:
     if exception is not None:
         raise RuntimeError(f"evaluate failed: {exception}")
     return remote_object.value if remote_object else None
+
+
+async def apply_awaiting(element: Any, script: str) -> Any:
+    """``Element.apply`` with ``awaitPromise``, for an ``async (el) => …``."""
+    nodriver = load_optional_module("nodriver", "nodriver")
+    cdp = nodriver.cdp
+    remote = await element.tab.send(
+        cdp.dom.resolve_node(backend_node_id=element.backend_node_id)
+    )
+    value, exception = await element.tab.send(
+        cdp.runtime.call_function_on(
+            script,
+            object_id=remote.object_id,
+            arguments=[cdp.runtime.CallArgument(object_id=remote.object_id)],
+            return_by_value=True,
+            user_gesture=True,
+            await_promise=True,
+        )
+    )
+    if exception is not None:
+        raise RuntimeError(f"evaluate failed: {exception}")
+    return value.value if value else None

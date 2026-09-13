@@ -7,6 +7,9 @@ Tracks `llm-browser` 0.14.0.
 ### Added
 
 - `explore a list` scenario, claiming `session:explore`.
+- `explore a button` scenario on `explore-actionability.html`: a button under a
+  sticky banner and a disabled one, for the verdict, `why_not` and `covered_by`
+  a `count` cannot answer.
 
 ## 0.5.0 — 2026-09-13
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -408,18 +409,84 @@ class PageProbe(BaseModel):
     selector_text: str | None = None
 
 
+class Intent(enum.StrEnum):
+    """What the step being written will do with the selector."""
+
+    READ = "read"
+    CLICK = "click"
+    FILL = "fill"
+    WAIT = "wait"
+
+
+class Verdict(enum.StrEnum):
+    """Whether the selector is fit for the intent, in one word."""
+
+    OK = "ok"
+    AMBIGUOUS = "ambiguous"
+    MISSING = "missing"
+    NOT_ACTIONABLE = "not_actionable"
+
+
+class Stability(enum.StrEnum):
+    """How much of the selector a redeploy is likely to take with it."""
+
+    DATA_TESTID = "data-testid"
+    ARIA = "aria"
+    ID = "id"
+    CLASS_HASH = "class-hash"
+    POSITIONAL = "positional"
+    OTHER = "other"
+
+
+class Covering(BaseModel):
+    """The element sitting over the first match's centre."""
+
+    tag: str
+    text: str
+
+
+class FirstMatch(BaseModel):
+    """The first match as a click would find it.
+
+    ``why_not`` is empty exactly when ``clickable``; each name in it is one
+    reason a click would miss — see ``docs/API.md`` for the list.
+    """
+
+    tag: str
+    text: str
+    role: str | None = None
+    aria_label: str | None = None
+    name: str | None = None
+    href: str | None = None
+    visible: bool
+    enabled: bool
+    in_viewport: bool
+    covered_by: Covering | None = None
+    stable: bool
+    pointer_events: bool
+    clickable: bool
+    why_not: list[str] = Field(default_factory=list)
+
+
 class ExploreResult(BaseModel):
     """What a selector matches right now, for an author sizing up a step.
 
     ``empty_fields`` names the fields no sampled row filled in — a wrong
     child selector, or a page that has not hydrated yet — and ``text_chars``
     is how much rendered text the sampled elements carry between them.
+    ``verdict`` answers the intent; ``candidates`` are sturdier selectors that
+    were checked to match the same element and nothing else.
     """
 
     count: int
     sample: list[dict[str, str | None]]
     empty_fields: list[str]
     text_chars: int
+    first: FirstMatch | None = None
+    appeared_after_ms: int | None = None
+    candidates: list[str] = Field(default_factory=list)
+    stability: Stability = Stability.OTHER
+    verdict: Verdict = Verdict.MISSING
 
 
 class SessionResult(BaseModel):

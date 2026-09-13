@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Buttons a click would miss</title>
+<style>
+  body { margin: 0; font: 16px/1.4 system-ui; }
+  .banner {
+    position: fixed; top: 0; left: 0; right: 0; height: 120px;
+    background: #222; color: #fff; padding: 8px 12px;
+  }
+  /* Enough that only the first button's centre falls under the banner. */
+  main { padding-top: 100px; }
+  button { display: block; margin: 18px 12px; }
+</style>
+<div class="banner">Cookie notice</div>
+<main>
+  <button id="buried" data-testid="buy">Buy now</button>
+  <button id="off" disabled>Sold out</button>
+  <button id="clear" data-testid="help">Help</button>
+</main>
