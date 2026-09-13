@@ -1,6 +1,6 @@
 """Pydantic models for browser session state, flow state, and flow results."""
 
-# debt: 497 lines against the 300-line rule; the step half is the next split.
+# debt: over the 300-line rule; split the step models out.
 
 from __future__ import annotations
 

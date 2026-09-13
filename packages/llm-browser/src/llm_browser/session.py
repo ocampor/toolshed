@@ -1,6 +1,6 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
-# debt: 664 lines against the 300-line rule; the lifecycle half is the next split.
+# debt: over the 300-line rule; split the lifecycle half out of this file.
 
 from __future__ import annotations
 
