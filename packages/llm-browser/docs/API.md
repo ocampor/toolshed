@@ -238,6 +238,11 @@ non-zero unless **every** verdict is `ok`. Candidates are still verified from
 Python — at most three counts per target — because a proposal nothing checked
 is not a candidate.
 
+`--extract` and `--intent` belong to a target rather than to the batch, so
+passing either alongside `--targets` is a usage error rather than a flag that
+quietly means nothing; `--sample`, `--sample-chars` and `--timeout` apply to
+the whole batch.
+
 Two things differ from `explore`. Selectors are CSS (the page is asked with
 `querySelectorAll`), and one the page cannot parse raises a `ValueError` naming
 it rather than reading as a count of zero. And `since_call_ms` is measured in

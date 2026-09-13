@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from click.core import ParameterSource
 from pydantic import ValidationError
 from pydantic_core import to_json
 
@@ -955,6 +956,12 @@ def explore(
     """
     if (selector is None) == (targets_path is None):
         raise click.UsageError("pass exactly one of --selector or --targets")
+    if targets_path is not None:
+        # A targets file carries an intent and an extract per entry, so a
+        # flag meant for all of them would quietly mean nothing.
+        for option in ("extract", "intent"):
+            if ctx.get_parameter_source(option) is ParameterSource.COMMANDLINE:
+                raise click.UsageError(f"--{option} is per target inside --targets")
     session: BrowserSession = ctx.obj["session"]
     if targets_path is not None:
         results = session.explore_many(

@@ -290,3 +290,16 @@ def test_survey_outputs_what_the_page_is_made_of(cli_session: MagicMock) -> None
     assert payload["landmarks"][0]["selector"] == '[data-testid="grid"]'
     assert payload["hydration"]["ready_state"] == "complete"
     assert cli_session.survey.call_args.kwargs == {"max_items": 10}
+
+
+@pytest.mark.parametrize("option", [["--extract", "title=h3"], ["--intent", "click"]])
+def test_a_flag_meant_for_one_selector_is_not_silently_ignored(
+    tmp_path: Path, option: list[str]
+) -> None:
+    """A targets file carries its own intent and extract per entry."""
+    path = targets_file(tmp_path, "- selector: .row\n")
+
+    result = CliRunner().invoke(main, ["explore", "--targets", path, *option])
+
+    assert result.exit_code == 2, result.output
+    assert "per target inside --targets" in result.output

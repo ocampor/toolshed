@@ -41,7 +41,8 @@
   `ValueError` naming it rather than reading as a count of zero.
 - `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list of
   targets, exiting non-zero unless every verdict is `ok`. Exactly one of
-  `--selector` and `--targets` is required.
+  `--selector` and `--targets` is required, and `--extract` / `--intent`
+  alongside `--targets` is a `UsageError`: both belong to a target.
 - `BrowserSession.survey(max_items=60)`: what a page is made of, in one page
   call and without clicking or scrolling — `landmarks` (named elements, deduped
   by selector, test id > aria > id > role), `link_shapes` (hrefs grouped by the
