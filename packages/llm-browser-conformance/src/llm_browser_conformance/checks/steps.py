@@ -48,6 +48,21 @@ def a_click_lands_under_a_sticky_header(ctx: Context) -> None:
     assert landed == "clicked", f"the click reached {landed!r}"
 
 
+def a_click_between_two_sticky_banners(ctx: Context) -> str:
+    """Recorded, not forced: fixed banners leave only the middle of the
+    viewport clear, and whether a plain click lands there depends on how far
+    the driver scrolls. One that reports the interception gets a centred
+    retry; one that dispatches at the element's coordinates regardless clicks
+    the banner and says nothing, and that page still needs `dispatch: true`."""
+    result = run(ctx, "sticky-bands.html", "sticky-bands")
+    if not isinstance(result, FlowSuccess):
+        return f"click failed between the banners: {error_message(result)}"
+    landed = one_text(result.outputs, "result")
+    if landed == "clicked":
+        return "a plain click reaches a target between fixed banners"
+    return f"the click reached the {landed}; use dispatch: true"
+
+
 def a_click_on_a_still_disabled_button(ctx: Context) -> str:
     """Recorded, not forced: Playwright's click waits for the button to become
     enabled, while a driver that dispatches straight away clicks the floor.
@@ -196,6 +211,12 @@ SCENARIOS = [
         "sticky header",
         Section.STEPS,
         a_click_lands_under_a_sticky_header,
+        covers=frozenset({"step:click"}),
+    ),
+    Scenario(
+        "sticky bands",
+        Section.STEPS,
+        a_click_between_two_sticky_banners,
         covers=frozenset({"step:click"}),
     ),
     Scenario(

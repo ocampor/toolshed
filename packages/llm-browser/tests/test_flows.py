@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from llm_browser.actions import SkippedResult
+from llm_browser.constants import WHEN_SKIP_REASON
 from llm_browser.flow_repository import FlowNotFoundError
 from llm_browser.flows import run_flow
 from llm_browser.models import (
@@ -593,3 +594,256 @@ def test_run_flow_carries_human_needed_through_to_the_caller(
     result = run_flow(mock_session, Flow(steps=[step]), {})
     assert isinstance(result, FlowError)
     assert result.human_needed is True
+
+
+# --- repeat ---
+
+
+def _dom_step(**extra: Any) -> dict[str, Any]:
+    return {"name": "grab", "action": "dom", "selector": "#panel", **extra}
+
+
+def test_repeat_runs_a_step_once_per_item(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [_dom_step(repeat={"over": "codes", "as": "code"})],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b", "c"]})
+    assert isinstance(result, FlowSuccess)
+    assert list(result.outputs) == ["grab[0]", "grab[1]", "grab[2]"]
+
+
+def test_repeat_binds_the_item_and_its_index(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [
+            _dom_step(
+                selector="#{{ code }}-{{ code_index }}",
+                repeat={"over": "codes", "as": "code"},
+            )
+        ],
+        params=["codes"],
+    )
+    run_flow_file(mock_session, path, {"codes": ["x", "y"]})
+    assert [call.args[0] for call in mock_session.dom.call_args_list] == [
+        "#x-0",
+        "#y-1",
+    ]
+
+
+def test_repeat_over_a_list_nobody_passed_runs_no_passes(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [_dom_step(repeat={"over": "codes", "as": "code"})],
+        params=[{"codes": {"required": False}}],
+    )
+    result = run_flow_file(mock_session, path, {})
+    assert isinstance(result, FlowSuccess)
+    assert result.outputs == {}
+    mock_session.dom.assert_not_called()
+
+
+def test_repeat_over_a_scalar_fails_the_step_with_what_ran_before_it(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [
+            {"name": "first", "action": "dom", "selector": "#a"},
+            _dom_step(repeat={"over": "codes", "as": "code"}),
+        ],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": "a"})
+    assert isinstance(result, FlowError)
+    assert result.step == "grab"
+    assert "which is str, not a list" in str(result.data)
+    assert list(result.outputs) == ["first"]
+    assert result.retry_hint is not None
+    assert result.retry_hint.failed_step == "grab"
+
+
+def test_repeat_rejects_binding_the_list_to_its_own_name() -> None:
+    with pytest.raises(ValueError, match="must differ from `over`"):
+        Flow.model_validate(
+            {"steps": [_dom_step(repeat={"over": "codes", "as": "codes"})]}
+        )
+
+
+def test_a_repeated_subflow_indexes_every_child_output(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "each",
+                "action": "run-flow",
+                "repeat": {"over": "codes", "as": "code"},
+                "data": {"code": "{{ code }}"},
+                "flow": {"params": ["code"], "steps": [_dom_step()]},
+            }
+        ],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b"]})
+    assert isinstance(result, FlowSuccess)
+    assert list(result.outputs) == ["each/grab[0]", "each/grab[1]"]
+
+
+def test_a_failing_pass_names_its_iteration(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["first", TimeoutError("never rendered")]
+    path = _write_flow(
+        tmp_path,
+        [_dom_step(repeat={"over": "codes", "as": "code"})],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b"]})
+    assert isinstance(result, FlowError)
+    assert result.step == "grab[1]"
+    assert list(result.outputs) == ["grab[0]"]
+    # `--from` resumes the step, not one of its passes.
+    assert result.retry_hint is not None
+    assert result.retry_hint.failed_step == "grab"
+
+
+def test_a_skip_inside_a_repeat_is_named_per_pass(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    """`when:` gates one pass and `optional:` swallows another's failure; both
+    land in `skipped` under the pass's own key."""
+    mock_session.dom.side_effect = TimeoutError("never rendered")
+    path = _write_flow(
+        tmp_path,
+        [
+            _dom_step(
+                optional=True,
+                when=[{"field": "code", "op": "is_truthy"}],
+                repeat={"over": "codes", "as": "code"},
+            )
+        ],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": ["a", ""]})
+    assert isinstance(result, FlowSuccess)
+    assert [s.name for s in result.skipped] == ["grab[0]", "grab[1]"]
+    assert result.skipped[1].reason == WHEN_SKIP_REASON
+
+
+def test_a_failing_pass_of_a_repeated_subflow_indexes_both_sides(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["first", TimeoutError("never rendered")]
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "each",
+                "action": "run-flow",
+                "repeat": {"over": "codes", "as": "code"},
+                "data": {"code": "{{ code }}"},
+                "flow": {"params": ["code"], "steps": [_dom_step()]},
+            }
+        ],
+        params=["codes"],
+    )
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b"]})
+    assert isinstance(result, FlowError)
+    assert result.step == "each/grab[1]"
+    assert list(result.outputs) == ["each/grab[0]"]
+
+
+# --- skipped steps ---
+
+
+def test_an_optional_miss_is_named_in_skipped(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = TimeoutError("never rendered")
+    path = _write_flow(tmp_path, [_dom_step(optional=True)])
+
+    result = run_flow_file(mock_session, path, {})
+
+    assert isinstance(result, FlowSuccess)
+    assert [s.name for s in result.skipped] == ["grab"]
+    assert "never rendered" in result.skipped[0].reason
+
+
+def test_a_when_skip_is_named_too(tmp_path: Path, mock_session: MagicMock) -> None:
+    mock_session.element_exists.return_value = False
+    path = _write_flow(
+        tmp_path, [_dom_step(when=[{"element_exists": {"selector": "#gate"}}])]
+    )
+
+    result = run_flow_file(mock_session, path, {})
+
+    assert isinstance(result, FlowSuccess)
+    assert [(s.name, s.reason) for s in result.skipped] == [
+        ("grab", "when condition not satisfied")
+    ]
+
+
+def test_a_step_that_ran_leaves_skipped_empty(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    path = _write_flow(tmp_path, [_dom_step()])
+    result = run_flow_file(mock_session, path, {})
+    assert isinstance(result, FlowSuccess)
+    assert result.skipped == []
+
+
+def test_a_failure_keeps_the_skips_collected_before_it(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = TimeoutError("never rendered")
+    path = _write_flow(
+        tmp_path,
+        [_dom_step(optional=True), {"name": "boom", "action": "dom", "selector": "#x"}],
+    )
+
+    result = run_flow_file(mock_session, path, {})
+
+    assert isinstance(result, FlowError)
+    assert [s.name for s in result.skipped] == ["grab"]
+
+
+def test_a_swallowed_subflow_failure_names_the_parent_and_the_child(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = [TimeoutError("gone"), "<p>hello</p>"]
+    path = _write_flow(
+        tmp_path,
+        [
+            {
+                "name": "each",
+                "action": "run-flow",
+                "optional": True,
+                "flow": {
+                    "steps": [
+                        _dom_step(optional=True),
+                        {
+                            "name": "boom",
+                            "action": "dom",
+                            "selector": "#x",
+                            "min_chars": 999,
+                        },
+                    ]
+                },
+            }
+        ],
+    )
+
+    result = run_flow_file(mock_session, path, {})
+
+    assert isinstance(result, FlowSuccess)
+    assert [s.name for s in result.skipped] == ["each/grab", "each"]
+    assert result.skipped[1].reason == "sub-flow failed at each/boom"

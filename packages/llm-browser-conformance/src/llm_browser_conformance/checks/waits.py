@@ -3,6 +3,7 @@ things a wait must refuse to do: return early, wait out an ambiguous
 selector, and poll a settle window that cannot fit its budget.
 """
 
+from llm_browser_conformance.checks.support import expect_success, one_text
 from llm_browser_conformance.scenario import (
     POLL_MS,
     SETTLE_MS,
@@ -66,6 +67,33 @@ def opacity_zero_counts_as_visible(ctx: Context) -> None:
     ``offsetParent`` check both call a fully transparent element visible."""
     ctx.visit("visible.html")
     assert ctx.elapsed(ctx.wait("#transparent", "visible")) < IMMEDIATE_S
+
+
+def enabled_waits_for_the_control_to_unlock(ctx: Context) -> None:
+    """The input carries `disabled` until a while after the checkbox flips."""
+    ctx.visit("unlock-input.html")
+    timing = ctx.timed(
+        lambda: ctx.session.set_checked("#agree", True),
+        ctx.wait("#field", "enabled"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def aria_disabled_reads_as_disabled(ctx: Context) -> None:
+    """A control that cannot carry `disabled` says so with `aria-disabled`, and
+    one rule has to cover both or half the widgets on a page are invisible."""
+    ctx.visit("unlock-input.html")
+    assert ctx.elapsed(ctx.wait("#submit", "disabled")) < IMMEDIATE_S
+    timing = ctx.timed(
+        lambda: ctx.session.set_checked("#agree", True),
+        ctx.wait("#submit", "enabled"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def a_flow_waits_out_a_locked_field_before_filling_it(ctx: Context) -> None:
+    outputs = expect_success(ctx, "unlock-input.html", "wait-enabled")
+    assert one_text(outputs, "result") == "typed"
 
 
 def a_short_timeout_names_selector_and_state(ctx: Context) -> None:
@@ -152,6 +180,24 @@ SCENARIOS = [
         Section.WAITS,
         opacity_zero_counts_as_visible,
         covers=frozenset({"session:wait_for_element"}),
+    ),
+    Scenario(
+        "wait enabled",
+        Section.WAITS,
+        enabled_waits_for_the_control_to_unlock,
+        covers=frozenset({"session:set_checked", "session:wait_for_element"}),
+    ),
+    Scenario(
+        "wait aria-disabled",
+        Section.WAITS,
+        aria_disabled_reads_as_disabled,
+        covers=frozenset({"session:wait_for_element"}),
+    ),
+    Scenario(
+        "fill waits for enabled",
+        Section.WAITS,
+        a_flow_waits_out_a_locked_field_before_filling_it,
+        covers=frozenset({"field:wait_for.state", "field:check.checked", "step:check"}),
     ),
     Scenario(
         "timeout message",

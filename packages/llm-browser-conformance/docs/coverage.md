@@ -15,8 +15,8 @@ A scenario claims a key through `Scenario.covers`; see
 
 | item | scenarios |
 | --- | --- |
-| `step:check` | checkbox and radio |
-| `step:click` | overlay intercepts click, sticky header, disabled button, new tab, autocomplete click, custom select click |
+| `step:check` | fill waits for enabled, checkbox and radio |
+| `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
@@ -39,7 +39,7 @@ A scenario claims a key through `Scenario.covers`; see
 | item | scenarios |
 | --- | --- |
 | `field:check.selector` | checkbox and radio |
-| `field:check.checked` | checkbox and radio |
+| `field:check.checked` | fill waits for enabled, checkbox and radio |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
 | `field:click.humanize` | humanized click step |
@@ -68,8 +68,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:read.min_rows` | read minimums |
 | `field:read.extract` | overlay intercepts click, read attributes |
 | `field:read.path` | read attributes |
-| `field:run-flow.flow` | run-flow embedded |
-| `field:run-flow.data` | run-flow embedded |
+| `field:run-flow.flow` | run-flow embedded, repeat a sub-flow |
+| `field:run-flow.data` | run-flow embedded, repeat a sub-flow |
 | `field:screenshot.path` | screenshot step |
 | `field:screenshot.selector` | screenshot step |
 | `field:scroll.delta` | wheel ticks |
@@ -84,7 +84,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:type.delay` | masked input, type delay, jittered key delay |
 | `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
-| `field:wait_for.state` | flow failure captures artifacts, enter and escape, slow xhr rows |
+| `field:wait_for.state` | fill waits for enabled, flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
 | `field:wait_for.settle` | slow xhr rows |
 
@@ -99,6 +99,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `option:wait_after` | wait_after |
 | `option:optional` | optional step swallows a timeout |
 | `option:timeout` | native select disabled option, step timeout |
+| `option:repeat` | repeat a step, repeat a sub-flow |
 
 ## when conditions
 
@@ -140,11 +141,11 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:screenshot_bytes` | flow failure captures artifacts, screenshot is a png, screenshot step, screenshot bytes |
 | `session:scroll` | scroll, wheel ticks |
 | `session:select_option` | select_option, custom select rejects select |
-| `session:set_checked` | fill/type/check, checkbox and radio |
+| `session:set_checked` | wait enabled, fill/type/check, checkbox and radio |
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
-| `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
+| `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, wait enabled, wait aria-disabled, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
 
 ## library behaviour
@@ -174,6 +175,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:sanitize.low` | sanitize levels |
 | `api:sanitize.medium` | sanitize levels |
 | `api:sanitize.xhigh` | sanitize levels |
+| `api:skipped` | skipped steps |
 | `api:templating.selector` | templating |
 | `api:templating.value` | redirect, templating |
 | `api:type.delay_jitter` | jittered key delay |

@@ -5,7 +5,7 @@ import json
 import os
 import uuid
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
@@ -21,6 +21,7 @@ from llm_browser.constants import (
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
+from llm_browser.flow_passes import unindexed
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
@@ -513,16 +514,36 @@ def planned_outputs(
     run's output and an error.
     """
     planned: dict[str, tuple[Path, bytes | str]] = {}
-    for step, output in outputs.items():
+    for key, output in outputs.items():
+        step, index = unindexed(key)
         path = paths.get(step)
         if isinstance(output, BytesResult):
             # The fallback name is the server's `Content-Disposition`
             # filename: take the basename, never its directories.
-            target = contained_output_path(out_dir, path or Path(output.name).name)
-            planned[step] = (target, output.content)
+            name = path or Path(output.name).name
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(name, index)),
+                output.content,
+            )
         elif path:
-            planned[step] = (contained_output_path(out_dir, path), as_text(output))
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(path, index)),
+                as_text(output),
+            )
     return planned
+
+
+def per_pass_path(path: str, index: int | None) -> str:
+    """One ``repeat`` pass's file: ``shots/page.png`` pass 1 is
+    ``shots/page[1].png``.
+
+    A repeated step declares one ``path:`` and produces a file per pass, so
+    the index has to land in the name or every pass but the last is lost.
+    """
+    if index is None:
+        return path
+    name = PurePosixPath(path)
+    return str(name.with_name(f"{name.stem}[{index}]{name.suffix}"))
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:

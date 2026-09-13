@@ -35,6 +35,15 @@ steps:
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
 
+A plain `click` whose error names an interception (`intercepts pointer events`)
+is retried once with the target scrolled to the middle of the viewport, which is
+what clears a fixed header or footer; the `try dispatch: true` hint is appended
+only when that second try was intercepted too. Every other click failure — a
+disabled control, a hidden one, a selector that matched nothing — is reported as
+it happened, unretried. A driver that instead dispatches at the element's
+coordinates without noticing the banner raises nothing, so there is nothing to
+retry: that page still needs `dispatch: true`.
+
 `fill` fires no keystroke at all when the session runs with humanization off
 (or with `fill_as_type: false`): the value appears in one write, the equivalent
 of a paste, and a page that watches input telemetry — masks, autocompletes,
@@ -82,6 +91,8 @@ One step covers both kinds of waiting: element presence and text stability.
 | `detached` | element is gone from the DOM | with a fallback selector, judged against whichever branch matched this tick |
 | `visible` | element is rendered | |
 | `hidden` | element is not rendered | |
+| `enabled` | element is in the DOM and accepts input | no `aria-disabled="true"` and not disabled — the Playwright drivers ask the browser, so an ancestor's `disabled` (`<fieldset disabled>`) counts; nodriver reads the `disabled` attribute alone and misses the inherited case. A control locked some other way (a class, `pointer-events`, a listener that returns early) reads as enabled everywhere |
+| `disabled` | element is in the DOM and is locked | the inverse, same rule. An element that is not there yet is neither |
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
 `wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus whatever `BrowserSession(capture=)` asks for, in memory on the `FlowError`; `optional: true` turns that into a skip.
@@ -92,6 +103,12 @@ One step covers both kinds of waiting: element presence and text stability.
   action: wait_for
   state: visible
   timeout: 15000
+
+- name: terms accepted
+  selector: "#submit"
+  action: wait_for
+  state: enabled
+  timeout: 10000
 
 - name: modal is gone
   selector: ".modal-backdrop"
@@ -170,6 +187,41 @@ steps:
   - { name: best-effort-cleanup, action: run-flow, flow: dismiss-popups.yaml, optional: true }
 ```
 
+### Repetition
+
+`repeat: { over: <param>, as: <name> }` runs one step — any step, `run-flow`
+included — once per item of a list param. Each pass binds the item under
+`<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
+in the step, and keys its outputs `<step name>[<index>]` so passes never
+overwrite one another. A step that writes a file (`screenshot`, `download`, or
+any `path:`) gets the same index in its filename — `path: shots/page.png`
+becomes `shots/page[0].png`, `shots/page[1].png` — so no pass overwrites
+another's file. The `path:` itself is templated from the flow's params only, not
+from `<name>`: the index is what makes each pass's file unique.
+
+A `repeat` over a value that is not a list fails the step — a `FlowError`
+carrying whatever the run collected before it — while a list param nobody
+passed (an optional one, or one left out) runs zero passes and the flow moves
+on. `as` must differ from `over`, rejected at flow load. A failure inside a pass
+names the iteration: `FlowError.step` reads `row[3]`, while
+`retry_hint.failed_step` stays the plain top-level name, since `--from` resumes
+a step, not one of its passes.
+
+```yaml
+params: [codes]
+steps:
+  - name: row
+    action: read
+    selector: "#row-{{ code }}"
+    repeat: { over: codes, as: code }
+    extract:
+      total: { child_selector: "td.total", attribute: textContent }
+```
+
+With `codes: [a, b]` that leaves `outputs` keyed `row[0]` and `row[1]`. A
+repeated `run-flow` indexes the child's qualified keys the same way:
+`each/row[0]`, `each/row[1]`.
+
 ## Loading flows
 
 Getting from flow text to a result is three explicit stages; the repository is the only piece that differs between consumers:
@@ -192,6 +244,8 @@ run_flow(session, flow, data)
 ## Running, outputs, and redaction
 
 `run_flow(session, flow, data, *, from_step=None, redact=())` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
+
+`FlowSuccess.skipped` (and `FlowError.skipped`, for the skips collected before the failure) names every step the run passed over, in order, as `{ name, reason }` with the same qualified name `outputs` uses: a `when:` predicate that did not hold reads `when condition not satisfied`, and an `optional:` step whose action failed carries that failure. Without it a step that matched nothing is indistinguishable from one that ran, since both simply leave `outputs` alone.
 
 A failing run also carries the page itself: `FlowError.screenshot` is PNG bytes and `FlowError.dom` is sanitized HTML text, both in memory and controlled by `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `model_dump(mode="json")` base64-encodes the bytes and validating that back decodes them, so the result round-trips; `llm-browser run` instead writes both to `--capture-dir` and prints the paths.
 
@@ -240,7 +294,19 @@ Skip a step unless every condition holds (AND'ed).
 | `selector` | string or dict | Target element (required for element/data actions) |
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
+| `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
+| `repeat` | `{ over, as }` | Run the step once per item of a list param ([below](#repetition)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
+
+### What `timeout` bounds
+
+`timeout` is the element wait only — how long the step looks for its target
+before failing — not a ceiling on the step as a whole. A `type` step then costs
+roughly `len(value) × delay` on top of it, so a 2000-character value typed at
+`delay: 30` spends a minute *after* the wait succeeded. Nothing in the library
+cuts that short; an embedding server with its own per-call deadline (the MCP
+tool timeout, a request handler) has to be given a budget that covers it, or
+split the value across several steps.
 
 ## Extract spec (for `read` action)
 

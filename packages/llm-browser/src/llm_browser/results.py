@@ -42,6 +42,29 @@ PayloadBytes = Annotated[
 ]
 
 
+def is_timeout(exc: BaseException) -> bool:
+    """Treat any exception class named ``TimeoutError`` as a timeout.
+    Patchright (and similar driver libs) raise their own TimeoutError
+    that does NOT inherit from the Python builtin, so a bare
+    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
+    and the optional-swallow / ErrorResult contract was violated."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return type(exc).__name__ == "TimeoutError"
+
+
+def is_step_failure(exc: BaseException) -> bool:
+    """Whether ``exc`` is a step result rather than a library bug.
+
+    Deliberately narrow. Anything a step can legitimately hit — a wait that
+    expired, a value the page did not provide, an output it cannot write — is
+    raised as one of these two at the place it happens. A ``TypeError`` or an
+    ``AttributeError`` reaching here is a bug in the library, and it belongs
+    in a traceback rather than in a truncated ``reason=`` on a skipped step.
+    """
+    return is_timeout(exc) or isinstance(exc, ValueError)
+
+
 class ActionResult(BaseModel):
     """Base for everything ``execute_action`` returns.
 

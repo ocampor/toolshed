@@ -40,6 +40,7 @@ class PwLocator(Protocol):
     def dispatch_event(self, event: str) -> None: ...
     def press(self, key: str) -> None: ...
     def is_visible(self) -> bool: ...
+    def is_enabled(self) -> bool: ...
     def screenshot(self) -> bytes: ...
     def text_content(self, timeout: int = ...) -> str | None: ...
     def input_value(self) -> str: ...
@@ -186,6 +187,16 @@ class PlaywrightDriverBase(Driver):
 
     def is_visible(self, locator: Any) -> bool:
         return _pw_loc(locator).is_visible()
+
+    def is_enabled(self, locator: Any) -> bool:
+        """Playwright's own check, which reads the *inherited* disabled state —
+        a button inside a ``<fieldset disabled>`` carries no attribute of its
+        own and the base class's attribute rule calls it enabled. The
+        ``aria-disabled`` half of that rule is still ours."""
+        return (
+            _pw_loc(locator).is_enabled()
+            and self.get_attribute(locator, "aria-disabled") != "true"
+        )
 
     # --- Read / capture ---
 

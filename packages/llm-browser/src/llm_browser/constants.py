@@ -41,6 +41,9 @@ DELAY_SHAPE = "delay must be a non-negative int, or [min_ms, max_ms] with min <=
 
 REDACTED = "***"
 
+# Why a step a ``when:`` predicate gated shows up in ``FlowSuccess.skipped``.
+WHEN_SKIP_REASON = "when condition not satisfied"
+
 # Every action whose result the flow runner keeps in ``outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 

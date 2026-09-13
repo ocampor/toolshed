@@ -670,6 +670,7 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
     assert result.step_name == "my_step"
     assert result.selector == "'#missing'"
     assert result.hint == "element hidden, missing, or slow to render"
+    # A hidden element is not an interception, so no retry and no hint.
     assert result.message == "element hidden"
 
 

@@ -78,6 +78,16 @@ def driver_with(
     return driver
 
 
+def driver_with_attributes(attributes: list[dict[str, str | None]]):
+    """A driver whose element is attached throughout and whose attributes walk
+    ``attributes``, repeating the last."""
+    driver = driver_with(counts=[1])
+    take = _series(attributes)
+    driver.is_enabled.side_effect = lambda locator: Driver.is_enabled(driver, locator)
+    driver.get_attribute.side_effect = lambda locator, name: take().get(name)
+    return driver
+
+
 def _series(values: list[Any]):
     remaining = list(values)
 
@@ -412,3 +422,68 @@ def test_find_rejects_an_ambiguous_selector_before_polling(
         session.find("#dup", timeout=10_000)
 
     assert clock.sleeps == []
+
+
+# --- enabled / disabled ---
+
+
+ENABLED: dict[str, str | None] = {}
+NATIVE_DISABLED: dict[str, str | None] = {"disabled": ""}
+ARIA_DISABLED: dict[str, str | None] = {"aria-disabled": "true"}
+
+
+@pytest.mark.parametrize(
+    "attributes, state",
+    [
+        (ENABLED, "enabled"),
+        (NATIVE_DISABLED, "disabled"),
+        (ARIA_DISABLED, "disabled"),
+        ({"aria-disabled": "false"}, "enabled"),
+    ],
+)
+def test_enabled_reads_both_spellings_of_disabled(
+    tmp_path: Path,
+    clock: FakeClock,
+    attributes: dict[str, str | None],
+    state: str,
+) -> None:
+    session = make_session(tmp_path, driver_with_attributes([attributes]))
+
+    session.wait_for_element("#submit", state=state)
+
+    assert clock.sleeps == []
+
+
+def test_enabled_waits_for_the_attribute_to_go(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    driver = driver_with_attributes([NATIVE_DISABLED, NATIVE_DISABLED, ENABLED])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_element("#submit", state="enabled")
+
+    assert len(clock.sleeps) == 2
+
+
+def test_enabled_times_out_while_the_control_stays_locked(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_attributes([NATIVE_DISABLED]))
+
+    with pytest.raises(TimeoutError, match="did not become enabled"):
+        session.wait_for_element("#submit", state="enabled", timeout=1000)
+
+
+def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """Absence must not read as enabled, and asking a driver about a node that
+    is not there is what raises."""
+    driver = driver_with(counts=[0])
+    driver.is_enabled.side_effect = AssertionError("read a missing element")
+
+    session = make_session(tmp_path, driver)
+
+    for state in ("enabled", "disabled"):
+        with pytest.raises(TimeoutError):
+            session.wait_for_element("#submit", state=state, timeout=0)
