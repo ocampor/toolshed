@@ -142,6 +142,35 @@ def test_fill_types_when_fill_as_type_is_on(session: BrowserSession) -> None:
     driver(session).fill.assert_not_called()
 
 
+def test_fill_humanize_true_types_on_a_session_that_is_off(
+    session: BrowserSession,
+) -> None:
+    session.fill("#input", "hello", humanize=True)
+    driver(session).humanized_type.assert_called_once()
+    driver(session).fill.assert_not_called()
+
+
+def test_fill_humanize_false_sets_the_value_on_a_human_session(
+    session: BrowserSession,
+) -> None:
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    session.fill("#input", "hello", humanize=False)
+    driver(session).fill.assert_called_once_with("element", "hello")
+    driver(session).humanized_type.assert_not_called()
+
+
+def test_fill_humanize_true_types_at_the_behaviors_cadence(
+    session: BrowserSession,
+) -> None:
+    """The forced fill types on the humanized cadence, not at zero delay."""
+    session.fill("#input", "hello", humanize=True)
+    _page, _element, _value, behavior, _runtime = driver(
+        session
+    ).humanized_type.call_args.args
+    assert behavior.type_char_delay == Behavior.human().type_char_delay
+
+
 def test_type_with_an_explicit_delay_beats_the_behavior(
     session: BrowserSession,
 ) -> None:

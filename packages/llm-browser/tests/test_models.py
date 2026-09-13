@@ -9,6 +9,7 @@ from llm_browser.models import (
     ClickStep,
     DomStep,
     EvalStep,
+    FillStep,
     Flow,
     FlowData,
     FlowError,
@@ -268,9 +269,18 @@ def test_type_delay_rejects_anything_but_a_min_max_pair(delay: list[int]) -> Non
 def test_humanize_defaults_to_following_the_session() -> None:
     click = validate_step({"name": "s", "action": "click", "selector": "#x"})
     typed = validate_step({"name": "s", "action": "type", "selector": "#x"})
+    filled = validate_step({"name": "s", "action": "fill", "selector": "#x"})
     assert isinstance(click, ClickStep) and isinstance(typed, TypeStep)
-    assert (click.humanize, typed.humanize) == (None, None)
+    assert isinstance(filled, FillStep)
+    assert (click.humanize, typed.humanize, filled.humanize) == (None, None, None)
     forced = validate_step(
         {"name": "s", "action": "click", "selector": "#x", "humanize": True}
     )
     assert isinstance(forced, ClickStep) and forced.humanize is True
+
+
+def test_fill_takes_humanize() -> None:
+    plain = validate_step(
+        {"name": "s", "action": "fill", "selector": "#x", "humanize": False}
+    )
+    assert isinstance(plain, FillStep) and plain.humanize is False

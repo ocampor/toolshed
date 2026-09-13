@@ -91,6 +91,7 @@ class ClickStep(SelectorStep):
 class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
+    humanize: bool | None = None
 
 
 class TypeStep(SelectorStep):

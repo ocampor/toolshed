@@ -526,9 +526,14 @@ class BrowserSession:
         )
 
     def fill(
-        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        humanize: bool | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.fill(self, selector, value, timeout=timeout)
+        session_input.fill(self, selector, value, humanize=humanize, timeout=timeout)
 
     def type(
         self,

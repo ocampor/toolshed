@@ -4,13 +4,16 @@
 
 ### Added
 
-- `humanize` on the `click` and `type` steps, and on `session.click` /
-  `session.type`: `true` humanizes one call on a session whose `Behavior` is
+- `humanize` on the `click`, `fill` and `type` steps, and on `session.click` /
+  `session.fill` / `session.type`: `true` humanizes one call on a session whose `Behavior` is
   off, `false` takes the plain path on one that is on, unset follows the
   session. It switches the humanization knobs on the session's own `Behavior`:
   `true` turns on only the ones still at their `Behavior.off()` value, so a
   tuned knob, the rate limit (`min_gap_ms`) and a driver's opt-out (camoufox's
   `mouse_move`) all survive.
+- On `fill` it switches `Behavior.fill_as_type`: `humanize: true` types the
+  value key by key on the humanized cadence even on a session with
+  humanization off, `false` writes it in one go on a session that has it on.
 - `type` accepts `delay: [min, max]` — a per-key jitter instead of a constant
   cadence, carried as a `Jitter` through `session.type(delay_ms=)`.
 - Word-boundary pauses while typing: `Behavior.type_word_pause` fires on a

@@ -83,7 +83,7 @@ def test_fill(input_session: MagicMock) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(input_session, step)
     input_session.fill.assert_called_once_with(
-        step.selector, "hello", timeout=step.timeout
+        step.selector, "hello", humanize=None, timeout=step.timeout
     )
 
 

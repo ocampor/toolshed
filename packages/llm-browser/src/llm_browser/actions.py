@@ -122,7 +122,12 @@ def action_click(session: BrowserSession, step: ClickStep) -> VoidResult:
 
 @_registry.register("fill")
 def action_fill(session: BrowserSession, step: FillStep) -> VoidResult:
-    session.fill(step.selector, step.value, timeout=step.timeout)
+    session.fill(
+        step.selector,
+        step.value,
+        humanize=step.humanize,
+        timeout=step.timeout,
+    )
     return VoidResult()
 
 

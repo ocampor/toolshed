@@ -42,7 +42,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.checked` | checkbox and radio |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
-| `field:click.humanize` | humanized click step |
+| `field:click.humanize` | humanized click and fill |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
 | `field:dom.level` | dom body |
@@ -51,6 +51,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:download.path` | download |
 | `field:fill.selector` | shadow dom |
 | `field:fill.value` | shadow dom, controlled input |
+| `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
 | `field:parse.selector` | parse typed rows |

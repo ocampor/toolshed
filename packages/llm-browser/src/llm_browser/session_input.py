@@ -118,12 +118,16 @@ def fill(
     selector: Selector,
     value: str,
     *,
+    humanize: bool | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
-    with paced(session.behavior, session.behavior_runtime):
+    """``fill_as_type`` is one of the knobs ``humanize`` switches, so ``True``
+    types the value key by key and ``False`` writes it in one go."""
+    behavior = behavior_for(session, humanize)
+    with paced(behavior, session.behavior_runtime):
         element = session.find(selector, timeout=timeout)
-        if session.behavior.fill_as_type:
-            type_humanized(session, element, value)
+        if behavior.fill_as_type:
+            type_humanized(session, element, value, behavior)
         else:
             session.driver.fill(element, value)
 

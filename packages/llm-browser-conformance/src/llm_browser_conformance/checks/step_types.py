@@ -315,11 +315,15 @@ def a_jittered_delay_still_sends_one_keydown_per_character(ctx: Context) -> None
     assert_typed_at_least(took, outputs, TYPE_DELAY_MIN_MS)
 
 
-def a_humanized_click_step_is_still_a_trusted_event(ctx: Context) -> None:
-    """`humanize: true` changes the pointer's path, not its provenance — a
-    curve that arrives as an untrusted event buys nothing."""
-    expect_success(ctx, "form.html", "humanize-click")
+def a_humanized_step_drives_the_element_with_trusted_input(ctx: Context) -> None:
+    """`humanize: true` changes the pointer's path and the fill's keystrokes,
+    not their provenance — input that arrives untrusted buys nothing. A fill
+    it switched on types the value, so the field sees a keydown at all; a
+    plain fill writes the value with none."""
+    expect_success(ctx, "form.html", "humanize")
     assert ctx.trusted("#reveal") == "true"
+    assert ctx.trusted("#name") == "true"
+    assert ctx.js("document.querySelector('#name').value") == "typed"
 
 
 def a_chord_selects_the_field_before_the_replacement(ctx: Context) -> None:
@@ -501,10 +505,10 @@ SCENARIOS = [
         ),
     ),
     Scenario(
-        "humanized click step",
+        "humanized click and fill",
         Section.STEPS,
-        a_humanized_click_step_is_still_a_trusted_event,
-        covers=frozenset({"field:click.humanize"}),
+        a_humanized_step_drives_the_element_with_trusted_input,
+        covers=frozenset({"field:click.humanize", "field:fill.humanize"}),
     ),
     Scenario(
         "press chord",
