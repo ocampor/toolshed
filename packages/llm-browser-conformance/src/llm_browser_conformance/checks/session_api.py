@@ -21,8 +21,8 @@ from typing import Any
 from llm_browser.behavior import Behavior
 from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
+from llm_browser.explore_models import Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
-from llm_browser.models import Intent, Stability, Verdict
 from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
 from llm_browser.session import BrowserSession

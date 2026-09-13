@@ -1,9 +1,26 @@
-"""The rules ``BrowserSession.explore`` answers with: verdict, candidates, stability."""
+"""``explore`` and the rules it answers with: verdict, candidates, stability."""
 
 import re
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Collection
+from typing import TYPE_CHECKING, Any
 
-from llm_browser.models import FirstMatch, Intent, Locators, Stability, Verdict
+from llm_browser import constants
+from llm_browser.explore_models import (
+    ExploreRead,
+    ExploreResult,
+    FirstMatch,
+    Intent,
+    Locators,
+    Stability,
+    Verdict,
+)
+from llm_browser.parse import ExtractField, parse_extract_spec, row_spec
+from llm_browser.scripts import explore_first_js
+from llm_browser.selectors import Selector, describe_selector
+
+if TYPE_CHECKING:
+    from llm_browser.session import BrowserSession
 
 # Every intent but ``read`` wants exactly one match; these say what else it
 # wants of that match.
@@ -170,3 +187,112 @@ def candidate_selectors(locators: Locators, *, role_selectors: bool) -> list[str
     # not a selector until its brackets are.
     proposals += [f".{escaped_id(token)}" for token in hashed[:1]]
     return proposals
+
+
+def cut(value: str | None, limit: int) -> str | None:
+    """A sampled field, shortened. `None` and `""` stay themselves."""
+    return value[:limit] if value else value
+
+
+def empty_everywhere(
+    rows: list[dict[str, str | None]], fields: Collection[str]
+) -> list[str]:
+    """Fields that no sampled row filled in — missing and blank both count."""
+    if not rows:
+        return []
+    return [name for name in fields if not any(row[name] for row in rows)]
+
+
+def explore(
+    session: "BrowserSession",
+    selector: Selector,
+    extract: dict[str, ExtractField] | None = None,
+    sample: int = constants.EXPLORE_SAMPLE_ROWS,
+    timeout_ms: int = constants.DEFAULT_WAIT_TIMEOUT_MS,
+    intent: Intent = Intent.READ,
+    sample_chars: int = constants.EXPLORE_SAMPLE_CHARS,
+) -> ExploreResult:
+    """Count and sample what ``selector`` matches.
+
+    Never clicks; scrolls an offscreen match into view so the hit test has
+    an answer, which is what the click path does before it clicks.
+
+    For writing a step against a page you have not read yet: how many
+    elements the selector really finds, what the first ``sample`` of them
+    say under ``extract`` (the row's own text when it is omitted), which
+    fields stayed empty, and — in ``first`` — whether a click or a fill
+    would actually land. ``verdict`` reads all of that against ``intent``.
+    A selector that never arrives is a count of zero, not a
+    ``TimeoutError`` — "nothing here" is the answer. Each sampled field is
+    cut to ``sample_chars``: reading a row whole is what ``read`` is for.
+    """
+    stability = selector_stability(describe_selector(selector))
+    started = time.monotonic()
+    try:
+        locator = session.find_all(selector, timeout=timeout_ms)
+    except TimeoutError:
+        return ExploreResult(
+            count=0, sample=[], empty_fields=[], text_chars=0, stability=stability
+        )
+    since_call_ms = round((time.monotonic() - started) * 1000)
+    count = session.driver.count(locator)
+    spec = row_spec(extract or parse_extract_spec(None))
+    # Only the sampled elements are read: `sample x (fields + 1)`
+    # per-element reads (the +1 is `text_chars`), whatever `count` is.
+    elements = [session.driver.nth(locator, i) for i in range(min(sample, count))]
+    rows = [
+        {
+            name: cut(session.driver.read_field(element, field), sample_chars)
+            for name, field in spec.items()
+        }
+        for element in elements
+    ]
+    found = session.first_match(locator) if count else None
+    first = found.first if found else None
+    return ExploreResult(
+        count=count,
+        sample=rows,
+        empty_fields=empty_everywhere(rows, spec),
+        text_chars=sum(
+            len(session.driver.read_property(el, "innerText") or "") for el in elements
+        ),
+        first=first,
+        since_navigation_ms=found.since_navigation_ms if found else None,
+        since_call_ms=since_call_ms,
+        candidates=session.verified_candidates(
+            candidate_selectors(
+                found.locators,
+                role_selectors=session.driver.supports_role_selector,
+            )
+            if found
+            else [],
+            accepted_counts(intent, count),
+        ),
+        stability=stability,
+        verdict=verdict_for(intent, count, first),
+    )
+
+
+def first_match(session: "BrowserSession", locator: Any) -> ExploreRead:
+    """The first match as a click would find it, what it offers a selector,
+    and how long the page had been up — one page evaluation for all three."""
+    raw = session.driver.evaluate(session.driver.first(locator), explore_first_js())
+    return ExploreRead.model_validate(raw)
+
+
+def verified_candidates(
+    session: "BrowserSession", proposals: list[str], accepted: Collection[int]
+) -> list[str]:
+    """The proposals whose own count is one ``accepted`` here.
+
+    Only the best ``EXPLORE_MAX_CANDIDATES`` proposals are checked — one
+    count each, so ``explore`` costs a bounded number of round trips
+    however many things the element could be called.
+
+    A unique match *is* the first match: every proposal was built from
+    something read off it (or off the row carrying it).
+    """
+    checked = proposals[: constants.EXPLORE_MAX_CANDIDATES]
+    return [
+        candidate for candidate in checked if session.count_of(candidate) in accepted
+    ]

@@ -7,7 +7,8 @@ import pytest
 
 from llm_browser.chrome import is_process_alive
 from llm_browser.drivers.base import Driver
-from llm_browser.models import Intent, SessionInfo, Stability, Verdict
+from llm_browser.explore_models import Intent, Stability, Verdict
+from llm_browser.models import SessionInfo
 from llm_browser.parse import ExtractField
 from llm_browser.session import BrowserSession
 

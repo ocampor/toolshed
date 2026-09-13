@@ -1,15 +1,16 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
+# debt: 664 lines against the 300-line rule; the lifecycle half is the next split.
+
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from llm_browser import session_input, waits
+from llm_browser import explore, session_input, waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -23,39 +24,29 @@ from llm_browser.constants import (
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
-    EXPLORE_MAX_CANDIDATES,
     EXPLORE_SAMPLE_CHARS,
     EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
-from llm_browser.explore import (
-    accepted_counts,
-    candidate_selectors,
-    selector_stability,
-    verdict_for,
-)
 from llm_browser.html import SanitizeLevel, sanitize_page_html
+from llm_browser.explore_models import ExploreRead, ExploreResult, Intent
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
-    ExploreRead,
-    ExploreResult,
-    Intent,
     PageProbe,
     SessionInfo,
     SessionResult,
     WaitState,
 )
-from llm_browser.parse import ExtractField, parse_extract_spec, row_spec
+from llm_browser.parse import ExtractField, row_spec
 from llm_browser.results import BytesResult
 from llm_browser.state import STATE_FILENAME, SessionState
-from llm_browser.scripts import explore_first_js, page_probe_js
+from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
     Selector,
     css_string,
-    describe_selector,
     expect_single,
     resolve_selector,
 )
@@ -70,20 +61,6 @@ def checked_url(
     if urlsplit(url).scheme not in allowed_schemes:
         raise ValueError(f"url must be {' or '.join(allowed_schemes)}: {url}")
     return url
-
-
-def cut(value: str | None, limit: int) -> str | None:
-    """A sampled field, shortened. `None` and `""` stay themselves."""
-    return value[:limit] if value else value
-
-
-def empty_everywhere(
-    rows: list[dict[str, str | None]], fields: Collection[str]
-) -> list[str]:
-    """Fields that no sampled row filled in — missing and blank both count."""
-    if not rows:
-        return []
-    return [name for name in fields if not any(row[name] for row in rows)]
 
 
 class BrowserSession:
@@ -608,6 +585,12 @@ class BrowserSession:
         locator = resolve_selector(self.driver, self.get_page(), selector)
         return self.driver.extract_rows(locator, row_spec(extract))
 
+    # --- Explore ---
+    #
+    # Thin delegations to ``explore``, which owns the counting, sampling and
+    # verdict rules. ``count_of`` stays here: it is the driver call they verify
+    # candidates with.
+
     def explore(
         self,
         selector: Selector,
@@ -617,88 +600,23 @@ class BrowserSession:
         intent: Intent = Intent.READ,
         sample_chars: int = EXPLORE_SAMPLE_CHARS,
     ) -> ExploreResult:
-        """Count and sample what ``selector`` matches.
-
-        Never clicks; scrolls an offscreen match into view so the hit test has
-        an answer, which is what the click path does before it clicks.
-
-        For writing a step against a page you have not read yet: how many
-        elements the selector really finds, what the first ``sample`` of them
-        say under ``extract`` (the row's own text when it is omitted), which
-        fields stayed empty, and — in ``first`` — whether a click or a fill
-        would actually land. ``verdict`` reads all of that against ``intent``.
-        A selector that never arrives is a count of zero, not a
-        ``TimeoutError`` — "nothing here" is the answer. Each sampled field is
-        cut to ``sample_chars``: reading a row whole is what ``read`` is for.
-        """
-        stability = selector_stability(describe_selector(selector))
-        started = time.monotonic()
-        try:
-            locator = self.find_all(selector, timeout=timeout_ms)
-        except TimeoutError:
-            return ExploreResult(
-                count=0, sample=[], empty_fields=[], text_chars=0, stability=stability
-            )
-        since_call_ms = round((time.monotonic() - started) * 1000)
-        count = self.driver.count(locator)
-        spec = row_spec(extract or parse_extract_spec(None))
-        # Only the sampled elements are read: `sample x (fields + 1)`
-        # per-element reads (the +1 is `text_chars`), whatever `count` is.
-        elements = [self.driver.nth(locator, i) for i in range(min(sample, count))]
-        rows = [
-            {
-                name: cut(self.driver.read_field(element, field), sample_chars)
-                for name, field in spec.items()
-            }
-            for element in elements
-        ]
-        found = self.first_match(locator) if count else None
-        first = found.first if found else None
-        return ExploreResult(
-            count=count,
-            sample=rows,
-            empty_fields=empty_everywhere(rows, spec),
-            text_chars=sum(
-                len(self.driver.read_property(el, "innerText") or "") for el in elements
-            ),
-            first=first,
-            since_navigation_ms=found.since_navigation_ms if found else None,
-            since_call_ms=since_call_ms,
-            candidates=self.verified_candidates(
-                candidate_selectors(
-                    found.locators,
-                    role_selectors=self.driver.supports_role_selector,
-                )
-                if found
-                else [],
-                accepted_counts(intent, count),
-            ),
-            stability=stability,
-            verdict=verdict_for(intent, count, first),
+        return explore.explore(
+            self,
+            selector,
+            extract,
+            sample,
+            timeout_ms,
+            intent,
+            sample_chars,
         )
 
     def first_match(self, locator: Any) -> ExploreRead:
-        """The first match as a click would find it, what it offers a selector,
-        and how long the page had been up — one page evaluation for all three."""
-        raw = self.driver.evaluate(self.driver.first(locator), explore_first_js())
-        return ExploreRead.model_validate(raw)
+        return explore.first_match(self, locator)
 
     def verified_candidates(
         self, proposals: list[str], accepted: Collection[int]
     ) -> list[str]:
-        """The proposals whose own count is one ``accepted`` here.
-
-        Only the best ``EXPLORE_MAX_CANDIDATES`` proposals are checked — one
-        count each, so ``explore`` costs a bounded number of round trips
-        however many things the element could be called.
-
-        A unique match *is* the first match: every proposal was built from
-        something read off it (or off the row carrying it).
-        """
-        checked = proposals[:EXPLORE_MAX_CANDIDATES]
-        return [
-            candidate for candidate in checked if self.count_of(candidate) in accepted
-        ]
+        return explore.verified_candidates(self, proposals, accepted)
 
     def count_of(self, selector: str) -> int:
         """How many elements a proposed selector matches.

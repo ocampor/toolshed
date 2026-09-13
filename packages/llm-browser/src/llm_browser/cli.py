@@ -26,14 +26,13 @@ from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
 from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import parse_extract_spec
+from llm_browser.explore_models import Intent, Verdict
 from llm_browser.models import (
     Flow,
     FlowError,
     FlowResult,
-    Intent,
     RunFlowStep,
     SubFlow,
-    Verdict,
     WaitState,
     check_settle_budget,
 )

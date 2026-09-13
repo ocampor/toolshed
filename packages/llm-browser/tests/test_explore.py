@@ -9,7 +9,7 @@ from llm_browser.explore import (
     generated_id,
     href_prefix,
 )
-from llm_browser.models import Intent, Locators
+from llm_browser.explore_models import Intent, Locators
 
 
 def locators(**fields: object) -> Locators:
