@@ -18,13 +18,14 @@ if TYPE_CHECKING:
 
 
 # The knobs ``humanize`` switches: every field ``Behavior.human()`` and
-# ``Behavior.off()`` disagree on, minus the rate limit — a per-step flag must
-# not hand back a gap the session set to stay under a site's radar.
+# ``Behavior.off()`` disagree on. ``min_gap_ms`` is not one of them — the two
+# presets agree on it — so a per-step flag can never hand back a rate limit
+# the session set to stay under a site's radar.
 HUMANIZE_KNOBS = frozenset(
     name
     for name in Behavior.model_fields
     if getattr(Behavior.human(), name) != getattr(Behavior.off(), name)
-) - {"min_gap_ms"}
+)
 
 
 def driver_opt_out(behavior: Behavior, field: str) -> bool:
@@ -38,6 +39,23 @@ def driver_opt_out(behavior: Behavior, field: str) -> bool:
     return bool(declared.default != Behavior.model_fields[field].default)
 
 
+def switched_on(behavior: Behavior) -> dict[str, Any]:
+    """The knobs ``humanize: true`` turns on: those still sitting at their
+    ``off()`` value. One the session tuned — a slower key delay, a tighter
+    click offset — is already humanized the way its owner meant it to be."""
+    human, off = Behavior.human(), Behavior.off()
+    return {
+        name: getattr(human, name)
+        for name in HUMANIZE_KNOBS
+        if getattr(behavior, name) == getattr(off, name)
+        and not driver_opt_out(behavior, name)
+    }
+
+
+def switched_off() -> dict[str, Any]:
+    return {name: getattr(Behavior.off(), name) for name in HUMANIZE_KNOBS}
+
+
 def behavior_for(session: "BrowserSession", humanize: bool | None) -> Behavior:
     """The behaviour one call runs under. ``humanize`` switches the session's
     humanization knobs on or off for that call — timing included, since a
@@ -46,12 +64,7 @@ def behavior_for(session: "BrowserSession", humanize: bool | None) -> Behavior:
     """
     if humanize is None:
         return session.behavior
-    source = Behavior.human() if humanize else Behavior.off()
-    knobs = {
-        name: getattr(source, name)
-        for name in HUMANIZE_KNOBS
-        if not (humanize and driver_opt_out(session.behavior, name))
-    }
+    knobs = switched_on(session.behavior) if humanize else switched_off()
     return session.behavior.model_copy(update=knobs)
 
 

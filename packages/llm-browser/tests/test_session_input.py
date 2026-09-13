@@ -362,3 +362,16 @@ def test_scroll_and_goto_forget_where_the_pointer_was(
     session.behavior_runtime.mouse_xy = (10.0, 20.0)
     session.goto("https://example.com")
     assert session.behavior_runtime.mouse_xy is None
+
+
+def test_humanize_true_leaves_a_tuned_knob_alone(session: BrowserSession) -> None:
+    """A key delay someone chose is already humanized the way they meant it;
+    `humanize: true` turns humanization on, it does not restore defaults."""
+    tuned = Jitter(min_ms=200, max_ms=400)
+    session.behavior = Behavior(
+        type_char_delay=tuned, mouse_move=False, pre_click_pause=Jitter()
+    )
+    forced = behavior_for(session, True)
+    assert forced.type_char_delay == tuned
+    assert forced.mouse_move is True
+    assert forced.pre_click_pause == Behavior.human().pre_click_pause
