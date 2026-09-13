@@ -134,9 +134,9 @@ fresh.
 | `status()` | Whether a session is `open` or `closed`, with its CDP URL and target id |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
 | `find(selector)` | Find exactly one element (returns the driver's locator: a Playwright `Locator` on patchright/camoufox, a `NodriverLocator` on nodriver) |
-| `click(selector, dispatch=False)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
-| `fill(selector, value)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` |
-| `type(selector, value, delay_ms=0)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter |
+| `click(selector, dispatch=False, humanize=None)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `humanize=True`/`False` forces that path on or off for this call. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
+| `fill(selector, value)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` (zero key events) |
+| `type(selector, value, delay_ms=0, humanize=None)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter — an `int` types at a constant rate, a `Jitter` becomes the per-key delay |
 | `press(selector, key)` | Press `key` on the element; `selector=None` presses on whatever holds focus |
 | `select_option(selector, value)` | Choose an option in a `<select>` |
 | `set_checked(selector, checked)` | Check or uncheck a checkbox |

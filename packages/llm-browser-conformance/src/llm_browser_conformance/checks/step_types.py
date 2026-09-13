@@ -75,6 +75,8 @@ OFF_PAGE_MARGIN_PX = 50
 # What `flows/type-delay.yaml` declares.
 TYPED_TEXT = "abcde"
 TYPE_DELAY_MS = 60
+# The lower bound `flows/type-delay-jitter.yaml` declares.
+TYPE_DELAY_MIN_MS = 40
 
 
 def png_size(data: bytes) -> tuple[int, int]:
@@ -283,6 +285,28 @@ def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
     assert one_text(outputs, "keydowns") == str(len(TYPED_TEXT))
     floor = len(TYPED_TEXT) * TYPE_DELAY_MS / 1000
     assert took >= floor, f"typing {TYPED_TEXT!r} took {took:.3f}s"
+
+
+def a_jittered_delay_still_sends_one_keydown_per_character(ctx: Context) -> None:
+    """`delay: [min, max]` is a cadence, not a licence to drop keys: the page
+    must still see one keydown per character, no faster than the floor."""
+    outputs: dict[str, object] = {}
+    took = ctx.elapsed(
+        lambda: outputs.update(
+            expect_success(ctx, "keydown-count.html", "type-delay-jitter")
+        )
+    )
+    assert one_text(outputs, "value") == TYPED_TEXT
+    assert one_text(outputs, "keydowns") == str(len(TYPED_TEXT))
+    floor = len(TYPED_TEXT) * TYPE_DELAY_MIN_MS / 1000
+    assert took >= floor, f"typing {TYPED_TEXT!r} took {took:.3f}s"
+
+
+def a_humanized_click_step_is_still_a_trusted_event(ctx: Context) -> None:
+    """`humanize: true` changes the pointer's path, not its provenance — a
+    curve that arrives as an untrusted event buys nothing."""
+    expect_success(ctx, "form.html", "humanize-click")
+    assert ctx.trusted("#reveal") == "true"
 
 
 def a_chord_selects_the_field_before_the_replacement(ctx: Context) -> None:
@@ -504,6 +528,20 @@ SCENARIOS = [
         Section.STEPS,
         type_delay_sends_one_keydown_per_character,
         covers=frozenset({"field:type.delay", "field:type.selector"}),
+    ),
+    Scenario(
+        "jittered key delay",
+        Section.STEPS,
+        a_jittered_delay_still_sends_one_keydown_per_character,
+        covers=frozenset(
+            {"api:type.delay_jitter", "field:type.delay", "field:type.humanize"}
+        ),
+    ),
+    Scenario(
+        "humanized click step",
+        Section.STEPS,
+        a_humanized_click_step_is_still_a_trusted_event,
+        covers=frozenset({"field:click.humanize"}),
     ),
     Scenario(
         "press chord",

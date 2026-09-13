@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.14.0 — 2026-09-13
+
+### Added
+
+- `humanize` on the `click` and `type` steps, and on `session.click` /
+  `session.type`: `true` humanizes one call on a session whose `Behavior` is
+  off, `false` takes the plain path on one that is on, unset follows the
+  session.
+- `type` accepts `delay: [min, max]` — a per-key jitter instead of a constant
+  cadence, carried as a `Jitter` through `session.type(delay_ms=)`.
+- Word-boundary pauses while typing: `Behavior.type_word_pause` fires on a
+  space with probability `Behavior.type_word_pause_chance` (0.15).
+- `Behavior.hover_dwell` (80-300 ms) and `Behavior.press_hold` (60-140 ms): a
+  humanized click dwells on arrival and holds the button down.
+- `Behavior.scroll_delta_jitter` (0.15): each `scroll` tick strays from `delta`
+  by up to that fraction. `Behavior.off()` keeps the exact delta.
+
+### Changed
+
+- `humanized_click` walks a quadratic Bézier path of successive `mouse.move`
+  calls and presses with `mouse.down()` / `mouse.up()`, replacing one straight
+  `mouse.move(steps=)` plus `mouse.click()`.
+- `Behavior.mouse_move_steps` is now the upper bound of that path's step count
+  (half to all of it is sampled per move); default 30 → 20.
+
+### Breaking
+
+- `Behavior.click_offset_px` is replaced by `Behavior.click_offset_ratio`
+  (default 0.3): the click lands that fraction of the way from the element's
+  centre to an edge, so the spread scales with the target instead of shrinking
+  to a fixed pixel box on a large one. Migration: drop `click_offset_px` from
+  behavior YAML — `extra="forbid"` rejects it — and set `click_offset_ratio`.
+
 ## 0.13.0 — 2026-09-13
 
 ### Added

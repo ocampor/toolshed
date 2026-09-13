@@ -26,14 +26,23 @@ steps:
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
-| `click` | — | `dispatch` (bool, default false) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
-| `fill` | — | `value` | Clears the field, sets `value` |
-| `type` | — | `value`, `delay` (ms, default 0) | Types character by character |
+| `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
+| `fill` | — | `value` | Clears the field, sets `value` — a value-set with zero key events, the equivalent of a paste |
+| `type` | — | `value`, `delay` (ms, or `[min, max]` for a per-key jitter, default 0), `humanize` (bool) | Types character by character |
 | `select` | — | `value` | Picks a `<select>` option |
 | `check` | — | `checked` (bool, default true) | Sets checkbox state |
 | `pick` | — | `value` | Clicks the list item whose text matches `value` (see [below](#picking-from-a-list)) |
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
+
+`fill` never fires a keystroke, so a page that watches input telemetry — masks,
+autocompletes, hotkeys, bot scoring — sees nothing. Prefer `type` there, and a
+`delay: [min, max]` over a constant: a fixed cadence is itself a fingerprint.
+
+`humanize` overrides the session's behavior for one step: `true` clicks on a
+curved path with a hover dwell, an in-box offset and a jittered press even when
+the session runs with humanization off, `false` takes the plain path even when
+it is on, and leaving it out follows the session.
 
 #### Picking from a list
 

@@ -81,6 +81,7 @@ class SelectorStep(BaseStep):
 class ClickStep(SelectorStep):
     action: Literal["click"]
     dispatch: bool = False
+    humanize: bool | None = None
 
 
 class FillStep(SelectorStep):
@@ -89,9 +90,20 @@ class FillStep(SelectorStep):
 
 
 class TypeStep(SelectorStep):
+    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
+    a constant cadence is itself a fingerprint."""
+
     action: Literal["type"]
     value: str = ""
-    delay: int = 0
+    delay: int | Jitter = 0
+    humanize: bool | None = None
+
+    @field_validator("delay", mode="before")
+    @classmethod
+    def _pair_to_jitter(cls, value: Any) -> Any:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return Jitter(min_ms=value[0], max_ms=value[1])
+        return value
 
 
 class SelectStep(SelectorStep):

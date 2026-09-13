@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from llm_browser.behavior import Jitter
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    ClickStep,
     DomStep,
     EvalStep,
     Flow,
@@ -17,6 +18,7 @@ from llm_browser.models import (
     ReadStep,
     ScrollStep,
     SessionInfo,
+    TypeStep,
     validate_step,
 )
 
@@ -284,3 +286,31 @@ def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
         )
+
+
+def test_type_delay_accepts_a_constant_or_a_pair() -> None:
+    step = validate_step({"name": "s", "action": "type", "selector": "#x", "delay": 60})
+    assert isinstance(step, TypeStep) and step.delay == 60
+    step = validate_step(
+        {"name": "s", "action": "type", "selector": "#x", "delay": [30, 90]}
+    )
+    assert isinstance(step, TypeStep)
+    assert step.delay == Jitter(min_ms=30, max_ms=90)
+
+
+def test_type_delay_rejects_an_inverted_pair() -> None:
+    with pytest.raises(ValidationError, match=">="):
+        validate_step(
+            {"name": "s", "action": "type", "selector": "#x", "delay": [90, 30]}
+        )
+
+
+def test_humanize_defaults_to_following_the_session() -> None:
+    click = validate_step({"name": "s", "action": "click", "selector": "#x"})
+    typed = validate_step({"name": "s", "action": "type", "selector": "#x"})
+    assert isinstance(click, ClickStep) and isinstance(typed, TypeStep)
+    assert (click.humanize, typed.humanize) == (None, None)
+    forced = validate_step(
+        {"name": "s", "action": "click", "selector": "#x", "humanize": True}
+    )
+    assert isinstance(forced, ClickStep) and forced.humanize is True

@@ -70,6 +70,61 @@ def test_click_humanizes_when_the_behavior_moves_the_mouse(
     driver(session).click.assert_not_called()
 
 
+def test_click_humanize_true_overrides_a_session_that_is_off(
+    session: BrowserSession,
+) -> None:
+    session.click("#btn", humanize=True)
+    driver(session).humanized_click.assert_called_once()
+    driver(session).click.assert_not_called()
+
+
+def test_click_humanize_false_overrides_a_human_session(
+    session: BrowserSession,
+) -> None:
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    session.click("#btn", humanize=False)
+    driver(session).click.assert_called_once_with("element")
+    driver(session).humanized_click.assert_not_called()
+
+
+def test_click_humanize_none_follows_the_session(session: BrowserSession) -> None:
+    session.click("#btn", humanize=None)
+    driver(session).click.assert_called_once_with("element")
+
+
+def test_type_humanize_true_overrides_a_session_that_is_off(
+    session: BrowserSession,
+) -> None:
+    session.type("#search", "query", humanize=True)
+    driver(session).humanized_type.assert_called_once()
+    driver(session).type.assert_not_called()
+
+
+def test_type_humanize_false_overrides_a_human_session(
+    session: BrowserSession,
+) -> None:
+    session.behavior = Behavior.human()
+    session.behavior_runtime = session.behavior.runtime()
+    session.type("#search", "query", humanize=False)
+    driver(session).type.assert_called_once_with("element", "query", delay_ms=0)
+    driver(session).humanized_type.assert_not_called()
+
+
+def test_a_jitter_delay_types_humanized_with_that_jitter(
+    session: BrowserSession,
+) -> None:
+    """The per-call jitter replaces the behaviour's own key delay, so an off
+    session still types at the cadence the step asked for."""
+    delay = Jitter(min_ms=30, max_ms=90)
+    session.type("#search", "query", delay_ms=delay)
+    driver(session).type.assert_not_called()
+    _page, _element, _value, behavior, _runtime = driver(
+        session
+    ).humanized_type.call_args.args
+    assert behavior.type_char_delay == delay
+
+
 def test_fill_uses_the_plain_primitive_when_fill_as_type_is_off(
     session: BrowserSession,
 ) -> None:

@@ -9,13 +9,17 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import (
     Behavior,
     Jitter,
+    boundary_pause,
+    curve_points,
     enforce_gap,
     humanized_click,
     humanized_type,
+    jittered_delta,
+    jittered_target,
     mark_action_done,
     post_pause,
 )
-from llm_browser.models import ClickStep, FillStep, ThinkStep, TypeStep
+from llm_browser.models import ClickStep, FillStep, ScrollStep, ThinkStep, TypeStep
 from llm_browser.session import BrowserSession
 
 
@@ -78,8 +82,12 @@ def test_off_preset_disables_everything() -> None:
     assert b.mouse_move is False
     assert b.fill_as_type is False
     assert b.focus_drift is False
-    assert b.click_offset_px == 0
+    assert b.click_offset_ratio == 0.0
+    assert b.scroll_delta_jitter == 0.0
     assert b.mouse_move_steps == 0
+    assert b.hover_dwell == Jitter()
+    assert b.press_hold == Jitter()
+    assert b.type_word_pause == Jitter()
     assert b.min_gap_ms == 0
 
 
@@ -165,35 +173,88 @@ def test_humanized_type_types_char_by_char() -> None:
     element.type.assert_any_call("i", delay=0)
 
 
-def test_humanized_click_uses_mouse_path() -> None:
-    b = Behavior(
-        pre_click_pause=Jitter(),
-        click_offset_px=0,
-        mouse_move_steps=5,
-    )
+BOX = {"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0}
+
+
+def _element_at(box: dict[str, float] | None = BOX) -> MagicMock:
+    element = MagicMock()
+    element.bounding_box.return_value = box
+    return element
+
+
+def test_humanized_click_walks_a_curve_and_presses_with_a_gap() -> None:
+    b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=12)
     r = b.runtime()
     page = MagicMock()
-    element = MagicMock()
-    element.bounding_box.return_value = {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 100.0,
-        "height": 40.0,
-    }
-    humanized_click(page, element, b, r)
-    page.mouse.move.assert_called_once_with(60.0, 40.0, steps=5)
-    page.mouse.click.assert_called_once_with(60.0, 40.0)
-    element.click.assert_not_called()
+    humanized_click(page, _element_at(), b, r)
+    path = [call.args for call in page.mouse.move.call_args_list]
+    assert 6 <= len(path) <= 12
+    assert path[-1] == r.mouse_xy
+    page.mouse.down.assert_called_once_with()
+    page.mouse.up.assert_called_once_with()
+    page.mouse.click.assert_not_called()
+
+
+def test_click_target_spreads_with_the_offset_ratio() -> None:
+    """The offset is a fraction of the half-extent, so it scales with the box
+    instead of with a pixel count — and never leaves the element."""
+    b = Behavior(click_offset_ratio=0.3)
+    r = b.runtime()
+    targets = [jittered_target(_element_at(), b, r) for _ in range(2000)]
+    xs = [x for x, _y in targets]
+    ys = [y for _x, y in targets]
+    assert 60.0 - 15.0 <= min(xs) and max(xs) <= 60.0 + 15.0
+    assert 40.0 - 6.0 <= min(ys) and max(ys) <= 40.0 + 6.0
+    assert max(xs) - min(xs) > 15.0
+
+
+def test_a_curve_bows_off_the_straight_line() -> None:
+    points = curve_points((0.0, 0.0), (100.0, 0.0), 10, random.Random(3))
+    assert points[-1] == (100.0, 0.0)
+    assert max(abs(y) for _x, y in points) > 1.0
+
+
+def test_a_curve_is_monotonic_towards_its_end() -> None:
+    """Bézier control points never drag the path past its endpoint."""
+    points = curve_points((0.0, 0.0), (100.0, 0.0), 20, random.Random(11))
+    assert [x for x, _y in points] == sorted(x for x, _y in points)
+
+
+def test_word_boundary_pauses_sometimes_and_punctuation_always() -> None:
+    b = Behavior(type_word_pause_chance=0.5)
+    rng = random.Random(0)
+    assert boundary_pause(".", b, rng) == b.type_punct_pause
+    assert boundary_pause("a", b, rng) is None
+    spaces = [boundary_pause(" ", b, rng) for _ in range(500)]
+    assert 0 < sum(pause is not None for pause in spaces) < 500
+    assert set(spaces) == {None, b.type_word_pause}
+
+
+def test_word_boundary_pause_is_shorter_than_the_punctuation_one() -> None:
+    b = Behavior()
+    assert b.type_word_pause.max_ms < b.type_punct_pause.max_ms
+
+
+def test_scroll_delta_jitter_stays_within_its_spread() -> None:
+    b = Behavior(scroll_delta_jitter=0.2)
+    rng = random.Random(5)
+    deltas = [jittered_delta(600, b, rng) for _ in range(1000)]
+    assert all(480 <= d <= 720 for d in deltas)
+    assert len(set(deltas)) > 1
+
+
+def test_scroll_delta_is_exact_when_the_behavior_is_off() -> None:
+    b = Behavior.off()
+    rng = random.Random(5)
+    assert {jittered_delta(600, b, rng) for _ in range(50)} == {600}
 
 
 def test_humanized_click_raises_when_no_bbox() -> None:
     b = Behavior()
     r = b.runtime()
     page = MagicMock()
-    element = MagicMock()
-    element.bounding_box.return_value = None
     with pytest.raises(RuntimeError, match="bounding box"):
-        humanized_click(page, element, b, r)
+        humanized_click(page, _element_at(None), b, r)
     page.mouse.move.assert_not_called()
 
 
@@ -206,6 +267,12 @@ def test_default_session_fill_still_calls_fill(session: BrowserSession) -> None:
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.fill.assert_called_once_with("hello")
     locator.first.type.assert_not_called()
+
+
+def test_default_session_scroll_uses_the_exact_delta(session: BrowserSession) -> None:
+    step = ScrollStep(name="s", action="scroll", delta=600, times=1)
+    execute_action(session, step)
+    session._page.mouse.wheel.assert_called_once_with(0, 600)  # type: ignore[union-attr]
 
 
 def test_default_session_click_uses_plain_click(session: BrowserSession) -> None:
@@ -246,7 +313,8 @@ def test_human_session_click_uses_mouse(tmp_path: object) -> None:
     step = ClickStep(name="s", action="click", selector="#btn")
     execute_action(s, step)
     assert mock_page.mouse.move.called
-    assert mock_page.mouse.click.called
+    assert mock_page.mouse.down.called
+    assert mock_page.mouse.up.called
 
 
 def test_dispatch_click_bypasses_humanization(tmp_path: object) -> None:

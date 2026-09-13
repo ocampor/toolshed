@@ -1,0 +1,21 @@
+# `delay: [min, max]` jitters each key; `humanize: true` takes the humanized
+# path whatever the session's own behavior is.
+steps:
+  - name: type
+    action: type
+    selector: "#typed"
+    value: abcde
+    delay: [40, 80]
+    humanize: true
+  - name: value
+    action: read
+    selector: "#typed"
+    extract:
+      text:
+        attribute: value
+  - name: keydowns
+    action: read
+    selector: "#keydowns"
+    extract:
+      text:
+        attribute: textContent

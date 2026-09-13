@@ -42,6 +42,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.checked` | checkbox and radio |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
+| `field:click.humanize` | humanized click step |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
 | `field:dom.level` | dom body |
@@ -80,7 +81,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:think.max_ms` | think pauses |
 | `field:type.selector` | controlled input, type delay |
 | `field:type.value` | controlled input, masked input |
-| `field:type.delay` | masked input, type delay |
+| `field:type.delay` | masked input, type delay, jittered key delay |
+| `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
 | `field:wait_for.state` | flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
@@ -174,3 +176,4 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:sanitize.xhigh` | sanitize levels |
 | `api:templating.selector` | templating |
 | `api:templating.value` | redirect, templating |
+| `api:type.delay_jitter` | jittered key delay |
