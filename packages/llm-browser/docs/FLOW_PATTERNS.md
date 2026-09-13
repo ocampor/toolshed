@@ -17,6 +17,9 @@ support](DRIVERS.md#selector-and-key-support)). Each pattern names its CSS equiv
 | Polling until a loader disappears | `wait_for` with `state: hidden` or `detached` |
 | Enumerating `<select>` options | `dom` with the select's selector |
 | Reading a generated id | [Rotating-prefix ids](#rotating-prefix-ids) |
+| Paging a result list | [Pagination](#pagination) |
+| Clicking a card that has no id | [List → detail](#list--detail) |
+| Polling until a framework has painted | [SPA hydration](#spa-hydration) |
 
 ## Reading the page
 
@@ -187,6 +190,165 @@ See [DRIVERS.md](DRIVERS.md) for the escape-hatch list.
 - { name: continue, selector: "#btnContinuar", action: click, dispatch: true }
 - { name: next screen, selector: "#confirmacion", action: wait_for, state: attached, timeout: 15000 }
 ```
+
+## Pagination
+
+A paged list moves forward by clicking its own control; nothing on the page takes a page
+number. Click `Next`, let the framework swap the rows in, then re-read the same container.
+
+```yaml
+steps:
+  - name: next page
+    selector: "button[aria-label='Next']"
+    action: click
+    when:
+      - { element_exists: { selector: "button[aria-label='Next']" } }
+
+  - { name: settle, action: think, min_ms: 2000, max_ms: 6000 }
+
+  - name: rows redraw
+    selector: "[componentkey='SearchResultsMainContent']"
+    action: wait_for
+    state: stable
+    settle: 1000
+    timeout: 20000
+
+  - name: read page
+    selector: "[componentkey='SearchResultsMainContent'] p"
+    action: read
+    min_rows: 10
+    extract:
+      line: { attribute: textContent }
+```
+
+- `fill` and `pick` are the wrong tools here: `fill` sets an input's value and a pager is a
+  `<button>`, while `pick` clicks the list item whose text matches — an item, never a control.
+- `Next` disappears on the last page; the `when:` guard turns that into a no-op instead of a
+  timeout, and `optional: true` on the step is the after-the-fact equivalent.
+- Where the rows are a flat `<p>` sequence with no per-row wrapper, read the `<p>`s and split
+  them locally on the "Posted … ago" node rather than inventing a row selector the page lacks.
+- Plain CSS throughout, so this one runs on every driver.
+
+## List → detail
+
+Cards on a framework-rendered list often carry no id and machine-generated classes. Anchor on
+the attributes the framework and its authors keep stable instead.
+
+| Hook | Example | Why it holds |
+|---|---|---|
+| `data-testing-id` | `[data-testing-id='mission-application-title']` | authored for tests; the most stable hook a page can offer |
+| `componentkey` | `[componentkey='SearchResultsMainContent']` | stable string keys; UUID-bearing ones rotate per load — match with `^=` |
+| `aria-label` | `button[aria-label='Next']` | tracks the copy, not the build |
+| row text | `(//main//p[contains(normalize-space(.), '{{ title }}')])[1]` | last resort when the card has no attribute at all (XPath: patchright / camoufox) |
+
+```yaml
+params: [title]
+steps:
+  - name: open card
+    selector: { xpath: "(//main//p[contains(normalize-space(.), '{{ title }}')])[1]" }
+    action: click
+
+  - { name: read a bit, action: think, min_ms: 2000, max_ms: 5000 }
+
+  - name: detail pane
+    selector: "[componentkey^='JobMatchRef_']"
+    action: wait_for
+    state: visible
+    timeout: 20000
+
+  - name: read detail
+    selector: "[componentkey^='JobMatchRef_']"
+    action: read
+    min_chars: 400
+    extract:
+      link: { child_selector: "a[href*='/jobs/view/']", attribute: href }
+      body: { attribute: textContent }
+```
+
+- The record's id exists only after the click — it surfaces as the suffix of
+  `[componentkey^='JobMatchRef_']` and inside the detail link's `href`. Read it back, never
+  build it.
+- No CSS equivalent of the click: `pick` needs a selector matching each card's own container,
+  and this list has none — it's a flat `<p>` run (see Pagination above). Aiming `pick` at
+  `main p` matches hundreds of nodes and past 200 the step is refused with
+  `Expected list items, scanned N`; the XPath click is the only option here.
+- There is no `back` action. Click the site's own back control, or page back within the same
+  tab — re-entering the list via a `run-flow` step re-runs that flow's own `goto`, so it costs
+  the same navigation, not less.
+
+## SPA hydration
+
+`goto` returns on `domcontentloaded` and the framework paints afterwards. A fixed `think`
+guesses at that delay; `wait_for` on a selector only the hydrated page has returns the moment
+it appears, and bounds the wait at a real timeout rather than a guess.
+
+```yaml
+steps:
+  - name: results hydrate
+    selector: "[componentkey='SearchResultsMainContent']"
+    action: wait_for
+    state: visible
+    optional: true
+    timeout: 20000
+
+  - { name: last paint, action: think, min_ms: 800, max_ms: 2000 }
+
+  - name: read results
+    selector: "[componentkey='SearchResultsMainContent'] p"
+    action: read
+    min_rows: 5
+    extract:
+      line: { attribute: textContent }
+```
+
+- `optional: true` keeps a server-rendered variant of the page from failing on a landmark it
+  never mounts; the short `think` afterwards covers the final paint, which no selector
+  announces.
+- A half-hydrated page answers a read with nav chrome, a skeleton or `Loading…`, and the step
+  still succeeds. `min_chars` and `min_rows` turn that into a failure carrying the page in
+  `capture`; both count extracted output on `read` (see FLOWS.md's
+  [minimums table](FLOWS.md#minimums)), so both need an `extract`.
+- When the stub has the right shape but placeholder text, `wait_for` `state: stable` with
+  `settle: 1000` on the container waits for the text to stop changing instead.
+- When hydration is what unlocks a field — an input a checkbox enables — `wait_for`
+  `state: enabled` on that field is the precise wait (see FLOWS.md's
+  [state table](FLOWS.md#waiting)).
+
+## One-shot pages
+
+A 1Password one-time share link opens exactly once — the second view is "Maximum views
+reached". Rehearsing a flow against one burns the only view it has.
+
+```yaml
+steps:
+  - name: reveal password
+    selector: "li[aria-label='Reveal password']"
+    action: click
+
+  - { name: close the menu, action: press, key: "Escape" }
+
+  - { name: rendered, action: think, min_ms: 500, max_ms: 1500 }
+
+  - name: credentials
+    selector: "body"
+    action: read
+    min_chars: 20
+    extract:
+      text: { attribute: textContent }
+```
+
+- No `goto` in the flow. Open the link by hand in a live tab and address that tab:
+  `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` ([ATTACH.md](ATTACH.md)). A
+  flow that navigates itself spends the view on the rehearsal.
+- Check the shape with `llm-browser validate --flow one_shot.yaml` and rehearse the steps on a
+  page you can reload; the share link gets the one real run.
+- `press` without a `selector` goes to the focused element — the way out of a menu that stays
+  open over the next field. One `Escape` per menu.
+- Reveal *every* concealed field in that run: one `li[aria-label='Reveal password']` click per
+  field, all before the read.
+- `read` on `body` is the safe default when the layout is unknown (`dom` on `body` also works
+  since 0.13.0), but both hand back the whole page. Once you know where the fields sit, read
+  the smallest container holding them.
 
 ## Migrating older flows
 

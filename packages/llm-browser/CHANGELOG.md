@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.1 — 2026-09-13
+
+### Changed
+
+- `docs/FLOW_PATTERNS.md`: worked YAML for pagination, list → detail, SPA
+  hydration and one-shot pages.
+
 ## 0.15.0 — 2026-09-13
 
 ### Added
