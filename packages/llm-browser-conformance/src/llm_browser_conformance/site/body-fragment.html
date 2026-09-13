@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Body fragment</title>
+<noscript>Enable JavaScript</noscript>
+<div id="content"><a id="next" href="/next.html">Next</a> The body of a page whose outerHTML is several elements.</div>
+<script>
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+</script>

@@ -245,3 +245,27 @@ def test_higher_levels_shrink_output(sanitized: dict[SanitizeLevel, str]) -> Non
         >= len(sanitized[SanitizeLevel.HIGH])
         >= len(sanitized[SanitizeLevel.XHIGH])
     )
+
+
+def test_a_body_fragment_sanitizes_to_the_body_element() -> None:
+    """`dom body` hands lxml an outerHTML whose root its fragment parser
+    strips, leaving the children as several roots it then refuses."""
+    html = "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
+    result = sanitize_html_fragment(html)
+    assert result.startswith("<body>")
+    assert "Hi" in result
+    assert "<script>" not in result
+
+
+def test_an_html_fragment_sanitizes_to_the_html_element() -> None:
+    html = "<html><head><title>T</title></head><body><div>Hi</div></body></html>"
+    result = sanitize_html_fragment(html)
+    assert result.startswith("<html>")
+    assert "Hi" in result
+
+
+def test_unparseable_html_is_a_step_failure() -> None:
+    """lxml raises a ParserError, which is a SyntaxError: it would escape
+    `is_step_failure` and crash the run instead of failing the step."""
+    with pytest.raises(ValueError, match="cannot parse HTML"):
+        sanitize_html_fragment("")

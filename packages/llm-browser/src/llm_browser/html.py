@@ -17,6 +17,7 @@ from lxml.html.clean import Cleaner
 
 from llm_browser.constants import (
     DATA_URI_PATTERN,
+    DOCUMENT_ROOT_PATTERN,
     EXTRA_SAFE_ATTRS,
     KILL_TAGS,
     STRUCTURAL_TAGS,
@@ -129,13 +130,30 @@ def sanitize_tree(tree: HtmlElement, level: SanitizeLevel) -> None:
     normalize_whitespace(tree)
 
 
+def parse_fragment(html: str) -> HtmlElement:
+    """The one element ``html`` describes, whatever its root tag is.
+
+    A ``<body>``/``<html>`` outerHTML is a fragment whose root the fragment
+    parser strips — it then sees several roots and refuses — so those two go
+    through the document parser instead.
+    """
+    match = DOCUMENT_ROOT_PATTERN.match(html)
+    try:
+        if match is None:
+            return fragment_fromstring(html, create_parent=False)
+        document: HtmlElement = document_fromstring(html, parser=_page_parser)
+    except etree.ParserError as exc:
+        raise ValueError(f"cannot parse HTML: {exc}") from exc
+    return document if match.group(1).lower() == "html" else document.body
+
+
 def sanitize_html_fragment(
     html: str,
     max_depth: int = 0,
     level: SanitizeLevel = SanitizeLevel.LOW,
 ) -> str:
     """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
-    tree: HtmlElement = fragment_fromstring(html, create_parent=False)
+    tree = parse_fragment(html)
     sanitize_tree(tree, level)
     if max_depth > 0:
         truncate_tree(tree, max_depth)

@@ -44,6 +44,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:click.dispatch` | dispatch click step |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
+| `field:dom.level` | dom body |
+| `field:dom.min_chars` | dom min_chars |
 | `field:dom.path` | dom step depth |
 | `field:download.selector` | download |
 | `field:download.path` | download |
@@ -60,6 +62,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:press.key` | enter and escape, autocomplete enter |
 | `field:read.selector` | overlay intercepts click |
 | `field:read.extract` | overlay intercepts click, read attributes |
+| `field:read.min_chars` | read minimums |
+| `field:read.min_rows` | read minimums |
 | `field:read.path` | read attributes |
 | `field:run-flow.flow` | run-flow embedded |
 | `field:run-flow.data` | run-flow embedded |

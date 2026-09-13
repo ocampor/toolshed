@@ -53,6 +53,12 @@ ATTRIBUTE_ROWS = [
     {"text": "Gamma", "qty": "9", "row_id": "row-3", "href": "/gamma.html"},
 ]
 
+# What `flows/read-properties` reads off the same page.
+PROPERTY_ROWS = [
+    {"text": name, "tag": "LI", "children": "3", "href": f"/{name.lower()}.html"}
+    for name in ("Alpha", "Beta", "Gamma")
+]
+
 # What `flows/think.yaml` declares.
 THINK_MIN_MS = 400
 THINK_MAX_MS = 600
@@ -308,6 +314,41 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
     assert result.outputs["child/read"] == [{"text": "Gamma"}]
 
 
+def dom_returns_the_body_as_one_element(ctx: Context) -> None:
+    """`<body>` outerHTML is several elements with a wrapper around them, and
+    the wrapper is what the caller asked for."""
+    outputs = expect_success(ctx, "body-fragment.html", "dom-body")
+    whole = str(outputs["whole"])
+    assert whole.startswith("<body"), whole[:80]
+    assert "outerHTML is several elements" in whole, whole[:200]
+    assert "<script" not in whole, whole
+    assert 'href="/next.html"' in whole, whole[:200]
+
+    stripped = str(outputs["stripped"])
+    assert "href=" not in stripped, stripped[:200]
+
+
+def a_dom_step_fails_below_its_min_chars(ctx: Context) -> None:
+    failure = expect_failure(ctx, "body-fragment.html", "dom-body-min-chars")
+    assert failure.step == "whole"
+    assert "Expected \u2265100000 chars" in error_message(failure)
+
+
+def a_read_step_fails_below_its_minimums(ctx: Context) -> None:
+    """A page still hydrating answers with nothing and looks successful."""
+    outputs = expect_success(ctx, "rows-attributes.html", "read-minimums")
+    assert texts(outputs, "rows") == ["Alpha", "Beta", "Gamma"]
+
+    failure = expect_failure(ctx, "rows-attributes.html", "read-minimums-short")
+    assert failure.step == "rows"
+    assert "Expected \u22659 rows, got 3" in error_message(failure)
+
+
+def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
+    outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
+    assert outputs["rows"] == PROPERTY_ROWS
+
+
 SCENARIOS = [
     Scenario(
         "goto wait_until",
@@ -372,6 +413,29 @@ SCENARIOS = [
                 "session:dom",
             }
         ),
+    ),
+    Scenario(
+        "dom body",
+        Section.STEPS,
+        dom_returns_the_body_as_one_element,
+        covers=frozenset({"field:dom.level"}),
+    ),
+    Scenario(
+        "dom min_chars",
+        Section.STEPS,
+        a_dom_step_fails_below_its_min_chars,
+        covers=frozenset({"field:dom.min_chars"}),
+    ),
+    Scenario(
+        "read minimums",
+        Section.STEPS,
+        a_read_step_fails_below_its_minimums,
+        covers=frozenset({"field:read.min_chars", "field:read.min_rows"}),
+    ),
+    Scenario(
+        "read properties",
+        Section.STEPS,
+        read_pulls_dom_properties_alongside_attributes,
     ),
     Scenario(
         "think pauses",

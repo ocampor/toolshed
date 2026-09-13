@@ -1,0 +1,10 @@
+# What the rows page holds, stated as the step's expectation.
+steps:
+  - name: rows
+    action: read
+    selector: ".row"
+    min_rows: 3
+    min_chars: 14
+    extract:
+      text:
+        child_selector: ".label"

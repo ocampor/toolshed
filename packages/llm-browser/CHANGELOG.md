@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.13.0 — 2026-09-13
+
+### Added
+
+- `level` on the `dom` step: `low` (default), `medium`, `high`, `xhigh`.
+- `min_chars` on `read` and `dom`, `min_rows` on `read`: an unmet minimum fails
+  the step with `Expected ≥N …, got M` and the page in `capture`.
+- Extract `attribute` reads a DOM property for `innerText`, `tagName`,
+  `childElementCount`, `outerHTML`, `innerHTML` (plus `textContent` and
+  `value`); every other name stays an HTML attribute.
+- `Driver.read_property`, the per-element half of that rule.
+- `PICK_MAX_CANDIDATES`: `pick` refuses a selector matching more than 200
+  elements with `Expected list items, scanned N`.
+
+### Fixed
+
+- `dom` with `selector: body` (or `html`) raised
+  `ParserError: Multiple elements found`; `sanitize_html_fragment` now returns
+  the wrapper element itself.
+- An unparseable snippet raised `ParserError`, a `SyntaxError` that escaped
+  `is_step_failure` and aborted the run; it is a `ValueError` step failure.
+- `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
+  row's own text.
+
 ## 0.12.0 — 2026-09-12
 
 ### Changed

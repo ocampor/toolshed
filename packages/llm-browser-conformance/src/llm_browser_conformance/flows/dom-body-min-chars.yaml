@@ -1,0 +1,6 @@
+# More than the page can possibly hold: the step has to fail, not truncate.
+steps:
+  - name: whole
+    action: dom
+    selector: body
+    min_chars: 100000

@@ -23,6 +23,7 @@ from llm_browser.constants import (
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
     LOGGER_NAME,
+    PICK_MAX_CANDIDATES,
     PROBE_TEXT_MAX_CHARS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
@@ -547,9 +548,18 @@ class BrowserSession:
         session_input.set_checked(self, selector, checked, timeout=timeout)
 
     def pick(self, selector: Selector, value: str) -> None:
-        """Click the element matching text from a list of elements."""
+        """Click the element matching text from a list of elements.
+
+        Two round-trips per candidate, so a selector that named something
+        broader than the item container is refused rather than walked.
+        """
         locator = self.find_all(selector)
         count = self.driver.count(locator)
+        if count > PICK_MAX_CANDIDATES:
+            raise ValueError(
+                f"Expected list items, scanned {count}; "
+                "selector must match the item container"
+            )
         if count == 1:
             session_input.click_element(self, self.driver.first(locator))
             return

@@ -4,13 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    DomStep,
     EvalStep,
     Flow,
     FlowData,
     FlowError,
     FlowSuccess,
     GotoStep,
+    ReadStep,
     ScrollStep,
     SessionInfo,
     validate_step,
@@ -201,3 +204,19 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[EvalStep(name="s1")])
     with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})
+
+
+def test_dom_step_sanitizes_at_low_unless_told_otherwise() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").level is SanitizeLevel.LOW
+    step = validate_step(
+        {"name": "s", "action": "dom", "selector": "#x", "level": "xhigh"}
+    )
+    assert isinstance(step, DomStep)
+    assert step.level is SanitizeLevel.XHIGH
+
+
+def test_a_step_expects_nothing_until_a_minimum_is_declared() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").min_chars == 0
+    read = ReadStep(name="s", action="read", selector="#x")
+    assert (read.min_chars, read.min_rows) == (0, 0)
+    assert ReadStep(name="s", action="read", selector="#x", min_rows=3).min_rows == 3

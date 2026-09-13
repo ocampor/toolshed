@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, ClassVar
 
 from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.drivers.handle import DriverHandle
 from llm_browser.results import BytesResult
 
@@ -229,16 +230,23 @@ class Driver(ABC):
         ]
 
     def read_field(self, row: Any, field: dict[str, str | None]) -> str | None:
-        """Read one ``spec`` field off one row element."""
+        """Read one ``spec`` field off one row element.
+
+        The same rule ``js/extract_rows.js`` applies, off the same allowlist:
+        a name in it is a DOM property, anything else an HTML attribute.
+        """
         child_selector = field["child_selector"]
         target = self.child(row, child_selector) if child_selector else row
-        attribute = field["attribute"]
-        if attribute == "textContent":
-            return self.text_content(target)
-        if attribute == "value":
-            return self.input_value(target)
-        assert attribute is not None
-        return self.get_attribute(target, attribute)
+        name = field["attribute"]
+        assert name is not None
+        if name in EXTRACT_PROPERTIES:
+            return self.read_property(target, name)
+        return self.get_attribute(target, name)
+
+    def read_property(self, target: Any, name: str) -> str | None:
+        """``el[name]`` as text; ``None`` when the element or the value is."""
+        value = self.evaluate(target, f"(el) => el.{name}")
+        return None if value is None else str(value)
 
     @abstractmethod
     def evaluate(self, target: Any, script: str) -> Any:

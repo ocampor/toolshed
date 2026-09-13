@@ -22,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
 )
+from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
@@ -140,6 +141,10 @@ class ReadStep(SelectorStep):
 
     action: Literal["read"]
     extract: dict[str, ExtractField] = {}
+    # A hydrating page answers a read with nothing and looks successful; these
+    # say how much the step was expecting.
+    min_chars: int = 0
+    min_rows: int = 0
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
@@ -172,6 +177,9 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    level: SanitizeLevel = SanitizeLevel.LOW
+    # See ReadStep.min_chars.
+    min_chars: int = 0
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 

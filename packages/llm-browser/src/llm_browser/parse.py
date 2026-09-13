@@ -37,7 +37,8 @@ class ExtractField(FieldInfo):
     Use as a default value, like Pydantic's ``Field()``. ``child_selector``
     descends into a child of the matched row; if ``None``, the value is
     read off the row element itself. ``attribute`` is what to read —
-    ``textContent`` (default), ``value``, or any HTML attribute name.
+    one of ``constants.EXTRACT_PROPERTIES`` (``textContent`` by default)
+    or any HTML attribute name.
     """
 
     def __init__(
@@ -55,17 +56,15 @@ class ExtractField(FieldInfo):
     def parse(cls, spec: str) -> "ExtractField":
         """Read the compact ``"child selector@attribute"`` form.
 
-        Both halves are optional: ``"td.name"`` reads that child's text,
-        ``"@href"`` reads the attribute off the row element itself, and
-        ``"td.name@href"`` does both.
+        Every half is optional: ``"td.name"`` reads that child's text,
+        ``"@href"`` reads the attribute off the row element itself,
+        ``"td.name@href"`` does both, and ``""`` is the row's own text.
         """
         child_selector, separator, attribute = spec.rpartition(
             constants.EXTRACT_ATTRIBUTE_SEPARATOR
         )
         if not separator:
             child_selector, attribute = attribute, ""
-        if not child_selector and not attribute:
-            raise ValueError(f"empty extract spec: {spec!r}")
         return cls(
             child_selector=child_selector or None,
             attribute=attribute or constants.DEFAULT_EXTRACT_ATTRIBUTE,
