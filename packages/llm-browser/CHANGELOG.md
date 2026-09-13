@@ -9,10 +9,8 @@
 - Extract `attribute` reads a DOM property for `innerText`, `tagName`,
   `childElementCount`, `outerHTML`, `innerHTML` (plus `textContent` and
   `value`); every other name stays an HTML attribute.
-- `Driver.read_property`, the per-element half of that rule. Every property
-  field now goes through it, `textContent` included: on nodriver a `read` costs
-  one `Runtime.callFunctionOn` per property field per row where `textContent`
-  used to cost none (see `docs/DRIVERS.md`).
+- `Driver.read_property` reads every `EXTRACT_PROPERTIES` name per element
+  (see `docs/DRIVERS.md` for the nodriver cost).
 
 ### Fixed
 
@@ -25,12 +23,8 @@
   `ValueError` now, not an `AttributeError`.
 - `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
   row's own text.
-- `read`'s compact `extract` form (`"td.name@href"`, `""`) — documented in
-  `docs/FLOWS.md` but never implemented — raised `TypeError: ExtractField()
-  argument after ** must be a mapping, not str` as an unhandled traceback out
-  of `llm-browser validate`. `ExtractField.coerce` is now the one rule for the
-  string form, the mapping form and an already-built field; anything else is a
-  pydantic validation error.
+- Compact `extract` specs (`"td.name@href"`, `""`) raised `TypeError`;
+  `ExtractField.coerce` accepts string, mapping or field.
 
 ## 0.12.0 — 2026-09-12
 

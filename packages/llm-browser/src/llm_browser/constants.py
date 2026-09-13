@@ -57,7 +57,7 @@ WHITESPACE_PRESERVE_TAGS = frozenset({"pre", "textarea"})
 DATA_URI_PATTERN = re.compile(r"^(data:[^;,]+)[;,].*$", re.S)
 
 # An outerHTML rooted at one of these is a whole document to lxml.
-DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)\b", re.I)
+DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 
 # --- Page probe / human detection ---
 

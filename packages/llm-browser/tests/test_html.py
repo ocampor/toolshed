@@ -257,6 +257,12 @@ def test_a_body_fragment_sanitizes_to_the_body_element() -> None:
     assert "<script>" not in result
 
 
+def test_a_custom_element_named_body_dash_is_not_treated_as_a_document_root() -> None:
+    html = "<body-content>Hi</body-content>"
+    result = sanitize_html_fragment(html)
+    assert result == "<body-content>Hi</body-content>"
+
+
 def test_an_html_fragment_sanitizes_to_the_html_element() -> None:
     html = "<html><head><title>T</title></head><body><div>Hi</div></body></html>"
     result = sanitize_html_fragment(html)
