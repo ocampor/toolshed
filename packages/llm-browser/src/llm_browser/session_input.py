@@ -6,16 +6,19 @@ plain driver primitive from ``Behavior``. ``BrowserSession`` exposes each as a
 one-line method; actions and the CLI call those and never reach for the driver.
 """
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
-from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS
+from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS, LOGGER_NAME
 from llm_browser.results import is_step_failure, is_timeout
 from llm_browser.scripts import select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 # The knobs ``humanize`` switches: every field ``Behavior.human()`` and
@@ -116,23 +119,58 @@ def click_element(
 
 DISPATCH_HINT = "still intercepted after scrolling it into view; try dispatch: true"
 
+# What a driver says when something else took the click. Playwright reports
+# `<div …> intercepts pointer events`, and `subtree intercepts pointer events`
+# when the thief is a descendant of the target.
+INTERCEPTION_MARKER = "intercepts pointer events"
+
+
+def is_interception(exc: Exception) -> bool:
+    """Whether the click failed because something covered the target.
+
+    The only failure centring the element can fix. A disabled control, a
+    hidden one, a selector that matched nothing: retrying those buys a second
+    timeout and, worse, a `dispatch: true` hint that would fire an untrusted
+    click at a control the page is deliberately refusing.
+    """
+    return INTERCEPTION_MARKER in str(exc)
+
 
 def click_or_centre_and_retry(session: "BrowserSession", element: Any) -> None:
     """A click a fixed header or footer swallowed is worth one more try.
 
     Drivers scroll a target just far enough to be in view, which is exactly
-    where a sticky banner sits; centring it moves it clear. The second failure
-    is reported as the first one plus the escape hatch, because the original
-    error is what says *why* the click never landed.
+    where a sticky banner sits; centring it moves it clear. A second
+    interception is reported as the first one plus the escape hatch, because
+    the original error is what says *why* the click never landed.
     """
+    # debt: `Driver.click` takes no timeout, so the retry pays the driver's
+    # own default a second time; plumb the step timeout through to bound it.
     intercepted = failed_click(session, element)
     if intercepted is None:
         return
-    session.driver.scroll_into_view(element)
-    if failed_click(session, element) is None:
+    if not is_interception(intercepted):
+        raise intercepted
+    centre(session, element, intercepted)
+    retried = failed_click(session, element)
+    if retried is None:
         return
+    if not is_interception(retried):
+        raise retried
     failure = TimeoutError if is_timeout(intercepted) else ValueError
     raise failure(f"{intercepted}; {DISPATCH_HINT}") from intercepted
+
+
+def centre(session: "BrowserSession", element: Any, intercepted: Exception) -> None:
+    """Centre the element for the retry; a failure here is not the caller's
+    problem. Centring is an evaluate against an element the click already
+    struggled with, so it can time out on its own — reporting *that* would
+    bury the click error the caller needs."""
+    try:
+        session.driver.scroll_into_view(element)
+    except Exception as exc:
+        logger.debug("could not centre the element for a click retry: %s", exc)
+        raise intercepted from exc
 
 
 def failed_click(session: "BrowserSession", element: Any) -> Exception | None:

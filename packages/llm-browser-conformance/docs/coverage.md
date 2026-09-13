@@ -99,7 +99,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `option:wait_after` | wait_after |
 | `option:optional` | optional step swallows a timeout |
 | `option:timeout` | native select disabled option, step timeout |
-| `option:repeat` | repeat a step |
+| `option:repeat` | repeat a step, repeat a sub-flow |
 
 ## when conditions
 

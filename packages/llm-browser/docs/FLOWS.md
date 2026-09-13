@@ -35,11 +35,14 @@ steps:
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
 
-A plain `click` a driver reports as intercepted is retried once with the target
-scrolled to the middle of the viewport, which is what clears a fixed header or
-footer. A driver that instead dispatches at the element's coordinates without
-noticing the banner raises nothing, so there is nothing to retry: that page
-still needs `dispatch: true`.
+A plain `click` whose error names an interception (`intercepts pointer events`)
+is retried once with the target scrolled to the middle of the viewport, which is
+what clears a fixed header or footer; the `try dispatch: true` hint is appended
+only when that second try was intercepted too. Every other click failure — a
+disabled control, a hidden one, a selector that matched nothing — is reported as
+it happened, unretried. A driver that instead dispatches at the element's
+coordinates without noticing the banner raises nothing, so there is nothing to
+retry: that page still needs `dispatch: true`.
 
 `fill` fires no keystroke at all when the session runs with humanization off
 (or with `fill_as_type: false`): the value appears in one write, the equivalent
@@ -88,7 +91,7 @@ One step covers both kinds of waiting: element presence and text stability.
 | `detached` | element is gone from the DOM | with a fallback selector, judged against whichever branch matched this tick |
 | `visible` | element is rendered | |
 | `hidden` | element is not rendered | |
-| `enabled` | element is in the DOM and accepts input | no `disabled` attribute and no `aria-disabled="true"`; a control locked some other way (a class, `pointer-events`, a listener that returns early) reads as enabled |
+| `enabled` | element is in the DOM and accepts input | no `aria-disabled="true"` and not disabled — the Playwright drivers ask the browser, so an ancestor's `disabled` (`<fieldset disabled>`) counts; nodriver reads the `disabled` attribute alone and misses the inherited case. A control locked some other way (a class, `pointer-events`, a listener that returns early) reads as enabled everywhere |
 | `disabled` | element is in the DOM and is locked | the inverse, same rule. An element that is not there yet is neither |
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
@@ -190,9 +193,19 @@ steps:
 included — once per item of a list param. Each pass binds the item under
 `<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
 in the step, and keys its outputs `<step name>[<index>]` so passes never
-overwrite one another. A `repeat` over a param that is missing or is not a list
-fails the run before the step; `as` must differ from `over`, rejected at flow
-load.
+overwrite one another. A step that writes a file (`screenshot`, `download`, or
+any `path:`) gets the same index in its filename — `path: shots/page.png`
+becomes `shots/page[0].png`, `shots/page[1].png` — so no pass overwrites
+another's file. The `path:` itself is templated from the flow's params only, not
+from `<name>`: the index is what makes each pass's file unique.
+
+A `repeat` over a value that is not a list fails the step — a `FlowError`
+carrying whatever the run collected before it — while a list param nobody
+passed (an optional one, or one left out) runs zero passes and the flow moves
+on. `as` must differ from `over`, rejected at flow load. A failure inside a pass
+names the iteration: `FlowError.step` reads `row[3]`, while
+`retry_hint.failed_step` stays the plain top-level name, since `--from` resumes
+a step, not one of its passes.
 
 ```yaml
 params: [codes]
@@ -281,7 +294,7 @@ Skip a step unless every condition holds (AND'ed).
 | `selector` | string or dict | Target element (required for element/data actions) |
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
-| `timeout` | int (ms, default 10000) | How long to wait for this step's element |
+| `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
 | `repeat` | `{ over, as }` | Run the step once per item of a list param ([below](#repetition)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
 

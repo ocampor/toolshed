@@ -2,12 +2,14 @@
 out) and stage three (run it). Neither stage touches the filesystem — every
 ``run-flow`` reference is inlined by :mod:`llm_browser.flow_pipeline` first."""
 
+import re
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 from llm_browser.results import (
     ActionResult,
     BytesResult,
+    ErrorResult,
     ParsedResult,
     SkippedResult,
     TextResult,
@@ -96,8 +98,9 @@ def run_flow(
             outputs=redact_secrets(result.outputs, secrets),
             skipped=redact_secrets(result.skipped, secrets),
         )
-    # `result.step` is qualified; its first segment is the top-level step
-    # name, which is what ``--from`` operates on.
+    # `result.step` is qualified and names the failing `repeat` pass; the
+    # first segment without its index is the top-level step name, which is
+    # what ``--from`` operates on — a pass cannot be resumed on its own.
     return FlowError(
         step=result.step,
         data=redact_secrets(result.data, secrets),
@@ -108,7 +111,7 @@ def run_flow(
         human_needed=result.human_needed,
         retry_hint=RetryHint(
             data=redact_secrets(data, secrets),
-            failed_step=result.step.split("/", 1)[0],
+            failed_step=unindexed(result.step.split("/", 1)[0])[0],
             error=redact_secrets(str(result.data), secrets),
         ),
     )
@@ -151,20 +154,40 @@ def indexed(name: str, index: int | None) -> str:
     return name if index is None else f"{name}[{index}]"
 
 
+def unindexed(name: str) -> tuple[str, int | None]:
+    """The inverse of :func:`indexed`: ``"shot[2]"`` is step ``shot``, pass 2.
+
+    Whatever holds a step's own declaration — the CLI's ``path:`` table — keys
+    it by the plain step name, so reading a pass's output back needs the name
+    the pass was keyed from.
+    """
+    match = INDEXED_NAME.fullmatch(name)
+    if match is None:
+        return name, None
+    return match["name"], int(match["index"])
+
+
+INDEXED_NAME = re.compile(r"(?P<name>.*)\[(?P<index>\d+)\]")
+
+
 def repeat_passes(step: Step, data: FlowData) -> Iterator[tuple[int | None, FlowData]]:
     """The data each pass of ``step`` runs against — one pass unless it repeats.
 
     Each item is bound under ``repeat.bind``, with its position under
-    ``<bind>_index``, so a step can name either.
+    ``<bind>_index``, so a step can name either. A list nobody passed is no
+    items rather than an error: an optional list param left out means the step
+    has nothing to do. Anything else that is not a list is a data error.
     """
     if step.repeat is None:
         yield None, data
         return
     items = data.to_template_dict().get(step.repeat.over)
+    if items is None:
+        return
     if not isinstance(items, list):
         raise ValueError(
             f"step {step.name!r} repeats over {step.repeat.over!r}, which is "
-            f"{'missing' if items is None else type(items).__name__}, not a list"
+            f"{type(items).__name__}, not a list"
         )
     for index, item in enumerate(items):
         yield (
@@ -177,6 +200,27 @@ def repeat_passes(step: Step, data: FlowData) -> Iterator[tuple[int | None, Flow
                 }
             ),
         )
+
+
+def repeat_data_error(
+    step: Step,
+    exc: ValueError,
+    outputs: dict[str, object],
+    skipped: list[SkippedStep],
+) -> FlowError:
+    """A ``repeat`` over something that is not a list fails like any other step.
+
+    Raising instead would cost the caller the whole run: the steps before this
+    one already ran, and their outputs only reach anyone through the result.
+    """
+    return FlowError(
+        step=step.qualified_name,
+        data=ErrorResult(
+            error="ValueError", message=str(exc), step_name=step.qualified_name
+        ),
+        outputs=dict(outputs),
+        skipped=list(skipped),
+    )
 
 
 def record_outcome(
@@ -218,7 +262,11 @@ def run_loaded_flow(
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
     for step in select_steps(flow.steps, from_step):
-        for index, pass_data in repeat_passes(step, flow_data):
+        try:
+            passes = list(repeat_passes(step, flow_data))
+        except ValueError as exc:
+            return repeat_data_error(step, exc, outputs, skipped)
+        for index, pass_data in passes:
             outcome: ActionResult | FlowSuccess | FlowError = (
                 run_subflow(session, step, pass_data)
                 if isinstance(step, RunFlowStep)
@@ -226,11 +274,24 @@ def run_loaded_flow(
             )
             if isinstance(outcome, FlowError):
                 # A sub-flow failure already carries the child's outputs;
-                # keep both sides, qualified names keep the keys distinct.
+                # keep both sides, qualified names keep the keys distinct, and
+                # the pass's index keys them exactly as a success would.
                 return outcome.model_copy(
                     update={
-                        "outputs": {**outputs, **outcome.outputs},
-                        "skipped": [*skipped, *outcome.skipped],
+                        "step": indexed(outcome.step, index),
+                        "outputs": {
+                            **outputs,
+                            **{
+                                indexed(k, index): v for k, v in outcome.outputs.items()
+                            },
+                        },
+                        "skipped": [
+                            *skipped,
+                            *(
+                                s.model_copy(update={"name": indexed(s.name, index)})
+                                for s in outcome.skipped
+                            ),
+                        ],
                     }
                 )
             record_outcome(step, outcome, index, outputs, skipped)

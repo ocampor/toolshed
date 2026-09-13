@@ -86,7 +86,7 @@ because CDP exposes no equivalent:
 | `read` / `parse` extraction | JS read of `el.<property>` (`textContent`, `value`, …), one `Runtime.callFunctionOn` per property field per row | One rule for every property name, shared with `js/extract_rows.js`, so what a spec means cannot differ by backend. The cost is real: a 50-row × 3-property read is 150 Runtime calls where the old `textContent` shortcut made none. Attribute fields stay on `attrs` — no Runtime traffic. |
 | `is_visible` | JS read of `offsetParent` / `getClientRects` | nodriver exposes no visibility API and CDP has no visibility predicate. Only `visible`/`hidden` pay this: `wait_for_element(..., state="attached")` goes through `count` → `tab.query_selector_all`, a bare `DOM.querySelectorAll` with no Runtime traffic and no `Target.getTargets` refresh. |
 | `scroll_into_view` | JS `scrollIntoView({block: "center"})` | Only on the retry after a click came back intercepted; CDP's own `scrollIntoViewIfNeeded` is the minimal scroll, which is what parked the target under the banner. A click that lands pays nothing. |
-| `is_enabled` | Two attribute reads (`disabled`, `aria-disabled`) | No JS: `get_attribute` is DOM-domain on every backend. |
+| `is_enabled` | Two attribute reads (`disabled`, `aria-disabled`) | No JS: `get_attribute` is DOM-domain on every backend. Attributes only, so a control disabled by an ancestor (`<fieldset disabled>`) reads as enabled here; the Playwright family answers with the native `locator.is_enabled()`, which sees the inherited state. |
 | `evaluate` / `dom` | User-supplied JS | Intentional. |
 
 These are reads — they dispatch no DOM events and don't trip `isTrusted` checks. Only a

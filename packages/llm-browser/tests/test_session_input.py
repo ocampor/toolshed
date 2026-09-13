@@ -420,6 +420,55 @@ def test_a_click_intercepted_twice_reports_the_first_error_and_the_hatch(
     assert "dispatch: true" in str(failure.value)
 
 
+def test_a_failure_that_is_not_an_interception_is_not_retried(
+    session: BrowserSession,
+) -> None:
+    """Centring cannot unlock a disabled control, and the hint would tell the
+    caller to dispatch an untrusted click at it."""
+    driver(session).click.side_effect = TimeoutError("element is not enabled")
+
+    with pytest.raises(TimeoutError) as failure:
+        session.click("#btn")
+
+    assert str(failure.value) == "element is not enabled"
+    driver(session).scroll_into_view.assert_not_called()
+    assert driver(session).click.call_count == 1
+
+
+def test_a_centring_failure_leaves_the_click_error_alone(
+    session: BrowserSession,
+) -> None:
+    """The element the click struggled with can make the centring evaluate time
+    out too; reporting that would bury why the click never landed."""
+    clicks_that_fail(session, 1)
+    driver(session).scroll_into_view.side_effect = TimeoutError(
+        "locator.evaluate: Timeout 30000ms exceeded"
+    )
+
+    with pytest.raises(TimeoutError) as failure:
+        session.click("#btn")
+
+    assert str(failure.value) == "intercepts pointer events"
+
+
+def test_a_retry_that_fails_for_another_reason_reports_that_reason(
+    session: BrowserSession,
+) -> None:
+    errors = iter(
+        [TimeoutError("intercepts pointer events"), TimeoutError("element is hidden")]
+    )
+
+    def click(_element: Any) -> None:
+        raise next(errors)
+
+    driver(session).click.side_effect = click
+
+    with pytest.raises(TimeoutError) as failure:
+        session.click("#btn")
+
+    assert str(failure.value) == "element is hidden"
+
+
 def test_a_library_bug_is_not_retried(session: BrowserSession) -> None:
     driver(session).click.side_effect = AttributeError("bug")
 

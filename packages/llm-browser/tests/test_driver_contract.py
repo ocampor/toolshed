@@ -111,3 +111,25 @@ def test_the_default_humanized_type_sends_one_key_per_char_on_the_cadence(
     ]
     assert len(sleeps) == 2
     assert all(0.040 <= slept <= 0.080 for slept in sleeps)
+
+
+# --- is_enabled: the browser's own answer on the Playwright family ---
+
+
+@pytest.mark.parametrize(
+    ("native", "aria", "expected"),
+    [
+        # A button inside `<fieldset disabled>` carries no attribute of its own,
+        # so only the browser's own check can see it.
+        (False, None, False),
+        (True, "true", False),
+        (True, None, True),
+    ],
+)
+def test_playwright_is_enabled_combines_the_native_check_with_aria(
+    native: bool, aria: str | None, expected: bool
+) -> None:
+    locator = MagicMock()
+    locator.is_enabled.return_value = native
+    locator.get_attribute.return_value = aria
+    assert PatchrightDriver().is_enabled(locator) is expected

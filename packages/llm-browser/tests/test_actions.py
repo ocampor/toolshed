@@ -643,7 +643,7 @@ def test_optional_swallows_timeout(session: BrowserSession) -> None:
     result = execute_action(session, step)
     assert isinstance(result, SkippedResult)
     assert result.skipped is True
-    assert result.reason.startswith("TimeoutError: element hidden; ")
+    assert result.reason == "TimeoutError: element hidden"
 
 
 def test_optional_swallows_value_error(session: BrowserSession) -> None:
@@ -670,7 +670,8 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
     assert result.step_name == "my_step"
     assert result.selector == "'#missing'"
     assert result.hint == "element hidden, missing, or slow to render"
-    assert result.message.startswith("element hidden; ")
+    # A hidden element is not an interception, so no retry and no hint.
+    assert result.message == "element hidden"
 
 
 def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
