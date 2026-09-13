@@ -1,0 +1,9 @@
+# More rows than the page has: a hydration-empty read, made loud.
+steps:
+  - name: rows
+    action: read
+    selector: ".row"
+    min_rows: 9
+    extract:
+      text:
+        child_selector: ".label"

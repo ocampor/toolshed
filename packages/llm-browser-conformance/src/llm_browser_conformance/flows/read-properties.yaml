@@ -1,0 +1,16 @@
+# DOM properties and HTML attributes, off the same row.
+steps:
+  - name: rows
+    action: read
+    selector: ".row"
+    extract:
+      text:
+        child_selector: ".label"
+        attribute: innerText
+      tag:
+        attribute: tagName
+      children:
+        attribute: childElementCount
+      href:
+        child_selector: ".link"
+        attribute: href

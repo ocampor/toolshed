@@ -22,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
 )
+from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
@@ -131,7 +132,19 @@ class ScreenshotStep(BaseStep):
     selector: Selector | None = None
 
 
-class ReadStep(SelectorStep):
+class RowStep(SelectorStep):
+    """A step that answers with rows.
+
+    A hydrating page answers one with nothing and looks successful; the
+    minimums say how much the step was expecting. Both count only rows that
+    yielded at least one non-null value.
+    """
+
+    min_chars: int = 0
+    min_rows: int = 0
+
+
+class ReadStep(RowStep):
     # ExtractField is a FieldInfo subclass (not a Pydantic model), so the
     # default schema generator can't introspect it. ``arbitrary_types_allowed``
     # tells Pydantic to skip schema generation and trust runtime-validated
@@ -143,20 +156,24 @@ class ReadStep(SelectorStep):
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
+    @model_validator(mode="after")
+    def _min_rows_needs_extract(self) -> "ReadStep":
+        # With no `extract` every row is empty, so no row ever counts.
+        if self.min_rows > 0 and not self.extract:
+            raise ValueError("min_rows requires extract")
+        return self
+
     @field_validator("extract", mode="before")
     @classmethod
     def _coerce_extract(cls, v: Any) -> Any:
-        # YAML loads `extract` as a plain dict; coerce nested dicts into
-        # ExtractField.
+        # A flow writes each spec compactly ("td.name@href") or as a mapping;
+        # `ExtractField.coerce` is the one rule for both.
         if not isinstance(v, dict):
             return v
-        return {
-            k: spec if isinstance(spec, ExtractField) else ExtractField(**spec)
-            for k, spec in v.items()
-        }
+        return {k: ExtractField.coerce(spec) for k, spec in v.items()}
 
 
-class ParseStep(SelectorStep):
+class ParseStep(RowStep):
     """Parse rows into typed instances using a YAML schema.
 
     Like ``read``, but every row is validated against the schema and
@@ -172,6 +189,9 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    level: SanitizeLevel = SanitizeLevel.LOW
+    # See ReadStep.min_chars.
+    min_chars: int = 0
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 

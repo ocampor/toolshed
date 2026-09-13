@@ -1,0 +1,10 @@
+# `dom` on the body: an outerHTML of several elements, at two levels.
+steps:
+  - name: whole
+    action: dom
+    selector: body
+    min_chars: 40
+  - name: stripped
+    action: dom
+    selector: body
+    level: high

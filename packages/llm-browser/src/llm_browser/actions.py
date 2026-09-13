@@ -2,7 +2,7 @@
 
 import time
 from functools import lru_cache
-from typing import Callable
+from typing import Any, Callable
 
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ from llm_browser.models import (
     PickStep,
     PressStep,
     ReadStep,
+    RowStep,
     ScreenshotStep,
     ScrollStep,
     SelectStep,
@@ -188,13 +189,44 @@ def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesRes
 # --- Data actions ---
 
 
+def require_minimum(actual: int, minimum: int, unit: str) -> None:
+    """A page still hydrating answers a read with nothing and looks successful;
+    the step says how little is too little, and this fails it."""
+    if actual < minimum:
+        raise ValueError(f"Expected \u2265{minimum} {unit}, got {actual}")
+
+
+def row_chars(rows: list[BaseModel | None]) -> int:
+    """Every extracted value of every row, joined — what ``min_chars`` counts."""
+    values = [
+        str(value)
+        for row in rows
+        if row is not None
+        for value in row.model_dump().values()
+        if value is not None
+    ]
+    return len("".join(values))
+
+
+def require_row_minimums(rows: list[BaseModel | None], step: RowStep) -> None:
+    require_minimum(sum(row is not None for row in rows), step.min_rows, "rows")
+    require_minimum(row_chars(rows), step.min_chars, "chars")
+
+
+def build_rows(
+    raw: list[dict[str, Any]], build: Callable[[dict[str, Any]], BaseModel]
+) -> list[BaseModel | None]:
+    """An all-null row is a row the page did not fill in, not a row."""
+    return [
+        build(row) if any(v is not None for v in row.values()) else None for row in raw
+    ]
+
+
 @_registry.register("read")
 def action_read(session: BrowserSession, step: ReadStep) -> ParsedResult:
     raw = session.parse_elements(step.selector, step.extract)
-    rows: list[BaseModel | None] = [
-        ExtractedRow(**row) if any(v is not None for v in row.values()) else None
-        for row in raw
-    ]
+    rows = build_rows(raw, lambda row: ExtractedRow(**row))
+    require_row_minimums(rows, step)
     return ParsedResult(rows=rows)
 
 
@@ -203,16 +235,16 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
     # Schema path is CWD-relative or absolute.
     Model = build_model(step.schema_path)  # type: ignore[no-untyped-call]
     raw = session.parse_elements(step.selector, Model._spec())
-    rows: list[BaseModel | None] = [
-        Model.model_validate(row) if any(v is not None for v in row.values()) else None
-        for row in raw
-    ]
+    rows = build_rows(raw, Model.model_validate)
+    require_row_minimums(rows, step)
     return ParsedResult(rows=rows)
 
 
 @_registry.register("dom")
 def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
-    return TextResult(text=session.dom(step.selector, max_depth=step.max_depth))
+    text = session.dom(step.selector, max_depth=step.max_depth, level=step.level)
+    require_minimum(len(text), step.min_chars, "chars")
+    return TextResult(text=text)
 
 
 # --- File actions ---

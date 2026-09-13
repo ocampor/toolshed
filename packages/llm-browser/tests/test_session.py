@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser.chrome import is_process_alive
+from llm_browser.constants import PICK_MAX_CANDIDATES
 from llm_browser.drivers.base import Driver
 from llm_browser.models import SessionInfo
 from llm_browser.session import BrowserSession
@@ -152,3 +153,25 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
 
     session.screenshot_bytes()
     assert not session.session_dir.exists()
+
+
+def test_pick_refuses_a_selector_broader_than_the_item_container(
+    tmp_path: Path,
+) -> None:
+    """Two round-trips per candidate: `main p` on a long page outlived a 120s
+    runner before anything was clicked."""
+    session = _session_with_mock_driver(tmp_path)
+    session.driver.count.return_value = PICK_MAX_CANDIDATES + 1
+
+    with pytest.raises(ValueError, match=f"scanned {PICK_MAX_CANDIDATES + 1}"):
+        session.pick("main p", "Beta")
+    session.driver.nth.assert_not_called()
+
+
+def test_pick_scans_a_list_up_to_the_cap(tmp_path: Path) -> None:
+    session = _session_with_mock_driver(tmp_path)
+    session.driver.count.return_value = PICK_MAX_CANDIDATES
+    session.driver.text_content.return_value = "Beta"
+
+    session.pick("li", "Beta")
+    assert session.driver.nth.call_args.args[1] == 0

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.13.0 — 2026-09-13
+
+### Added
+
+- `level` on the `dom` step: `low` (default), `medium`, `high`, `xhigh`.
+- `min_chars` on `read`, `parse` and `dom`, `min_rows` on `read` and `parse`:
+  an unmet minimum fails the step with `Expected ≥N …, got M` and the page in
+  `capture`. A `min_rows` on a `read` with no `extract` can never be met, so
+  the flow is rejected when it loads with `min_rows requires extract`.
+- Extract `attribute` reads a DOM property for `innerText`, `tagName`,
+  `childElementCount`, `outerHTML`, `innerHTML` (plus `textContent` and
+  `value`); every other name stays an HTML attribute.
+- `Driver.read_property`, the per-element half of that rule. Every property
+  field now goes through it, `textContent` included: on nodriver a `read` costs
+  one `Runtime.callFunctionOn` per property field per row where `textContent`
+  used to cost none (see `docs/DRIVERS.md`).
+- `PICK_MAX_CANDIDATES`: `pick` refuses a selector matching more than 200
+  elements with `Expected list items, scanned N`.
+
+### Fixed
+
+- `dom` with `selector: body` (or `html`) raised
+  `ParserError: Multiple elements found`; `sanitize_html_fragment` now returns
+  the wrapper element itself.
+- An unparseable snippet raised `ParserError`, a `SyntaxError` that escaped
+  `is_step_failure` and aborted the run; it is a `ValueError` step failure.
+  A truncated `<body` parses into a document with no body at all — also a
+  `ValueError` now, not an `AttributeError`.
+- `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
+  row's own text.
+- `read`'s compact `extract` form (`"td.name@href"`, `""`) — documented in
+  `docs/FLOWS.md` but never implemented — raised `TypeError: ExtractField()
+  argument after ** must be a mapping, not str` as an unhandled traceback out
+  of `llm-browser validate`. `ExtractField.coerce` is now the one rule for the
+  string form, the mapping form and an already-built field; anything else is a
+  pydantic validation error.
+
 ## 0.12.0 — 2026-09-12
 
 ### Changed

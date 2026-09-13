@@ -4,13 +4,17 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    DomStep,
     EvalStep,
     Flow,
     FlowData,
     FlowError,
     FlowSuccess,
     GotoStep,
+    ParseStep,
+    ReadStep,
     ScrollStep,
     SessionInfo,
     validate_step,
@@ -201,3 +205,82 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[EvalStep(name="s1")])
     with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})
+
+
+def test_dom_step_sanitizes_at_low_unless_told_otherwise() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").level is SanitizeLevel.LOW
+    step = validate_step(
+        {"name": "s", "action": "dom", "selector": "#x", "level": "xhigh"}
+    )
+    assert isinstance(step, DomStep)
+    assert step.level is SanitizeLevel.XHIGH
+
+
+def _read_with_extract(**kwargs: object) -> ReadStep:
+    return ReadStep(
+        name="s",
+        action="read",
+        selector="#x",
+        extract={"name": {"attribute": "textContent"}},
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def test_a_step_expects_nothing_until_a_minimum_is_declared() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").min_chars == 0
+    read = ReadStep(name="s", action="read", selector="#x")
+    assert (read.min_chars, read.min_rows) == (0, 0)
+    assert _read_with_extract(min_rows=3).min_rows == 3
+
+
+def test_min_rows_without_extract_is_rejected_when_the_flow_loads() -> None:
+    """Every row of an extract-less read is empty, so no minimum could be met."""
+    with pytest.raises(ValidationError, match="min_rows requires extract"):
+        validate_step({"name": "s", "action": "read", "selector": "#x", "min_rows": 3})
+
+
+def test_parse_takes_the_same_minimums_as_read() -> None:
+    step = validate_step(
+        {
+            "name": "s",
+            "action": "parse",
+            "selector": "#x",
+            "schema_path": "repo.yaml",
+            "min_rows": 2,
+            "min_chars": 5,
+        }
+    )
+    assert isinstance(step, ParseStep)
+    assert (step.min_rows, step.min_chars) == (2, 5)
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("td.name@href", ("td.name", "href")),
+        ("", (None, "textContent")),
+        ("@href", (None, "href")),
+        ("td.name", ("td.name", "textContent")),
+        ({"child_selector": "td.name", "attribute": "href"}, ("td.name", "href")),
+    ],
+)
+def test_a_read_takes_the_compact_extract_form_docs_advertise(
+    spec: object, expected: tuple[str | None, str]
+) -> None:
+    step = validate_step(
+        {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+    )
+    assert isinstance(step, ReadStep)
+    field = step.extract["a"]
+    assert (field.child_selector, field.attribute) == expected
+
+
+@pytest.mark.parametrize("spec", [["td.name"], 5, None])
+def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
+    spec: object,
+) -> None:
+    """It used to escape as a `TypeError` traceback out of `llm-browser validate`."""
+    with pytest.raises(ValidationError, match="invalid extract spec"):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+        )

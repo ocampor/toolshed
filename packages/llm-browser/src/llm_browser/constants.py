@@ -56,6 +56,9 @@ WHITESPACE_PRESERVE_TAGS = frozenset({"pre", "textarea"})
 
 DATA_URI_PATTERN = re.compile(r"^(data:[^;,]+)[;,].*$", re.S)
 
+# An outerHTML rooted at one of these is a whole document to lxml.
+DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)\b", re.I)
+
 # --- Page probe / human detection ---
 
 PROBE_TEXT_MAX_CHARS = 20_000
@@ -83,6 +86,9 @@ PROBE_PASSWORD_PLACEHOLDER = "PASSWORD_SELECTOR_JSON"
 PROBE_CHALLENGE_PLACEHOLDER = "CHALLENGE_SELECTOR_JSON"
 PROBE_MAX_CHARS_PLACEHOLDER = "MAX_CHARS_INT"
 
+# Substituted into ``js/extract_rows.js``.
+EXTRACT_PROPERTIES_PLACEHOLDER = "EXTRACT_PROPERTIES_JSON"
+
 # Substituted into ``js/select_option.js``.
 SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
 
@@ -93,7 +99,24 @@ CHALLENGE_IFRAME_PATTERN = r"<iframe[^>]*(?:hcaptcha|recaptcha)"
 CHALLENGE_MARKERS = ("cf-challenge", "challenge-platform")
 INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffic")
 
+# --- Element lists ---
+
+# A `pick` selector naming something other than the item container matches
+# the whole page; scanning it is two round-trips per candidate.
+PICK_MAX_CANDIDATES = 200
+
 # --- Extract specs (``"child selector@attribute"``) ---
+
+# Read as ``el[name]``; every other name is an HTML attribute.
+EXTRACT_PROPERTIES = (
+    "childElementCount",
+    "innerHTML",
+    "innerText",
+    "outerHTML",
+    "tagName",
+    "textContent",
+    "value",
+)
 
 EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"

@@ -44,6 +44,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:click.dispatch` | dispatch click step |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
+| `field:dom.level` | dom body |
+| `field:dom.min_chars` | dom min_chars |
 | `field:dom.path` | dom step depth |
 | `field:download.selector` | download |
 | `field:download.path` | download |
@@ -52,6 +54,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
 | `field:parse.selector` | parse typed rows |
+| `field:parse.min_chars` | parse minimums |
+| `field:parse.min_rows` | parse minimums |
 | `field:parse.schema_path` | parse typed rows |
 | `field:parse.path` | parse decimal and date rows |
 | `field:pick.selector` | pick by text |
@@ -59,6 +63,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:press.selector` | enter and escape, press chord |
 | `field:press.key` | enter and escape, autocomplete enter |
 | `field:read.selector` | overlay intercepts click |
+| `field:read.min_chars` | read minimums |
+| `field:read.min_rows` | read minimums |
 | `field:read.extract` | overlay intercepts click, read attributes |
 | `field:read.path` | read attributes |
 | `field:run-flow.flow` | run-flow embedded |

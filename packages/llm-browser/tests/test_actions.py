@@ -207,6 +207,17 @@ def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> Mag
     return locator
 
 
+def _read_step(**kwargs: object) -> ReadStep:
+    """A read whose `extract` is the one `min_rows` needs to be satisfiable."""
+    return ReadStep(
+        name="s",
+        action="read",
+        selector="tr",
+        extract={"name": {"child_selector": "td", "attribute": "textContent"}},
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
 # --- read ---
 
 
@@ -230,6 +241,49 @@ def test_read(session: BrowserSession) -> None:
     script, spec = locator.evaluate_all.call_args.args
     assert "querySelector" in script
     assert spec == {"name": {"child_selector": "td", "attribute": "textContent"}}
+
+
+def test_read_fails_when_the_page_answered_with_too_few_rows(
+    session: BrowserSession,
+) -> None:
+    """A page still hydrating answers with nothing and looks successful."""
+    from llm_browser.actions import ErrorResult
+
+    _rows_locator(session, [{"name": "Alice"}, {"name": None}])
+    step = _read_step(min_rows=2)
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.message == "Expected \u22652 rows, got 1"
+
+
+def test_read_fails_when_the_rows_hold_too_little_text(
+    session: BrowserSession,
+) -> None:
+    from llm_browser.actions import ErrorResult
+
+    _rows_locator(session, [{"name": "Alice"}])
+    step = _read_step(min_chars=20)
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.message == "Expected \u226520 chars, got 5"
+
+
+def test_a_minimum_a_row_meets_is_no_failure(session: BrowserSession) -> None:
+    _rows_locator(session, [{"name": "Alice"}])
+    step = _read_step(min_rows=1, min_chars=5)
+    assert isinstance(execute_action(session, step), ParsedResult)
+
+
+def test_an_optional_read_downgrades_an_unmet_minimum_to_a_skip(
+    session: BrowserSession,
+) -> None:
+    from llm_browser.actions import SkippedResult
+
+    _rows_locator(session, [{"name": None}])
+    step = _read_step(min_rows=1, optional=True)
+    result = execute_action(session, step)
+    assert isinstance(result, SkippedResult)
+    assert result.reason == "ValueError: Expected \u22651 rows, got 0"
 
 
 # --- parse (typed schema action) ---
@@ -270,6 +324,38 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
     assert row.name == "foo"
     assert row.stars == 42
     assert isinstance(row.stars, int)
+
+
+def test_parse_fails_when_the_page_answered_with_too_few_rows(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    """`parse` is "like `read`", minimums included."""
+    import yaml
+
+    from llm_browser.actions import ErrorResult
+    from llm_browser.models import ParseStep
+
+    schema = tmp_path / "repo.yaml"
+    schema.write_text(
+        yaml.safe_dump(
+            {
+                "name": "Repo",
+                "fields": {"name": {"type": "str", "child_selector": "td"}},
+            }
+        )
+    )
+    _rows_locator(session, [{"name": "foo"}, {"name": None}])
+
+    step = ParseStep(
+        name="s",
+        action="parse",
+        selector="tr.row",
+        schema_path=str(schema),
+        min_rows=2,
+    )
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.message == "Expected \u22652 rows, got 1"
 
 
 def test_read_path_is_ignored_by_the_runner(
@@ -342,6 +428,48 @@ def test_dom(session: BrowserSession) -> None:
     result = execute_action(session, step)
     assert isinstance(result, TextResult)
     assert "Hello" in result.text
+
+
+def test_dom_sanitizes_at_the_level_the_step_asked_for(
+    session: BrowserSession,
+) -> None:
+    locator = _single_locator()
+    locator.first.evaluate.return_value = '<div><a href="/next">Next</a></div>'
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    step = DomStep(name="s", action="dom", selector="#content", level="high")
+    result = execute_action(session, step)
+    assert isinstance(result, TextResult)
+    assert "href" not in result.text
+
+
+def test_dom_fails_when_the_snippet_is_shorter_than_expected(
+    session: BrowserSession,
+) -> None:
+    from llm_browser.actions import ErrorResult
+
+    locator = _single_locator()
+    locator.first.evaluate.return_value = "<div></div>"
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    step = DomStep(name="s", action="dom", selector="#content", min_chars=100)
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.message == "Expected \u2265100 chars, got 11"
+
+
+def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> None:
+    """`<body>` outerHTML is the fragment lxml used to refuse."""
+    locator = _single_locator()
+    locator.first.evaluate.return_value = (
+        "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
+    )
+    session._page.locator.return_value = locator  # type: ignore[union-attr]
+
+    result = execute_action(session, DomStep(name="s", action="dom", selector="body"))
+    assert isinstance(result, TextResult)
+    assert result.text.startswith("<body>")
+    assert "Hi" in result.text
 
 
 def test_dom_path_is_ignored_by_the_runner(

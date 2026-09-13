@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-09-13
+
+Tracks `llm-browser` 0.13.0.
+
+### Added
+
+- `dom body` scenario: `site/body-fragment.html` plus `flows/dom-body.yaml` —
+  the `<body>` outerHTML lxml refused, at two `level`s.
+- `dom min_chars`, `read minimums` and `parse minimums` scenarios, claiming
+  `field:dom.level`, `field:dom.min_chars`, `field:read.min_chars`,
+  `field:read.min_rows`, `field:parse.min_chars` and `field:parse.min_rows`.
+- `read properties` scenario: `innerText`, `tagName` and `childElementCount`
+  read off the same rows as an `href` attribute.
+
 ## 0.4.0 — 2026-09-11
 
 Tracks `llm-browser` 0.11.0.
