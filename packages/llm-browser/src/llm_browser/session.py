@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from llm_browser import explore, session_input, survey as survey_rules, waits
-from llm_browser.behavior import Behavior, BehaviorRuntime, Jitter
+from llm_browser.behavior import Behavior, BehaviorRuntime, Jitter, forget_mouse
 from llm_browser.chrome import (
     is_process_alive,
     kill_detached_chromium,
@@ -369,6 +369,7 @@ class BrowserSession:
         """
         locator = self.find(selector) if selector is not None else None
         self.driver.scroll(self.get_page(), dx, dy, locator)
+        forget_mouse(self.behavior_runtime)
 
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
         """PNG bytes of the current page, or of ``selector`` alone when given.
@@ -417,6 +418,7 @@ class BrowserSession:
     ) -> None:
         target = checked_url(url, allowed_schemes)
         self.driver.goto(self.get_page(), target, wait_until)
+        forget_mouse(self.behavior_runtime)
 
     def find(
         self,

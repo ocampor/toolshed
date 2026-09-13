@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from llm_browser_conformance.checks.support import (
     error_message,
     expect_failure,
+    expect_flow_success,
     expect_success,
     one_text,
     texts,
@@ -276,30 +277,42 @@ def pick_clicks_the_item_whose_text_matches(ctx: Context) -> None:
     assert "Delta" in error_message(failure)
 
 
-def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
-    outputs: dict[str, object] = {}
+def timed_typing(ctx: Context, flow_name: str) -> tuple[float, dict[str, object]]:
+    """Run a typing fixture flow with the ``type`` step timed on its own.
+
+    Timing the whole flow would prove nothing: the navigation it opens with
+    costs more than any per-key floor these checks assert, so the assertion
+    would pass on a driver that typed the whole string in one burst.
+    """
+    ctx.visit("keydown-count.html")
+    flow = ctx.flow(flow_name)
+    typing, reading = flow.steps[:1], flow.steps[1:]
+    assert typing[0].name == "type", f"{flow_name} must open with the type step"
     took = ctx.elapsed(
-        lambda: outputs.update(expect_success(ctx, "keydown-count.html", "type-delay"))
+        lambda: expect_flow_success(ctx, flow.model_copy(update={"steps": typing}))
     )
+    return took, expect_flow_success(ctx, flow.model_copy(update={"steps": reading}))
+
+
+def assert_typed_at_least(
+    took: float, outputs: dict[str, object], floor_ms: int
+) -> None:
     assert one_text(outputs, "value") == TYPED_TEXT
     assert one_text(outputs, "keydowns") == str(len(TYPED_TEXT))
-    floor = len(TYPED_TEXT) * TYPE_DELAY_MS / 1000
+    floor = len(TYPED_TEXT) * floor_ms / 1000
     assert took >= floor, f"typing {TYPED_TEXT!r} took {took:.3f}s"
+
+
+def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
+    took, outputs = timed_typing(ctx, "type-delay")
+    assert_typed_at_least(took, outputs, TYPE_DELAY_MS)
 
 
 def a_jittered_delay_still_sends_one_keydown_per_character(ctx: Context) -> None:
     """`delay: [min, max]` is a cadence, not a licence to drop keys: the page
     must still see one keydown per character, no faster than the floor."""
-    outputs: dict[str, object] = {}
-    took = ctx.elapsed(
-        lambda: outputs.update(
-            expect_success(ctx, "keydown-count.html", "type-delay-jitter")
-        )
-    )
-    assert one_text(outputs, "value") == TYPED_TEXT
-    assert one_text(outputs, "keydowns") == str(len(TYPED_TEXT))
-    floor = len(TYPED_TEXT) * TYPE_DELAY_MIN_MS / 1000
-    assert took >= floor, f"typing {TYPED_TEXT!r} took {took:.3f}s"
+    took, outputs = timed_typing(ctx, "type-delay-jitter")
+    assert_typed_at_least(took, outputs, TYPE_DELAY_MIN_MS)
 
 
 def a_humanized_click_step_is_still_a_trusted_event(ctx: Context) -> None:
