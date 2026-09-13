@@ -310,6 +310,9 @@ steps:
   [minimums table](FLOWS.md#minimums)), so both need an `extract`.
 - When the stub has the right shape but placeholder text, `wait_for` `state: stable` with
   `settle: 1000` on the container waits for the text to stop changing instead.
+- When hydration is what unlocks a field — an input a checkbox enables — `wait_for`
+  `state: enabled` on that field is the precise wait (see FLOWS.md's
+  [state table](FLOWS.md#waiting)).
 
 ## One-shot pages
 
