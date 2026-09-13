@@ -12,6 +12,7 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
+    ValidationError,
     field_validator,
     model_validator,
 )
@@ -21,6 +22,7 @@ from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
+    DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
@@ -81,6 +83,7 @@ class SelectorStep(BaseStep):
 class ClickStep(SelectorStep):
     action: Literal["click"]
     dispatch: bool = False
+    humanize: bool | None = None
 
 
 class FillStep(SelectorStep):
@@ -89,9 +92,25 @@ class FillStep(SelectorStep):
 
 
 class TypeStep(SelectorStep):
+    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
+    a constant cadence is itself a fingerprint."""
+
     action: Literal["type"]
     value: str = ""
-    delay: int = 0
+    delay: int | Jitter = 0
+    humanize: bool | None = None
+
+    @field_validator("delay", mode="before")
+    @classmethod
+    def _pair_to_jitter(cls, value: Any) -> Any:
+        if not isinstance(value, (list, tuple)):
+            return value
+        if len(value) != 2:
+            raise ValueError(DELAY_SHAPE)
+        try:
+            return Jitter(min_ms=value[0], max_ms=value[1])
+        except ValidationError as e:
+            raise ValueError(DELAY_SHAPE) from e
 
 
 class SelectStep(SelectorStep):

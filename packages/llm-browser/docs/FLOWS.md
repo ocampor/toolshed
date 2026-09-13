@@ -26,14 +26,38 @@ steps:
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
-| `click` | — | `dispatch` (bool, default false) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
-| `fill` | — | `value` | Clears the field, sets `value` |
-| `type` | — | `value`, `delay` (ms, default 0) | Types character by character |
+| `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
+| `fill` | — | `value` | Clears the field, then sets `value` in one write — or types it character by character when the session's `Behavior.fill_as_type` is on, which is the default under a behavior YAML |
+| `type` | — | `value`, `delay` (ms, or `[min, max]` for a per-key jitter, default 0), `humanize` (bool) | Types character by character |
 | `select` | — | `value` | Picks a `<select>` option |
 | `check` | — | `checked` (bool, default true) | Sets checkbox state |
 | `pick` | — | `value` | Clicks the list item whose text matches `value` (see [below](#picking-from-a-list)) |
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
+
+`fill` fires no keystroke at all when the session runs with humanization off
+(or with `fill_as_type: false`): the value appears in one write, the equivalent
+of a paste, and a page that watches input telemetry — masks, autocompletes,
+hotkeys, bot scoring — sees nothing. Under a behavior YAML `fill_as_type`
+defaults to `true`, so the same step types the value key by key. Prefer `type`
+where that telemetry matters — it says what it does whatever the session is —
+and a `delay: [min, max]` over a constant: a fixed cadence is itself a
+fingerprint.
+
+`humanize` switches the session's humanization on or off for one step: `true`
+clicks on a curved path with a hover dwell, an in-box offset and a jittered
+press even when the session runs with humanization off, `false` takes the plain
+path even when it is on, and leaving it out follows the session. `true` only
+switches on what is still off: a knob the session tuned (a slower
+`type_char_delay`, a tighter `click_offset_ratio`) is left as it was, and so is
+a driver's own opt-out — camoufox leaves the mouse path to its native engine,
+so `humanize: true` does not stack ours on top. The rate limit (`min_gap_ms`)
+is never a humanization knob and survives either way.
+
+`humanize: false` turns off the mouse path and the humanized pacing, not an
+explicit `delay: [min, max]`: a pair you wrote is a cadence you asked for, so
+the keys still land at a jittered interval. Drop the pair for a constant
+cadence.
 
 #### Picking from a list
 

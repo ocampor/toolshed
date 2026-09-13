@@ -8,7 +8,7 @@ one-line method; actions and the CLI call those and never reach for the driver.
 
 from typing import TYPE_CHECKING, Any
 
-from llm_browser.behavior import jittered_sleep, paced
+from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
 from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS
 from llm_browser.scripts import select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
@@ -17,23 +17,83 @@ if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
 
 
+# The knobs ``humanize`` switches: every field ``Behavior.human()`` and
+# ``Behavior.off()`` disagree on. ``min_gap_ms`` is not one of them — the two
+# presets agree on it — so a per-step flag can never hand back a rate limit
+# the session set to stay under a site's radar.
+HUMANIZE_KNOBS = frozenset(
+    name
+    for name in Behavior.model_fields
+    if getattr(Behavior.human(), name) != getattr(Behavior.off(), name)
+)
+
+
+def driver_opt_out(behavior: Behavior, field: str) -> bool:
+    """Whether the session's behaviour class owns this knob itself.
+
+    A driver config that redefines one — camoufox turning ``mouse_move`` off
+    because its native C++ Bézier does the moving — keeps it off, or our path
+    would run stacked on top of the driver's own.
+    """
+    declared = behavior.__class__.model_fields[field]
+    return bool(declared.default != Behavior.model_fields[field].default)
+
+
+def switched_on(behavior: Behavior) -> dict[str, Any]:
+    """The knobs ``humanize: true`` turns on: those still sitting at their
+    ``off()`` value. One the session tuned — a slower key delay, a tighter
+    click offset — is already humanized the way its owner meant it to be."""
+    human, off = Behavior.human(), Behavior.off()
+    return {
+        name: getattr(human, name)
+        for name in HUMANIZE_KNOBS
+        if getattr(behavior, name) == getattr(off, name)
+        and not driver_opt_out(behavior, name)
+    }
+
+
+def switched_off() -> dict[str, Any]:
+    return {name: getattr(Behavior.off(), name) for name in HUMANIZE_KNOBS}
+
+
+def behavior_for(session: "BrowserSession", humanize: bool | None) -> Behavior:
+    """The behaviour one call runs under. ``humanize`` switches the session's
+    humanization knobs on or off for that call — timing included, since a
+    humanized action that pauses like an instant one is only half humanized —
+    and leaves everything else the session was configured with in place.
+    """
+    if humanize is None:
+        return session.behavior
+    knobs = switched_on(session.behavior) if humanize else switched_off()
+    return session.behavior.model_copy(update=knobs)
+
+
 def click(
     session: "BrowserSession",
     selector: Selector,
     *,
     dispatch: bool = False,
+    humanize: bool | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
     for overlays that real input cannot reach."""
-    with paced(session.behavior, session.behavior_runtime):
+    behavior = behavior_for(session, humanize)
+    with paced(behavior, session.behavior_runtime):
         click_element(
-            session, session.find(selector, timeout=timeout), dispatch=dispatch
+            session,
+            session.find(selector, timeout=timeout),
+            dispatch=dispatch,
+            behavior=behavior,
         )
 
 
 def click_element(
-    session: "BrowserSession", element: Any, *, dispatch: bool = False
+    session: "BrowserSession",
+    element: Any,
+    *,
+    dispatch: bool = False,
+    behavior: Behavior | None = None,
 ) -> None:
     """Click an element the caller already resolved.
 
@@ -42,11 +102,12 @@ def click_element(
     list, ``download_file`` arming a download — clicks like every other click.
     Pacing belongs to whoever opened the action, not here.
     """
+    behavior = behavior if behavior is not None else session.behavior
     if dispatch:
         session.driver.dispatch_event(element, "click")
-    elif session.behavior.mouse_move:
+    elif behavior.mouse_move:
         session.driver.humanized_click(
-            session.get_page(), element, session.behavior, session.behavior_runtime
+            session.get_page(), element, behavior, session.behavior_runtime
         )
     else:
         session.driver.click(element)
@@ -72,17 +133,23 @@ def type(  # shadows the builtin to mirror the `type` action's name
     selector: Selector,
     value: str,
     *,
-    delay_ms: int = 0,
+    delay_ms: int | Jitter = 0,
+    humanize: bool | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     """An explicit ``delay_ms`` is the caller's own cadence, so it wins over the
-    behaviour's per-key jitter."""
-    with paced(session.behavior, session.behavior_runtime):
+    behaviour's: a constant types at a constant rate, a :class:`Jitter` becomes
+    the per-key delay of the humanized path."""
+    behavior = behavior_for(session, humanize)
+    with paced(behavior, session.behavior_runtime):
         element = session.find(selector, timeout=timeout)
-        if delay_ms > 0 or session.behavior.type_char_delay.max_ms == 0:
+        if isinstance(delay_ms, Jitter):
+            jittered = behavior.model_copy(update={"type_char_delay": delay_ms})
+            type_humanized(session, element, value, jittered)
+        elif delay_ms > 0 or behavior.type_char_delay.max_ms == 0:
             session.driver.type(element, value, delay_ms=delay_ms)
         else:
-            type_humanized(session, element, value)
+            type_humanized(session, element, value, behavior)
 
 
 def press(
@@ -147,7 +214,16 @@ def set_checked(
         session.driver.set_checked(session.find(selector, timeout=timeout), checked)
 
 
-def type_humanized(session: "BrowserSession", element: Any, value: str) -> None:
+def type_humanized(
+    session: "BrowserSession",
+    element: Any,
+    value: str,
+    behavior: Behavior | None = None,
+) -> None:
     session.driver.humanized_type(
-        session.get_page(), element, value, session.behavior, session.behavior_runtime
+        session.get_page(),
+        element,
+        value,
+        behavior if behavior is not None else session.behavior,
+        session.behavior_runtime,
     )

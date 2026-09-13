@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from llm_browser.flows import run_flow
-from llm_browser.models import FlowError, FlowSuccess
+from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
 
 from llm_browser_conformance.scenario import Context
@@ -28,6 +28,14 @@ def expect_success(
     ctx: Context, page: str, flow: str, **data: object
 ) -> dict[str, object]:
     result = run(ctx, page, flow, **data)
+    assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
+    return result.outputs
+
+
+def expect_flow_success(ctx: Context, flow: Flow, **data: object) -> dict[str, object]:
+    """Run an already-loaded flow on the page the session is already on — for
+    a check that has to split a fixture flow into separately timed halves."""
+    result = run_flow(ctx.session, flow, data)
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     return result.outputs
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 — 2026-09-13
+
+Tracks `llm-browser` 0.14.0.
+
+### Added
+
+- `jittered key delay` scenario: `flows/type-delay-jitter.yaml` types with
+  `delay: [40, 80]` and `humanize: true`, claiming `field:type.humanize` and
+  `api:type.delay_jitter`.
+- `humanized click step` scenario: `flows/humanize-click.yaml` checks the
+  curved-path click still arrives as a trusted event, claiming
+  `field:click.humanize`.
+
 ## 0.5.0 — 2026-09-13
 
 Tracks `llm-browser` 0.13.0.

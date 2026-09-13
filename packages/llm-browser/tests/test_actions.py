@@ -69,7 +69,7 @@ def test_click(input_session: MagicMock) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=5_000)
     execute_action(input_session, step)
     input_session.click.assert_called_once_with(
-        step.selector, dispatch=False, timeout=5_000
+        step.selector, dispatch=False, humanize=None, timeout=5_000
     )
 
 
@@ -93,7 +93,21 @@ def test_type(input_session: MagicMock) -> None:
     )
     execute_action(input_session, step)
     input_session.type.assert_called_once_with(
-        step.selector, "query", delay_ms=50, timeout=step.timeout
+        step.selector, "query", delay_ms=50, humanize=None, timeout=step.timeout
+    )
+
+
+def test_click_passes_humanize_through(input_session: MagicMock) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", humanize=True)
+    execute_action(input_session, step)
+    assert input_session.click.call_args.kwargs["humanize"] is True
+
+
+def test_type_passes_a_jittered_delay_through(input_session: MagicMock) -> None:
+    step = TypeStep(name="s", action="type", selector="#q", value="ab", delay=[30, 90])
+    execute_action(input_session, step)
+    assert input_session.type.call_args.kwargs["delay_ms"] == Jitter(
+        min_ms=30, max_ms=90
     )
 
 

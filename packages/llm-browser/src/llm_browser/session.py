@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from llm_browser import session_input, waits
-from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser.behavior import Behavior, BehaviorRuntime, Jitter, forget_mouse
 from llm_browser.chrome import (
     is_process_alive,
     kill_detached_chromium,
@@ -358,6 +358,7 @@ class BrowserSession:
         """
         locator = self.find(selector) if selector is not None else None
         self.driver.scroll(self.get_page(), dx, dy, locator)
+        forget_mouse(self.behavior_runtime)
 
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
         """PNG bytes of the current page, or of ``selector`` alone when given.
@@ -406,6 +407,7 @@ class BrowserSession:
     ) -> None:
         target = checked_url(url, allowed_schemes)
         self.driver.goto(self.get_page(), target, wait_until)
+        forget_mouse(self.behavior_runtime)
 
     def find(
         self,
@@ -505,9 +507,12 @@ class BrowserSession:
         selector: Selector,
         *,
         dispatch: bool = False,
+        humanize: bool | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.click(self, selector, dispatch=dispatch, timeout=timeout)
+        session_input.click(
+            self, selector, dispatch=dispatch, humanize=humanize, timeout=timeout
+        )
 
     def fill(
         self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
@@ -519,10 +524,18 @@ class BrowserSession:
         selector: Selector,
         value: str,
         *,
-        delay_ms: int = 0,
+        delay_ms: int | Jitter = 0,
+        humanize: bool | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.type(self, selector, value, delay_ms=delay_ms, timeout=timeout)
+        session_input.type(
+            self,
+            selector,
+            value,
+            delay_ms=delay_ms,
+            humanize=humanize,
+            timeout=timeout,
+        )
 
     def press(
         self,

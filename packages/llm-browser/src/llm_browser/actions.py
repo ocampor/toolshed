@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from yaml_engine.registry import Registry
 
-from llm_browser.behavior import Jitter, jittered_sleep, paced
+from llm_browser.behavior import Jitter, jittered_delta, jittered_sleep, paced
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -112,7 +112,12 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
 
 @_registry.register("click")
 def action_click(session: BrowserSession, step: ClickStep) -> VoidResult:
-    session.click(step.selector, dispatch=step.dispatch, timeout=step.timeout)
+    session.click(
+        step.selector,
+        dispatch=step.dispatch,
+        humanize=step.humanize,
+        timeout=step.timeout,
+    )
     return VoidResult()
 
 
@@ -124,7 +129,13 @@ def action_fill(session: BrowserSession, step: FillStep) -> VoidResult:
 
 @_registry.register("type")
 def action_type(session: BrowserSession, step: TypeStep) -> VoidResult:
-    session.type(step.selector, step.value, delay_ms=step.delay, timeout=step.timeout)
+    session.type(
+        step.selector,
+        step.value,
+        delay_ms=step.delay,
+        humanize=step.humanize,
+        timeout=step.timeout,
+    )
     return VoidResult()
 
 
@@ -263,7 +274,10 @@ def action_download(session: BrowserSession, step: DownloadStep) -> BytesResult:
 @_registry.register("scroll")
 def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
     for tick in range(step.times):
-        session.scroll(0, step.delta)
+        session.scroll(
+            0,
+            jittered_delta(step.delta, session.behavior, session.behavior_runtime.rng),
+        )
         if tick < step.times - 1:
             jittered_sleep(step.pause, session.behavior_runtime.rng)
     return VoidResult()

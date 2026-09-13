@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 
-from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser.behavior import Behavior, BehaviorRuntime, type_chars
 from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.drivers.handle import DriverHandle
 from llm_browser.results import BytesResult
@@ -139,8 +139,13 @@ class Driver(ABC):
         behavior: Behavior,
         runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized type — rule 2; the default fits a natively humanized type."""
-        self.type(locator, text)
+        """Humanized type — rule 2; the default fits a natively humanized type.
+
+        Native humanization owns the *shape* of a keystroke, not its timing,
+        so the cadence the caller asked for is sent key by key here rather
+        than handed to the driver as one burst.
+        """
+        type_chars(lambda ch: self.type(locator, ch), text, behavior, runtime)
 
     @abstractmethod
     def press(self, locator: Any, key: str) -> None: ...
