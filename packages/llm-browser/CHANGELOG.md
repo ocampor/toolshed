@@ -19,7 +19,16 @@
   `not_actionable` against an `intent` of `read` (default), `click`, `fill` or
   `wait`. One page evaluation, two rects 100 ms apart, still never a click.
   - `clickable` ignores `offscreen`: every driver scrolls before it clicks.
-  - A `label` and the control it labels never cover each other.
+  - `covered_by` is what is painted over the match: never a descendant, never
+    an ancestor showing through a gap in the match's own box, and never the
+    control a `label` labels.
+  - `enabled` reads `:disabled`, so a control the `<fieldset>` around it
+    disabled is disabled.
+  - A match outside the viewport is scrolled to the middle of it and measured
+    again before the hit-test — exploring may scroll, as a click would. One
+    with no box is `hidden` and is not hit-tested at all.
+  - Candidate values are escaped as CSS strings, and a test id found on an
+    ancestor scopes down to the match (`[data-testid="row"] :is(a)`).
   - `candidates` rank `data-testid` (on the match or an ancestor within three
     levels) > aria label or role+name > an ungenerated id > a link's section
     (`a[href^=…]`) > a hashed class, each checked to match that element alone —

@@ -37,7 +37,7 @@ is `ok`; anything else is the step failing now instead of on the run.
 - `first.why_not` names what a click would hit instead: `covered` (with
   `covered_by`), `offscreen`, `moving`, `hidden`, `disabled`,
   `no-pointer-events`, `not-interactive`. Only `offscreen` is not an obstacle —
-  the drivers scroll first. `nested_controls` is the other half: a card-sized
+  the drivers scroll first, and so does `explore` before it hit-tests. `nested_controls` is the other half: a card-sized
   anchor wrapping its own dismiss button takes the click you meant for the card.
 - `candidates` are selectors checked to match that same element and nothing
   else; `stability` says how much of the one you wrote a redeploy is likely to

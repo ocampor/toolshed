@@ -33,6 +33,12 @@
     Senior engineer
     <button>Not Interested</button>
   </a>
+  <!-- Disabled by the fieldset around it, not by anything on itself. -->
+  <fieldset disabled>
+    <input id="in-fieldset" type="text" value="">
+  </fieldset>
+  <!-- A box of no size: nothing to click, and nothing to hit-test either. -->
+  <a id="sizeless" href="/gone" style="display: inline-block; width: 0; height: 0"></a>
   <div style="height: 1200px"></div>
   <a id="below" href="/missions/staff-eng-991">Below the fold</a>
 </main>

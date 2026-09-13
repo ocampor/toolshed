@@ -187,7 +187,7 @@ llm-browser explore --selector ".result" --extract title=h3 --extract url="a@hre
 | `count` / `sample` / `empty_fields` / `text_chars` | How many matched, what the first `sample` of them say under `extract`, which fields no sampled row filled in (a wrong child selector, or a page still hydrating), and how much rendered text they carry |
 | `first` | The first match as a click would find it, `null` when nothing matched |
 | `first.why_not` | Empty exactly when `clickable`; one or more of `hidden`, `disabled`, `covered`, `offscreen`, `moving`, `no-pointer-events`, `not-interactive` |
-| `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre, when that is neither the element nor a descendant |
+| `first.covered_by` | The `tag` and `text` of whatever sits over the element's centre — never the element itself, a descendant, an ancestor (the centre fell in a gap in its own box) or the control a `label` labels |
 | `first.stable` | Whether two rects 100 ms apart are the same box — an element still animating is one a click lands beside |
 | `first.nested_controls` | Up to five `button`/`a`/`input` inside the match — what a loose click lands on instead of the match itself |
 | `since_navigation_ms` | How long the page had been up when the first match was read, off the page's own clock; `null` on timeout. A `wait_for` timeout of 3x this (minimum 3000) is the measured number |

@@ -170,6 +170,21 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     below = ctx.session.explore("#below", intent=Intent.CLICK)
     assert below.first is not None and below.first.why_not == ["offscreen"], below
     assert below.first.clickable and below.verdict is Verdict.OK, below
+    # Exploring scrolled it into view to hit-test it, and found nothing over it.
+    assert below.first.covered_by is None, below
+
+    # `disabled` on the fieldset, nothing on the input: only `:disabled` sees it.
+    in_fieldset = ctx.session.explore("#in-fieldset", intent=Intent.FILL)
+    assert in_fieldset.first is not None, in_fieldset
+    assert in_fieldset.first.enabled is False, in_fieldset
+    assert in_fieldset.first.why_not == ["disabled"], in_fieldset
+    assert in_fieldset.verdict is Verdict.NOT_ACTIONABLE, in_fieldset
+
+    sizeless = ctx.session.explore("#sizeless", intent=Intent.CLICK)
+    assert sizeless.first is not None and not sizeless.first.visible, sizeless
+    assert sizeless.first.why_not == ["hidden"], sizeless
+    # No box to hit-test: the element at the centre of nothing is not a cover.
+    assert sizeless.first.covered_by is None, sizeless
 
     tick = ctx.session.explore("#tick", intent=Intent.CLICK)
     assert tick.first is not None and tick.first.covered_by is None, tick
@@ -178,6 +193,9 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     card = ctx.session.explore("#card", intent=Intent.CLICK)
     assert card.first is not None, card
     assert [c.text for c in card.first.nested_controls] == ["Not Interested"], card
+    # `main` is at the centre of the card -- an ancestor showing through a gap
+    # in the anchor's own box, not something painted over it.
+    assert card.first.covered_by is None, card
     # The test id on the card outranks everything else it could be called.
     assert card.candidates[0] == '[data-testid="mission"]', card
     assert len(card.candidates) <= 3, card

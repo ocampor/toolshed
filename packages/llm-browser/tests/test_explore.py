@@ -5,6 +5,7 @@ import pytest
 from llm_browser.explore import (
     accepted_counts,
     candidate_selectors,
+    css_quoted,
     generated_id,
     href_prefix,
 )
@@ -41,14 +42,39 @@ def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
     ]
 
 
-def test_a_test_id_on_an_ancestor_is_still_the_candidate() -> None:
-    """The page reports the nearest one it found; the rule does not care how
-    far up it sat, only that it names the thing."""
+def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
+    """The id names the row; the match is what is inside it, so the candidate
+    has to descend — and `:is()` keeps the tail from adding specificity."""
     proposed = candidate_selectors(
         locators(testid_attribute="data-testing-id", testid="row", testid_depth=2)
     )
 
-    assert proposed == ['[data-testing-id="row"]']
+    assert proposed == ['[data-testing-id="row"] :is(a)']
+
+
+def test_a_test_id_on_the_match_itself_needs_no_scope() -> None:
+    proposed = candidate_selectors(
+        locators(testid_attribute="data-testid", testid="row", testid_depth=0)
+    )
+
+    assert proposed == ['[data-testid="row"]']
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("plain", '"plain"'),
+        # Unescaped, the quote ends the string and the rest is a syntax error
+        # or, worse, a selector for something else.
+        ('say "hi"', '"say \\"hi\\""'),
+        ("back\\slash", '"back\\\\slash"'),
+        ("two\nlines", '"two\\a lines"'),
+    ],
+)
+def test_an_attribute_value_is_escaped_as_a_css_string(
+    value: str, expected: str
+) -> None:
+    assert css_quoted(value) == expected
 
 
 def test_a_generated_id_is_not_proposed() -> None:

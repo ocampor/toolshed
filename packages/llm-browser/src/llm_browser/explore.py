@@ -1,6 +1,5 @@
 """The rules ``BrowserSession.explore`` answers with: verdict, candidates, stability."""
 
-import json
 import re
 from collections.abc import Callable
 
@@ -77,14 +76,29 @@ def selector_stability(selector: str) -> Stability:
 # --- Candidates: what to write instead of the selector that was explored ---
 
 CSS_UNSAFE = re.compile(r"([^A-Za-z0-9_-])")
+CSS_STRING_UNSAFE = re.compile(r'["\\]|[\x00-\x1f\x7f]')
 
 
-def quoted(value: str) -> str:
-    """A CSS attribute value, quoted — `json.dumps` escapes what CSS escapes."""
-    return json.dumps(value)
+def css_quoted(value: str) -> str:
+    """``value`` as a CSS string.
+
+    What ``CSS.escape`` does for an identifier, for the quoted half: a value
+    carrying a quote, a backslash or a newline would otherwise end the string
+    early and make the candidate a selector for something else.
+    """
+    escaped = CSS_STRING_UNSAFE.sub(
+        lambda m: (
+            f"\\{ord(m.group()):x} "
+            if m.group() < " " or m.group() == "\x7f"
+            else "\\" + m.group()
+        ),
+        value,
+    )
+    return f'"{escaped}"'
 
 
 def escaped_id(value: str) -> str:
+    """``value`` as a CSS identifier, the way ``CSS.escape`` writes one."""
     return CSS_UNSAFE.sub(r"\\\1", value)
 
 
@@ -113,6 +127,19 @@ def href_prefix(href: str) -> str | None:
     return prefix if prefix != href else None
 
 
+def scoped_testid(locators: Locators) -> str:
+    """The test id as a selector for the match, not for whatever carries it.
+
+    A test id on an ancestor names the row; the match is the element inside
+    it, so the candidate has to descend — ``:is()`` keeps that tail from
+    adding specificity it has not earned.
+    """
+    attribute = f"[{locators.testid_attribute}={css_quoted(locators.testid or '')}]"
+    if not locators.testid_depth:
+        return attribute
+    return f"{attribute} :is({locators.tag})"
+
+
 def candidate_selectors(locators: Locators) -> list[str]:
     """Sturdier selectors for the first match, best first.
 
@@ -123,15 +150,15 @@ def candidate_selectors(locators: Locators) -> list[str]:
     """
     proposals: list[str] = []
     if locators.testid and locators.testid_attribute:
-        proposals.append(f"[{locators.testid_attribute}={quoted(locators.testid)}]")
+        proposals.append(scoped_testid(locators))
     if locators.aria_label:
-        proposals.append(f"[aria-label={quoted(locators.aria_label)}]")
+        proposals.append(f"[aria-label={css_quoted(locators.aria_label)}]")
     if locators.role and locators.name:
-        proposals.append(f"role={locators.role}[name={quoted(locators.name)}]")
+        proposals.append(f"role={locators.role}[name={css_quoted(locators.name)}]")
     if locators.id and not generated_id(locators.id):
         proposals.append(f"#{escaped_id(locators.id)}")
     prefix = href_prefix(locators.href) if locators.href else None
     if prefix:
-        proposals.append(f"a[href^={quoted(prefix)}]")
+        proposals.append(f"a[href^={css_quoted(prefix)}]")
     proposals += [f".{token}" for token in locators.classes if hashed_class(token)]
     return proposals

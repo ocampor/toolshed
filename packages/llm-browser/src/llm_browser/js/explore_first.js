@@ -14,6 +14,20 @@ async (el) => {
   // first seen, not a hundred milliseconds later.
   const since_navigation_ms = Math.round(performance.now());
 
+  // `in_viewport` is what was true before this function touched anything.
+  const start = el.getBoundingClientRect();
+  const in_viewport =
+    start.bottom > 0 &&
+    start.right > 0 &&
+    start.top < innerHeight &&
+    start.left < innerWidth;
+
+  // Exploring may scroll. The hit-test only answers inside the viewport, and
+  // scrolling first is what every driver does before it clicks, so this asks
+  // the question the click would ask. Nothing with no box to scroll to.
+  const boxless = start.width === 0 || start.height === 0;
+  if (!in_viewport && !boxless) el.scrollIntoView({ block: "center" });
+
   // Two reads a beat apart: an element still sliding into place is one a click
   // would land beside, and a single rect cannot tell.
   const before = box();
@@ -31,31 +45,40 @@ async (el) => {
     limits.text_max,
   );
 
+  // A box of no size is nothing to click and nothing to hit-test.
+  const sizeless = rect.width === 0 || rect.height === 0;
   const visible =
-    rect.width > 0 &&
-    rect.height > 0 &&
+    !sizeless &&
     el.checkVisibility({
       checkVisibilityCSS: true,
       opacityProperty: true,
       contentVisibilityAuto: true,
     });
-  const enabled = !el.disabled && el.getAttribute("aria-disabled") !== "true";
-  const in_viewport =
-    rect.bottom > 0 &&
-    rect.right > 0 &&
-    rect.top < innerHeight &&
-    rect.left < innerWidth;
+  // `:disabled` is the platform's own answer, and the only one that sees a
+  // control disabled by the `<fieldset>` around it rather than by itself.
+  const enabled =
+    !el.matches(":disabled") && el.getAttribute("aria-disabled") !== "true";
   const pointer_events = style.pointerEvents !== "none";
 
   // A label and the control it labels are one target: clicking either drives
   // the same thing, so neither covers the other.
   const labels = (a, b) => a.tagName === "LABEL" && a.control === b;
-  const at = document.elementFromPoint(
-    rect.left + rect.width / 2,
-    rect.top + rect.height / 2,
-  );
+  const at = sizeless
+    ? null
+    : document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+  // An ancestor at the centre means the point fell in a gap in the element's
+  // own box -- a line-box gap, a wrapper around its children -- not that
+  // something is painted over it. A real cover is never an ancestor.
   const same_target =
-    !at || at === el || el.contains(at) || labels(el, at) || labels(at, el);
+    !at ||
+    at === el ||
+    el.contains(at) ||
+    at.contains(el) ||
+    labels(el, at) ||
+    labels(at, el);
   const covered_by = same_target
     ? null
     : {
