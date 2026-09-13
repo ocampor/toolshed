@@ -21,12 +21,8 @@ from llm_browser.constants import (
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
-from llm_browser.flows import (
-    load_flow_document,
-    run_flow,
-    unindexed,
-    with_flow_path,
-)
+from llm_browser.flow_passes import unindexed
+from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
