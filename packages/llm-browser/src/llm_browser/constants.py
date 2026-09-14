@@ -116,6 +116,88 @@ EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"
 
+# How many matches ``BrowserSession.explore`` reads: enough to see whether the
+# rows differ from each other, few enough to stay one round-trip per row.
+EXPLORE_SAMPLE_ROWS = 3
+
+EXPLORE_LIMITS_PLACEHOLDER = "EXPLORE_LIMITS_JSON"
+EXPLORE_TEXT_MAX_CHARS = 120
+EXPLORE_COVER_TEXT_MAX_CHARS = 60
+# Long enough for a transition or a reflow to show up in the second rect,
+# short enough to sit inside one `explore` without being felt.
+EXPLORE_STABLE_DELAY_MS = 100
+EXPLORE_MAX_CANDIDATES = 3
+EXPLORE_NESTED_TEXT_MAX_CHARS = 40
+EXPLORE_MAX_NESTED_CONTROLS = 5
+# How much of each sampled field the sample keeps. Reading the whole of every
+# row is what `read` is for.
+EXPLORE_SAMPLE_CHARS = 200
+# How far up from the first match a test id still names it.
+EXPLORE_ANCESTOR_LEVELS = 3
+TESTID_ATTRIBUTES = ("data-testid", "data-testing-id")
+
+# Reasons a click would miss that the drivers handle themselves: every one of
+# them scrolls the target into view first.
+EXPLORE_NON_BLOCKING = ("offscreen",)
+
+EXPLORE_ELEMENT_PLACEHOLDER = "EXPLORE_ELEMENT_JS"
+EXPLORE_BATCH_PLACEHOLDER = "EXPLORE_BATCH_JSON"
+# How often the batch wait looks again, in the page rather than over the wire.
+EXPLORE_MANY_POLL_MS = 100
+# One page call reads every target in turn, each settling for
+# EXPLORE_STABLE_DELAY_MS, so a batch has to stay small enough to finish inside
+# a driver timeout an author can reason about.
+EXPLORE_MANY_MAX_TARGETS = 20
+# What the batch evaluate is allowed on top of the wait and the settles:
+# the round trip itself, plus the reads of every target's first match.
+EXPLORE_MANY_MARGIN_MS = 5000
+
+# --- Survey ---
+
+SURVEY_LIMITS_PLACEHOLDER = "SURVEY_LIMITS_JSON"
+SURVEY_COUNT_PLACEHOLDER = "COUNT_SELECTORS_JSON"
+# How many named elements a survey reports. Enough to see what a page is made
+# of, few enough to read in one go.
+SURVEY_MAX_ITEMS = 60
+SURVEY_MAX_LINK_SHAPES = 15
+SURVEY_MAX_REPEATS = 10
+SURVEY_TEXT_MAX_CHARS = 60
+# What the page hands over before any ranking or grouping is applied. The
+# output is capped again after it, so these only bound the transfer.
+SURVEY_MAX_RAW_LANDMARKS = 400
+SURVEY_MAX_RAW_REPEATS = 200
+SURVEY_MAX_HREFS = 500
+# Three of a kind is a pattern; two is a pair.
+SURVEY_MIN_SIBLINGS = 3
+# A build's numbering on the end of a class name: `card-0-2-3`, `title-17`,
+# `css-1x2y3z`. What is left is what the next deploy will still call it. One
+# pattern, applied on both sides: the page groups siblings by it and
+# ``llm_browser.survey`` names the group by it.
+CLASS_SUFFIX_PATTERN = r"(?:-(?:\d+|[A-Za-z0-9]*\d[A-Za-z0-9]*))+$"
+
+# What counts as an element a click means something to, when no `onclick` and
+# no `cursor: pointer` says so.
+INTERACTIVE_TAGS = (
+    "a",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "label",
+    "summary",
+)
+# The role a `role=` selector matches when the element spells out none.
+IMPLICIT_ROLES = {"a": "link", "button": "button"}
+
+INTERACTIVE_ROLES = (
+    "button",
+    "link",
+    "tab",
+    "menuitem",
+    "checkbox",
+    "option",
+)
+
 # --- YAML schema types ---
 
 # The only names a schema `type:` string may use; see `schema_types.py`.

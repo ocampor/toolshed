@@ -20,6 +20,12 @@ from tests.driver_fakes import FakeTab
 
 MISSING = "#missing"
 
+# Both halves of `read_field`'s split: a DOM property and an HTML attribute.
+MISSING_CHILD_FIELDS: list[dict[str, str | None]] = [
+    {"child_selector": MISSING, "attribute": "textContent"},
+    {"child_selector": MISSING, "attribute": "href"},
+]
+
 
 @dataclass
 class DriverCase:
@@ -45,13 +51,20 @@ def playwright_case() -> Iterator[DriverCase]:
     locator.is_visible.return_value = False
     # A locator for nothing narrows to itself, as Playwright's `.first` does.
     locator.first = locator
+    # A child of a locator for nothing matches nothing either.
+    locator.locator.return_value = locator
     page = MagicMock()
     page.locator.return_value = locator
     driver = PatchrightDriver()
     yield DriverCase(
         driver,
         driver.resolve(page, MISSING),
-        lambda: locator.wait_for.mock_calls + locator.text_content.mock_calls,
+        lambda: (
+            locator.wait_for.mock_calls
+            + locator.text_content.mock_calls
+            + locator.get_attribute.mock_calls
+            + locator.evaluate.mock_calls
+        ),
     )
 
 
@@ -68,6 +81,8 @@ def test_the_reads_never_reach_a_retrying_api(case: DriverCase) -> None:
     case.driver.count(case.locator)
     case.driver.is_visible(case.driver.first(case.locator))
     case.driver.text_content(case.driver.first(case.locator))
+    for field in MISSING_CHILD_FIELDS:
+        case.driver.read_field(case.driver.first(case.locator), field)
     assert case.retrying_calls() == []
 
 
@@ -77,6 +92,15 @@ def test_is_visible_of_a_missing_selector_is_false(case: DriverCase) -> None:
 
 def test_text_content_of_a_missing_selector_is_none(case: DriverCase) -> None:
     assert case.driver.text_content(case.driver.first(case.locator)) is None
+
+
+@pytest.mark.parametrize("field", MISSING_CHILD_FIELDS)
+def test_read_field_of_a_missing_child_is_none(
+    case: DriverCase, field: dict[str, str | None]
+) -> None:
+    """`explore` samples a row this way: an absent child is an empty field,
+    not a 30 s auto-wait ending in the backend's own `TimeoutError`."""
+    assert case.driver.read_field(case.driver.first(case.locator), field) is None
 
 
 def test_first_of_a_missing_selector_does_not_raise(case: DriverCase) -> None:

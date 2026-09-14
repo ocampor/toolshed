@@ -11,7 +11,7 @@ and never touch these Protocols.
 """
 
 from pathlib import Path
-from typing import Any, Callable, Protocol, cast
+from typing import Any, Callable, ClassVar, Protocol, cast
 
 from llm_browser.behavior import (
     Behavior,
@@ -43,12 +43,12 @@ class PwLocator(Protocol):
     def screenshot(self) -> bytes: ...
     def text_content(self, timeout: int = ...) -> str | None: ...
     def input_value(self) -> str: ...
-    def get_attribute(self, name: str) -> str | None: ...
+    def get_attribute(self, name: str, timeout: int = ...) -> str | None: ...
     def count(self) -> int: ...
     def nth(self, index: int) -> "PwLocator": ...
     def all(self) -> list["PwLocator"]: ...
     def locator(self, selector: str) -> "PwLocator": ...
-    def evaluate(self, script: str) -> Any: ...
+    def evaluate(self, script: str, arg: Any = ..., timeout: int = ...) -> Any: ...
     def evaluate_all(self, script: str, arg: Any = ...) -> Any: ...
     def bounding_box(self) -> "PwBoundingBox | None": ...
     def element_handle(self) -> "PwElementHandle | None": ...
@@ -98,7 +98,7 @@ class PwPage(Protocol):
     def wait_for_load_state(self, state: str = ..., timeout: int = ...) -> None: ...
     def content(self) -> str: ...
     def screenshot(self, full_page: bool = ...) -> bytes: ...
-    def evaluate(self, script: str) -> Any: ...
+    def evaluate(self, script: str, arg: Any = ...) -> Any: ...
     def expect_download(self, timeout: float = ...) -> PwDownloadContext: ...
 
 
@@ -112,6 +112,8 @@ def _pw_loc(locator: Any) -> PwLocator:
 
 class PlaywrightDriverBase(Driver):
     """Interaction methods shared by every Playwright-compatible driver."""
+
+    supports_role_selector: ClassVar[bool] = True
 
     # --- Selector resolution ---
 
@@ -189,15 +191,15 @@ class PlaywrightDriverBase(Driver):
 
     # --- Read / capture ---
 
-    def text_content(self, locator: Any) -> str | None:
-        """A now-read (rule 1). Playwright's own read waits for the element —
+    def now_read(self, locator: Any, read: Callable[[PwLocator], Any]) -> Any:
+        """A now-read (rule 1). Playwright's own reads wait for the element —
         and ``timeout=0`` there means *no* timeout — so a miss is answered by
         the count, and the read gets a round-trip's worth of budget."""
         loc = _pw_loc(locator)
         if loc.count() == 0:
             return None
         try:
-            return loc.text_content(timeout=READ_TIMEOUT_MS)
+            return read(loc)
         except Exception as exc:
             # The node detached between the count and the read: still a miss,
             # and patchright's TimeoutError is not the builtin one.
@@ -205,11 +207,27 @@ class PlaywrightDriverBase(Driver):
                 return None
             raise
 
+    def text_content(self, locator: Any) -> str | None:
+        value = self.now_read(
+            locator, lambda loc: loc.text_content(timeout=READ_TIMEOUT_MS)
+        )
+        return cast(str | None, value)
+
     def input_value(self, locator: Any) -> str:
         return _pw_loc(locator).input_value()
 
     def get_attribute(self, locator: Any, name: str) -> str | None:
-        return _pw_loc(locator).get_attribute(name)
+        value = self.now_read(
+            locator, lambda loc: loc.get_attribute(name, timeout=READ_TIMEOUT_MS)
+        )
+        return cast(str | None, value)
+
+    def read_property(self, target: Any, name: str) -> str | None:
+        value = self.now_read(
+            target,
+            lambda loc: loc.evaluate(f"(el) => el.{name}", timeout=READ_TIMEOUT_MS),
+        )
+        return None if value is None else str(value)
 
     def count(self, locator: Any) -> int:
         return _pw_loc(locator).count()
@@ -234,8 +252,12 @@ class PlaywrightDriverBase(Driver):
         rows = _pw_loc(locator).evaluate_all(extract_rows_js(), spec)
         return cast(list[dict[str, str | None]], rows)
 
-    def evaluate(self, target: Any, script: str) -> Any:
-        return cast(PwPage | PwLocator, target).evaluate(script)
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if timeout_ms is None:
+            return cast(PwPage | PwLocator, target).evaluate(script)
+        # Only the element path takes a timeout, and it is the one a waiting
+        # script runs on: `evaluate_document` resolves `<html>` first.
+        return _pw_loc(target).evaluate(script, timeout=timeout_ms)
 
     def content(self, page: Any) -> str:
         return _pw_page(page).content()

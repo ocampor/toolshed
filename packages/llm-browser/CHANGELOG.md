@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.14.0 — 2026-09-13
+
+### Added
+
+- `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
+  intent=Intent.READ, sample_chars=200)` → `ExploreResult`: `count`, the first
+  `sample` rows, `empty_fields` and `text_chars`.
+- `explore` never clicks; it may scroll a match into view to hit-test it, and a
+  selector that never arrives is a count of zero.
+- `explore` costs `sample x (fields + 1)` reads, one page evaluation and at most
+  three candidate counts, whatever `count` is.
+- `ExploreResult.first`: tag, text, role, aria-label, name, href, `visible`,
+  `enabled`, `in_viewport`, `covered_by`, `hit_tested`, `stable`,
+  `pointer_events`, `nested_controls`, `why_not`, `clickable`.
+- `ExploreResult.since_navigation_ms` and `since_call_ms`.
+- `ExploreResult.candidates`: up to three sturdier selectors, each checked.
+- `ExploreResult.stability` rates the selector; `ExploreResult.verdict` is
+  `ok` / `ambiguous` / `missing` / `not_actionable` against an `intent` of
+  `read` (default), `click`, `fill` or `wait`.
+- `ExploreResult.error` names a target the page never explored: `not css`.
+- `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
+  [--intent read|click|fill|wait] [--sample-chars]`, exiting non-zero unless the
+  verdict is `ok`; a repeated `--extract NAME=` is a `UsageError`.
+- `BrowserSession.explore_many(targets, sample=3, sample_chars=200,
+  timeout_ms=3000)`: one `ExploreResult` per `ExploreTarget`
+  (`{selector, intent, extract}`), in the order asked, from one page call and
+  one wait.
+- `explore_many` selectors are CSS; one the page cannot parse answers
+  `count: 0`, `verdict: missing`, `error: "not css"` and leaves the batch alone.
+- `explore_many` takes at most 20 targets and gives the driver the wait plus
+  100 ms of settle per target plus a margin, so `timeout_ms` is honoured.
+- `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list,
+  exiting non-zero unless every verdict is `ok`. Exactly one of `--selector` and
+  `--targets` is required; `--extract` / `--intent` alongside `--targets`, an
+  empty list and more than 20 targets are `UsageError`s.
+- `BrowserSession.survey(max_items=60)` → `Survey`: `landmarks` (named elements,
+  test id > aria > id > role), `link_shapes` (hrefs grouped by the section they
+  point at), `repeats` (siblings grouped by tag and every class they share,
+  clickable runs first) and `hydration` (`since_navigation_ms`, `readyState`).
+- `Landmark.count` and `Repeat.count` are what that selector matches page-wide,
+  counted in a second page call.
+- `Survey.truncated` is true when a raw cap cut the page short.
+- `llm-browser survey [--max-items]`: the same as JSON.
+- `BrowserSession.evaluate_document(script, timeout_ms=None)`: a page-wide
+  script run against `<html>`, the evaluate path every driver awaits.
+- `Driver.evaluate(target, script, timeout_ms=None)` bounds a script that waits
+  in the page; nodriver accepts and ignores it (see `docs/DRIVERS.md`).
+
+### Fixed
+
+- nodriver ran an `async` element script without `awaitPromise`, so the caller
+  got the unresolved promise (`{}`) and no error; the async path now awaits.
+- `Driver.read_field` of a child selector nothing matches answers `None` now:
+  the Playwright family guards `read_property` / `get_attribute` by the count
+  like `text_content` already did (no 30 s auto-wait ending in the backend's
+  own `TimeoutError`), and nodriver's read paths resolve through the bare
+  query instead of `tab.select`'s retry. `explore` lists such a field in
+  `empty_fields`, which is what it always advertised.
+
 ## 0.13.0 — 2026-09-13
 
 ### Added

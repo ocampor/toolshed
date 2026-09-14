@@ -7,8 +7,12 @@ import pytest
 
 from llm_browser.chrome import is_process_alive
 from llm_browser.drivers.base import Driver
+from llm_browser.explore_models import Intent, Stability, Verdict
 from llm_browser.models import SessionInfo
+from llm_browser.parse import ExtractField
 from llm_browser.session import BrowserSession
+
+from tests.conftest import ExploringSession
 
 
 def test_save_and_load_state(tmp_path: Path) -> None:
@@ -152,3 +156,307 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
 
     session.screenshot_bytes()
     assert not session.session_dir.exists()
+
+
+# --- explore ---
+
+LABELLED_ROWS: list[dict[str | None, str | None]] = [
+    {".label": "Alpha", ".note": None},
+    {".label": "Beta", ".note": ""},
+    {".label": "Gamma", ".note": None},
+    {".label": "Delta", ".note": None},
+]
+
+LABEL_AND_NOTE = {
+    "label": ExtractField(child_selector=".label"),
+    "note": ExtractField(child_selector=".note"),
+}
+
+
+def test_explore_counts_every_match_but_samples_only_the_first_few(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(".row", extract=LABEL_AND_NOTE, sample=2)
+
+    assert result.count == 4
+    assert result.sample == [
+        {"label": "Alpha", "note": None},
+        {"label": "Beta", "note": ""},
+    ]
+
+
+def test_explore_names_the_fields_no_sampled_row_filled_in(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(".row", extract=LABEL_AND_NOTE)
+
+    assert result.empty_fields == ["note"]
+
+
+def test_explore_reads_the_rows_own_text_when_no_extract_is_given(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session([{None: "Alpha"}, {None: "Beta"}])
+
+    result = session.explore(".row")
+
+    assert result.sample == [{"text": "Alpha"}, {"text": "Beta"}]
+    assert result.empty_fields == []
+
+
+def test_explore_sums_the_rendered_text_of_the_sampled_elements(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(LABELLED_ROWS, text="12345")
+
+    result = session.explore(".row", sample=3)
+
+    assert result.text_chars == 15
+
+
+def test_explore_names_a_child_selector_that_matches_no_row(
+    exploring_session: ExploringSession,
+) -> None:
+    """The read of an absent child is a miss, not a wait — see
+    `test_read_field_of_a_missing_child_is_none` for the driver side."""
+    session = exploring_session(LABELLED_ROWS)
+
+    result = session.explore(
+        ".row",
+        extract={"absent": ExtractField(child_selector=".nothing-matches-this")},
+        sample=2,
+    )
+
+    assert result.sample == [{"absent": None}, {"absent": None}]
+    assert result.empty_fields == ["absent"]
+
+
+def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session([])
+
+    result = session.explore(".row", timeout_ms=0)
+
+    assert result.count == 0
+    assert result.sample == []
+    assert result.text_chars == 0
+
+
+# --- explore: the first match, the verdict, the candidates ---
+
+ONE_ROW: list[dict[str | None, str | None]] = [{".label": "Alpha"}]
+TWO_ROWS: list[dict[str | None, str | None]] = [{".label": "Alpha"}, {".label": "Beta"}]
+
+COVERED = {"why_not": ["covered"]}
+DISABLED = {"enabled": False, "why_not": ["disabled"]}
+BELOW_THE_FOLD = {"in_viewport": False, "why_not": ["offscreen"]}
+
+
+@pytest.mark.parametrize(
+    ("intent", "rows", "first", "expected"),
+    [
+        (Intent.READ, TWO_ROWS, {}, Verdict.OK),
+        (Intent.READ, [], {}, Verdict.MISSING),
+        (Intent.WAIT, ONE_ROW, COVERED, Verdict.OK),
+        (Intent.WAIT, TWO_ROWS, {}, Verdict.AMBIGUOUS),
+        (Intent.CLICK, ONE_ROW, {}, Verdict.OK),
+        (Intent.CLICK, ONE_ROW, COVERED, Verdict.NOT_ACTIONABLE),
+        (Intent.CLICK, ONE_ROW, BELOW_THE_FOLD, Verdict.OK),
+        (Intent.CLICK, TWO_ROWS, {}, Verdict.AMBIGUOUS),
+        (Intent.FILL, ONE_ROW, COVERED, Verdict.OK),
+        (Intent.FILL, ONE_ROW, DISABLED, Verdict.NOT_ACTIONABLE),
+        (Intent.FILL, ONE_ROW, {"visible": False}, Verdict.NOT_ACTIONABLE),
+    ],
+)
+def test_the_verdict_answers_the_intent(
+    intent: Intent,
+    rows: list[dict[str | None, str | None]],
+    first: dict[str, object],
+    expected: Verdict,
+    exploring_session: ExploringSession,
+) -> None:
+    """A `read` is happy with any number of matches; a covered element is
+    still fine to wait for or to fill, and only a click cares. Below the fold
+    is not a reason: every driver scrolls before it clicks."""
+    session = exploring_session(rows, first=first)
+
+    assert session.explore(".row", timeout_ms=0, intent=intent).verdict == expected
+
+
+def test_explore_reads_the_first_match_once(
+    exploring_session: ExploringSession,
+) -> None:
+    session = exploring_session(TWO_ROWS, first={"text": "Alpha", "href": "/alpha"})
+
+    result = session.explore(".row")
+
+    assert result.first is not None
+    assert (result.first.text, result.first.href) == ("Alpha", "/alpha")
+    assert session.driver.evaluate.call_count == 1
+
+
+def test_a_candidate_has_to_match_exactly_one_element(
+    exploring_session: ExploringSession,
+) -> None:
+    """The proposals come off the first match's own attributes, so a unique
+    match is that element; one that matches twice names something else too."""
+    session = exploring_session(
+        ONE_ROW,
+        locators={"id": "alpha", "aria_label": "Go"},
+        matches={"#alpha": 1, '[aria-label="Go"]': 2},
+    )
+
+    assert session.explore(".row").candidates == ["#alpha"]
+
+
+def test_a_read_candidate_may_match_every_row_instead_of_one(
+    exploring_session: ExploringSession,
+) -> None:
+    """A list is explored to be read as a list: a candidate that finds the
+    same 4 rows is the selector to write, and only a `read` can say so."""
+    session = exploring_session(
+        LABELLED_ROWS,
+        locators={"classes": ["card-2xh9"]},
+        matches={".card-2xh9": 4},
+    )
+
+    assert session.explore(".row").candidates == [".card-2xh9"]
+    assert session.explore(".row", intent=Intent.CLICK).candidates == []
+
+
+def test_a_read_drops_a_candidate_that_finds_one_row_of_many(
+    exploring_session: ExploringSession,
+) -> None:
+    """The first row's own link is not a selector for the list."""
+    session = exploring_session(
+        LABELLED_ROWS,
+        locators={"id": "first-row"},
+        matches={"#first-row": 1},
+    )
+
+    assert session.explore(".row").candidates == []
+
+
+ALL_THE_NAMES: dict[str, object] = {
+    "testid_attribute": "data-testid",
+    "testid": "buy",
+    "aria_label": "Buy",
+    "role": "link",
+    "name": "Buy",
+    "id": "buy-now",
+}
+
+
+def test_only_the_best_three_candidates_are_verified(
+    exploring_session: ExploringSession,
+) -> None:
+    """The fourth proposal is never counted: `explore` is sold as a bounded
+    number of round trips, and the element's own id is its fourth-best name."""
+    session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
+
+    result = session.explore(".row")
+
+    best_three = [
+        '[data-testid="buy"]',
+        '[aria-label="Buy"]',
+        'role=link[name="Buy"]',
+    ]
+    assert result.candidates == best_three
+    # `#buy-now` is proposed and never counted: three round trips, not four.
+    counted = [call.args[0] for call in session.driver.count.call_args_list]
+    assert [selector for selector in counted if selector != ".row"] == best_three
+
+
+def test_a_driver_that_cannot_parse_role_is_never_offered_one(
+    exploring_session: ExploringSession,
+) -> None:
+    """Under nodriver `role=…` reaches `querySelectorAll` as a syntax error,
+    so it is not a selector to hand the author."""
+    session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
+    session.driver.supports_role_selector = False
+
+    assert session.explore(".row").candidates == [
+        '[data-testid="buy"]',
+        '[aria-label="Buy"]',
+        "#buy-now",
+    ]
+
+
+def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(
+    exploring_session: ExploringSession,
+) -> None:
+    result = exploring_session([]).explore(".row", timeout_ms=0, intent=Intent.CLICK)
+
+    assert (result.first, result.since_navigation_ms) == (None, None)
+    assert result.since_call_ms is None
+    assert result.verdict == Verdict.MISSING
+
+
+def test_explore_times_the_match_against_the_page_and_against_the_call(
+    exploring_session: ExploringSession,
+) -> None:
+    """A call seconds after the load would size a `wait_for` from its own
+    latency; the page's own clock is what the element actually took."""
+    result = exploring_session(ONE_ROW, since_navigation_ms=740).explore(".row")
+
+    assert result.since_navigation_ms == 740
+    assert result.since_call_ms is not None and result.since_call_ms >= 0
+
+
+@pytest.mark.parametrize(
+    ("selector", "expected"),
+    [
+        ('[data-testid="row"]', Stability.DATA_TESTID),
+        ('[aria-label="Search"]', Stability.ARIA),
+        ("role=button[name=Go]", Stability.ARIA),
+        ("#searchInput", Stability.ID),
+        (".css-1x2y3z button", Stability.CLASS_HASH),
+        (".grid-cols-12", Stability.OTHER),
+        ("ul > li:nth-child(2)", Stability.POSITIONAL),
+        ("tr.athing", Stability.OTHER),
+    ],
+)
+def test_stability_reads_the_selector_a_redeploy_would_break(
+    selector: str, expected: Stability, exploring_session: ExploringSession
+) -> None:
+    session = exploring_session(ONE_ROW)
+
+    assert session.explore(selector).stability == expected
+
+
+def test_a_control_inside_the_first_match_is_named(
+    exploring_session: ExploringSession,
+) -> None:
+    """A card-sized anchor wrapping its own dismiss button: the click that
+    looks like "open the card" is the one that hides it."""
+    session = exploring_session(
+        ONE_ROW,
+        first={"nested_controls": [{"tag": "button", "text": "Not Interested"}]},
+    )
+
+    first = session.explore(".row").first
+
+    assert first is not None
+    assert [(c.tag, c.text) for c in first.nested_controls] == [
+        ("button", "Not Interested")
+    ]
+
+
+def test_a_sampled_field_is_cut_to_sample_chars(
+    exploring_session: ExploringSession,
+) -> None:
+    """A 2 kB row times forty rows is what `read` is for, not a look."""
+    session = exploring_session([{".label": "x" * 900}])
+
+    result = session.explore(
+        ".row",
+        extract={"label": ExtractField(child_selector=".label")},
+        sample_chars=10,
+    )
+
+    assert result.sample == [{"label": "x" * 10}]

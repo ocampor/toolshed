@@ -21,7 +21,9 @@ from typing import Any
 from llm_browser.behavior import Behavior
 from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
+from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
+from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
 from llm_browser.session import BrowserSession
 
@@ -106,6 +108,188 @@ def find_all_returns_what_find_refuses(ctx: Context) -> None:
     assert ctx.session.driver.count(locator) == 2
     error = raises(ValueError, lambda: ctx.session.find(".item"))
     assert "found 2" in str(error), error
+
+
+def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> None:
+    """What an author asks before writing the `read`: how many, and saying what."""
+    ctx.visit("rows-attributes.html")
+    found = ctx.session.explore(
+        ".row",
+        extract={
+            "label": ExtractField(child_selector=".label"),
+            "absent": ExtractField(child_selector=".nothing-matches-this"),
+        },
+        sample=2,
+    )
+    assert found.count == 3, found
+    assert [row["label"] for row in found.sample] == ["Alpha", "Beta"], found
+    assert found.empty_fields == ["absent"], found
+    assert found.text_chars > 0, found
+
+    missing = ctx.session.explore("#no-such-element", timeout_ms=MISSING_TIMEOUT_MS)
+    assert missing.count == 0, missing
+    assert missing.sample == [], missing
+    assert missing.verdict is Verdict.MISSING, missing
+    assert missing.first is None, missing
+
+
+def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
+    """The question `count` cannot answer: the selector is right, and the
+    click still lands on the banner sitting over it."""
+    ctx.visit("explore-actionability.html")
+
+    buried = ctx.session.explore("#buried", intent=Intent.CLICK)
+    assert buried.verdict is Verdict.NOT_ACTIONABLE, buried
+    assert buried.first is not None and buried.first.why_not == ["covered"], buried
+    assert buried.first.covered_by is not None, buried
+    assert buried.first.covered_by.tag == "div", buried
+    # Every proposal the button offers, best first, each checked to match it
+    # and nothing else -- `role=` included, which Playwright resolves natively.
+    assert buried.candidates == [
+        '[data-testid="buy"]',
+        'role=button[name="Buy now"]',
+        "#buried",
+    ], buried
+    assert buried.stability is Stability.ID, buried
+
+    off = ctx.session.explore("#off", intent=Intent.CLICK)
+    assert off.first is not None and off.first.why_not == ["disabled"], off
+    assert off.verdict is Verdict.NOT_ACTIONABLE, off
+    # A disabled button is still a fine thing to wait for.
+    assert ctx.session.explore("#off", intent=Intent.WAIT).verdict is Verdict.OK, off
+
+    clear = ctx.session.explore("#clear", intent=Intent.CLICK)
+    assert clear.first is not None and clear.first.clickable, clear
+    assert clear.verdict is Verdict.OK, clear
+    assert clear.since_navigation_ms is not None, clear
+
+    both = ctx.session.explore("button[data-testid]", intent=Intent.CLICK)
+    assert both.count == 2 and both.verdict is Verdict.AMBIGUOUS, both
+
+
+def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
+    """Below the fold is not an obstacle, a label is not covered by its own
+    checkbox, and a card that swallows a dismiss button says so."""
+    ctx.visit("explore-actionability.html")
+
+    # `disabled` on the fieldset, nothing on the input: only `:disabled` sees it.
+    in_fieldset = ctx.session.explore("#in-fieldset", intent=Intent.FILL)
+    assert in_fieldset.first is not None, in_fieldset
+    assert in_fieldset.first.enabled is False, in_fieldset
+    assert in_fieldset.first.why_not == ["disabled"], in_fieldset
+    assert in_fieldset.verdict is Verdict.NOT_ACTIONABLE, in_fieldset
+
+    sizeless = ctx.session.explore("#sizeless", intent=Intent.CLICK)
+    assert sizeless.first is not None and not sizeless.first.visible, sizeless
+    assert sizeless.first.why_not == ["hidden"], sizeless
+    # No box to hit-test: `covered_by` is "not asked", not "nothing over it".
+    assert not sizeless.first.hit_tested, sizeless
+    assert sizeless.first.covered_by is None, sizeless
+
+    tick = ctx.session.explore("#tick", intent=Intent.CLICK)
+    assert tick.first is not None and tick.first.covered_by is None, tick
+    assert tick.verdict is Verdict.OK, tick
+
+    card = ctx.session.explore("#card", intent=Intent.CLICK)
+    assert card.first is not None, card
+    assert [c.text for c in card.first.nested_controls] == ["Not Interested"], card
+    # `main` is at the centre of the card -- an ancestor showing through a gap
+    # in the anchor's own box, not something painted over it.
+    assert card.first.covered_by is None, card
+    # The test id on the card outranks everything else it could be called.
+    assert card.candidates[0] == '[data-testid="mission"]', card
+    assert len(card.candidates) <= 3, card
+    assert card.since_navigation_ms is not None, card
+    assert card.since_call_ms is not None, card
+
+    # Last, because the scroll it takes outlives the call: every match read
+    # after it would be `offscreen` too.
+    below = ctx.session.explore("#below", intent=Intent.CLICK)
+    assert below.first is not None and below.first.why_not == ["offscreen"], below
+    assert below.first.clickable and below.verdict is Verdict.OK, below
+    # Exploring scrolled it into view to hit-test it, and found nothing over it.
+    assert below.first.hit_tested and below.first.covered_by is None, below
+
+
+def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
+    """A page's worth of selectors for the price of one wait: the counts, the
+    samples and the first-match reads all come back together."""
+    ctx.visit("explore-actionability.html")
+
+    started = time.monotonic()
+    cards, button, gone, refused = ctx.session.explore_many(
+        [
+            ExploreTarget(
+                selector="article.tile",
+                extract={"title": ExtractField(child_selector="h3")},
+            ),
+            ExploreTarget(selector="#clear", intent=Intent.CLICK),
+            ExploreTarget(selector="#no-such-element"),
+            # A dangling combinator: Chromium auto-closes an unclosed bracket,
+            # but nothing makes this a selector.
+            ExploreTarget(selector="div >"),
+        ],
+        timeout_ms=MISSING_TIMEOUT_MS,
+    )
+    elapsed = time.monotonic() - started
+
+    assert [row["title"] for row in cards.sample] == ["Alpha", "Bravo", "Charlie"], (
+        cards
+    )
+    assert cards.count == 3 and cards.verdict is Verdict.OK, cards
+    # The cards are named only by the build's numbering, so the section around
+    # them is what a selector can be written against.
+    assert cards.candidates == ['[data-testing-id="deck"] :is(article)'], cards
+    assert cards.since_navigation_ms is not None, cards
+
+    assert button.count == 1 and button.verdict is Verdict.OK, button
+    assert button.first is not None and button.first.clickable, button
+
+    assert gone.count == 0 and gone.verdict is Verdict.MISSING, gone
+    assert gone.first is None and gone.candidates == [], gone
+
+    # A selector the page cannot parse costs its own answer, not the batch's.
+    assert refused.error == "not css" and refused.count == 0, refused
+    assert refused.verdict is Verdict.MISSING and refused.first is None, refused
+    # One wait for the batch, not one per target: the missing selector never
+    # spends a timeout of its own, because the others were there.
+    budget = (MISSING_TIMEOUT_MS + SLACK_MS) / 1000
+    assert elapsed <= budget, f"took {elapsed:.3f}s, budget {budget}s"
+
+
+def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
+    """The call before the first selector: what is named, what repeats, and
+    what the links point at — without touching the page."""
+    ctx.visit("explore-actionability.html")
+
+    found = ctx.session.survey()
+
+    named = {mark.selector for mark in found.landmarks}
+    assert '[data-testing-id="deck"]' in named, found.landmarks
+    assert '[data-testid="buy"]' in named, found.landmarks
+    # Test ids first: an author reading the top of the list reads the sturdiest
+    # selectors the page offers.
+    assert found.landmarks[0].selector.startswith("[data-test"), found.landmarks
+
+    # Every count is page-wide, whatever named it: two elements answer to the
+    # pager's label, and saying `1` would promise a step that is ambiguous.
+    pagers = [
+        mark for mark in found.landmarks if mark.selector == '[aria-label="Pager"]'
+    ]
+    assert [mark.count for mark in pagers] == [2], found.landmarks
+
+    tiles = [run for run in found.repeats if run.selector == "article.tile"]
+    assert [run.count for run in tiles] == [3], found.repeats
+    assert [control.text for control in tiles[0].nested_controls] == ["Save"], tiles
+    assert not found.truncated, found
+
+    missions = [shape for shape in found.link_shapes if shape.shape == "/missions/<id>"]
+    assert [shape.count for shape in missions] == [2], found.link_shapes
+    assert missions[0].selector == 'a[href^="/missions/"]', missions
+
+    assert found.hydration.ready_state == "complete", found.hydration
+    assert found.hydration.since_navigation_ms > 0, found.hydration
+    assert found.title == "Buttons a click would miss", found
 
 
 # --- tabs ---
@@ -482,6 +666,43 @@ SCENARIOS = [
         Section.API,
         find_all_returns_what_find_refuses,
         covers=frozenset({"session:find_all"}),
+    ),
+    Scenario(
+        "explore a button",
+        Section.API,
+        explore_says_which_button_a_click_would_miss,
+        covers=frozenset(
+            {
+                "session:explore",
+                "session:first_match",
+                "session:verified_candidates",
+                "session:count_of",
+            }
+        ),
+    ),
+    Scenario(
+        "explore a click cost",
+        Section.API,
+        explore_reads_what_a_loose_click_would_cost,
+        covers=frozenset({"session:explore"}),
+    ),
+    Scenario(
+        "explore a list",
+        Section.API,
+        explore_counts_the_whole_list_and_reads_only_the_sample,
+        covers=frozenset({"session:explore"}),
+    ),
+    Scenario(
+        "explore many",
+        Section.API,
+        explore_many_answers_every_target_in_one_page_call,
+        covers=frozenset({"session:explore_many", "session:evaluate_document"}),
+    ),
+    Scenario(
+        "survey a page",
+        Section.API,
+        survey_reads_what_the_page_is_made_of,
+        covers=frozenset({"session:survey"}),
     ),
     Scenario(
         "latest tab",

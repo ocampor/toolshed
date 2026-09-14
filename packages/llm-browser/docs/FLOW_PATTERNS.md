@@ -18,6 +18,63 @@ support](DRIVERS.md#selector-and-key-support)). Each pattern names its CSS equiv
 | Enumerating `<select>` options | `dom` with the select's selector |
 | Reading a generated id | [Rotating-prefix ids](#rotating-prefix-ids) |
 
+## Before writing a step
+
+Two calls per page, whatever the flow: **survey, then explore the targets it
+named.** The first says what the page is made of; the second checks every
+selector you are about to write, together.
+
+```bash
+llm-browser survey                      # landmarks, link shapes, repeats, hydration
+llm-browser explore --targets flow.yaml # every selector of the flow, one page call
+```
+
+```yaml
+# flow.yaml — one entry per step you are about to write
+- { selector: "tr.athing", extract: { title: ".titleline > a" } }   # from repeats
+- { selector: ".morelink", intent: click }                          # from landmarks
+```
+
+`survey` reads only: it never clicks and never scrolls. `repeats` is where a
+list's selector and its real length come from, `link_shapes` where a
+`a[href^=…]` for a whole section does, and `hydration.since_navigation_ms` is
+the number to size the flow's first `wait_for` from. `explore --targets` then
+answers each one against its own `--intent`, exiting non-zero unless every
+verdict is `ok` — the flow failing at authoring time instead of on the run.
+Targets are CSS and at most twenty per call; one the page cannot parse answers
+`error: not css` and the rest still answer.
+See [API.md](API.md#surveying-before-exploring) for every field.
+
+`llm-browser explore --selector … --intent <what the step will do>` is the same
+answer for one selector, when a step is all that is in question.
+
+A page that reveals a control on a click is **two** rounds, not one: survey,
+write the click, run it, then survey again. Wikipedia's header search is the
+example — `#searchInput` is on the page and hidden, and the toggle click
+replaces the whole form with one that has no id at all. `explore` says
+`not_actionable` / `why_not: ["hidden"]` on the first round, which is the
+signal to go round again; `validate` never will, because it checks the flow's
+schema and never opens the page.
+
+| `--intent` | `ok` when | Read these |
+|---|---|---|
+| `read` | `count >= 1` | `count`, `sample`, `empty_fields` |
+| `wait` | `count == 1` | `count`, `since_navigation_ms` |
+| `click` | `count == 1` and `first.clickable` | `first.why_not`, `first.covered_by`, `first.nested_controls`, `candidates` |
+| `fill` | `count == 1`, visible and enabled | `first.visible`, `first.enabled`, `first.tag` |
+
+- `wait_for` timeout: **3x `since_navigation_ms`, minimum 3000** — measured off
+  the page's own clock, so a call made long after the load still sizes the wait
+  for a cold one. `since_call_ms` is the same wait seen from the caller.
+- `first.why_not` names what a click would hit instead: `covered` (with
+  `covered_by`), `offscreen`, `moving`, `hidden`, `disabled`,
+  `no-pointer-events`, `not-interactive`. Only `offscreen` is not an obstacle —
+  the drivers scroll first, and so does `explore` before it hit-tests. `nested_controls` is the other half: a card-sized
+  anchor wrapping its own dismiss button takes the click you meant for the card.
+- `candidates` are selectors checked to match that same element and nothing
+  else; `stability` says how much of the one you wrote a redeploy is likely to
+  take with it (`data-testid` > `aria` > `id` > `class-hash` > `positional`).
+
 ## Reading the page
 
 `dom` sanitizes; `find` does not. `find --selector … --all` returns each match's raw `outerHTML`,
@@ -38,6 +95,8 @@ Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
   survive only at `low`. Pick the level from this table, not by stepping down through them.
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
+- On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
+  before writing the `read`.
 
 ## Autocomplete (jQuery UI and friends)
 

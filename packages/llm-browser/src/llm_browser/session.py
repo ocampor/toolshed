@@ -1,5 +1,7 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
+# debt: over the 300-line rule; split the lifecycle half out of this file.
+
 from __future__ import annotations
 
 import logging
@@ -8,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from llm_browser import session_input, waits
+from llm_browser import explore, session_input, survey as survey_rules, waits
 from llm_browser.behavior import Behavior, BehaviorRuntime
 from llm_browser.chrome import (
     is_process_alive,
@@ -22,11 +24,20 @@ from llm_browser.constants import (
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
+    EXPLORE_SAMPLE_CHARS,
+    EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
+    SURVEY_MAX_ITEMS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
+from llm_browser.explore_models import (
+    ExploreRead,
+    ExploreResult,
+    ExploreTarget,
+    Intent,
+)
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
@@ -35,7 +46,7 @@ from llm_browser.models import (
     SessionResult,
     WaitState,
 )
-from llm_browser.parse import ExtractField
+from llm_browser.parse import ExtractField, row_spec
 from llm_browser.results import BytesResult
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
@@ -45,6 +56,7 @@ from llm_browser.selectors import (
     expect_single,
     resolve_selector,
 )
+from llm_browser.survey_models import Survey
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -578,11 +590,64 @@ class BrowserSession:
         element itself.
         """
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        spec = {
-            name: {"child_selector": f.child_selector, "attribute": f.attribute}
-            for name, f in extract.items()
-        }
-        return self.driver.extract_rows(locator, spec)
+        return self.driver.extract_rows(locator, row_spec(extract))
+
+    # --- Explore ---
+    #
+    # Thin delegations to ``explore``, which owns the counting, sampling and
+    # verdict rules. ``count_of`` stays here: it is the driver call they verify
+    # candidates with.
+
+    def explore(
+        self,
+        selector: Selector,
+        extract: dict[str, ExtractField] | None = None,
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+        intent: Intent = Intent.READ,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
+    ) -> ExploreResult:
+        return explore.explore(
+            self,
+            selector,
+            extract,
+            sample,
+            timeout_ms,
+            intent,
+            sample_chars,
+        )
+
+    def explore_many(
+        self,
+        targets: list[ExploreTarget],
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+    ) -> list[ExploreResult]:
+        return explore.explore_many(self, targets, sample, sample_chars, timeout_ms)
+
+    def survey(self, max_items: int = SURVEY_MAX_ITEMS) -> Survey:
+        return survey_rules.survey(self, max_items)
+
+    def first_match(self, locator: Any) -> ExploreRead:
+        return explore.first_match(self, locator)
+
+    def verified_candidates(
+        self, proposals: list[str], accepted: Collection[int]
+    ) -> list[str]:
+        return explore.verified_candidates(self, proposals, accepted)
+
+    def count_of(self, selector: str) -> int:
+        """How many elements a proposed selector matches.
+
+        Every proposal is syntax the driver parses — ``candidate_selectors``
+        escapes what it interpolates and withholds ``role=`` from drivers that
+        do not take it — so a raised error here is a dead session or a closed
+        page, and belongs to the caller.
+        """
+        return self.driver.count(
+            resolve_selector(self.driver, self.get_page(), selector)
+        )
 
     def dom(
         self,
@@ -612,6 +677,18 @@ class BrowserSession:
         )
         raw = self.driver.evaluate(self.get_page(), script)
         return PageProbe.model_validate(raw or {})
+
+    def evaluate_document(self, script: str, timeout_ms: int | None = None) -> Any:
+        """Run a page-wide script against ``<html>`` rather than the page.
+
+        The element path is the one every driver awaits, so a script that has
+        to wait — ``explore_many``'s — answers with its value instead of a
+        pending promise. The script reads the page through
+        ``el.ownerDocument``. ``timeout_ms`` bounds the call for a script that
+        waits in the page; ``None`` keeps the driver's own default.
+        """
+        root = self.driver.first(resolve_selector(self.driver, self.get_page(), "html"))
+        return self.driver.evaluate(root, script, timeout_ms)
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

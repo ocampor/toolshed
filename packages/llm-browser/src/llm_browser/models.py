@@ -1,5 +1,7 @@
 """Pydantic models for browser session state, flow state, and flow results."""
 
+# debt: over the 300-line rule; split the step models out.
+
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal

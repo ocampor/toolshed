@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Buttons a click would miss</title>
+<style>
+  body { margin: 0; font: 16px/1.4 system-ui; }
+  .banner {
+    position: fixed; top: 0; left: 0; right: 0; height: 40px;
+    box-sizing: border-box;
+    background: #222; color: #fff; padding: 8px 12px;
+  }
+  /* The arithmetic the `covered` scenario rests on: the first button's box is
+     [18, 42) -- its 18px margin collapses through the unpadded `main` -- so
+     its centre (y = 30) is under the banner's [0, 40) and the next button's
+     (y = 72) is not. */
+  button { display: block; margin: 18px 12px; height: 24px; }
+  .hack { position: relative; display: inline-block; margin: 18px 12px; }
+  .over {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    margin: 0; opacity: 0; z-index: 1;
+  }
+</style>
+<div class="banner">Cookie notice</div>
+<main>
+  <button id="buried" data-testid="buy">Buy now</button>
+  <button id="off" disabled>Sold out</button>
+  <button id="clear" data-testid="help">Help</button>
+  <!-- Wikipedia's checkbox hack: the input is laid over the label it belongs
+       to, so the label's centre hit-tests to the control it drives. One
+       target, not a covered one. -->
+  <div class="hack">
+    <input id="agree" type="checkbox" class="over">
+    <label id="tick" for="agree">I agree</label>
+  </div>
+  <!-- A card-sized link with its own dismiss button inside it. -->
+  <a id="card" href="/missions/senior-eng-4821" data-testid="mission">
+    Senior engineer
+    <button>Not Interested</button>
+  </a>
+  <!-- Disabled by the fieldset around it, not by anything on itself. -->
+  <fieldset disabled>
+    <input id="in-fieldset" type="text" value="">
+  </fieldset>
+  <!-- A box of no size: nothing to click, and nothing to hit-test either. -->
+  <a id="sizeless" href="/gone" style="display: inline-block; width: 0; height: 0"></a>
+  <div style="height: 1200px"></div>
+  <a id="below" href="/missions/staff-eng-991">Below the fold</a>
+  <!-- Three of the same card, named only by the build's numbering, inside
+       something that does have a name: what `survey` is for. -->
+  <section data-testing-id="deck">
+    <article class="sc-card-0-2-1 tile"><h3>Alpha</h3><button>Save</button></article>
+    <article class="sc-card-0-2-1 tile"><h3>Bravo</h3><button>Save</button></article>
+    <article class="sc-card-0-2-1 tile"><h3>Charlie</h3><button>Save</button></article>
+  </section>
+  <!-- Two elements answering to one name: a landmark `count` of 1 here would
+       promise a step that turns out `ambiguous` at run time. -->
+  <nav aria-label="Pager"><a href="/2" aria-label="Pager">Next</a></nav>
+</main>

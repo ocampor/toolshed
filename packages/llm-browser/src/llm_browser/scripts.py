@@ -26,6 +26,88 @@ def extract_rows_js() -> str:
     )
 
 
+def explore_limits() -> dict[str, object]:
+    """Every limit and vocabulary the per-element read applies, so
+    ``FirstMatch.why_not`` and the JS agree on one list of names."""
+    return {
+        "text_max": constants.EXPLORE_TEXT_MAX_CHARS,
+        "cover_text_max": constants.EXPLORE_COVER_TEXT_MAX_CHARS,
+        "stable_delay_ms": constants.EXPLORE_STABLE_DELAY_MS,
+        "interactive_tags": list(constants.INTERACTIVE_TAGS),
+        "interactive_roles": list(constants.INTERACTIVE_ROLES),
+        "implicit_roles": constants.IMPLICIT_ROLES,
+        "nested_text_max": constants.EXPLORE_NESTED_TEXT_MAX_CHARS,
+        "max_nested_controls": constants.EXPLORE_MAX_NESTED_CONTROLS,
+        "ancestor_levels": constants.EXPLORE_ANCESTOR_LEVELS,
+        "testid_attributes": list(constants.TESTID_ATTRIBUTES),
+    }
+
+
+def with_explore_element(source: str) -> str:
+    """``source`` with the shared per-element read and its limits filled in."""
+    return source.replace(
+        constants.EXPLORE_ELEMENT_PLACEHOLDER, load_script("explore_element")
+    ).replace(constants.EXPLORE_LIMITS_PLACEHOLDER, json.dumps(explore_limits()))
+
+
+def explore_first_js() -> str:
+    """``async (el) => ExploreRead`` — what one element is right now."""
+    return with_explore_element(load_script("explore_first"))
+
+
+def explore_many_js(
+    targets: list[dict[str, object]],
+    sample: int,
+    sample_chars: int,
+    timeout_ms: int,
+) -> str:
+    """``async (el) => list[ExploreManyRead]`` — every target in one page call.
+
+    ``targets`` carry the CSS selector and the already-resolved extract spec,
+    so the page side reads the same field names ``Driver.read_field`` would.
+    """
+    batch = {
+        "targets": targets,
+        "sample": sample,
+        "sample_chars": sample_chars,
+        "timeout_ms": timeout_ms,
+        "poll_ms": constants.EXPLORE_MANY_POLL_MS,
+        "properties": list(constants.EXTRACT_PROPERTIES),
+    }
+    return with_explore_element(load_script("explore_many")).replace(
+        constants.EXPLORE_BATCH_PLACEHOLDER, json.dumps(batch)
+    )
+
+
+def survey_js() -> str:
+    """``(el) => SurveyRead`` — the page's named elements, links and repeats."""
+    limits = {
+        "text_max": constants.SURVEY_TEXT_MAX_CHARS,
+        "testid_attributes": list(constants.TESTID_ATTRIBUTES),
+        "max_raw_landmarks": constants.SURVEY_MAX_RAW_LANDMARKS,
+        "max_raw_repeats": constants.SURVEY_MAX_RAW_REPEATS,
+        "max_hrefs": constants.SURVEY_MAX_HREFS,
+        "min_siblings": constants.SURVEY_MIN_SIBLINGS,
+        "class_suffix": constants.CLASS_SUFFIX_PATTERN,
+        "max_nested_controls": constants.EXPLORE_MAX_NESTED_CONTROLS,
+        "nested_text_max": constants.EXPLORE_NESTED_TEXT_MAX_CHARS,
+    }
+    return load_script("survey").replace(
+        constants.SURVEY_LIMITS_PLACEHOLDER, json.dumps(limits)
+    )
+
+
+def count_selectors_js(selectors: list[str]) -> str:
+    """``(el) => {selector: count}`` — what each selector matches page-wide.
+
+    The selectors ``survey`` reports are built in Python, so the page is asked
+    about them in a second call; one it cannot parse counts as zero.
+    """
+    return load_script("count_selectors").replace(
+        constants.SURVEY_COUNT_PLACEHOLDER, json.dumps(selectors)
+    )
+
+
 def select_option_js(value: str) -> str:
     """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(
