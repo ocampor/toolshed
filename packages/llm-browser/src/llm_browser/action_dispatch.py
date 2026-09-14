@@ -11,7 +11,14 @@ from yaml_engine.registry import Registry
 
 from llm_browser.behavior import Behavior, paced
 from llm_browser.models import Step
-from llm_browser.results import ActionResult, ErrorResult, SkippedResult, VoidResult
+from llm_browser.results import (
+    ActionResult,
+    ErrorResult,
+    SkippedResult,
+    VoidResult,
+    is_step_failure,
+    is_timeout,
+)
 from llm_browser.session import BrowserSession
 from llm_browser.session_input import behavior_for, with_driver_opt_outs
 
@@ -24,29 +31,6 @@ ActionHandler = Callable[..., ActionResult]
 @lru_cache(maxsize=1)
 def get_registry() -> Registry[ActionHandler]:
     return Registry("action")
-
-
-def _is_timeout(exc: BaseException) -> bool:
-    """Treat any exception class named ``TimeoutError`` as a timeout.
-    Patchright (and similar driver libs) raise their own TimeoutError
-    that does NOT inherit from the Python builtin, so a bare
-    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
-    and the optional-swallow / ErrorResult contract was violated."""
-    if isinstance(exc, TimeoutError):
-        return True
-    return type(exc).__name__ == "TimeoutError"
-
-
-def is_step_failure(exc: BaseException) -> bool:
-    """Whether ``exc`` is a step result rather than a library bug.
-
-    Deliberately narrow. Anything a step can legitimately hit — a wait that
-    expired, a value the page did not provide, an output it cannot write — is
-    raised as one of these two at the place it happens. A ``TypeError`` or an
-    ``AttributeError`` reaching here is a bug in the library, and it belongs
-    in a traceback rather than in a truncated ``reason=`` on a skipped step.
-    """
-    return _is_timeout(exc) or isinstance(exc, ValueError)
 
 
 def step_behavior(
@@ -90,7 +74,7 @@ def execute_action(
             selector=repr(selector) if selector is not None else None,
             hint=(
                 "element hidden, missing, or slow to render"
-                if _is_timeout(exc)
+                if is_timeout(exc)
                 else None
             ),
         )

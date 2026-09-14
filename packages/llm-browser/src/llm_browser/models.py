@@ -37,7 +37,31 @@ from llm_browser.selectors import Selector
 CaptureMode = Literal["screenshot", "dom", "both", "none"]
 
 
-WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
+WaitState = Literal[
+    "attached", "detached", "visible", "hidden", "enabled", "disabled", "stable"
+]
+
+
+class Repeat(BaseModel):
+    """Run one step once per item of a list param.
+
+    ``over`` names the param holding the list; ``as`` (the field is ``bind``,
+    because ``as`` is a keyword) names the variable each item is bound to for
+    that pass, alongside ``<as>_index``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    over: str = Field(..., min_length=1)
+    bind: str = Field(..., min_length=1, alias="as")
+
+    @model_validator(mode="after")
+    def _reject_self_shadowing(self) -> Repeat:
+        # Binding the item to the list's own name would leave the rest of the
+        # step unable to reach either.
+        if self.bind == self.over:
+            raise ValueError(f"repeat `as` must differ from `over` ({self.over!r})")
+        return self
 
 
 class BaseStep(BaseModel):
@@ -55,6 +79,7 @@ class BaseStep(BaseModel):
     wait_after: int | None = None
     optional: bool = False
     timeout: int = 10_000
+    repeat: Repeat | None = None
     # Set by ``RunFlowStep``'s after-validator on each child step in a
     # sub-flow: the parent's ``run-flow`` step name. ``None`` for
     # top-level steps. Drives ``qualified_name`` for diagnostic output
@@ -465,6 +490,18 @@ class RetryHint(BaseModel):
     error: str
 
 
+class SkippedStep(BaseModel):
+    """A step the run passed over: its qualified name and why.
+
+    Both kinds of skip land here — a ``when:`` predicate that did not hold,
+    and an ``optional:`` step whose action failed — so "nothing matched" stops
+    being indistinguishable from "it ran".
+    """
+
+    name: str
+    reason: str
+
+
 class FlowSuccess(BaseModel):
     """Returned by ``run_flow`` when a flow ran to completion.
 
@@ -476,6 +513,8 @@ class FlowSuccess(BaseModel):
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
+    ``skipped`` names every step the run passed over, in the order it did.
+
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
     result, which the parent run stamps on its way out.
@@ -483,6 +522,7 @@ class FlowSuccess(BaseModel):
 
     step: str
     outputs: dict[str, object] = {}
+    skipped: list[SkippedStep] = []
     behavior: BehaviorProfile | None = None
 
 
@@ -516,6 +556,7 @@ class FlowError(BaseModel):
     human_needed: bool = False
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
+    skipped: list[SkippedStep] = []
     behavior: BehaviorProfile | None = None
 
 

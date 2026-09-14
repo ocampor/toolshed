@@ -10,7 +10,7 @@ from yaml_engine.template import resolve_templates_in_dict
 from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior
 from llm_browser.results import ActionResult, SkippedResult
-from llm_browser.constants import LOGGER_NAME
+from llm_browser.constants import LOGGER_NAME, WHEN_SKIP_REASON
 from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.probe import human_needed
 from llm_browser.selectors import parse_selector
@@ -55,9 +55,17 @@ def resolve_step(step: Step, data: FlowData) -> Step:
     """Resolve {{ template }} refs inside ``step`` against ``data`` and
     return a freshly-validated Step. Idempotent — resolving a resolved
     step is a no-op. Carries ``_parent`` (a private attr set during
-    flow load) across the round trip so qualified names survive."""
+    flow load) across the round trip so qualified names survive.
+
+    A ``run-flow`` step's child body is left untemplated: the child resolves
+    its own steps against its own data, so a parent param never substitutes a
+    name the step's ``data:`` binds."""
     raw = step.model_dump(exclude_none=True)
-    resolved = validate_step(resolve_templates_in_dict(raw, data.to_template_dict()))
+    child_flow = raw.pop("flow", None)
+    resolved_raw = resolve_templates_in_dict(raw, data.to_template_dict())
+    if child_flow is not None:
+        resolved_raw["flow"] = child_flow
+    resolved = validate_step(resolved_raw)
     resolved._parent = step._parent
     return resolved
 
@@ -87,7 +95,7 @@ def execute_step(
     refines."""
     resolved = resolve_step(step, data)
     if should_skip(session, resolved, data):
-        return SkippedResult(reason="when condition not satisfied")
+        return SkippedResult(reason=WHEN_SKIP_REASON)
     action_result = execute_action(session, resolved, behavior)
     if not action_result.ok:
         capture = session.capture

@@ -5,7 +5,7 @@ import json
 import os
 import uuid
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
@@ -24,7 +24,8 @@ from llm_browser.constants import (
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
-from llm_browser.flows import load_flow_document, run_flow, with_flow_path
+from llm_browser.flow_passes import unindexed
+from llm_browser.flows import child_data, load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
@@ -460,7 +461,9 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     for step in flow.steps:
         resolved = resolve_step(step, flow_data)
         if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
-            paths.update(declared_paths(resolved.flow, resolved.data))
+            paths.update(
+                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
+            )
             continue
         path = getattr(resolved, "path", None)
         if path:
@@ -513,16 +516,36 @@ def planned_outputs(
     run's output and an error.
     """
     planned: dict[str, tuple[Path, bytes | str]] = {}
-    for step, result in outputs.items():
+    for key, result in outputs.items():
+        step, index = unindexed(key)
         path = paths.get(step)
         if isinstance(result, BytesResult):
             # The fallback name is the server's `Content-Disposition`
             # filename: take the basename, never its directories.
-            target = contained_output_path(out_dir, path or Path(result.name).name)
-            planned[step] = (target, result.content)
+            name = path or Path(result.name).name
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(name, index)),
+                result.content,
+            )
         elif path:
-            planned[step] = (contained_output_path(out_dir, path), as_text(result))
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(path, index)),
+                as_text(result),
+            )
     return planned
+
+
+def per_pass_path(path: str, index: int | None) -> str:
+    """One ``repeat`` pass's file: ``shots/page.png`` pass 1 is
+    ``shots/page[1].png``.
+
+    A repeated step declares one ``path:`` and produces a file per pass, so
+    the index has to land in the name or every pass but the last is lost.
+    """
+    if index is None:
+        return path
+    name = PurePosixPath(path)
+    return str(name.with_name(f"{name.stem}[{index}]{name.suffix}"))
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
