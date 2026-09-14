@@ -15,6 +15,8 @@ SPEC: dict[str, dict[str, str | None]] = {
     "url": {"child_selector": "a", "attribute": "href"},
     "qty": {"child_selector": "input", "attribute": "value"},
     "id": {"child_selector": None, "attribute": "data-id"},
+    "tag": {"child_selector": "td.name", "attribute": "tagName"},
+    "kids": {"child_selector": None, "attribute": "childElementCount"},
 }
 
 
@@ -38,11 +40,11 @@ class FallbackDriver(Driver):
     def child(self, locator: Any, selector: str) -> Any:
         return locator.children.get(selector)
 
-    def text_content(self, locator: Any) -> str | None:
-        return None if locator is None else locator.text
-
-    def input_value(self, locator: Any) -> str:
-        return "" if locator is None else locator.value
+    def evaluate(self, target: Any, script: str) -> Any:
+        """The base property read is ``(el) => el.<name>``; the page answers
+        with whatever that property holds."""
+        name = script.rsplit(".", 1)[1]
+        return None if target is None else target.properties.get(name)
 
     def get_attribute(self, locator: Any, name: str) -> str | None:
         return None if locator is None else locator.attrs.get(name)
@@ -54,13 +56,11 @@ class FallbackDriver(Driver):
 class FakeElement:
     def __init__(
         self,
-        text: str | None = None,
-        value: str = "",
         attrs: dict[str, str] | None = None,
         children: dict[str, "FakeElement"] | None = None,
+        **properties: Any,
     ) -> None:
-        self.text = text
-        self.value = value
+        self.properties = properties
         self.attrs = attrs or {}
         self.children = children or {}
 
@@ -75,16 +75,19 @@ FallbackDriver.__abstractmethods__ = frozenset()  # type: ignore[attr-defined]
         ("url", "/alice"),
         ("qty", "3"),
         ("id", "r1"),
+        ("tag", "TD"),
+        ("kids", "3"),
         ("missing", None),
     ],
 )
-def test_fallback_extract_rows_reads_each_attribute_kind(
+def test_fallback_extract_rows_reads_properties_and_attributes(
     field: str, expected: str | None
 ) -> None:
     row = FakeElement(
         attrs={"data-id": "r1"},
+        childElementCount=3,
         children={
-            "td.name": FakeElement(text="Alice"),
+            "td.name": FakeElement(textContent="Alice", tagName="TD"),
             "a": FakeElement(attrs={"href": "/alice"}),
             "input": FakeElement(value="3"),
         },
@@ -107,6 +110,12 @@ class ScopedElement:
 
     async def query_selector_all(self, selector: str) -> list["ScopedElement"]:
         return self.subtree.get(selector, [])
+
+    async def apply(self, script: str) -> Any:
+        """`Runtime.callFunctionOn`, which is how a property read reaches a
+        nodriver handle."""
+        assert script.endswith(".textContent"), script
+        return self.text
 
 
 class DocumentTab(ScopedElement):

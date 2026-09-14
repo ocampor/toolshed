@@ -4,15 +4,21 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    ClickStep,
+    DomStep,
     EvalStep,
+    FillStep,
     Flow,
     FlowData,
     FlowError,
     FlowSuccess,
     GotoStep,
+    ReadStep,
     ScrollStep,
     SessionInfo,
+    TypeStep,
     validate_step,
 )
 
@@ -201,3 +207,80 @@ def test_flow_validate_data_unregistered_param_treated_as_required() -> None:
     flow = Flow(params=["nonexistent"], steps=[EvalStep(name="s1")])
     with pytest.raises(ValueError, match="Missing required param"):
         flow.validate_data({})
+
+
+def test_dom_step_sanitizes_at_low_unless_told_otherwise() -> None:
+    assert DomStep(name="s", action="dom", selector="#x").level is SanitizeLevel.LOW
+    step = validate_step(
+        {"name": "s", "action": "dom", "selector": "#x", "level": "xhigh"}
+    )
+    assert isinstance(step, DomStep)
+    assert step.level is SanitizeLevel.XHIGH
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected"),
+    [
+        ("td.name@href", ("td.name", "href")),
+        ("", (None, "textContent")),
+        ("@href", (None, "href")),
+        ("td.name", ("td.name", "textContent")),
+        ({"child_selector": "td.name", "attribute": "href"}, ("td.name", "href")),
+    ],
+)
+def test_a_read_takes_the_compact_extract_form_docs_advertise(
+    spec: object, expected: tuple[str | None, str]
+) -> None:
+    step = validate_step(
+        {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+    )
+    assert isinstance(step, ReadStep)
+    field = step.extract["a"]
+    assert (field.child_selector, field.attribute) == expected
+
+
+@pytest.mark.parametrize("spec", [["td.name"], 5, None])
+def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
+    spec: object,
+) -> None:
+    """It used to escape as a `TypeError` traceback out of `llm-browser validate`."""
+    with pytest.raises(ValidationError, match="invalid extract spec"):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
+        )
+
+
+def test_type_delay_accepts_a_constant_or_a_pair() -> None:
+    step = validate_step({"name": "s", "action": "type", "selector": "#x", "delay": 60})
+    assert isinstance(step, TypeStep) and step.delay == 60
+    step = validate_step(
+        {"name": "s", "action": "type", "selector": "#x", "delay": [30, 90]}
+    )
+    assert isinstance(step, TypeStep)
+    assert step.delay == Jitter(min_ms=30, max_ms=90)
+
+
+@pytest.mark.parametrize("delay", [[90, 30], [50], [10, 20, 30], [-5, 20]])
+def test_type_delay_rejects_anything_but_a_min_max_pair(delay: list[int]) -> None:
+    with pytest.raises(ValidationError, match=r"\[min_ms, max_ms\]"):
+        validate_step({"name": "s", "action": "type", "selector": "#x", "delay": delay})
+
+
+def test_humanize_defaults_to_following_the_session() -> None:
+    click = validate_step({"name": "s", "action": "click", "selector": "#x"})
+    typed = validate_step({"name": "s", "action": "type", "selector": "#x"})
+    filled = validate_step({"name": "s", "action": "fill", "selector": "#x"})
+    assert isinstance(click, ClickStep) and isinstance(typed, TypeStep)
+    assert isinstance(filled, FillStep)
+    assert (click.humanize, typed.humanize, filled.humanize) == (None, None, None)
+    forced = validate_step(
+        {"name": "s", "action": "click", "selector": "#x", "humanize": True}
+    )
+    assert isinstance(forced, ClickStep) and forced.humanize is True
+
+
+def test_fill_takes_humanize() -> None:
+    plain = validate_step(
+        {"name": "s", "action": "fill", "selector": "#x", "humanize": False}
+    )
+    assert isinstance(plain, FillStep) and plain.humanize is False

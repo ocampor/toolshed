@@ -128,6 +128,12 @@ FUNCTION_LITERAL = re.compile(
     r"^\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
 )
 
+# An async script needs `awaitPromise`, which nodriver's own `Element.apply`
+# does not pass: the promise comes back unresolved and serializes to `{}`, with
+# no error. Only the async path takes the CDP call below, so the ordinary reads
+# keep nodriver's own semantics.
+ASYNC_LITERAL = re.compile(r"^\s*async\b")
+
 # `// what this reads\nel => el.value` is a function too, and the cost of not
 # knowing it is a silent `undefined` rather than an error. Block comments are
 # not handled: the same caveat applies to `/* ... */ el => ...`.
@@ -141,6 +147,11 @@ def is_function_literal(script: str) -> bool:
     expression like ``(document.title)`` is still an expression.
     """
     return FUNCTION_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
+
+
+def is_async_literal(script: str) -> bool:
+    """Whether ``script`` is a function whose result has to be awaited."""
+    return ASYNC_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
 def key_triplet(key: str) -> tuple[str, str, int]:
@@ -414,6 +425,16 @@ class NodriverDriver(Driver):
             loc.element = await loc.tab.select(loc.selector)
         return loc.element
 
+    async def resolve_now(self, loc: NodriverLocator) -> Any:
+        """`resolve_element` without the wait: the bare query, so a read of a
+        selector nothing matches is `None` now rather than after `tab.select`
+        has retried for its ten seconds."""
+        if loc.element is not None:
+            return loc.element
+        matches = await self.query(loc)
+        loc.element = matches[loc.index] if loc.index < len(matches) else None
+        return loc.element
+
     async def query(self, loc: NodriverLocator) -> list[Any]:
         """Everything `loc` matches right now — the one DOM query.
 
@@ -432,9 +453,11 @@ class NodriverDriver(Driver):
         return list(await scope.query_selector_all(loc.selector) or [])
 
     async def apply_script(self, loc: NodriverLocator, script: str) -> Any:
-        el = await self.resolve_element(loc)
+        el = await self.resolve_now(loc)
         if el is None:
             return None
+        if is_async_literal(script):
+            return await apply_awaiting(el, script)
         return await el.apply(script)
 
     # --- Interactions ---
@@ -639,7 +662,7 @@ class NodriverDriver(Driver):
         return self.run(self.read_attribute(locator, name))
 
     async def read_attribute(self, loc: NodriverLocator, name: str) -> str | None:
-        el = await self.resolve_element(loc)
+        el = await self.resolve_now(loc)
         if el is None:
             return None
         value = el.attrs.get(name)
@@ -698,9 +721,14 @@ class NodriverDriver(Driver):
             tab=locator.tab, selector=combined, parent=locator.parent
         )
 
-    def evaluate(self, target: Any, script: str) -> Any:
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
         """A function literal is invoked; anything else is a body or an
-        expression, the way the Playwright family reads the same string."""
+        expression, the way the Playwright family reads the same string.
+
+        ``timeout_ms`` is accepted and ignored: CDP `Runtime.callFunctionOn`
+        has no deadline of its own, so an awaited script ends when the page
+        ends it — see ``docs/DRIVERS.md``.
+        """
         if isinstance(target, NodriverLocator):
             declaration = (
                 script if is_function_literal(script) else f"(el) => {{ {script} }}"
@@ -784,3 +812,30 @@ async def _evaluate_by_value(tab: Any, expression: str) -> Any:
     if exception is not None:
         raise RuntimeError(f"evaluate failed: {exception}")
     return remote_object.value if remote_object else None
+
+
+async def apply_awaiting(element: Any, script: str) -> Any:
+    """``Element.apply`` with ``awaitPromise``, for an ``async (el) => …``."""
+    nodriver = load_optional_module("nodriver", "nodriver")
+    cdp = nodriver.cdp
+    remote = await element.tab.send(
+        cdp.dom.resolve_node(backend_node_id=element.backend_node_id)
+    )
+    try:
+        value, exception = await element.tab.send(
+            cdp.runtime.call_function_on(
+                script,
+                object_id=remote.object_id,
+                arguments=[cdp.runtime.CallArgument(object_id=remote.object_id)],
+                return_by_value=True,
+                user_gesture=True,
+                await_promise=True,
+            )
+        )
+    finally:
+        # The handle outlives the call and keeps the node alive in the page's
+        # object group: one leak per `explore` for the life of the tab.
+        await element.tab.send(cdp.runtime.release_object(object_id=remote.object_id))
+    if exception is not None:
+        raise RuntimeError(f"evaluate failed: {exception}")
+    return value.value if value else None

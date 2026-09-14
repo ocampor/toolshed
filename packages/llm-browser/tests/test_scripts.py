@@ -7,7 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from llm_browser.scripts import JS_DIR, extract_rows_js, load_script
+from llm_browser import constants
+from llm_browser.constants import EXTRACT_PROPERTIES
+from llm_browser.scripts import (
+    JS_DIR,
+    count_selectors_js,
+    explore_first_js,
+    explore_many_js,
+    extract_rows_js,
+    load_script,
+    survey_js,
+)
 
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
@@ -17,14 +27,15 @@ def test_extract_rows_js_is_a_rows_spec_function() -> None:
     assert "getAttribute" in source
 
 
-@pytest.mark.parametrize("attribute", ["textContent", "value"])
-def test_extract_rows_js_handles_property_reads(attribute: str) -> None:
-    assert f'attribute === "{attribute}"' in extract_rows_js()
+def test_extract_rows_js_reads_the_property_allowlist_from_python() -> None:
+    """One list, substituted in, so the page-side rule cannot drift from
+    ``Driver.read_field``."""
+    assert json.dumps(list(EXTRACT_PROPERTIES)) in extract_rows_js()
 
 
 def test_load_script_is_cached_and_reads_from_js_dir() -> None:
     assert (JS_DIR / "extract_rows.js").is_file()
-    assert load_script("extract_rows") is extract_rows_js()
+    assert load_script("extract_rows") is load_script("extract_rows")
 
 
 def test_load_script_missing_file() -> None:
@@ -35,7 +46,10 @@ def test_load_script_missing_file() -> None:
 FAKE_DOM_HARNESS = """
 const makeEl = (attrs, text, value) => ({
   textContent: text,
+  innerText: text.trim(),
   value,
+  tagName: "TD",
+  childElementCount: 2,
   getAttribute: (name) => (name in attrs ? attrs[name] : null),
 });
 const child = makeEl({ href: "/a" }, "Alice", "typed");
@@ -44,6 +58,10 @@ const spec = {
   name: { child_selector: "td.name", attribute: "textContent" },
   url: { child_selector: "td.name", attribute: "href" },
   typed: { child_selector: "td.name", attribute: "value" },
+  rendered: { child_selector: "td.name", attribute: "innerText" },
+  tag: { child_selector: "td.name", attribute: "tagName" },
+  kids: { child_selector: "td.name", attribute: "childElementCount" },
+  gone: { child_selector: "td.name", attribute: "data-nope" },
   missing: { child_selector: "td.nope", attribute: "textContent" },
   self: { child_selector: null, attribute: "textContent" },
 };
@@ -68,6 +86,10 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "name": "Alice",
             "url": "/a",
             "typed": "typed",
+            "rendered": "Alice",
+            "tag": "TD",
+            "kids": "2",
+            "gone": None,
             "missing": None,
             "self": "whole row",
         }
@@ -188,3 +210,80 @@ def test_the_control_tag_script_resolves_a_label() -> None:
     source = select_control_tag_js()
     assert 'el.tagName === "LABEL"' in source
     assert "el.control" in source
+
+
+def test_explore_first_js_is_an_async_element_function() -> None:
+    """It has to be async: `stable` is two rects a beat apart, in one call."""
+    source = explore_first_js()
+    assert source.startswith("async (el) =>")
+    assert constants.EXPLORE_LIMITS_PLACEHOLDER not in source
+
+
+def test_explore_first_js_reads_every_limit_from_python() -> None:
+    """One source for the limits, so the page side and `FirstMatch` cannot
+    disagree about what counts as interactive or how long "still" is."""
+    source = explore_first_js()
+    assert f'"stable_delay_ms": {constants.EXPLORE_STABLE_DELAY_MS}' in source
+    assert f'"text_max": {constants.EXPLORE_TEXT_MAX_CHARS}' in source
+    assert f'"cover_text_max": {constants.EXPLORE_COVER_TEXT_MAX_CHARS}' in source
+    assert json.dumps(list(constants.INTERACTIVE_TAGS)) in source
+    assert json.dumps(list(constants.INTERACTIVE_ROLES)) in source
+    assert json.dumps(list(constants.TESTID_ATTRIBUTES)) in source
+    assert f'"nested_text_max": {constants.EXPLORE_NESTED_TEXT_MAX_CHARS}' in source
+    assert f'"ancestor_levels": {constants.EXPLORE_ANCESTOR_LEVELS}' in source
+
+
+def test_the_element_read_is_shared_rather_than_copied() -> None:
+    """`explore` and `explore_many` answer the same questions about an
+    element, so one script answers them."""
+    element = load_script("explore_element")
+    assert element.lstrip().startswith("//")
+    assert "async (el, limits) =>" in element
+
+    batch = explore_many_js([{"selector": ".row", "extract": {}}], 3, 200, 3000)
+    assert element.splitlines()[-1] in batch
+    for source in (explore_first_js(), batch):
+        assert constants.EXPLORE_ELEMENT_PLACEHOLDER not in source
+        assert constants.EXPLORE_LIMITS_PLACEHOLDER not in source
+
+
+def test_explore_many_js_carries_the_batch_it_was_asked_for() -> None:
+    """The targets, the sample size and the wait are the page's to apply:
+    everything the batch needs goes over in the one call."""
+    source = explore_many_js(
+        [{"selector": ".row", "extract": {"title": {"child_selector": "a"}}}],
+        2,
+        120,
+        1500,
+    )
+
+    assert source.lstrip().startswith("//")
+    assert '"selector": ".row"' in source
+    assert '"child_selector": "a"' in source
+    assert '"sample": 2' in source
+    assert '"timeout_ms": 1500' in source
+    assert f'"poll_ms": {constants.EXPLORE_MANY_POLL_MS}' in source
+    assert json.dumps(list(constants.EXTRACT_PROPERTIES)) in source
+    assert constants.EXPLORE_BATCH_PLACEHOLDER not in source
+
+
+def test_survey_js_reads_every_cap_from_python() -> None:
+    source = survey_js()
+
+    assert f'"max_raw_landmarks": {constants.SURVEY_MAX_RAW_LANDMARKS}' in source
+    assert f'"max_hrefs": {constants.SURVEY_MAX_HREFS}' in source
+    assert f'"min_siblings": {constants.SURVEY_MIN_SIBLINGS}' in source
+    assert json.dumps(list(constants.TESTID_ATTRIBUTES)) in source
+    assert constants.SURVEY_LIMITS_PLACEHOLDER not in source
+    # A survey never acts on the page: it is the read an author starts with.
+    assert "click(" not in source and "scrollIntoView" not in source
+
+
+def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
+    """The selectors are built in Python, so the page is asked about them
+    rather than re-deriving them — one `querySelectorAll` each."""
+    source = count_selectors_js(["article.dense", '[aria-label="Next"]'])
+
+    assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
+    assert "doc.querySelectorAll(selector).length" in source
+    assert constants.SURVEY_COUNT_PLACEHOLDER not in source

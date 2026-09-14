@@ -77,6 +77,59 @@ def test_declared_paths_receive_their_output(cli_run: Any) -> None:
     assert json.loads((cwd / "out" / "rows.json").read_text()) == [{"title": "hello"}]
 
 
+REPEAT_YAML = """
+params: [codes]
+steps:
+  - name: shot
+    action: screenshot
+    path: captures/page.png
+    repeat: { over: codes, as: code }
+  - name: snap
+    action: dom
+    selector: "#main"
+    path: out/main.html
+    repeat: { over: codes, as: code }
+"""
+
+
+def test_every_pass_of_a_repeated_step_gets_its_own_file(cli_run: Any) -> None:
+    """A repeated `path:` is one declaration and many files: without the pass's
+    index in the name every pass but the last would be lost."""
+    outputs: dict[str, object] = {
+        "shot[0]": BytesResult(name="shot.png", content=PNG, media_type="image/png"),
+        "shot[1]": BytesResult(
+            name="shot.png", content=PNG * 2, media_type="image/png"
+        ),
+        "snap[0]": "<p>a</p>",
+        "snap[1]": "<p>b</p>",
+    }
+    outcome, cwd = cli_run(
+        FlowSuccess(step="snap", outputs=outputs),
+        "--data",
+        '{"codes": ["a", "b"]}',
+        flow=REPEAT_YAML,
+    )
+    assert outcome.exit_code == 0
+    assert (cwd / "captures" / "page[0].png").read_bytes() == PNG
+    assert (cwd / "captures" / "page[1].png").read_bytes() == PNG * 2
+    assert (cwd / "out" / "main[0].html").read_text() == "<p>a</p>"
+    assert (cwd / "out" / "main[1].html").read_text() == "<p>b</p>"
+
+
+def test_a_repeated_download_keeps_the_servers_name_per_pass(cli_run: Any) -> None:
+    outputs: dict[str, object] = {
+        "grab[0]": BytesResult(
+            name="report.csv", content=b"a\n", media_type="text/csv"
+        ),
+        "grab[1]": BytesResult(
+            name="report.csv", content=b"b\n", media_type="text/csv"
+        ),
+    }
+    _outcome, cwd = cli_run(FlowSuccess(step="grab", outputs=outputs))
+    assert (cwd / "report[0].csv").read_bytes() == b"a\n"
+    assert (cwd / "report[1].csv").read_bytes() == b"b\n"
+
+
 def test_bytes_without_a_path_land_under_their_own_name(cli_run: Any) -> None:
     _outcome, cwd = cli_run(FlowSuccess(step="snap", outputs=dict(OUTPUTS)))
     assert (cwd / "report.csv").read_bytes() == b"a,b\n"
@@ -245,6 +298,35 @@ steps:
     )
     assert outcome.exit_code == 0, outcome.output
     assert (cwd / "out" / "run7.png").read_bytes() == PNG
+
+
+PASSTHROUGH_FLOW = """
+params: [x]
+steps:
+  - name: child
+    action: run-flow
+    flow:
+      params: [x]
+      steps:
+        - name: snap
+          action: dom
+          selector: "#main"
+          path: "out/{{ x }}.html"
+"""
+
+
+def test_a_run_flow_child_sees_a_param_only_the_parent_passed(cli_run: Any) -> None:
+    """A ``run-flow`` step with no ``data:`` still passes the parent's params
+    through; ``declared_paths`` must resolve the child with that passthrough
+    too, or a required child param it never binds crashes the run."""
+    outcome, cwd = cli_run(
+        FlowSuccess(step="child/snap", outputs={"child/snap": "<p>hi</p>"}),
+        "--data",
+        '{"x": "run7"}',
+        flow=PASSTHROUGH_FLOW,
+    )
+    assert outcome.exit_code == 0, outcome.output
+    assert (cwd / "out" / "run7.html").read_text() == "<p>hi</p>"
 
 
 # --- rows a schema declared as Decimal/date ---

@@ -1,5 +1,243 @@
 # Changelog
 
+## 0.16.1 — 2026-09-13
+
+### Changed
+
+- `docs/FLOW_PATTERNS.md`: worked YAML for pagination, list → detail, SPA
+  hydration and one-shot pages.
+
+## 0.16.0 — 2026-09-13
+
+### Added
+
+- `wait_for` states `enabled` and `disabled`: `Driver.is_enabled(locator)` reads
+  the `disabled` attribute and `aria-disabled="true"`, defaulted on the ABC so
+  no driver has to implement it.
+- `repeat: { over: <param>, as: <name> }` on any step, `run-flow` included: one
+  pass per item of a list param, binding `<name>` and `<name>_index`, keying
+  outputs `<step>[<index>]`.
+- `FlowSuccess.skipped` / `FlowError.skipped`: a `SkippedStep(name, reason)` per
+  step the run passed over — `when:` misses and `optional:` failures alike,
+  child skips merged into the parent's list.
+- `Driver.scroll_into_view(locator)`, defaulted via `evaluate`, and a plain
+  `click` that a driver reports as intercepted is retried once with the target
+  centred before failing with the original error plus a `dispatch: true` hint.
+
+### Fixed
+
+- `run-flow` no longer resolves the child's steps against the parent's params
+  before the child runs: a `data:` binding now wins over a parent param of the
+  same name, so `data: { mission_id: "{{ applied_id }}" }` reaches a child that
+  declares `mission_id` as the bound value. Unbound parent params stay visible
+  to the child.
+
+### Changed
+
+- `is_timeout` (was `actions._is_timeout`) and `is_step_failure` moved to
+  `llm_browser.results`, so the input layer can classify a driver error without
+  importing the action registry.
+
+## 0.15.0 — 2026-09-13
+
+### Added
+
+- `humanize` on the `click`, `fill` and `type` steps, and on `session.click` /
+  `session.fill` / `session.type`: `true` humanizes one call on a session whose `Behavior` is
+  off, `false` takes the plain path on one that is on, unset follows the
+  session. It switches the humanization knobs on the session's own `Behavior`:
+  `true` turns on only the ones still at their `Behavior.off()` value, so a
+  tuned knob, the rate limit (`min_gap_ms`) and a driver's opt-out (camoufox's
+  `mouse_move`) all survive.
+- On `fill` it switches `Behavior.fill_as_type`: `humanize: true` types the
+  value key by key on the humanized cadence even on a session with
+  humanization off, `false` writes it in one go on a session that has it on.
+- `behavior=` on every `BrowserSession` input method (`click`, `fill`, `type`,
+  `press`, `select_option`, `set_checked`, `pick`, `scroll`, `download_file`):
+  one call runs under the `Behavior` it is handed. Precedence is `behavior=`,
+  then the `humanize` shorthand, then the session's own — which a call never
+  rewrites.
+- `run_flow(..., behavior=)` / `run_loaded_flow(..., behavior=)`: one run's
+  humanization default, carried down to every step (sub-flows included) unless
+  the step sets its own `humanize`. Nothing on the session changes.
+- `llm-browser run --behavior human|off|<behavior.yaml>` — the same default
+  from the CLI, the path loaded by the `behavior_config` schema.
+- `FlowSuccess.behavior` / `FlowError.behavior`: the profile the run used —
+  `human`, `off`, or `custom` when a knob differs from both presets.
+- `type` accepts `delay: [min, max]` — a per-key jitter instead of a constant
+  cadence, carried as a `Jitter` through `session.type(delay_ms=)`.
+- Word-boundary pauses while typing: `Behavior.type_word_pause` fires on a
+  space with probability `Behavior.type_word_pause_chance` (0.15).
+- `Behavior.hover_dwell` (80-300 ms) and `Behavior.press_hold` (60-140 ms): a
+  humanized click dwells on arrival and holds the button down.
+- `Behavior.scroll_delta_jitter` (0.15): each `scroll` tick strays from `delta`
+  by up to that fraction. `Behavior.off()` keeps the exact delta.
+
+### Changed
+
+- `humanized_click` walks a quadratic Bézier path of successive `mouse.move`
+  calls and presses with `mouse.down()` / `mouse.up()`, replacing one straight
+  `mouse.move(steps=)` plus `mouse.click()`.
+- `Behavior.mouse_move_steps` is now the upper bound of that path's step count
+  (half to all of it is sampled per move); default 30 → 20.
+- The path is clamped to the viewport and paced: a 4-16 ms jittered gap between
+  points, so the trail has a speed as well as a shape.
+- Humanization is stateless: every mouse path starts from a fresh random point
+  within 200 px of its target, so two clicks never share a trail and nothing
+  survives an action for a detector to correlate.
+- A flow step's `humanize` is resolved once, where the step is dispatched, so
+  the pacing around the action and the input call inside it are the same
+  behaviour; `scroll`'s delta jitter moved from the action into
+  `BrowserSession.scroll`, which now takes `behavior=` like every other input
+  method.
+- `session_input.behavior_for` takes the base `Behavior` instead of the
+  session; `session_input.effective_behavior(session, humanize, behavior)` is
+  the one place a call's behaviour is resolved. Action handlers take the
+  resolved `Behavior` as a third argument.
+- A driver's own opt-out (camoufox's `mouse_move` / `focus_drift`) is applied
+  last, to every behaviour a call can run under — a step's `humanize`, a
+  run-level `behavior=`, `--behavior human` — so none of them stacks our mouse
+  path on the driver's native one. A session that set the knob itself in its
+  behavior YAML still overrules the driver.
+- `min_gap_ms` is a jittered pause (±20%) paid *before* every paced action
+  rather than a floor measured from the previous one. The gap is now paid even
+  after a long idle, which costs a slow flow one extra wait per step.
+- Jitter is sampled from the unseeded module `random`; `Jitter.sample_seconds()`,
+  `waits.poll_for_state` and the humanization helpers no longer take an RNG.
+- `Driver.humanized_type`'s default (nodriver) now sends one key at a time on
+  the behaviour's cadence instead of handing the whole string to `type`, so
+  `delay: [min, max]` is a real per-key jitter on every driver.
+
+### Removed
+
+- `BehaviorRuntime` and `session.behavior_runtime` — there is no per-session
+  humanization state left to hold.
+- `Behavior.seed` and `Behavior.runtime()`. A fixed seed makes every run
+  reproduce the same timings, which is itself a fingerprint.
+
+### Fixed
+
+- A `delay` list that is not `[min_ms, max_ms]`, or whose bounds are negative
+  or inverted, is rejected with one message naming the shape instead of two
+  union errors.
+- A malformed behavior YAML is a usage error on both `--behavior` and
+  `--behavior-config`: `load_behavior` raises `BehaviorConfigError` for a YAML
+  syntax error instead of letting `yaml.YAMLError` reach the user as a
+  traceback.
+
+### Breaking
+
+- `Behavior.click_offset_px` is replaced by `Behavior.click_offset_ratio`
+  (default 0.3): the click lands that fraction of the way from the element's
+  centre to an edge, so the spread scales with the target instead of shrinking
+  to a fixed pixel box on a large one.
+
+Migration:
+
+- Drop `seed:` from any behavior YAML — it is an unknown key now and is
+  rejected — and drop `click_offset_px:` for `click_offset_ratio:`.
+- Delete `session.behavior_runtime` assignments; `BehaviorRuntime` is gone.
+- Drop the trailing runtime/rng argument from `paced`, `humanized_click`,
+  `humanized_type`, `type_chars`, `jittered_sleep`, `jittered_delta`,
+  `Jitter.sample_seconds` and `waits.poll_for_state`.
+- `session_input.behavior_for(base, humanize)` takes the base `Behavior`, not
+  the session; resolve a call's behaviour with
+  `session_input.effective_behavior(session, humanize, behavior)`.
+- Action handlers registered on `actions.get_registry()` take a third
+  argument: `(session, step)` becomes `(session, step, behavior)`.
+- `session_input.click_element` and `session_input.type_humanized` require
+  `behavior`; it no longer defaults to the session's.
+
+## 0.14.0 — 2026-09-13
+
+### Added
+
+- `BrowserSession.explore(selector, extract=None, sample=3, timeout_ms=3000,
+  intent=Intent.READ, sample_chars=200)` → `ExploreResult`: `count`, the first
+  `sample` rows, `empty_fields` and `text_chars`.
+- `explore` never clicks; it may scroll a match into view to hit-test it, and a
+  selector that never arrives is a count of zero.
+- `explore` costs `sample x (fields + 1)` reads, one page evaluation and at most
+  three candidate counts, whatever `count` is.
+- `ExploreResult.first`: tag, text, role, aria-label, name, href, `visible`,
+  `enabled`, `in_viewport`, `covered_by`, `hit_tested`, `stable`,
+  `pointer_events`, `nested_controls`, `why_not`, `clickable`.
+- `ExploreResult.since_navigation_ms` and `since_call_ms`.
+- `ExploreResult.candidates`: up to three sturdier selectors, each checked.
+- `ExploreResult.stability` rates the selector; `ExploreResult.verdict` is
+  `ok` / `ambiguous` / `missing` / `not_actionable` against an `intent` of
+  `read` (default), `click`, `fill` or `wait`.
+- `ExploreResult.error` names a target the page never explored: `not css`.
+- `llm-browser explore --selector … [--extract name=spec] [--sample] [--timeout]
+  [--intent read|click|fill|wait] [--sample-chars]`, exiting non-zero unless the
+  verdict is `ok`; a repeated `--extract NAME=` is a `UsageError`.
+- `BrowserSession.explore_many(targets, sample=3, sample_chars=200,
+  timeout_ms=3000)`: one `ExploreResult` per `ExploreTarget`
+  (`{selector, intent, extract}`), in the order asked, from one page call and
+  one wait.
+- `explore_many` selectors are CSS; one the page cannot parse answers
+  `count: 0`, `verdict: missing`, `error: "not css"` and leaves the batch alone.
+- `explore_many` takes at most 20 targets and gives the driver the wait plus
+  100 ms of settle per target plus a margin, so `timeout_ms` is honoured.
+- `llm-browser explore --targets FILE`: the same batch from a YAML/JSON list,
+  exiting non-zero unless every verdict is `ok`. Exactly one of `--selector` and
+  `--targets` is required; `--extract` / `--intent` alongside `--targets`, an
+  empty list and more than 20 targets are `UsageError`s.
+- `BrowserSession.survey(max_items=60)` → `Survey`: `landmarks` (named elements,
+  test id > aria > id > role), `link_shapes` (hrefs grouped by the section they
+  point at), `repeats` (siblings grouped by tag and every class they share,
+  clickable runs first) and `hydration` (`since_navigation_ms`, `readyState`).
+- `Landmark.count` and `Repeat.count` are what that selector matches page-wide,
+  counted in a second page call.
+- `Survey.truncated` is true when a raw cap cut the page short.
+- `llm-browser survey [--max-items]`: the same as JSON.
+- `BrowserSession.evaluate_document(script, timeout_ms=None)`: a page-wide
+  script run against `<html>`, the evaluate path every driver awaits.
+- `Driver.evaluate(target, script, timeout_ms=None)` bounds a script that waits
+  in the page; nodriver accepts and ignores it (see `docs/DRIVERS.md`).
+
+### Fixed
+
+- nodriver ran an `async` element script without `awaitPromise`, so the caller
+  got the unresolved promise (`{}`) and no error; the async path now awaits.
+- `Driver.read_field` of a child selector nothing matches answers `None` now:
+  the Playwright family guards `read_property` / `get_attribute` by the count
+  like `text_content` already did (no 30 s auto-wait ending in the backend's
+  own `TimeoutError`), and nodriver's read paths resolve through the bare
+  query instead of `tab.select`'s retry. `explore` lists such a field in
+  `empty_fields`, which is what it always advertised.
+
+## 0.13.0 — 2026-09-13
+
+### Added
+
+- `level` on the `dom` step: `low` (default), `medium`, `high`, `xhigh` — the
+  same levels the CLI's `dom --level` and `session.dom(level=)` take.
+- Extract `attribute` reads a DOM property for `innerText`, `tagName`,
+  `childElementCount`, `outerHTML`, `innerHTML` (plus `textContent` and
+  `value`); every other name stays an HTML attribute.
+- `Driver.read_property` reads every `EXTRACT_PROPERTIES` name per element
+  (see `docs/DRIVERS.md` for the nodriver cost).
+
+### Changed
+
+- `dom` on a `body`/`html` selector now returns the element itself, wrapper
+  included (previously a single-child body was unwrapped to that child).
+
+### Fixed
+
+- `dom` with `selector: body` (or `html`) raised
+  `ParserError: Multiple elements found`; `sanitize_html_fragment` now returns
+  the wrapper element itself.
+- An unparseable snippet raised `ParserError`, a `SyntaxError` that escaped
+  `is_step_failure` and aborted the run; it is a `ValueError` step failure.
+  A truncated `<body` parses into a document with no body at all — also a
+  `ValueError` now, not an `AttributeError`.
+- `ExtractField.parse("")` raised `empty extract spec`; an empty spec is the
+  row's own text.
+- Compact `extract` specs (`"td.name@href"`, `""`) raised `TypeError`;
+  `ExtractField.coerce` accepts string, mapping or field.
+
 ## 0.12.0 — 2026-09-12
 
 ### Changed

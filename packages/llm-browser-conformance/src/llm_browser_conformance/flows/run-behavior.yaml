@@ -1,0 +1,19 @@
+# No step mentions `humanize`, so every step takes the run's own behavior:
+# under `run_flow(behavior=Behavior.human())` the fill is typed key by key.
+steps:
+  - name: fill
+    action: fill
+    selector: "#typed"
+    value: abcde
+  - name: value
+    action: read
+    selector: "#typed"
+    extract:
+      text:
+        attribute: value
+  - name: keydowns
+    action: read
+    selector: "#keydowns"
+    extract:
+      text:
+        attribute: textContent

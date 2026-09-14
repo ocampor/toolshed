@@ -1,0 +1,12 @@
+# `humanize: true` forces the curved-path click and the key-by-key fill on a
+# session with no behavior.
+steps:
+  - name: click
+    action: click
+    selector: "#reveal"
+    humanize: true
+  - name: fill
+    action: fill
+    selector: "#name"
+    value: "typed"
+    humanize: true

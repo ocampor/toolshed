@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.8.0 — 2026-09-13
+
+Tracks `llm-browser` 0.16.0.
+
+### Added
+
+- `wait enabled`, `wait aria-disabled` and `fill waits for enabled` scenarios on
+  `site/unlock-input.html`: an input and an `aria-disabled` button that unlock
+  after the checkbox, claiming `field:wait_for.state`.
+- `repeat a step` and `repeat a sub-flow` scenarios on `site/repeat-list.html`,
+  claiming `option:repeat`.
+- `skipped steps` scenario: `flows/option-skipped.yaml` runs a `when:` miss and
+  an `optional:` miss, claiming the new `api:skipped` key.
+- `sticky bands` scenario: `site/sticky-bands.html` covers the top and bottom of
+  the viewport, recording per driver whether a plain click reaches the middle.
+
+## 0.7.0 — 2026-09-13
+
+Tracks `llm-browser` 0.15.0.
+
+### Added
+
+- `jittered key delay` scenario: `flows/type-delay-jitter.yaml` types with
+  `delay: [40, 80]` and `humanize: true`, claiming `field:type.humanize` and
+  `api:type.delay_jitter`.
+- `humanized click and fill` scenario: `flows/humanize.yaml` checks the
+  curved-path click and the key-by-key fill still arrive as trusted input,
+  claiming `field:click.humanize` and `field:fill.humanize`.
+
+## 0.6.0 — 2026-09-13
+
+Tracks `llm-browser` 0.14.0.
+
+### Added
+
+- `explore a list` scenario, claiming `session:explore`.
+- `explore a button` scenario on `explore-actionability.html`: a button under a
+  sticky banner and a disabled one, for the verdict, `why_not` and `covered_by`
+  a `count` cannot answer.
+- `explore a click cost` scenario on the same page: below the fold, a label
+  and its own checkbox, a `<fieldset>`-disabled input, a box of no size and a
+  card that swallows a dismiss button.
+- `explore many` scenario asserts a target the page cannot parse answers
+  `error: not css` without costing the batch its other answers.
+- `survey a page` scenario asserts a landmark's `count` is page-wide (two
+  elements answer to `[aria-label="Pager"]`) and that nothing was `truncated`.
+
+## 0.5.0 — 2026-09-13
+
+Tracks `llm-browser` 0.13.0.
+
+### Added
+
+- `dom body` scenario: `site/body-fragment.html` plus `flows/dom-body.yaml` —
+  the `<body>` outerHTML lxml refused, at two `level`s; it claims
+  `field:dom.level`.
+- `read properties` scenario: `innerText`, `tagName` and `childElementCount`
+  read off the same rows as an `href` attribute.
+
 ## 0.4.0 — 2026-09-11
 
 Tracks `llm-browser` 0.11.0.

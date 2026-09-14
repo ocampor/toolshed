@@ -9,7 +9,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 
-from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser.behavior import Behavior, type_chars
+from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.drivers.handle import DriverHandle
 from llm_browser.results import BytesResult
 
@@ -55,6 +56,9 @@ class Driver(ABC):
 
     name: ClassVar[str]
     supports_reconnect: ClassVar[bool] = False
+    # `role=button[name="Go"]` is Playwright's own selector syntax; everywhere
+    # else it reaches `querySelectorAll` as a syntax error.
+    supports_role_selector: ClassVar[bool] = False
 
     # --- Lifecycle ---
 
@@ -125,7 +129,6 @@ class Driver(ABC):
         page: Any,
         locator: Any,
         behavior: Behavior,
-        runtime: BehaviorRuntime,
     ) -> None:
         """Humanized click — rule 2; the default fits a natively humanized click."""
         self.click(locator)
@@ -136,10 +139,14 @@ class Driver(ABC):
         locator: Any,
         text: str,
         behavior: Behavior,
-        runtime: BehaviorRuntime,
     ) -> None:
-        """Humanized type — rule 2; the default fits a natively humanized type."""
-        self.type(locator, text)
+        """Humanized type — rule 2; the default fits a natively humanized type.
+
+        Native humanization owns the *shape* of a keystroke, not its timing,
+        so the cadence the caller asked for is sent key by key here rather
+        than handed to the driver as one burst.
+        """
+        type_chars(lambda ch: self.type(locator, ch), text, behavior)
 
     @abstractmethod
     def press(self, locator: Any, key: str) -> None: ...
@@ -174,6 +181,29 @@ class Driver(ABC):
         map) scrolls *that* unless the caller says what it meant.
         """
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
+
+    def is_enabled(self, locator: Any) -> bool:
+        """Whether the first match would accept input right now.
+
+        One rule, both spellings a page uses to lock a control: the ``disabled``
+        attribute for native controls and ``aria-disabled="true"`` for the
+        div-and-role widgets that cannot carry it. Anything else — a class, a
+        pointer-events rule, a listener that returns early — is invisible here
+        and always was.
+        """
+        return (
+            self.get_attribute(locator, "disabled") is None
+            and self.get_attribute(locator, "aria-disabled") != "true"
+        )
+
+    def scroll_into_view(self, locator: Any) -> None:
+        """Bring the first match to the middle of the viewport.
+
+        Centring rather than the browser's minimal scroll: the caller is here
+        because a fixed header or footer swallowed a click, and only the middle
+        is clear of both.
+        """
+        self.evaluate(locator, "(el) => el.scrollIntoView({block: 'center'})")
 
     @abstractmethod
     def is_visible(self, locator: Any) -> bool:
@@ -229,21 +259,34 @@ class Driver(ABC):
         ]
 
     def read_field(self, row: Any, field: dict[str, str | None]) -> str | None:
-        """Read one ``spec`` field off one row element."""
+        """Read one ``spec`` field off one row element.
+
+        The same rule ``js/extract_rows.js`` applies, off the same allowlist:
+        a name in it is a DOM property, anything else an HTML attribute.
+        """
         child_selector = field["child_selector"]
         target = self.child(row, child_selector) if child_selector else row
-        attribute = field["attribute"]
-        if attribute == "textContent":
-            return self.text_content(target)
-        if attribute == "value":
-            return self.input_value(target)
-        assert attribute is not None
-        return self.get_attribute(target, attribute)
+        name = field["attribute"]
+        assert name is not None
+        if name in EXTRACT_PROPERTIES:
+            return self.read_property(target, name)
+        return self.get_attribute(target, name)
+
+    def read_property(self, target: Any, name: str) -> str | None:
+        """``el[name]`` as text; ``None`` when the element or the value is."""
+        value = self.evaluate(target, f"(el) => el.{name}")
+        return None if value is None else str(value)
 
     @abstractmethod
-    def evaluate(self, target: Any, script: str) -> Any:
+    def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
         """Run user-supplied JS against a page or element — the JS touchpoint
-        of rule 3, and the only one that is arbitrary."""
+        of rule 3, and the only one that is arbitrary.
+
+        ``timeout_ms`` bounds the call itself, for a script that waits in the
+        page: ``None`` leaves the backend's own default, which is what every
+        caller but the batch explore wants. A backend with no such knob says
+        so in ``docs/DRIVERS.md`` rather than raising.
+        """
 
     @abstractmethod
     def content(self, page: Any) -> str: ...

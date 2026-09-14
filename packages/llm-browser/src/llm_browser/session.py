@@ -1,5 +1,7 @@
 """BrowserSession: browser lifecycle + direct interaction API."""
 
+# debt: over the 300-line rule; split the lifecycle half out of this file.
+
 from __future__ import annotations
 
 import logging
@@ -8,8 +10,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from llm_browser import session_input, waits
-from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser import explore, session_input, survey as survey_rules, waits
+from llm_browser.behavior import Behavior, Jitter, jittered_delta
 from llm_browser.chrome import (
     is_process_alive,
     kill_detached_chromium,
@@ -22,11 +24,20 @@ from llm_browser.constants import (
     DEFAULT_STATE_DIR,
     DEFAULT_URL_SCHEMES,
     DEFAULT_WAIT_TIMEOUT_MS,
+    EXPLORE_SAMPLE_CHARS,
+    EXPLORE_SAMPLE_ROWS,
     LOGGER_NAME,
     PROBE_TEXT_MAX_CHARS,
+    SURVEY_MAX_ITEMS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
 from llm_browser.html import SanitizeLevel, sanitize_page_html
+from llm_browser.explore_models import (
+    ExploreRead,
+    ExploreResult,
+    ExploreTarget,
+    Intent,
+)
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
@@ -35,7 +46,7 @@ from llm_browser.models import (
     SessionResult,
     WaitState,
 )
-from llm_browser.parse import ExtractField
+from llm_browser.parse import ExtractField, row_spec
 from llm_browser.results import BytesResult
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
@@ -45,6 +56,7 @@ from llm_browser.selectors import (
     expect_single,
     resolve_selector,
 )
+from llm_browser.survey_models import Survey
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -85,7 +97,6 @@ class BrowserSession:
         self.driver: Driver = resolve_driver(driver)
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
-        self.behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
         # How hard a failure's DOM snapshot is sanitized. `high` drops every
         # src/href, which is right for reading and wrong when the link is the
@@ -349,14 +360,29 @@ class BrowserSession:
         self.state.clear()
         return SessionResult(status="closed")
 
-    def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
+    def scroll(
+        self,
+        dx: int,
+        dy: int,
+        selector: Selector | None = None,
+        *,
+        behavior: Behavior | None = None,
+    ) -> None:
         """Scroll by a mouse-wheel delta, over ``selector`` when one is given.
 
         A wheel event goes to whatever is under the pointer, so name the
-        element when the thing you mean to scroll is not the document.
+        element when the thing you mean to scroll is not the document. Each
+        delta strays by up to ``Behavior.scroll_delta_jitter``; ticks of
+        identical size are a tell.
         """
+        effective = session_input.effective_behavior(self, behavior=behavior)
         locator = self.find(selector) if selector is not None else None
-        self.driver.scroll(self.get_page(), dx, dy, locator)
+        self.driver.scroll(
+            self.get_page(),
+            jittered_delta(dx, effective),
+            jittered_delta(dy, effective),
+            locator,
+        )
 
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
         """PNG bytes of the current page, or of ``selector`` alone when given.
@@ -378,7 +404,11 @@ class BrowserSession:
         )
 
     def download_file(
-        self, selector: Selector, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> BytesResult:
         """Click ``selector`` and return what the browser downloaded.
 
@@ -388,9 +418,10 @@ class BrowserSession:
         and waiting for the download it starts.
         """
         element = self.find(selector, timeout=timeout)
+        effective = session_input.effective_behavior(self, behavior=behavior)
 
         def trigger() -> None:
-            session_input.click_element(self, element)
+            session_input.click_element(self, element, behavior=effective)
 
         return self.driver.download_bytes(self.get_page(), trigger, timeout)
 
@@ -484,7 +515,6 @@ class BrowserSession:
             state,
             timeout_ms=timeout,
             interval_ms=interval,
-            rng=self.behavior_runtime.rng,
             settle_ms=settle,
         )
 
@@ -504,59 +534,107 @@ class BrowserSession:
         selector: Selector,
         *,
         dispatch: bool = False,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.click(self, selector, dispatch=dispatch, timeout=timeout)
+        session_input.click(
+            self,
+            selector,
+            dispatch=dispatch,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def fill(
-        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.fill(self, selector, value, timeout=timeout)
+        session_input.fill(
+            self,
+            selector,
+            value,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def type(
         self,
         selector: Selector,
         value: str,
         *,
-        delay_ms: int = 0,
+        delay_ms: int | Jitter = 0,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.type(self, selector, value, delay_ms=delay_ms, timeout=timeout)
+        session_input.type(
+            self,
+            selector,
+            value,
+            delay_ms=delay_ms,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def press(
         self,
         selector: Selector | None,
         key: str,
         *,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.press(self, selector, key, timeout=timeout)
+        session_input.press(self, selector, key, behavior=behavior, timeout=timeout)
 
     def select_option(
-        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.select_option(self, selector, value, timeout=timeout)
+        session_input.select_option(
+            self, selector, value, behavior=behavior, timeout=timeout
+        )
 
     def set_checked(
         self,
         selector: Selector,
         checked: bool,
         *,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.set_checked(self, selector, checked, timeout=timeout)
+        session_input.set_checked(
+            self, selector, checked, behavior=behavior, timeout=timeout
+        )
 
-    def pick(self, selector: Selector, value: str) -> None:
+    def pick(
+        self, selector: Selector, value: str, *, behavior: Behavior | None = None
+    ) -> None:
         """Click the element matching text from a list of elements."""
+        effective = session_input.effective_behavior(self, behavior=behavior)
         locator = self.find_all(selector)
         count = self.driver.count(locator)
         if count == 1:
-            session_input.click_element(self, self.driver.first(locator))
+            session_input.click_element(
+                self, self.driver.first(locator), behavior=effective
+            )
             return
         for i in range(count):
             item = self.driver.nth(locator, i)
             if self.driver.text_content(item) == value:
-                session_input.click_element(self, item)
+                session_input.click_element(self, item, behavior=effective)
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 
@@ -578,11 +656,64 @@ class BrowserSession:
         element itself.
         """
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        spec = {
-            name: {"child_selector": f.child_selector, "attribute": f.attribute}
-            for name, f in extract.items()
-        }
-        return self.driver.extract_rows(locator, spec)
+        return self.driver.extract_rows(locator, row_spec(extract))
+
+    # --- Explore ---
+    #
+    # Thin delegations to ``explore``, which owns the counting, sampling and
+    # verdict rules. ``count_of`` stays here: it is the driver call they verify
+    # candidates with.
+
+    def explore(
+        self,
+        selector: Selector,
+        extract: dict[str, ExtractField] | None = None,
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+        intent: Intent = Intent.READ,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
+    ) -> ExploreResult:
+        return explore.explore(
+            self,
+            selector,
+            extract,
+            sample,
+            timeout_ms,
+            intent,
+            sample_chars,
+        )
+
+    def explore_many(
+        self,
+        targets: list[ExploreTarget],
+        sample: int = EXPLORE_SAMPLE_ROWS,
+        sample_chars: int = EXPLORE_SAMPLE_CHARS,
+        timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
+    ) -> list[ExploreResult]:
+        return explore.explore_many(self, targets, sample, sample_chars, timeout_ms)
+
+    def survey(self, max_items: int = SURVEY_MAX_ITEMS) -> Survey:
+        return survey_rules.survey(self, max_items)
+
+    def first_match(self, locator: Any) -> ExploreRead:
+        return explore.first_match(self, locator)
+
+    def verified_candidates(
+        self, proposals: list[str], accepted: Collection[int]
+    ) -> list[str]:
+        return explore.verified_candidates(self, proposals, accepted)
+
+    def count_of(self, selector: str) -> int:
+        """How many elements a proposed selector matches.
+
+        Every proposal is syntax the driver parses — ``candidate_selectors``
+        escapes what it interpolates and withholds ``role=`` from drivers that
+        do not take it — so a raised error here is a dead session or a closed
+        page, and belongs to the caller.
+        """
+        return self.driver.count(
+            resolve_selector(self.driver, self.get_page(), selector)
+        )
 
     def dom(
         self,
@@ -612,6 +743,18 @@ class BrowserSession:
         )
         raw = self.driver.evaluate(self.get_page(), script)
         return PageProbe.model_validate(raw or {})
+
+    def evaluate_document(self, script: str, timeout_ms: int | None = None) -> Any:
+        """Run a page-wide script against ``<html>`` rather than the page.
+
+        The element path is the one every driver awaits, so a script that has
+        to wait — ``explore_many``'s — answers with its value instead of a
+        pending promise. The script reads the page through
+        ``el.ownerDocument``. ``timeout_ms`` bounds the call for a script that
+        waits in the page; ``None`` keeps the driver's own default.
+        """
+        root = self.driver.first(resolve_selector(self.driver, self.get_page(), "html"))
+        return self.driver.evaluate(root, script, timeout_ms)
 
     def evaluate(self, target: Any, script: str) -> Any:
         """Run JS in the context of a page or locator."""

@@ -1,5 +1,7 @@
 """Pydantic models for browser session state, flow state, and flow results."""
 
+# debt: over the 300-line rule; split the step models out.
+
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
@@ -12,16 +14,19 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
+    ValidationError,
     field_validator,
     model_validator,
 )
 
-from llm_browser.behavior import Jitter
+from llm_browser.behavior import BehaviorProfile, Jitter
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
+    DELAY_SHAPE,
 )
+from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
@@ -32,7 +37,31 @@ from llm_browser.selectors import Selector
 CaptureMode = Literal["screenshot", "dom", "both", "none"]
 
 
-WaitState = Literal["attached", "detached", "visible", "hidden", "stable"]
+WaitState = Literal[
+    "attached", "detached", "visible", "hidden", "enabled", "disabled", "stable"
+]
+
+
+class Repeat(BaseModel):
+    """Run one step once per item of a list param.
+
+    ``over`` names the param holding the list; ``as`` (the field is ``bind``,
+    because ``as`` is a keyword) names the variable each item is bound to for
+    that pass, alongside ``<as>_index``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    over: str = Field(..., min_length=1)
+    bind: str = Field(..., min_length=1, alias="as")
+
+    @model_validator(mode="after")
+    def _reject_self_shadowing(self) -> Repeat:
+        # Binding the item to the list's own name would leave the rest of the
+        # step unable to reach either.
+        if self.bind == self.over:
+            raise ValueError(f"repeat `as` must differ from `over` ({self.over!r})")
+        return self
 
 
 class BaseStep(BaseModel):
@@ -50,6 +79,7 @@ class BaseStep(BaseModel):
     wait_after: int | None = None
     optional: bool = False
     timeout: int = 10_000
+    repeat: Repeat | None = None
     # Set by ``RunFlowStep``'s after-validator on each child step in a
     # sub-flow: the parent's ``run-flow`` step name. ``None`` for
     # top-level steps. Drives ``qualified_name`` for diagnostic output
@@ -80,17 +110,35 @@ class SelectorStep(BaseStep):
 class ClickStep(SelectorStep):
     action: Literal["click"]
     dispatch: bool = False
+    humanize: bool | None = None
 
 
 class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
+    humanize: bool | None = None
 
 
 class TypeStep(SelectorStep):
+    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
+    a constant cadence is itself a fingerprint."""
+
     action: Literal["type"]
     value: str = ""
-    delay: int = 0
+    delay: int | Jitter = 0
+    humanize: bool | None = None
+
+    @field_validator("delay", mode="before")
+    @classmethod
+    def _pair_to_jitter(cls, value: Any) -> Any:
+        if not isinstance(value, (list, tuple)):
+            return value
+        if len(value) != 2:
+            raise ValueError(DELAY_SHAPE)
+        try:
+            return Jitter(min_ms=value[0], max_ms=value[1])
+        except ValidationError as e:
+            raise ValueError(DELAY_SHAPE) from e
 
 
 class SelectStep(SelectorStep):
@@ -146,14 +194,11 @@ class ReadStep(SelectorStep):
     @field_validator("extract", mode="before")
     @classmethod
     def _coerce_extract(cls, v: Any) -> Any:
-        # YAML loads `extract` as a plain dict; coerce nested dicts into
-        # ExtractField.
+        # A flow writes each spec compactly ("td.name@href") or as a mapping;
+        # `ExtractField.coerce` is the one rule for both.
         if not isinstance(v, dict):
             return v
-        return {
-            k: spec if isinstance(spec, ExtractField) else ExtractField(**spec)
-            for k, spec in v.items()
-        }
+        return {k: ExtractField.coerce(spec) for k, spec in v.items()}
 
 
 class ParseStep(SelectorStep):
@@ -172,6 +217,7 @@ class ParseStep(SelectorStep):
 class DomStep(SelectorStep):
     action: Literal["dom"]
     max_depth: int = 0
+    level: SanitizeLevel = SanitizeLevel.LOW
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
@@ -444,6 +490,18 @@ class RetryHint(BaseModel):
     error: str
 
 
+class SkippedStep(BaseModel):
+    """A step the run passed over: its qualified name and why.
+
+    Both kinds of skip land here — a ``when:`` predicate that did not hold,
+    and an ``optional:`` step whose action failed — so "nothing matched" stops
+    being indistinguishable from "it ran".
+    """
+
+    name: str
+    reason: str
+
+
 class FlowSuccess(BaseModel):
     """Returned by ``run_flow`` when a flow ran to completion.
 
@@ -454,10 +512,18 @@ class FlowSuccess(BaseModel):
     step name: rows for ``read`` / ``parse``, text for ``dom``, and a
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
+
+    ``skipped`` names every step the run passed over, in the order it did.
+
+    ``behavior`` names the humanization profile the run actually ran under —
+    ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
+    result, which the parent run stamps on its way out.
     """
 
     step: str
     outputs: dict[str, object] = {}
+    skipped: list[SkippedStep] = []
+    behavior: BehaviorProfile | None = None
 
 
 class FlowError(BaseModel):
@@ -473,7 +539,8 @@ class FlowError(BaseModel):
     someone logs in or clears the challenge.
 
     ``outputs`` holds the results collected before the failing step, keyed
-    the same way as :attr:`FlowSuccess.outputs`.
+    the same way as :attr:`FlowSuccess.outputs`; ``behavior`` names the run's
+    humanization profile the same way as :attr:`FlowSuccess.behavior`.
 
     ``screenshot`` and ``dom`` are the failing page itself, in memory: PNG
     bytes and sanitized HTML text, controlled by ``BrowserSession(capture=)``.
@@ -489,6 +556,8 @@ class FlowError(BaseModel):
     human_needed: bool = False
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
+    skipped: list[SkippedStep] = []
+    behavior: BehaviorProfile | None = None
 
 
 # Public type alias: callers that don't care which arm they got can use

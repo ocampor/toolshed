@@ -5,13 +5,16 @@ import json
 import os
 import uuid
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from pydantic import ValidationError
 from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
+from llm_browser.cli_explore import explore, survey
+from llm_browser.cli_output import output
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
@@ -21,7 +24,8 @@ from llm_browser.constants import (
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
-from llm_browser.flows import load_flow_document, run_flow, with_flow_path
+from llm_browser.flow_passes import unindexed
+from llm_browser.flows import child_data, load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
@@ -90,26 +94,6 @@ def contained_output_path(directory: Path, relative: str) -> Path:
             "a step path is relative to the output directory"
         )
     return target
-
-
-def _output(data: object) -> None:
-    """Print JSON to stdout, then exit non-zero if the payload is a
-    flow-level error. Supports Pydantic models and plain dicts.
-
-    A ``FlowError`` represents an expected runtime failure (selector
-    hidden, ambiguous, etc.) — surface it as a non-zero exit so
-    callers can detect it without parsing JSON.
-    """
-    from pydantic import BaseModel
-
-    from llm_browser.models import FlowError
-
-    if isinstance(data, BaseModel):
-        click.echo(data.model_dump_json(exclude_none=True))
-    else:
-        click.echo(json.dumps(data, ensure_ascii=False))
-    if isinstance(data, FlowError):
-        raise SystemExit(1)
 
 
 class _StructuredErrorGroup(click.Group):
@@ -241,7 +225,7 @@ def open(ctx: click.Context, url: str, headed: bool) -> None:
     session: BrowserSession = ctx.obj["session"]
     with url_argument_errors():
         result = session.launch(url=url, headed=headed)
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -262,7 +246,7 @@ def attach(ctx: click.Context, cdp_url: str | None) -> None:
     url = cdp_url or ctx.obj.get("cdp_url")
     if not url:
         raise click.UsageError("--cdp-url is required.")
-    _output(session.attach(url))
+    output(session.attach(url))
 
 
 @main.command()
@@ -294,7 +278,7 @@ def daemon(
         result = session.launch_detached(
             url=url, headed=headed, executable_path=executable, user_data_dir=profile
         )
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -303,7 +287,7 @@ def stop(ctx: click.Context) -> None:
     """Kill a detached Chromium started with `daemon`."""
     session: BrowserSession = ctx.obj["session"]
     result = session.stop_detached()
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -314,7 +298,7 @@ def goto(ctx: click.Context, url: str) -> None:
     session: BrowserSession = ctx.obj["session"]
     with url_argument_errors():
         session.goto(url)
-    _output({"url": session.driver.page_url(session.get_page())})
+    output({"url": session.driver.page_url(session.get_page())})
 
 
 @main.command()
@@ -372,6 +356,16 @@ def goto(ctx: click.Context, url: str) -> None:
     default=SanitizeLevel.HIGH.value,
     help="How hard a failure's DOM snapshot is sanitized. Default: high.",
 )
+@click.option(
+    "--behavior",
+    "behavior_spec",
+    default=None,
+    help=(
+        "Humanization for this run: human, off, or a path to a behavior YAML. "
+        "Every step takes it unless it sets its own `humanize`. "
+        "When omitted, the session's own behavior."
+    ),
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -384,6 +378,7 @@ def run(
     out_dir: str,
     capture_dir: str | None,
     capture_level: str,
+    behavior_spec: str | None,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
@@ -410,10 +405,16 @@ def run(
     data = json.loads(data_json)
     document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
     flow = load_flow_document(document, selector_map=selector_map)
+    behavior = resolve_behavior(behavior_spec)
 
     def execute(target: BrowserSession) -> object:
         result = run_cli_flow(
-            target, flow, data, from_step=from_step, flow_path=file_path(flow_path)
+            target,
+            flow,
+            data,
+            from_step=from_step,
+            flow_path=file_path(flow_path),
+            behavior=behavior,
         )
         return write_run(
             result,
@@ -460,7 +461,9 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     for step in flow.steps:
         resolved = resolve_step(step, flow_data)
         if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
-            paths.update(declared_paths(resolved.flow, resolved.data))
+            paths.update(
+                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
+            )
             continue
         path = getattr(resolved, "path", None)
         if path:
@@ -513,16 +516,36 @@ def planned_outputs(
     run's output and an error.
     """
     planned: dict[str, tuple[Path, bytes | str]] = {}
-    for step, output in outputs.items():
+    for key, result in outputs.items():
+        step, index = unindexed(key)
         path = paths.get(step)
-        if isinstance(output, BytesResult):
+        if isinstance(result, BytesResult):
             # The fallback name is the server's `Content-Disposition`
             # filename: take the basename, never its directories.
-            target = contained_output_path(out_dir, path or Path(output.name).name)
-            planned[step] = (target, output.content)
+            name = path or Path(result.name).name
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(name, index)),
+                result.content,
+            )
         elif path:
-            planned[step] = (contained_output_path(out_dir, path), as_text(output))
+            planned[key] = (
+                contained_output_path(out_dir, per_pass_path(path, index)),
+                as_text(result),
+            )
     return planned
+
+
+def per_pass_path(path: str, index: int | None) -> str:
+    """One ``repeat`` pass's file: ``shots/page.png`` pass 1 is
+    ``shots/page[1].png``.
+
+    A repeated step declares one ``path:`` and produces a file per pass, so
+    the index has to land in the name or every pass but the last is lost.
+    """
+    if index is None:
+        return path
+    name = PurePosixPath(path)
+    return str(name.with_name(f"{name.stem}[{index}]{name.suffix}"))
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
@@ -598,6 +621,22 @@ def file_path(flow_path: str | None) -> str | None:
     return str(Path(flow_path).resolve())
 
 
+BEHAVIOR_PRESETS = {"human": Behavior.human, "off": Behavior.off}
+
+
+def resolve_behavior(spec: str | None) -> Behavior | None:
+    """``--behavior``'s value: a preset name, or a path to a behavior YAML."""
+    if spec is None:
+        return None
+    preset = BEHAVIOR_PRESETS.get(spec)
+    if preset is not None:
+        return preset()
+    try:
+        return load_behavior(spec)
+    except (BehaviorConfigError, OSError) as e:
+        raise click.ClickException(f"--behavior: {e}") from e
+
+
 def run_cli_flow(
     session: BrowserSession,
     flow: Flow,
@@ -605,10 +644,11 @@ def run_cli_flow(
     *,
     from_step: str | None,
     flow_path: str | None = None,
+    behavior: Behavior | None = None,
 ) -> FlowResult:
     """``flow_path`` only fills ``retry_hint.flow_path``; the flow is already
     built."""
-    result = run_flow(session, flow, data, from_step=from_step)
+    result = run_flow(session, flow, data, from_step=from_step, behavior=behavior)
     if flow_path is None:
         return result
     return with_flow_path(result, flow_path)
@@ -684,7 +724,6 @@ def validate(
     """
 
     import yaml as _yaml
-    from pydantic import ValidationError
 
     label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
@@ -714,7 +753,7 @@ def validate(
         )
         raise SystemExit(1) from exc
     subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
-    _output(
+    output(
         {
             "ok": True,
             "flow": label,
@@ -740,10 +779,10 @@ def screenshot(ctx: click.Context, path: str | None) -> None:
     content = session.screenshot_bytes()
     target = prepare_output_path(path or session.session_dir / "screenshot.png")
     target.write_bytes(content)
-    _output({"screenshot": str(target)})
+    output({"screenshot": str(target)})
 
 
-def _find_all_output(session: BrowserSession, selector: str) -> None:
+def find_all_output(session: BrowserSession, selector: str) -> None:
     locator = session.find_all(selector)
     driver = session.driver
     count = driver.count(locator)
@@ -751,7 +790,7 @@ def _find_all_output(session: BrowserSession, selector: str) -> None:
         driver.evaluate(driver.nth(locator, i), "el => el.outerHTML")
         for i in range(count)
     ]
-    _output({"count": count, "items": items})
+    output({"count": count, "items": items})
 
 
 @main.command()
@@ -762,11 +801,11 @@ def find(ctx: click.Context, selector: str, all_: bool) -> None:
     """Find an element (or all matches with --all) and output outer HTML."""
     session: BrowserSession = ctx.obj["session"]
     if all_:
-        _find_all_output(session, selector)
+        find_all_output(session, selector)
         return
     element = session.find(selector)
     html: str = session.driver.evaluate(element, "el => el.outerHTML")
-    _output({"html": html})
+    output({"html": html})
 
 
 @main.command("find-all")
@@ -775,7 +814,7 @@ def find(ctx: click.Context, selector: str, all_: bool) -> None:
 def find_all(ctx: click.Context, selector: str) -> None:
     """Find all matching elements and output their outer HTML (alias for `find --all`)."""
     session: BrowserSession = ctx.obj["session"]
-    _find_all_output(session, selector)
+    find_all_output(session, selector)
 
 
 @main.command("wait-for")
@@ -827,7 +866,7 @@ def wait_for(
         )
     except TimeoutError as exc:
         raise click.ClickException(str(exc)) from exc
-    _output({"selector": selector, "state": state})
+    output({"selector": selector, "state": state})
 
 
 @main.command("latest-tab")
@@ -836,7 +875,7 @@ def latest_tab(ctx: click.Context) -> None:
     """Switch to the most recently opened tab."""
     session: BrowserSession = ctx.obj["session"]
     page = session.latest_tab()
-    _output({"url": session.driver.page_url(page)})
+    output({"url": session.driver.page_url(page)})
 
 
 @main.command()
@@ -853,7 +892,11 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     """Output cleaned DOM snippet of an element."""
     session: BrowserSession = ctx.obj["session"]
     html = session.dom(selector, max_depth=max_depth, level=SanitizeLevel(level))
-    _output({"html": html})
+    output({"html": html})
+
+
+main.add_command(explore)
+main.add_command(survey)
 
 
 @main.command()
@@ -873,7 +916,7 @@ def download(ctx: click.Context, selector: str, path: str | None) -> None:
     result = session.download_file(selector)
     target = prepare_output_path(path or result.name)
     target.write_bytes(result.content)
-    _output({"path": str(target), "name": result.name, "bytes": len(result.content)})
+    output({"path": str(target), "name": result.name, "bytes": len(result.content)})
 
 
 @main.command()
@@ -882,7 +925,7 @@ def close(ctx: click.Context) -> None:
     """Close the browser."""
     session: BrowserSession = ctx.obj["session"]
     result = session.close()
-    _output(result)
+    output(result)
 
 
 @main.command()
@@ -891,4 +934,4 @@ def status(ctx: click.Context) -> None:
     """Check browser status."""
     session: BrowserSession = ctx.obj["session"]
     result = session.status()
-    _output(result)
+    output(result)

@@ -1,0 +1,11 @@
+# Fixed banners cover the top and bottom of the viewport, so the only clear
+# ground is the middle: a driver that scrolls the target just into view hands
+# the click to a banner.
+steps:
+  - { name: click, action: click, selector: "#btn" }
+  - name: result
+    action: read
+    selector: "#result"
+    extract:
+      text:
+        attribute: textContent

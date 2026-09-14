@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from llm_browser.behavior import Behavior
 from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
@@ -26,6 +27,7 @@ from pydantic import ValidationError
 from llm_browser_conformance.checks.support import (
     error_message,
     expect_failure,
+    expect_flow_success,
     expect_success,
     one_text,
     texts,
@@ -53,6 +55,12 @@ ATTRIBUTE_ROWS = [
     {"text": "Gamma", "qty": "9", "row_id": "row-3", "href": "/gamma.html"},
 ]
 
+# What `flows/read-properties` reads off the same page.
+PROPERTY_ROWS = [
+    {"text": name, "tag": "LI", "children": "3", "href": f"/{name.lower()}.html"}
+    for name in ("Alpha", "Beta", "Gamma")
+]
+
 # What `flows/think.yaml` declares.
 THINK_MIN_MS = 400
 THINK_MAX_MS = 600
@@ -69,6 +77,8 @@ OFF_PAGE_MARGIN_PX = 50
 # What `flows/type-delay.yaml` declares.
 TYPED_TEXT = "abcde"
 TYPE_DELAY_MS = 60
+# The lower bound `flows/type-delay-jitter.yaml` declares.
+TYPE_DELAY_MIN_MS = 40
 
 
 def png_size(data: bytes) -> tuple[int, int]:
@@ -268,15 +278,67 @@ def pick_clicks_the_item_whose_text_matches(ctx: Context) -> None:
     assert "Delta" in error_message(failure)
 
 
-def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
-    outputs: dict[str, object] = {}
+def timed_typing(ctx: Context, flow_name: str) -> tuple[float, dict[str, object]]:
+    """Run a typing fixture flow with the ``type`` step timed on its own.
+
+    Timing the whole flow would prove nothing: the navigation it opens with
+    costs more than any per-key floor these checks assert, so the assertion
+    would pass on a driver that typed the whole string in one burst.
+    """
+    ctx.visit("keydown-count.html")
+    flow = ctx.flow(flow_name)
+    typing, reading = flow.steps[:1], flow.steps[1:]
+    assert typing[0].name == "type", f"{flow_name} must open with the type step"
     took = ctx.elapsed(
-        lambda: outputs.update(expect_success(ctx, "keydown-count.html", "type-delay"))
+        lambda: expect_flow_success(ctx, flow.model_copy(update={"steps": typing}))
     )
+    return took, expect_flow_success(ctx, flow.model_copy(update={"steps": reading}))
+
+
+def assert_typed_at_least(
+    took: float, outputs: dict[str, object], floor_ms: int
+) -> None:
     assert one_text(outputs, "value") == TYPED_TEXT
     assert one_text(outputs, "keydowns") == str(len(TYPED_TEXT))
-    floor = len(TYPED_TEXT) * TYPE_DELAY_MS / 1000
+    floor = len(TYPED_TEXT) * floor_ms / 1000
     assert took >= floor, f"typing {TYPED_TEXT!r} took {took:.3f}s"
+
+
+def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
+    took, outputs = timed_typing(ctx, "type-delay")
+    assert_typed_at_least(took, outputs, TYPE_DELAY_MS)
+
+
+def a_jittered_delay_still_sends_one_keydown_per_character(ctx: Context) -> None:
+    """`delay: [min, max]` is a cadence, not a licence to drop keys: the page
+    must still see one keydown per character, no faster than the floor."""
+    took, outputs = timed_typing(ctx, "type-delay-jitter")
+    assert_typed_at_least(took, outputs, TYPE_DELAY_MIN_MS)
+
+
+def a_humanized_step_drives_the_element_with_trusted_input(ctx: Context) -> None:
+    """`humanize: true` changes the pointer's path and the fill's keystrokes,
+    not their provenance — input that arrives untrusted buys nothing. A fill
+    it switched on types the value, so the field sees a keydown at all; a
+    plain fill writes the value with none."""
+    expect_success(ctx, "form.html", "humanize")
+    assert ctx.trusted("#reveal") == "true"
+    assert ctx.trusted("#name") == "true"
+    assert ctx.js("document.querySelector('#name').value") == "typed"
+
+
+def a_run_level_behavior_humanizes_a_step_that_says_nothing(ctx: Context) -> None:
+    """`run_flow(behavior=)` is the run's default, so a plain `fill` types the
+    value key by key — the page counts one keydown per character — and the
+    result names the profile the run used."""
+    ctx.visit("keydown-count.html")
+    result = run_flow(
+        ctx.session, ctx.flow("run-behavior"), {}, behavior=Behavior.human()
+    )
+    assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
+    assert result.behavior == "human"
+    assert one_text(result.outputs, "value") == TYPED_TEXT
+    assert one_text(result.outputs, "keydowns") == str(len(TYPED_TEXT))
 
 
 def a_chord_selects_the_field_before_the_replacement(ctx: Context) -> None:
@@ -306,6 +368,25 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
     result = run_flow(ctx.session, flow, {})
     assert isinstance(result, FlowSuccess), result
     assert result.outputs["child/read"] == [{"text": "Gamma"}]
+
+
+def dom_returns_the_body_as_one_element(ctx: Context) -> None:
+    """`<body>` outerHTML is several elements with a wrapper around them, and
+    the wrapper is what the caller asked for."""
+    outputs = expect_success(ctx, "body-fragment.html", "dom-body")
+    whole = str(outputs["whole"])
+    assert whole.startswith("<body"), whole[:80]
+    assert "outerHTML is several elements" in whole, whole[:200]
+    assert "<script" not in whole, whole
+    assert 'href="/next.html"' in whole, whole[:200]
+
+    stripped = str(outputs["stripped"])
+    assert "href=" not in stripped, stripped[:200]
+
+
+def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
+    outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
+    assert outputs["rows"] == PROPERTY_ROWS
 
 
 SCENARIOS = [
@@ -374,6 +455,17 @@ SCENARIOS = [
         ),
     ),
     Scenario(
+        "dom body",
+        Section.STEPS,
+        dom_returns_the_body_as_one_element,
+        covers=frozenset({"field:dom.level"}),
+    ),
+    Scenario(
+        "read properties",
+        Section.STEPS,
+        read_pulls_dom_properties_alongside_attributes,
+    ),
+    Scenario(
         "think pauses",
         Section.STEPS,
         think_sleeps_inside_the_window_it_declares,
@@ -418,6 +510,26 @@ SCENARIOS = [
         Section.STEPS,
         type_delay_sends_one_keydown_per_character,
         covers=frozenset({"field:type.delay", "field:type.selector"}),
+    ),
+    Scenario(
+        "jittered key delay",
+        Section.STEPS,
+        a_jittered_delay_still_sends_one_keydown_per_character,
+        covers=frozenset(
+            {"api:type.delay_jitter", "field:type.delay", "field:type.humanize"}
+        ),
+    ),
+    Scenario(
+        "humanized click and fill",
+        Section.STEPS,
+        a_humanized_step_drives_the_element_with_trusted_input,
+        covers=frozenset({"field:click.humanize", "field:fill.humanize"}),
+    ),
+    Scenario(
+        "run-level behavior",
+        Section.STEPS,
+        a_run_level_behavior_humanizes_a_step_that_says_nothing,
+        covers=frozenset({"api:run_flow.behavior"}),
     ),
     Scenario(
         "press chord",

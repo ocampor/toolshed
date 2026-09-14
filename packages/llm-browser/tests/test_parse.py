@@ -237,7 +237,7 @@ def test_parsed_result_serializes_dynamic_rows() -> None:
     declared BaseModel base — otherwise dynamically-built schemas (build_model)
     dump as ``{}`` and the data is lost on the way out of the CLI.
     """
-    from llm_browser.actions import ParsedResult
+    from llm_browser.results import ParsedResult
 
     Row = ParseBase.__class__(  # type: ignore[call-arg]
         "Row",
@@ -275,9 +275,10 @@ def test_extract_field_parse(
 
 
 @pytest.mark.parametrize("spec", ["", "@"])
-def test_extract_field_parse_rejects_an_empty_spec(spec: str) -> None:
-    with pytest.raises(ValueError, match="empty extract spec"):
-        ExtractField.parse(spec)
+def test_an_empty_spec_is_the_row_text(spec: str) -> None:
+    field = ExtractField.parse(spec)
+    assert field.child_selector is None
+    assert field.attribute == "textContent"
 
 
 def test_parse_extract_spec_maps_every_field() -> None:
