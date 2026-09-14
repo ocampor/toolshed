@@ -269,6 +269,23 @@ def test_read(session: BrowserSession) -> None:
     assert spec == {"name": {"child_selector": "td", "attribute": "textContent"}}
 
 
+def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
+    """No `extract:` is the common `read body`: one `text` field per row,
+    not a row of `None`."""
+    from llm_browser.results import ExtractedRow
+
+    locator = _rows_locator(session, [{"text": "hello"}])
+
+    step = ReadStep(name="s", action="read", selector="body")
+    result = execute_action(session, step)
+    assert isinstance(result, ParsedResult)
+    row = result.rows[0]
+    assert isinstance(row, ExtractedRow)
+    assert row.model_dump() == {"text": "hello"}
+    _, spec = locator.evaluate_all.call_args.args
+    assert spec == {"text": {"child_selector": None, "attribute": "textContent"}}
+
+
 # --- parse (typed schema action) ---
 
 

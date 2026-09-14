@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-09-13
+
+Tracks `llm-browser` 0.17.0.
+
+### Changed
+
+- `read properties` also reads a bare `read` (no `extract:`), so the default
+  `text` field is checked in a real browser.
+
 ## 0.8.0 — 2026-09-13
 
 Tracks `llm-browser` 0.16.0.

@@ -239,6 +239,38 @@ def test_a_read_takes_the_compact_extract_form_docs_advertise(
     assert (field.child_selector, field.attribute) == expected
 
 
+@pytest.mark.parametrize(
+    "step_kwargs",
+    [
+        {"name": "s", "action": "read", "selector": "body"},
+        {"name": "s", "action": "read", "selector": "body", "extract": {}},
+        {"name": "s", "action": "read", "selector": "body", "extract": None},
+    ],
+    ids=["absent", "empty-mapping", "null"],
+)
+def test_a_read_without_an_extract_reads_the_row_text(
+    step_kwargs: dict[str, object],
+) -> None:
+    """A bare `read` used to carry an empty spec, so every row came back
+    `None`; an absent, empty, or `null` `extract:` all mean the row's own
+    text under `text` instead."""
+    step = validate_step(step_kwargs)
+    assert isinstance(step, ReadStep)
+    assert list(step.extract) == ["text"]
+    field = step.extract["text"]
+    assert (field.child_selector, field.attribute) == (None, "textContent")
+
+
+@pytest.mark.parametrize("extract", [["td.name"], 5])
+def test_an_extract_that_is_not_a_mapping_fails_validation(extract: object) -> None:
+    """Only an absent, empty, or `null` `extract` means the default field; a
+    list or a number is an author's typo."""
+    with pytest.raises(ValidationError):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": extract}
+        )
+
+
 @pytest.mark.parametrize("spec", [["td.name"], 5, None])
 def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
     spec: object,

@@ -9,6 +9,7 @@ import pytest
 
 from llm_browser import constants
 from llm_browser.constants import EXTRACT_PROPERTIES
+from llm_browser.parse import ExtractField, row_spec
 from llm_browser.scripts import (
     JS_DIR,
     count_selectors_js,
@@ -265,6 +266,20 @@ def test_explore_many_js_carries_the_batch_it_was_asked_for() -> None:
     assert f'"poll_ms": {constants.EXPLORE_MANY_POLL_MS}' in source
     assert json.dumps(list(constants.EXTRACT_PROPERTIES)) in source
     assert constants.EXPLORE_BATCH_PLACEHOLDER not in source
+
+
+@pytest.mark.parametrize("spec", ["@innerText", "@outerHTML"])
+def test_explore_reads_a_property_spec_off_the_element(spec: str) -> None:
+    """`@innerText` and `@outerHTML` are DOM properties, not attributes: the
+    batch carries the same allowlist the page-side read branches on."""
+    field = ExtractField.parse(spec)
+    assert field.attribute in EXTRACT_PROPERTIES
+
+    source = explore_many_js(
+        [{"selector": ".row", "extract": dict(row_spec({"v": field}))}], 1, 50, 500
+    )
+    assert f'"attribute": "{field.attribute}"' in source
+    assert "batch.properties.includes(field.attribute)" in source
 
 
 def test_survey_js_reads_every_cap_from_python() -> None:

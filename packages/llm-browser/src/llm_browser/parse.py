@@ -98,7 +98,7 @@ def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None
     }
 
 
-def parse_extract_spec(spec: Mapping[str, str] | None) -> dict[str, ExtractField]:
+def parse_extract_spec(spec: Mapping[str, Any] | None) -> dict[str, ExtractField]:
     """Turn ``{field: "child selector@attribute"}`` into extraction fields.
 
     ``None`` means "just the text", under the field name ``text``.
@@ -126,8 +126,7 @@ class ParseBase(BaseModel):
         for name, info in cls.model_fields.items():
             if not isinstance(info, ExtractField):
                 raise TypeError(
-                    f"{cls.__name__}.{name}: not an ExtractField. "
-                    f"Use `ExtractField(...)` as the default."
+                    f"{cls.__name__}.{name}: not an ExtractField. Use `ExtractField(...)` as the default."
                 )
             spec[name] = info
         return spec

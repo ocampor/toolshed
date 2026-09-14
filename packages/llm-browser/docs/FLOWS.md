@@ -143,7 +143,7 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
-| `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `path` | Extract structured data as dicts |
+| `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `path` | Extract structured data as dicts. No `extract:`, `extract: {}`, or `extract: null` all read each match's own text as `text` — `read` on `body` gives `[{ text: … }]` |
 | `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
 | `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
 
@@ -319,6 +319,9 @@ split the value across several steps.
 element or the value is missing. The compact form is
 `"child selector@attribute"` — `"td.name"`, `"@href"`, `"td.name@href"`, and
 `""` for the row's own text.
+
+Leaving `extract` out entirely, `extract: {}`, and `extract: null` are all
+that last form under the name `text`: one `{ text: … }` per matched element.
 
 The rows land in `FlowSuccess.outputs` under the step name; `path: <file>` on a `read` or `parse` step tells `llm-browser run` to JSON-dump them there as well.
 

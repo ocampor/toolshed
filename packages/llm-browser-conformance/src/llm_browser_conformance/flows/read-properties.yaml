@@ -14,3 +14,8 @@ steps:
       href:
         child_selector: ".link"
         attribute: href
+
+  # No `extract:` at all — the row's own text, under `text`.
+  - name: bare
+    action: read
+    selector: ".label"
