@@ -6,8 +6,10 @@ from pydantic import ValidationError
 from llm_browser.behavior import Jitter
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
+    ClickStep,
     DomStep,
     EvalStep,
+    FillStep,
     Flow,
     FlowData,
     FlowError,
@@ -16,6 +18,7 @@ from llm_browser.models import (
     ReadStep,
     ScrollStep,
     SessionInfo,
+    TypeStep,
     validate_step,
 )
 
@@ -245,3 +248,39 @@ def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
         )
+
+
+def test_type_delay_accepts_a_constant_or_a_pair() -> None:
+    step = validate_step({"name": "s", "action": "type", "selector": "#x", "delay": 60})
+    assert isinstance(step, TypeStep) and step.delay == 60
+    step = validate_step(
+        {"name": "s", "action": "type", "selector": "#x", "delay": [30, 90]}
+    )
+    assert isinstance(step, TypeStep)
+    assert step.delay == Jitter(min_ms=30, max_ms=90)
+
+
+@pytest.mark.parametrize("delay", [[90, 30], [50], [10, 20, 30], [-5, 20]])
+def test_type_delay_rejects_anything_but_a_min_max_pair(delay: list[int]) -> None:
+    with pytest.raises(ValidationError, match=r"\[min_ms, max_ms\]"):
+        validate_step({"name": "s", "action": "type", "selector": "#x", "delay": delay})
+
+
+def test_humanize_defaults_to_following_the_session() -> None:
+    click = validate_step({"name": "s", "action": "click", "selector": "#x"})
+    typed = validate_step({"name": "s", "action": "type", "selector": "#x"})
+    filled = validate_step({"name": "s", "action": "fill", "selector": "#x"})
+    assert isinstance(click, ClickStep) and isinstance(typed, TypeStep)
+    assert isinstance(filled, FillStep)
+    assert (click.humanize, typed.humanize, filled.humanize) == (None, None, None)
+    forced = validate_step(
+        {"name": "s", "action": "click", "selector": "#x", "humanize": True}
+    )
+    assert isinstance(forced, ClickStep) and forced.humanize is True
+
+
+def test_fill_takes_humanize() -> None:
+    plain = validate_step(
+        {"name": "s", "action": "fill", "selector": "#x", "humanize": False}
+    )
+    assert isinstance(plain, FillStep) and plain.humanize is False

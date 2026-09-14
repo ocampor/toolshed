@@ -134,16 +134,16 @@ fresh.
 | `status()` | Whether a session is `open` or `closed`, with its CDP URL and target id |
 | `goto(url)` | Navigate. `http`/`https` only by default; pass `allowed_schemes=("file",)` to opt a call in to another scheme |
 | `find(selector)` | Find exactly one element (returns the driver's locator: a Playwright `Locator` on patchright/camoufox, a `NodriverLocator` on nodriver) |
-| `click(selector, dispatch=False)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
-| `fill(selector, value)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` |
-| `type(selector, value, delay_ms=0)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter |
-| `press(selector, key)` | Press `key` on the element; `selector=None` presses on whatever holds focus |
-| `select_option(selector, value)` | Choose an option in a `<select>` |
-| `set_checked(selector, checked)` | Check or uncheck a checkbox |
+| `click(selector, dispatch=False, humanize=None, behavior=None)` | Wait for the element, then click it — humanized mouse path when `Behavior.mouse_move`. `humanize=True`/`False` forces that path on or off for this call, `behavior=` runs it under a `Behavior` of your own. `dispatch=True` fires an untrusted DOM `click` event instead, for overlays real input cannot reach |
+| `fill(selector, value, humanize=None, behavior=None)` | Set a field's value — typed character by character when `Behavior.fill_as_type`, otherwise a single `fill` (zero key events) |
+| `type(selector, value, delay_ms=0, humanize=None, behavior=None)` | Type into a field. An explicit `delay_ms` is your own cadence and wins over the behaviour's per-key jitter — an `int` types at a constant rate, a `Jitter` becomes the per-key delay |
+| `press(selector, key, behavior=None)` | Press `key` on the element; `selector=None` presses on whatever holds focus |
+| `select_option(selector, value, behavior=None)` | Choose an option in a `<select>` |
+| `set_checked(selector, checked, behavior=None)` | Check or uncheck a checkbox |
 | `find_all(selector)` | Find all matching elements |
 | `wait_for_element(selector, state=, timeout=, interval=, settle=)` | The one wait: polls from Python on a jittered `interval` until the element is `attached` / `detached` / `visible` / `hidden`, or `stable` — its text unchanged for `settle` ms, which is how you wait out streaming replies or a recalculating total. Raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script and no driver-native wait |
 | `element_exists(selector)` | Whether the element shows up within `timeout` — `wait_for_element(..., state="attached")` with the timeout read as `False` instead of raising |
-| `pick(selector, value)` | Click list item matching text |
+| `pick(selector, value, behavior=None)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
 | `parse_elements(selector, extract)` | Extract structured data |
 | `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ, sample_chars=200)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
@@ -152,14 +152,26 @@ fresh.
 | `probe(selector=None, max_chars=)` | `PageProbe` of the page's human-attention signals in one evaluate; feed it to `probe.human_needed` |
 | `evaluate(target, script)` | Run JS against a page or locator |
 | `evaluate_document(script)` | Run a page-wide script against `<html>` — the evaluate path every driver awaits, which a script that waits needs |
-| `download_file(selector, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
+| `download_file(selector, behavior=None, timeout=)` | Click the element and return what the browser downloaded as a `BytesResult` (`name`, `content`, `media_type`); `timeout` bounds both finding the element and waiting for the download. The payload is held whole in memory — there is no size ceiling — and `name` is the server's filename, so take its basename before writing it. Writing it anywhere is yours to do |
 | `screenshot_bytes(selector=None)` | The current page as PNG bytes, or just `selector`'s element when one is given; nothing is written |
 | `dom_snapshot(level=None)` | Sanitized HTML of the whole current page, as text; `level` defaults to the session's `capture_level` |
-| `scroll(dx, dy)` | Mouse-wheel scroll |
+| `scroll(dx, dy, selector=None, behavior=None)` | Mouse-wheel scroll, over `selector` when given; each delta strays by up to `Behavior.scroll_delta_jitter` |
 | `get_page()` | Raw driver page (a Playwright `Page` on patchright/camoufox, a nodriver `Tab` on nodriver) |
 | `frame(selector)` | Enter iframe |
 | `wait_for_load_state(state)` | Wait for page load |
 | `latest_tab()` | Switch to newest tab |
+
+### Which behaviour a call runs under
+
+A call carries its behaviour; the session only holds the default it was built
+with, and nothing a call does rewrites it. First row that applies wins:
+
+| # | Source | Example |
+|---|---|---|
+| 1 | `behavior=` on the call | `session.click(sel, behavior=Behavior.human())` |
+| 2 | `humanize=` on the call, or on the flow step | `session.click(sel, humanize=True)` |
+| 3 | `behavior=` on the run | `run_flow(session, flow, {}, behavior=Behavior.off())` |
+| 4 | the session's own `Behavior` | `BrowserSession(behavior=Behavior.human())` |
 
 ### Exploring before writing a step
 

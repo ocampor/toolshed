@@ -42,6 +42,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.checked` | checkbox and radio |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
+| `field:click.humanize` | humanized click and fill |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
 | `field:dom.level` | dom body |
@@ -50,6 +51,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:download.path` | download |
 | `field:fill.selector` | shadow dom |
 | `field:fill.value` | shadow dom, controlled input |
+| `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
 | `field:parse.selector` | parse typed rows |
@@ -75,7 +77,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:think.max_ms` | think pauses |
 | `field:type.selector` | controlled input, type delay |
 | `field:type.value` | controlled input, masked input |
-| `field:type.delay` | masked input, type delay |
+| `field:type.delay` | masked input, type delay, jittered key delay |
+| `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
 | `field:wait_for.state` | flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
@@ -170,9 +173,11 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:params.required` | params required |
 | `api:redact` | redact |
 | `api:retry_hint` | retry hint |
+| `api:run_flow.behavior` | run-level behavior |
 | `api:sanitize.high` | sanitize levels |
 | `api:sanitize.low` | sanitize levels |
 | `api:sanitize.medium` | sanitize levels |
 | `api:sanitize.xhigh` | sanitize levels |
 | `api:templating.selector` | templating |
 | `api:templating.value` | redirect, templating |
+| `api:type.delay_jitter` | jittered key delay |

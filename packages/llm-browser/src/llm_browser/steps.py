@@ -8,6 +8,7 @@ from yaml_engine.conditions import evaluate_condition
 from yaml_engine.template import resolve_templates_in_dict
 
 from llm_browser.actions import execute_action
+from llm_browser.behavior import Behavior
 from llm_browser.results import ActionResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME
 from llm_browser.models import FlowData, FlowError, Step, validate_step
@@ -78,13 +79,16 @@ def execute_step(
     session: BrowserSession,
     step: Step,
     data: FlowData,
+    behavior: Behavior | None = None,
 ) -> ActionResult | FlowError:
     """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
-    ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it."""
+    ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it.
+    ``behavior`` is the run's default, which the step's own ``humanize``
+    refines."""
     resolved = resolve_step(step, data)
     if should_skip(session, resolved, data):
         return SkippedResult(reason="when condition not satisfied")
-    action_result = execute_action(session, resolved)
+    action_result = execute_action(session, resolved, behavior)
     if not action_result.ok:
         capture = session.capture
         return FlowError(

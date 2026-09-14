@@ -1,5 +1,115 @@
 # Changelog
 
+## 0.15.0 — 2026-09-13
+
+### Added
+
+- `humanize` on the `click`, `fill` and `type` steps, and on `session.click` /
+  `session.fill` / `session.type`: `true` humanizes one call on a session whose `Behavior` is
+  off, `false` takes the plain path on one that is on, unset follows the
+  session. It switches the humanization knobs on the session's own `Behavior`:
+  `true` turns on only the ones still at their `Behavior.off()` value, so a
+  tuned knob, the rate limit (`min_gap_ms`) and a driver's opt-out (camoufox's
+  `mouse_move`) all survive.
+- On `fill` it switches `Behavior.fill_as_type`: `humanize: true` types the
+  value key by key on the humanized cadence even on a session with
+  humanization off, `false` writes it in one go on a session that has it on.
+- `behavior=` on every `BrowserSession` input method (`click`, `fill`, `type`,
+  `press`, `select_option`, `set_checked`, `pick`, `scroll`, `download_file`):
+  one call runs under the `Behavior` it is handed. Precedence is `behavior=`,
+  then the `humanize` shorthand, then the session's own — which a call never
+  rewrites.
+- `run_flow(..., behavior=)` / `run_loaded_flow(..., behavior=)`: one run's
+  humanization default, carried down to every step (sub-flows included) unless
+  the step sets its own `humanize`. Nothing on the session changes.
+- `llm-browser run --behavior human|off|<behavior.yaml>` — the same default
+  from the CLI, the path loaded by the `behavior_config` schema.
+- `FlowSuccess.behavior` / `FlowError.behavior`: the profile the run used —
+  `human`, `off`, or `custom` when a knob differs from both presets.
+- `type` accepts `delay: [min, max]` — a per-key jitter instead of a constant
+  cadence, carried as a `Jitter` through `session.type(delay_ms=)`.
+- Word-boundary pauses while typing: `Behavior.type_word_pause` fires on a
+  space with probability `Behavior.type_word_pause_chance` (0.15).
+- `Behavior.hover_dwell` (80-300 ms) and `Behavior.press_hold` (60-140 ms): a
+  humanized click dwells on arrival and holds the button down.
+- `Behavior.scroll_delta_jitter` (0.15): each `scroll` tick strays from `delta`
+  by up to that fraction. `Behavior.off()` keeps the exact delta.
+
+### Changed
+
+- `humanized_click` walks a quadratic Bézier path of successive `mouse.move`
+  calls and presses with `mouse.down()` / `mouse.up()`, replacing one straight
+  `mouse.move(steps=)` plus `mouse.click()`.
+- `Behavior.mouse_move_steps` is now the upper bound of that path's step count
+  (half to all of it is sampled per move); default 30 → 20.
+- The path is clamped to the viewport and paced: a 4-16 ms jittered gap between
+  points, so the trail has a speed as well as a shape.
+- Humanization is stateless: every mouse path starts from a fresh random point
+  within 200 px of its target, so two clicks never share a trail and nothing
+  survives an action for a detector to correlate.
+- A flow step's `humanize` is resolved once, where the step is dispatched, so
+  the pacing around the action and the input call inside it are the same
+  behaviour; `scroll`'s delta jitter moved from the action into
+  `BrowserSession.scroll`, which now takes `behavior=` like every other input
+  method.
+- `session_input.behavior_for` takes the base `Behavior` instead of the
+  session; `session_input.effective_behavior(session, humanize, behavior)` is
+  the one place a call's behaviour is resolved. Action handlers take the
+  resolved `Behavior` as a third argument.
+- A driver's own opt-out (camoufox's `mouse_move` / `focus_drift`) is applied
+  last, to every behaviour a call can run under — a step's `humanize`, a
+  run-level `behavior=`, `--behavior human` — so none of them stacks our mouse
+  path on the driver's native one. A session that set the knob itself in its
+  behavior YAML still overrules the driver.
+- `min_gap_ms` is a jittered pause (±20%) paid *before* every paced action
+  rather than a floor measured from the previous one. The gap is now paid even
+  after a long idle, which costs a slow flow one extra wait per step.
+- Jitter is sampled from the unseeded module `random`; `Jitter.sample_seconds()`,
+  `waits.poll_for_state` and the humanization helpers no longer take an RNG.
+- `Driver.humanized_type`'s default (nodriver) now sends one key at a time on
+  the behaviour's cadence instead of handing the whole string to `type`, so
+  `delay: [min, max]` is a real per-key jitter on every driver.
+
+### Removed
+
+- `BehaviorRuntime` and `session.behavior_runtime` — there is no per-session
+  humanization state left to hold.
+- `Behavior.seed` and `Behavior.runtime()`. A fixed seed makes every run
+  reproduce the same timings, which is itself a fingerprint.
+
+### Fixed
+
+- A `delay` list that is not `[min_ms, max_ms]`, or whose bounds are negative
+  or inverted, is rejected with one message naming the shape instead of two
+  union errors.
+- A malformed behavior YAML is a usage error on both `--behavior` and
+  `--behavior-config`: `load_behavior` raises `BehaviorConfigError` for a YAML
+  syntax error instead of letting `yaml.YAMLError` reach the user as a
+  traceback.
+
+### Breaking
+
+- `Behavior.click_offset_px` is replaced by `Behavior.click_offset_ratio`
+  (default 0.3): the click lands that fraction of the way from the element's
+  centre to an edge, so the spread scales with the target instead of shrinking
+  to a fixed pixel box on a large one.
+
+Migration:
+
+- Drop `seed:` from any behavior YAML — it is an unknown key now and is
+  rejected — and drop `click_offset_px:` for `click_offset_ratio:`.
+- Delete `session.behavior_runtime` assignments; `BehaviorRuntime` is gone.
+- Drop the trailing runtime/rng argument from `paced`, `humanized_click`,
+  `humanized_type`, `type_chars`, `jittered_sleep`, `jittered_delta`,
+  `Jitter.sample_seconds` and `waits.poll_for_state`.
+- `session_input.behavior_for(base, humanize)` takes the base `Behavior`, not
+  the session; resolve a call's behaviour with
+  `session_input.effective_behavior(session, humanize, behavior)`.
+- Action handlers registered on `actions.get_registry()` take a third
+  argument: `(session, step)` becomes `(session, step, behavior)`.
+- `session_input.click_element` and `session_input.type_humanized` require
+  `behavior`; it no longer defaults to the session's.
+
 ## 0.14.0 — 2026-09-13
 
 ### Added

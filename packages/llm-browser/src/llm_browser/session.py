@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from llm_browser import explore, session_input, survey as survey_rules, waits
-from llm_browser.behavior import Behavior, BehaviorRuntime
+from llm_browser.behavior import Behavior, Jitter, jittered_delta
 from llm_browser.chrome import (
     is_process_alive,
     kill_detached_chromium,
@@ -97,7 +97,6 @@ class BrowserSession:
         self.driver: Driver = resolve_driver(driver)
         self._page: Any | None = None
         self.behavior: Behavior = behavior if behavior is not None else Behavior.off()
-        self.behavior_runtime: BehaviorRuntime = self.behavior.runtime()
         self.capture: CaptureMode = capture
         # How hard a failure's DOM snapshot is sanitized. `high` drops every
         # src/href, which is right for reading and wrong when the link is the
@@ -361,14 +360,29 @@ class BrowserSession:
         self.state.clear()
         return SessionResult(status="closed")
 
-    def scroll(self, dx: int, dy: int, selector: Selector | None = None) -> None:
+    def scroll(
+        self,
+        dx: int,
+        dy: int,
+        selector: Selector | None = None,
+        *,
+        behavior: Behavior | None = None,
+    ) -> None:
         """Scroll by a mouse-wheel delta, over ``selector`` when one is given.
 
         A wheel event goes to whatever is under the pointer, so name the
-        element when the thing you mean to scroll is not the document.
+        element when the thing you mean to scroll is not the document. Each
+        delta strays by up to ``Behavior.scroll_delta_jitter``; ticks of
+        identical size are a tell.
         """
+        effective = session_input.effective_behavior(self, behavior=behavior)
         locator = self.find(selector) if selector is not None else None
-        self.driver.scroll(self.get_page(), dx, dy, locator)
+        self.driver.scroll(
+            self.get_page(),
+            jittered_delta(dx, effective),
+            jittered_delta(dy, effective),
+            locator,
+        )
 
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
         """PNG bytes of the current page, or of ``selector`` alone when given.
@@ -390,7 +404,11 @@ class BrowserSession:
         )
 
     def download_file(
-        self, selector: Selector, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> BytesResult:
         """Click ``selector`` and return what the browser downloaded.
 
@@ -400,9 +418,10 @@ class BrowserSession:
         and waiting for the download it starts.
         """
         element = self.find(selector, timeout=timeout)
+        effective = session_input.effective_behavior(self, behavior=behavior)
 
         def trigger() -> None:
-            session_input.click_element(self, element)
+            session_input.click_element(self, element, behavior=effective)
 
         return self.driver.download_bytes(self.get_page(), trigger, timeout)
 
@@ -496,7 +515,6 @@ class BrowserSession:
             state,
             timeout_ms=timeout,
             interval_ms=interval,
-            rng=self.behavior_runtime.rng,
             settle_ms=settle,
         )
 
@@ -516,59 +534,107 @@ class BrowserSession:
         selector: Selector,
         *,
         dispatch: bool = False,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.click(self, selector, dispatch=dispatch, timeout=timeout)
+        session_input.click(
+            self,
+            selector,
+            dispatch=dispatch,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def fill(
-        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.fill(self, selector, value, timeout=timeout)
+        session_input.fill(
+            self,
+            selector,
+            value,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def type(
         self,
         selector: Selector,
         value: str,
         *,
-        delay_ms: int = 0,
+        delay_ms: int | Jitter = 0,
+        humanize: bool | None = None,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.type(self, selector, value, delay_ms=delay_ms, timeout=timeout)
+        session_input.type(
+            self,
+            selector,
+            value,
+            delay_ms=delay_ms,
+            humanize=humanize,
+            behavior=behavior,
+            timeout=timeout,
+        )
 
     def press(
         self,
         selector: Selector | None,
         key: str,
         *,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.press(self, selector, key, timeout=timeout)
+        session_input.press(self, selector, key, behavior=behavior, timeout=timeout)
 
     def select_option(
-        self, selector: Selector, value: str, *, timeout: int = DEFAULT_FIND_TIMEOUT_MS
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.select_option(self, selector, value, timeout=timeout)
+        session_input.select_option(
+            self, selector, value, behavior=behavior, timeout=timeout
+        )
 
     def set_checked(
         self,
         selector: Selector,
         checked: bool,
         *,
+        behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
-        session_input.set_checked(self, selector, checked, timeout=timeout)
+        session_input.set_checked(
+            self, selector, checked, behavior=behavior, timeout=timeout
+        )
 
-    def pick(self, selector: Selector, value: str) -> None:
+    def pick(
+        self, selector: Selector, value: str, *, behavior: Behavior | None = None
+    ) -> None:
         """Click the element matching text from a list of elements."""
+        effective = session_input.effective_behavior(self, behavior=behavior)
         locator = self.find_all(selector)
         count = self.driver.count(locator)
         if count == 1:
-            session_input.click_element(self, self.driver.first(locator))
+            session_input.click_element(
+                self, self.driver.first(locator), behavior=effective
+            )
             return
         for i in range(count):
             item = self.driver.nth(locator, i)
             if self.driver.text_content(item) == value:
-                session_input.click_element(self, item)
+                session_input.click_element(self, item, behavior=effective)
                 return
         raise ValueError(f"No element with text '{value}' for selector {selector!r}")
 

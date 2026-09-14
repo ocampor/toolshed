@@ -237,7 +237,7 @@ def test_parsed_result_serializes_dynamic_rows() -> None:
     declared BaseModel base — otherwise dynamically-built schemas (build_model)
     dump as ``{}`` and the data is lost on the way out of the CLI.
     """
-    from llm_browser.actions import ParsedResult
+    from llm_browser.results import ParsedResult
 
     Row = ParseBase.__class__(  # type: ignore[call-arg]
         "Row",

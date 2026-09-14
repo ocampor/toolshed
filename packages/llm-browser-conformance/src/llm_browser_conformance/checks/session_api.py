@@ -460,21 +460,19 @@ def wait_for_load_state_returns_at_the_state_it_names(ctx: Context) -> None:
 
 def humanized_typing_costs_a_delay_per_key(ctx: Context) -> None:
     """The suite's session runs ``Behavior.off()``; this is the only row that
-    swaps in ``Behavior.human()``, so it must put both attributes back."""
+    swaps in ``Behavior.human()``, so it must put it back."""
     ctx.visit("form.html")
     instant = ctx.elapsed(lambda: ctx.session.type("#name", TYPED_TEXT))
     assert ctx.value("#name") == TYPED_TEXT
     ctx.session.fill("#name", "")
 
     human = Behavior.human()
-    was_behavior, was_runtime = ctx.session.behavior, ctx.session.behavior_runtime
+    was_behavior = ctx.session.behavior
     try:
         ctx.session.behavior = human
-        ctx.session.behavior_runtime = human.runtime()
         humanized = ctx.elapsed(lambda: ctx.session.type("#name", TYPED_TEXT))
     finally:
         ctx.session.behavior = was_behavior
-        ctx.session.behavior_runtime = was_runtime
 
     assert ctx.value("#name") == TYPED_TEXT
     # The floor is per-key only: ``paced``'s post-action pause is at most

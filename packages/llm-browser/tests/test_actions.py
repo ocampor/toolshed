@@ -53,7 +53,6 @@ def input_session(tmp_path: object) -> MagicMock:
     """A session mock: input actions must not reach past it to a driver."""
     s = MagicMock(spec=BrowserSession)
     s.behavior = Behavior.off()
-    s.behavior_runtime = s.behavior.runtime()
     return s
 
 
@@ -69,7 +68,7 @@ def test_click(input_session: MagicMock) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=5_000)
     execute_action(input_session, step)
     input_session.click.assert_called_once_with(
-        step.selector, dispatch=False, timeout=5_000
+        step.selector, dispatch=False, behavior=Behavior.off(), timeout=5_000
     )
 
 
@@ -83,7 +82,7 @@ def test_fill(input_session: MagicMock) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(input_session, step)
     input_session.fill.assert_called_once_with(
-        step.selector, "hello", timeout=step.timeout
+        step.selector, "hello", behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -93,7 +92,45 @@ def test_type(input_session: MagicMock) -> None:
     )
     execute_action(input_session, step)
     input_session.type.assert_called_once_with(
-        step.selector, "query", delay_ms=50, timeout=step.timeout
+        step.selector,
+        "query",
+        delay_ms=50,
+        behavior=Behavior.off(),
+        timeout=step.timeout,
+    )
+
+
+def test_click_resolves_humanize_into_the_behavior_it_passes(
+    input_session: MagicMock,
+) -> None:
+    """The step's flag is spent here: the session method is handed the
+    behaviour it asked for, not the flag."""
+    step = ClickStep(name="s", action="click", selector="#btn", humanize=True)
+    execute_action(input_session, step)
+    assert input_session.click.call_args.kwargs["behavior"].mouse_move is True
+
+
+def test_a_run_level_behavior_reaches_a_step_that_says_nothing(
+    input_session: MagicMock,
+) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn")
+    execute_action(input_session, step, Behavior.human())
+    assert input_session.click.call_args.kwargs["behavior"] == Behavior.human()
+
+
+def test_a_step_humanize_false_beats_the_run_level_behavior(
+    input_session: MagicMock,
+) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", humanize=False)
+    execute_action(input_session, step, Behavior.human())
+    assert input_session.click.call_args.kwargs["behavior"].mouse_move is False
+
+
+def test_type_passes_a_jittered_delay_through(input_session: MagicMock) -> None:
+    step = TypeStep(name="s", action="type", selector="#q", value="ab", delay=[30, 90])
+    execute_action(input_session, step)
+    assert input_session.type.call_args.kwargs["delay_ms"] == Jitter(
+        min_ms=30, max_ms=90
     )
 
 
@@ -101,7 +138,7 @@ def test_select(input_session: MagicMock) -> None:
     step = SelectStep(name="s", action="select", selector="#dropdown", value="opt2")
     execute_action(input_session, step)
     input_session.select_option.assert_called_once_with(
-        step.selector, "opt2", timeout=step.timeout
+        step.selector, "opt2", behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -109,7 +146,7 @@ def test_check(input_session: MagicMock) -> None:
     step = CheckStep(name="s", action="check", selector="#cb")
     execute_action(input_session, step)
     input_session.set_checked.assert_called_once_with(
-        step.selector, True, timeout=step.timeout
+        step.selector, True, behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -239,7 +276,7 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
     """The parse action loads a YAML schema and emits coerced typed rows."""
     import yaml
 
-    from llm_browser.actions import ParsedResult
+    from llm_browser.results import ParsedResult
     from llm_browser.models import ParseStep
 
     schema = tmp_path / "repo.yaml"
@@ -486,7 +523,7 @@ def test_press_on_selector(input_session: MagicMock) -> None:
     step = PressStep(name="s", action="press", selector="#box", key="Enter")
     execute_action(input_session, step)
     input_session.press.assert_called_once_with(
-        step.selector, "Enter", timeout=step.timeout
+        step.selector, "Enter", behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -510,7 +547,7 @@ def test_press_requires_key() -> None:
 
 
 def test_no_action_returns_void(session: BrowserSession) -> None:
-    from llm_browser.actions import VoidResult
+    from llm_browser.results import VoidResult
 
     step = EvalStep(name="s")
     assert isinstance(execute_action(session, step), VoidResult)
@@ -520,7 +557,7 @@ def test_no_action_returns_void(session: BrowserSession) -> None:
 
 
 def test_optional_swallows_timeout(session: BrowserSession) -> None:
-    from llm_browser.actions import SkippedResult
+    from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.click.side_effect = TimeoutError("element hidden")
@@ -532,7 +569,7 @@ def test_optional_swallows_timeout(session: BrowserSession) -> None:
 
 
 def test_optional_swallows_value_error(session: BrowserSession) -> None:
-    from llm_browser.actions import SkippedResult
+    from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.count.return_value = 3  # triggers expect_single ValueError
@@ -543,7 +580,7 @@ def test_optional_swallows_value_error(session: BrowserSession) -> None:
 
 
 def test_non_optional_returns_error(session: BrowserSession) -> None:
-    from llm_browser.actions import ErrorResult
+    from llm_browser.results import ErrorResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.click.side_effect = TimeoutError("element hidden")

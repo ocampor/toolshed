@@ -92,7 +92,6 @@ def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     session = MagicMock(spec=BrowserSession)
     session.session_dir = tmp_path
     session.behavior = Behavior.off()
-    session.behavior_runtime = session.behavior.runtime()
     session.capture = capture
     session.driver = MagicMock()
     session.screenshot_bytes.return_value = PNG

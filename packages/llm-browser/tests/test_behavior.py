@@ -1,21 +1,25 @@
-"""Tests for the behavior layer (humanization config + runtime helpers)."""
+"""Tests for the behavior layer (humanization config + its helpers)."""
 
-import random
 from unittest.mock import MagicMock
 
 import pytest
 
+from llm_browser import behavior as behavior_module
 from llm_browser.actions import execute_action
 from llm_browser.behavior import (
+    MOUSE_APPROACH_PX,
     Behavior,
     Jitter,
+    approach_start,
+    boundary_pause,
+    curve_points,
     enforce_gap,
     humanized_click,
     humanized_type,
-    mark_action_done,
-    post_pause,
+    jittered_delta,
+    jittered_target,
 )
-from llm_browser.models import ClickStep, FillStep, ThinkStep, TypeStep
+from llm_browser.models import ClickStep, FillStep, ScrollStep, ThinkStep, TypeStep
 from llm_browser.session import BrowserSession
 
 
@@ -44,16 +48,13 @@ def session(tmp_path: object) -> BrowserSession:
 
 
 def test_jitter_zero_returns_zero() -> None:
-    rng = random.Random(0)
-    assert Jitter().sample_seconds(rng) == 0.0
+    assert Jitter().sample_seconds() == 0.0
 
 
 def test_jitter_sample_within_bounds() -> None:
     j = Jitter(min_ms=30, max_ms=90)
-    rng = random.Random(42)
     for _ in range(10_000):
-        delay = j.sample_seconds(rng)
-        assert 0.030 <= delay <= 0.090
+        assert 0.030 <= j.sample_seconds() <= 0.090
 
 
 def test_jitter_rejects_inverted_bounds() -> None:
@@ -78,8 +79,12 @@ def test_off_preset_disables_everything() -> None:
     assert b.mouse_move is False
     assert b.fill_as_type is False
     assert b.focus_drift is False
-    assert b.click_offset_px == 0
+    assert b.click_offset_ratio == 0.0
+    assert b.scroll_delta_jitter == 0.0
     assert b.mouse_move_steps == 0
+    assert b.hover_dwell == Jitter()
+    assert b.press_hold == Jitter()
+    assert b.type_word_pause == Jitter()
     assert b.min_gap_ms == 0
 
 
@@ -91,63 +96,35 @@ def test_pace_preset_no_mouse() -> None:
     assert b.type_char_delay.max_ms > 0
 
 
-def test_human_preset_all_on_no_seed() -> None:
+def test_human_preset_all_on() -> None:
     b = Behavior.human()
     assert b.mouse_move is True
     assert b.focus_drift is True
     assert b.fill_as_type is True
-    assert b.seed is None, "human() must not seed — deterministic jitter is a tell"
 
 
-# --- Runtime determinism (test wiring only, not a property of human()) ---
-
-
-def test_seeded_runtime_produces_identical_sequences() -> None:
-    b = Behavior(seed=7)
-    r1 = b.runtime()
-    r2 = b.runtime()
-    s1 = [b.type_char_delay.sample_seconds(r1.rng) for _ in range(1000)]
-    s2 = [b.type_char_delay.sample_seconds(r2.rng) for _ in range(1000)]
-    assert s1 == s2
+def test_the_config_carries_no_seed() -> None:
+    """Deterministic jitter is the strongest tell there is, so no knob offers
+    it — a `seed:` in a behavior YAML is an unknown key, not an option."""
+    assert "seed" not in Behavior.model_fields
 
 
 # --- Helpers ---
 
 
-def test_enforce_gap_sleeps_when_under_min() -> None:
+def test_the_gap_is_paid_before_every_action(no_sleep: list[float]) -> None:
+    """Memoryless by design: no clock says how long the caller has been idle,
+    so a run that was already slow pays one more gap."""
     b = Behavior(min_gap_ms=50)
-    r = b.runtime()
-    r.last_action_monotonic = 9e9  # in the future -> positive remaining
-    with pytest.MonkeyPatch.context() as mp:
-        calls: list[float] = []
-        mp.setattr("llm_browser.behavior.time.sleep", lambda s: calls.append(s))
-        mp.setattr("llm_browser.behavior.time.monotonic", lambda: 9e9)
-        enforce_gap(b, r)
-        assert calls and calls[0] > 0
+    enforce_gap(b)
+    enforce_gap(b)
+    assert len(no_sleep) == 2
+    assert all(0.040 <= slept <= 0.060 for slept in no_sleep)
 
 
-def test_enforce_gap_skips_when_disabled() -> None:
-    b = Behavior.off()
-    r = b.runtime()
-    r.last_action_monotonic = 0.0
-    with pytest.MonkeyPatch.context() as mp:
-        calls: list[float] = []
-        mp.setattr("llm_browser.behavior.time.sleep", lambda s: calls.append(s))
-        enforce_gap(b, r)
-        assert calls == []
-
-
-def test_post_pause_never_stamps_clock() -> None:
-    b = Behavior(min_gap_ms=50)
-    r = b.runtime()
-    post_pause(b, r)
-    assert r.last_action_monotonic is None
-
-
-def test_mark_action_done_stamps_clock() -> None:
-    r = Behavior.off().runtime()
-    mark_action_done(r)
-    assert r.last_action_monotonic is not None
+def test_no_gap_when_it_is_disabled(no_sleep: list[float]) -> None:
+    enforce_gap(Behavior.off())
+    assert no_sleep == []
 
 
 def test_humanized_type_types_char_by_char() -> None:
@@ -156,44 +133,92 @@ def test_humanized_type_types_char_by_char() -> None:
         type_punct_pause=Jitter(),
         focus_drift=False,
     )
-    r = b.runtime()
     page = MagicMock()
     element = MagicMock()
-    humanized_type(page, element, "hi", b, r)
+    humanized_type(page, element, "hi", b)
     assert element.type.call_count == 2
     element.type.assert_any_call("h", delay=0)
     element.type.assert_any_call("i", delay=0)
 
 
-def test_humanized_click_uses_mouse_path() -> None:
-    b = Behavior(
-        pre_click_pause=Jitter(),
-        click_offset_px=0,
-        mouse_move_steps=5,
-    )
-    r = b.runtime()
-    page = MagicMock()
+BOX = {"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0}
+
+
+def _element_at(box: dict[str, float] | None = BOX) -> MagicMock:
     element = MagicMock()
-    element.bounding_box.return_value = {
-        "x": 10.0,
-        "y": 20.0,
-        "width": 100.0,
-        "height": 40.0,
-    }
-    humanized_click(page, element, b, r)
-    page.mouse.move.assert_called_once_with(60.0, 40.0, steps=5)
-    page.mouse.click.assert_called_once_with(60.0, 40.0)
-    element.click.assert_not_called()
+    element.bounding_box.return_value = box
+    return element
+
+
+def test_humanized_click_walks_a_curve_and_presses_with_a_gap() -> None:
+    b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=12)
+    page = MagicMock()
+    humanized_click(page, _element_at(), b)
+    path = [call.args for call in page.mouse.move.call_args_list]
+    assert 6 <= len(path) <= 12
+    page.mouse.down.assert_called_once_with()
+    page.mouse.up.assert_called_once_with()
+    page.mouse.click.assert_not_called()
+
+
+def test_click_target_spreads_with_the_offset_ratio() -> None:
+    """The offset is a fraction of the half-extent, so it scales with the box
+    instead of with a pixel count — and never leaves the element."""
+    b = Behavior(click_offset_ratio=0.3)
+    targets = [jittered_target(_element_at(), b) for _ in range(2000)]
+    xs = [x for x, _y in targets]
+    ys = [y for _x, y in targets]
+    assert 60.0 - 15.0 <= min(xs) and max(xs) <= 60.0 + 15.0
+    assert 40.0 - 6.0 <= min(ys) and max(ys) <= 40.0 + 6.0
+    assert max(xs) - min(xs) > 15.0
+
+
+def test_a_curve_bows_off_the_straight_line() -> None:
+    """The bow is sampled either way and one draw can land near zero, so the
+    claim is about paths rather than about a path."""
+    curves = [curve_points((0.0, 0.0), (100.0, 0.0), 10) for _ in range(200)]
+    assert all(points[-1] == (100.0, 0.0) for points in curves)
+    bowed = [max(abs(y) for _x, y in points) > 1.0 for points in curves]
+    assert sum(bowed) > len(bowed) * 0.8
+
+
+def test_a_curve_is_monotonic_towards_its_end() -> None:
+    """Bézier control points never drag the path past its endpoint."""
+    points = curve_points((0.0, 0.0), (100.0, 0.0), 20)
+    assert [x for x, _y in points] == sorted(x for x, _y in points)
+
+
+def test_word_boundary_pauses_sometimes_and_punctuation_always() -> None:
+    b = Behavior(type_word_pause_chance=0.5)
+    assert boundary_pause(".", b) == b.type_punct_pause
+    assert boundary_pause("a", b) is None
+    spaces = [boundary_pause(" ", b) for _ in range(500)]
+    assert 0 < sum(pause is not None for pause in spaces) < 500
+    assert set(spaces) == {None, b.type_word_pause}
+
+
+def test_word_boundary_pause_is_shorter_than_the_punctuation_one() -> None:
+    b = Behavior()
+    assert b.type_word_pause.max_ms < b.type_punct_pause.max_ms
+
+
+def test_scroll_delta_jitter_stays_within_its_spread() -> None:
+    b = Behavior(scroll_delta_jitter=0.2)
+    deltas = [jittered_delta(600, b) for _ in range(1000)]
+    assert all(480 <= d <= 720 for d in deltas)
+    assert len(set(deltas)) > 1
+
+
+def test_scroll_delta_is_exact_when_the_behavior_is_off() -> None:
+    b = Behavior.off()
+    assert {jittered_delta(600, b) for _ in range(50)} == {600}
 
 
 def test_humanized_click_raises_when_no_bbox() -> None:
     b = Behavior()
-    r = b.runtime()
     page = MagicMock()
-    element = MagicMock()
-    element.bounding_box.return_value = None
     with pytest.raises(RuntimeError, match="bounding box"):
-        humanized_click(page, element, b, r)
+        humanized_click(page, _element_at(None), b)
     page.mouse.move.assert_not_called()
 
 
@@ -206,6 +231,12 @@ def test_default_session_fill_still_calls_fill(session: BrowserSession) -> None:
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.fill.assert_called_once_with("hello")
     locator.first.type.assert_not_called()
+
+
+def test_default_session_scroll_uses_the_exact_delta(session: BrowserSession) -> None:
+    step = ScrollStep(name="s", action="scroll", delta=600, times=1)
+    execute_action(session, step)
+    session._page.mouse.wheel.assert_called_once_with(0, 600)  # type: ignore[union-attr]
 
 
 def test_default_session_click_uses_plain_click(session: BrowserSession) -> None:
@@ -246,7 +277,8 @@ def test_human_session_click_uses_mouse(tmp_path: object) -> None:
     step = ClickStep(name="s", action="click", selector="#btn")
     execute_action(s, step)
     assert mock_page.mouse.move.called
-    assert mock_page.mouse.click.called
+    assert mock_page.mouse.down.called
+    assert mock_page.mouse.up.called
 
 
 def test_dispatch_click_bypasses_humanization(tmp_path: object) -> None:
@@ -278,9 +310,77 @@ def test_think_sleeps_within_bounds(session: BrowserSession) -> None:
 def test_think_rejects_inverted_bounds(session: BrowserSession) -> None:
     """``min_ms > max_ms`` triggers Pydantic validation inside Jitter, which
     bubbles to ``execute_action`` and is returned as ``ErrorResult``."""
-    from llm_browser.actions import ErrorResult
+    from llm_browser.results import ErrorResult
 
     step = ThinkStep(name="s", action="think", min_ms=100, max_ms=50)
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert "max_ms" in result.message
+
+
+# --- The pointer between actions ---
+
+
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    recorded: list[float] = []
+    monkeypatch.setattr(behavior_module.time, "sleep", recorded.append)
+    return recorded
+
+
+def _page_with_viewport(width: float, height: float) -> MagicMock:
+    page = MagicMock()
+    page.viewport_size = {"width": width, "height": height}
+    return page
+
+
+def test_a_mouse_path_stays_inside_the_viewport(no_sleep: list[float]) -> None:
+    """The bow is a fraction of the distance, so a long approach to an element
+    at the edge swings off-screen — where no real pointer can be."""
+    corner = {"x": 0.0, "y": 0.0, "width": 40.0, "height": 20.0}
+    b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
+    for _ in range(20):
+        page = _page_with_viewport(800.0, 600.0)
+        humanized_click(page, _element_at(corner), b)
+        path = [call.args for call in page.mouse.move.call_args_list]
+        assert all(0.0 <= x <= 800.0 and 0.0 <= y <= 600.0 for x, y in path), path
+
+
+def test_the_pointer_approaches_from_its_target_s_neighbourhood() -> None:
+    target = (400.0, 300.0)
+    starts = [approach_start(target) for _ in range(50)]
+    assert all(
+        abs(x - target[0]) <= MOUSE_APPROACH_PX
+        and abs(y - target[1]) <= MOUSE_APPROACH_PX
+        for x, y in starts
+    )
+    assert len(set(starts)) == len(starts)
+
+
+def test_every_click_approaches_from_a_fresh_point(no_sleep: list[float]) -> None:
+    """Nothing remembers where the last click left the pointer, so two clicks
+    on the same element cannot share a trail for a detector to correlate."""
+    b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
+    box = {"x": 600.0, "y": 400.0, "width": 40.0, "height": 20.0}
+    firsts = []
+    for _ in range(2):
+        page = _page_with_viewport(1000.0, 800.0)
+        humanized_click(page, _element_at(box), b)
+        firsts.append(page.mouse.move.call_args_list[0].args)
+    assert firsts[0] != firsts[1]
+
+
+def test_the_path_is_paced_point_by_point(no_sleep: list[float]) -> None:
+    """A trail with a shape but no speed still reads as synthetic."""
+    b = Behavior(
+        pre_click_pause=Jitter(),
+        hover_dwell=Jitter(),
+        press_hold=Jitter(),
+        mouse_move_steps=10,
+    )
+    page = _page_with_viewport(800.0, 600.0)
+    humanized_click(page, _element_at(), b)
+    moves = page.mouse.move.call_count
+    gaps = [slept for slept in no_sleep if slept > 0.0]
+    assert len(gaps) == moves
+    assert len(set(gaps)) > 1

@@ -6,7 +6,6 @@ by close(). Multi-CLI-call flows (open → screenshot → close across separate
 processes) are not supported on this driver.
 """
 
-import random
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -20,7 +19,6 @@ DEFAULT_CAMOUFOX_KWARGS: dict[str, Any] = {
 }
 
 DEFAULT_TYPE_CHAR_DELAY = Jitter(min_ms=30, max_ms=90)
-_RNG = random.Random()
 
 
 def align_locale_with_geoip(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -106,7 +104,7 @@ class CamoufoxDriver(PlaywrightDriverBase):
             return
         for ch in text:
             locator.type(ch, delay=0)
-            jittered_sleep(DEFAULT_TYPE_CHAR_DELAY, _RNG)
+            jittered_sleep(DEFAULT_TYPE_CHAR_DELAY)
 
     def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
         """Park the cursor over what is being scrolled, then turn the wheel.

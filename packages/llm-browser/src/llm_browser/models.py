@@ -14,15 +14,17 @@ from pydantic import (
     PrivateAttr,
     Tag,
     TypeAdapter,
+    ValidationError,
     field_validator,
     model_validator,
 )
 
-from llm_browser.behavior import Jitter
+from llm_browser.behavior import BehaviorProfile, Jitter
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
+    DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
@@ -83,17 +85,35 @@ class SelectorStep(BaseStep):
 class ClickStep(SelectorStep):
     action: Literal["click"]
     dispatch: bool = False
+    humanize: bool | None = None
 
 
 class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
+    humanize: bool | None = None
 
 
 class TypeStep(SelectorStep):
+    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
+    a constant cadence is itself a fingerprint."""
+
     action: Literal["type"]
     value: str = ""
-    delay: int = 0
+    delay: int | Jitter = 0
+    humanize: bool | None = None
+
+    @field_validator("delay", mode="before")
+    @classmethod
+    def _pair_to_jitter(cls, value: Any) -> Any:
+        if not isinstance(value, (list, tuple)):
+            return value
+        if len(value) != 2:
+            raise ValueError(DELAY_SHAPE)
+        try:
+            return Jitter(min_ms=value[0], max_ms=value[1])
+        except ValidationError as e:
+            raise ValueError(DELAY_SHAPE) from e
 
 
 class SelectStep(SelectorStep):
@@ -455,10 +475,15 @@ class FlowSuccess(BaseModel):
     step name: rows for ``read`` / ``parse``, text for ``dom``, and a
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
+
+    ``behavior`` names the humanization profile the run actually ran under —
+    ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
+    result, which the parent run stamps on its way out.
     """
 
     step: str
     outputs: dict[str, object] = {}
+    behavior: BehaviorProfile | None = None
 
 
 class FlowError(BaseModel):
@@ -474,7 +499,8 @@ class FlowError(BaseModel):
     someone logs in or clears the challenge.
 
     ``outputs`` holds the results collected before the failing step, keyed
-    the same way as :attr:`FlowSuccess.outputs`.
+    the same way as :attr:`FlowSuccess.outputs`; ``behavior`` names the run's
+    humanization profile the same way as :attr:`FlowSuccess.behavior`.
 
     ``screenshot`` and ``dom`` are the failing page itself, in memory: PNG
     bytes and sanitized HTML text, controlled by ``BrowserSession(capture=)``.
@@ -490,6 +516,7 @@ class FlowError(BaseModel):
     human_needed: bool = False
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
+    behavior: BehaviorProfile | None = None
 
 
 # Public type alias: callers that don't care which arm they got can use
