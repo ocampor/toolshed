@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.actions import SkippedResult
+from llm_browser.results import SkippedResult
 from llm_browser.behavior import Behavior
 from llm_browser.flow_repository import FlowNotFoundError
 from llm_browser.flows import run_flow

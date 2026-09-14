@@ -276,7 +276,7 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
     """The parse action loads a YAML schema and emits coerced typed rows."""
     import yaml
 
-    from llm_browser.actions import ParsedResult
+    from llm_browser.results import ParsedResult
     from llm_browser.models import ParseStep
 
     schema = tmp_path / "repo.yaml"
@@ -547,7 +547,7 @@ def test_press_requires_key() -> None:
 
 
 def test_no_action_returns_void(session: BrowserSession) -> None:
-    from llm_browser.actions import VoidResult
+    from llm_browser.results import VoidResult
 
     step = EvalStep(name="s")
     assert isinstance(execute_action(session, step), VoidResult)
@@ -557,7 +557,7 @@ def test_no_action_returns_void(session: BrowserSession) -> None:
 
 
 def test_optional_swallows_timeout(session: BrowserSession) -> None:
-    from llm_browser.actions import SkippedResult
+    from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.click.side_effect = TimeoutError("element hidden")
@@ -569,7 +569,7 @@ def test_optional_swallows_timeout(session: BrowserSession) -> None:
 
 
 def test_optional_swallows_value_error(session: BrowserSession) -> None:
-    from llm_browser.actions import SkippedResult
+    from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.count.return_value = 3  # triggers expect_single ValueError
@@ -580,7 +580,7 @@ def test_optional_swallows_value_error(session: BrowserSession) -> None:
 
 
 def test_non_optional_returns_error(session: BrowserSession) -> None:
-    from llm_browser.actions import ErrorResult
+    from llm_browser.results import ErrorResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.click.side_effect = TimeoutError("element hidden")

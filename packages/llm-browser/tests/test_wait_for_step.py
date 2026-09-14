@@ -8,7 +8,8 @@ import yaml
 from click.testing import CliRunner
 from pydantic import ValidationError
 
-from llm_browser.actions import SkippedResult, VoidResult, execute_action
+from llm_browser.actions import execute_action
+from llm_browser.results import SkippedResult, VoidResult
 from llm_browser.cli import main
 from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,

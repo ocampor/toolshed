@@ -1,14 +1,22 @@
-"""Action registry: minimal declarative actions for browser automation."""
+"""Action registry: minimal declarative actions for browser automation.
+
+One handler per action, each taking the behaviour the step resolved to.
+Importing this module is what registers them; :mod:`llm_browser.action_dispatch`
+holds the registry and runs them.
+"""
 
 import time
-from functools import lru_cache
-from typing import Callable
 
 from pydantic import BaseModel
 
-from yaml_engine.registry import Registry
-
-from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
+from llm_browser.action_dispatch import (
+    ActionHandler,
+    execute_action,
+    get_registry,
+    is_step_failure,
+    step_behavior,
+)
+from llm_browser.behavior import Behavior, Jitter, jittered_sleep
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -23,108 +31,29 @@ from llm_browser.models import (
     ScreenshotStep,
     ScrollStep,
     SelectStep,
-    Step,
     ThinkStep,
     TypeStep,
     WaitForStep,
 )
 from llm_browser.parse import build_model
 from llm_browser.results import (
-    ActionResult,
     BytesResult,
-    ErrorResult,
     ExtractedRow,
     ParsedResult,
-    SkippedResult,
     TextResult,
     VoidResult,
 )
 from llm_browser.session import BrowserSession
-from llm_browser.session_input import behavior_for, with_driver_opt_outs
 
-
-# Param type is loose because each handler accepts a specific Step subclass, and
-# Callable parameters are contravariant. The discriminated Step union dispatches
-# at runtime via the registry, so this widening only affects static typing.
-ActionHandler = Callable[..., ActionResult]
-
-
-@lru_cache(maxsize=1)
-def get_registry() -> Registry[ActionHandler]:
-    return Registry("action")
-
+__all__ = [
+    "ActionHandler",
+    "execute_action",
+    "get_registry",
+    "is_step_failure",
+    "step_behavior",
+]
 
 _registry = get_registry()
-
-
-def _is_timeout(exc: BaseException) -> bool:
-    """Treat any exception class named ``TimeoutError`` as a timeout.
-    Patchright (and similar driver libs) raise their own TimeoutError
-    that does NOT inherit from the Python builtin, so a bare
-    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
-    and the optional-swallow / ErrorResult contract was violated."""
-    if isinstance(exc, TimeoutError):
-        return True
-    return type(exc).__name__ == "TimeoutError"
-
-
-def is_step_failure(exc: BaseException) -> bool:
-    """Whether ``exc`` is a step result rather than a library bug.
-
-    Deliberately narrow. Anything a step can legitimately hit — a wait that
-    expired, a value the page did not provide, an output it cannot write — is
-    raised as one of these two at the place it happens. A ``TypeError`` or an
-    ``AttributeError`` reaching here is a bug in the library, and it belongs
-    in a traceback rather than in a truncated ``reason=`` on a skipped step.
-    """
-    return _is_timeout(exc) or isinstance(exc, ValueError)
-
-
-def step_behavior(
-    session: BrowserSession, step: Step, run_behavior: Behavior | None
-) -> Behavior:
-    """What this step runs under: the run's default when it has one, the
-    session's otherwise, with the step's own ``humanize`` switched into it and
-    the driver's opt-outs applied last.
-
-    Resolved once, here, so the pacing around the action and the input call
-    inside it are the same behaviour, and so a run-level default reaches a
-    step without anything on the session changing.
-    """
-    base = run_behavior if run_behavior is not None else session.behavior
-    stepped = behavior_for(base, getattr(step, "humanize", None))
-    return with_driver_opt_outs(session.behavior, stepped)
-
-
-def execute_action(
-    session: BrowserSession, step: Step, behavior: Behavior | None = None
-) -> ActionResult:
-    """``behavior`` is the run-level default; a step's ``humanize`` refines it."""
-    if step.action is None:
-        return VoidResult()
-    resolved = step_behavior(session, step, behavior)
-    try:
-        with paced(resolved):
-            return get_registry().get(step.action)(session, step, resolved)
-    except Exception as exc:
-        if not is_step_failure(exc):
-            raise
-        if step.optional:
-            return SkippedResult(reason=f"{type(exc).__name__}: {str(exc)[:200]}")
-        selector = getattr(step, "selector", None)
-        return ErrorResult(
-            error=type(exc).__name__,
-            # Collapse whitespace so multi-line errors (Pydantic ValidationError,
-            # patchright tracebacks) survive the 300-char cap meaningfully.
-            message=" ".join(str(exc).split())[:300],
-            step_name=step.name,
-            selector=repr(selector) if selector is not None else None,
-            hint=(
-                "element hidden, missing, or slow to render"
-                if _is_timeout(exc)
-                else None
-            ),
-        )
 
 
 # --- Element actions ---
