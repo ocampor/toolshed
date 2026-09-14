@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from llm_browser.behavior import Behavior
 from llm_browser.flow_pipeline import resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowRepository
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
@@ -326,6 +327,20 @@ def a_humanized_step_drives_the_element_with_trusted_input(ctx: Context) -> None
     assert ctx.js("document.querySelector('#name').value") == "typed"
 
 
+def a_run_level_behavior_humanizes_a_step_that_says_nothing(ctx: Context) -> None:
+    """`run_flow(behavior=)` is the run's default, so a plain `fill` types the
+    value key by key — the page counts one keydown per character — and the
+    result names the profile the run used."""
+    ctx.visit("keydown-count.html")
+    result = run_flow(
+        ctx.session, ctx.flow("run-behavior"), {}, behavior=Behavior.human()
+    )
+    assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
+    assert result.behavior == "human"
+    assert one_text(result.outputs, "value") == TYPED_TEXT
+    assert one_text(result.outputs, "keydowns") == str(len(TYPED_TEXT))
+
+
 def a_chord_selects_the_field_before_the_replacement(ctx: Context) -> None:
     outputs = expect_success(ctx, "keydown-count.html", "press-chord")
     assert one_text(outputs, "value") == "new"
@@ -509,6 +524,12 @@ SCENARIOS = [
         Section.STEPS,
         a_humanized_step_drives_the_element_with_trusted_input,
         covers=frozenset({"field:click.humanize", "field:fill.humanize"}),
+    ),
+    Scenario(
+        "run-level behavior",
+        Section.STEPS,
+        a_run_level_behavior_humanizes_a_step_that_says_nothing,
+        covers=frozenset({"api:run_flow.behavior"}),
     ),
     Scenario(
         "press chord",

@@ -11,7 +11,7 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.models import ClickStep
-from llm_browser.session_input import behavior_for
+from llm_browser.session_input import behavior_for, effective_behavior
 from llm_browser.session import BrowserSession
 
 PACE_MS = 40
@@ -319,7 +319,7 @@ def test_humanize_true_switches_the_knobs_and_keeps_the_rate_limit(
     """`humanize` is a humanization flag, not a fresh config: dropping the
     session's `min_gap_ms` is the one loss that can get a run blocked."""
     session.behavior = RATE_LIMITED
-    forced = behavior_for(session, True)
+    forced = behavior_for(session.behavior, True)
     assert forced.mouse_move is True
     assert forced.type_char_delay == Behavior.human().type_char_delay
     assert forced.min_gap_ms == 2_000
@@ -329,7 +329,7 @@ def test_humanize_false_switches_the_knobs_off_and_keeps_the_rate_limit(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior(min_gap_ms=2_000)
-    plain = behavior_for(session, False)
+    plain = behavior_for(session.behavior, False)
     assert plain.mouse_move is False
     assert plain.fill_as_type is False
     assert plain.type_char_delay == Jitter()
@@ -344,7 +344,7 @@ def test_humanize_true_honours_a_drivers_own_mouse_humanization(
     session.behavior = CamoufoxBehaviorConfig(
         driver="camoufox", type_char_delay=Jitter()
     )
-    forced = behavior_for(session, True)
+    forced = behavior_for(session.behavior, True)
     assert forced.mouse_move is False
     assert forced.focus_drift is False
     assert forced.type_char_delay == Behavior.human().type_char_delay
@@ -371,7 +371,46 @@ def test_humanize_true_leaves_a_tuned_knob_alone(session: BrowserSession) -> Non
     session.behavior = Behavior(
         type_char_delay=tuned, mouse_move=False, pre_click_pause=Jitter()
     )
-    forced = behavior_for(session, True)
+    forced = behavior_for(session.behavior, True)
     assert forced.type_char_delay == tuned
     assert forced.mouse_move is True
     assert forced.pre_click_pause == Behavior.human().pre_click_pause
+
+
+# --- which behaviour a call runs under ---
+
+
+def test_an_explicit_behavior_beats_the_humanize_shorthand(
+    session: BrowserSession,
+) -> None:
+    """A caller holding a `Behavior` has already decided; the shorthand is
+    there for callers who are not holding one."""
+    session.behavior = Behavior.human()
+    assert effective_behavior(session, True, Behavior.off()) == Behavior.off()
+
+
+def test_the_humanize_shorthand_beats_the_sessions_default(
+    session: BrowserSession,
+) -> None:
+    session.behavior = Behavior.off()
+    assert effective_behavior(session, True).mouse_move is True
+
+
+def test_neither_leaves_the_sessions_default(session: BrowserSession) -> None:
+    session.behavior = RATE_LIMITED
+    assert effective_behavior(session) is RATE_LIMITED
+
+
+def test_an_explicit_behavior_drives_the_call(session: BrowserSession) -> None:
+    session.click("#btn", behavior=Behavior.human())
+    driver(session).humanized_click.assert_called_once()
+    driver(session).click.assert_not_called()
+
+
+def test_a_call_leaves_the_sessions_behavior_alone(session: BrowserSession) -> None:
+    """The behaviour a call runs under is the call's; the session's is the
+    default it started with, before and after."""
+    session.behavior = Behavior.off()
+    session.click("#btn", behavior=Behavior.human())
+    session.fill("#input", "hello", humanize=True)
+    assert session.behavior == Behavior.off()

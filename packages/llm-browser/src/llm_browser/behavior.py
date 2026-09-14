@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -113,6 +113,29 @@ BEHAVIOR_OFF = Behavior(
     focus_drift=False,
     min_gap_ms=0,
 )
+
+
+BehaviorProfile = Literal["human", "off", "custom"]
+
+
+def profile(behavior: Behavior) -> BehaviorProfile:
+    """Which preset a behaviour is, ``"custom"`` when it is neither.
+
+    Compared field by field rather than with ``==``: a driver's config class
+    is a ``Behavior`` subclass, and pydantic equality would call one that
+    matches ``human()`` knob for knob a different thing.
+    """
+    presets: list[tuple[BehaviorProfile, Behavior]] = [
+        ("human", Behavior.human()),
+        ("off", Behavior.off()),
+    ]
+    for name, preset in presets:
+        if all(
+            getattr(behavior, field) == getattr(preset, field)
+            for field in Behavior.model_fields
+        ):
+            return name
+    return "custom"
 
 
 # The gap between two points of a mouse path: samples arrive on a wire, not

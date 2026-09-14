@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from llm_browser.actions import SkippedResult
+from llm_browser.behavior import Behavior
 from llm_browser.flow_repository import FlowNotFoundError
 from llm_browser.flows import run_flow
 from llm_browser.models import (
@@ -593,3 +594,80 @@ def test_run_flow_carries_human_needed_through_to_the_caller(
     result = run_flow(mock_session, Flow(steps=[step]), {})
     assert isinstance(result, FlowError)
     assert result.human_needed is True
+
+
+# --- run-level behavior ---
+
+CLICK_STEP = {"name": "c", "action": "click", "selector": "#btn"}
+
+
+def _click_flow(**overrides: object) -> Flow:
+    return Flow.model_validate({"steps": [{**CLICK_STEP, **overrides}]})
+
+
+def _step_behavior(session: MagicMock) -> Behavior:
+    behavior = session.click.call_args.kwargs["behavior"]
+    assert isinstance(behavior, Behavior)
+    return behavior
+
+
+def test_a_run_level_behavior_defaults_every_step(mock_session: MagicMock) -> None:
+    run_flow(mock_session, _click_flow(), {}, behavior=Behavior.human())
+    assert _step_behavior(mock_session) == Behavior.human()
+
+
+def test_a_step_humanize_wins_over_the_run_level_behavior(
+    mock_session: MagicMock,
+) -> None:
+    run_flow(mock_session, _click_flow(humanize=False), {}, behavior=Behavior.human())
+    assert _step_behavior(mock_session).mouse_move is False
+
+
+def test_a_run_level_behavior_reaches_a_sub_flows_steps(
+    mock_session: MagicMock,
+) -> None:
+    flow = Flow.model_validate(
+        {
+            "steps": [
+                {
+                    "name": "child",
+                    "action": "run-flow",
+                    "flow": {"steps": [CLICK_STEP]},
+                }
+            ]
+        }
+    )
+    run_flow(mock_session, flow, {}, behavior=Behavior.human())
+    assert _step_behavior(mock_session) == Behavior.human()
+
+
+def test_a_run_never_rewrites_the_sessions_own_behavior(
+    mock_session: MagicMock,
+) -> None:
+    """The run's default is carried to each step, not parked on the session."""
+    run_flow(mock_session, _click_flow(), {}, behavior=Behavior.human())
+    assert mock_session.behavior == Behavior.off()
+
+
+@pytest.mark.parametrize(
+    ("behavior", "named"),
+    [
+        (None, "off"),
+        (Behavior.human(), "human"),
+        (Behavior.off(), "off"),
+        (Behavior.human().model_copy(update={"min_gap_ms": 2_000}), "custom"),
+    ],
+)
+def test_the_result_names_the_profile_the_run_used(
+    mock_session: MagicMock, behavior: Behavior | None, named: str
+) -> None:
+    result = run_flow(mock_session, _click_flow(), {}, behavior=behavior)
+    assert isinstance(result, FlowSuccess)
+    assert result.behavior == named
+
+
+def test_a_failure_names_the_profile_too(mock_session: MagicMock) -> None:
+    step = _failing_click(mock_session)
+    result = run_flow(mock_session, Flow(steps=[step]), {}, behavior=Behavior.human())
+    assert isinstance(result, FlowError)
+    assert result.behavior == "human"

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from yaml_engine.registry import Registry
 
-from llm_browser.behavior import Jitter, jittered_delta, jittered_sleep, paced
+from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -40,6 +40,7 @@ from llm_browser.results import (
     VoidResult,
 )
 from llm_browser.session import BrowserSession
+from llm_browser.session_input import behavior_for
 
 
 # Param type is loose because each handler accepts a specific Step subclass, and
@@ -79,12 +80,30 @@ def is_step_failure(exc: BaseException) -> bool:
     return _is_timeout(exc) or isinstance(exc, ValueError)
 
 
-def execute_action(session: BrowserSession, step: Step) -> ActionResult:
+def step_behavior(
+    session: BrowserSession, step: Step, run_behavior: Behavior | None
+) -> Behavior:
+    """What this step runs under: the run's default when it has one, the
+    session's otherwise, with the step's own ``humanize`` switched into it.
+
+    Resolved once, here, so the pacing around the action and the input call
+    inside it are the same behaviour, and so a run-level default reaches a
+    step without anything on the session changing.
+    """
+    base = run_behavior if run_behavior is not None else session.behavior
+    return behavior_for(base, getattr(step, "humanize", None))
+
+
+def execute_action(
+    session: BrowserSession, step: Step, behavior: Behavior | None = None
+) -> ActionResult:
+    """``behavior`` is the run-level default; a step's ``humanize`` refines it."""
     if step.action is None:
         return VoidResult()
+    resolved = step_behavior(session, step, behavior)
     try:
-        with paced(session.behavior):
-            return get_registry().get(step.action)(session, step)
+        with paced(resolved):
+            return get_registry().get(step.action)(session, step, resolved)
     except Exception as exc:
         if not is_step_failure(exc):
             raise
@@ -110,60 +129,78 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
 
 
 @_registry.register("click")
-def action_click(session: BrowserSession, step: ClickStep) -> VoidResult:
+def action_click(
+    session: BrowserSession, step: ClickStep, behavior: Behavior
+) -> VoidResult:
     session.click(
         step.selector,
         dispatch=step.dispatch,
-        humanize=step.humanize,
+        behavior=behavior,
         timeout=step.timeout,
     )
     return VoidResult()
 
 
 @_registry.register("fill")
-def action_fill(session: BrowserSession, step: FillStep) -> VoidResult:
+def action_fill(
+    session: BrowserSession, step: FillStep, behavior: Behavior
+) -> VoidResult:
     session.fill(
         step.selector,
         step.value,
-        humanize=step.humanize,
+        behavior=behavior,
         timeout=step.timeout,
     )
     return VoidResult()
 
 
 @_registry.register("type")
-def action_type(session: BrowserSession, step: TypeStep) -> VoidResult:
+def action_type(
+    session: BrowserSession, step: TypeStep, behavior: Behavior
+) -> VoidResult:
     session.type(
         step.selector,
         step.value,
         delay_ms=step.delay,
-        humanize=step.humanize,
+        behavior=behavior,
         timeout=step.timeout,
     )
     return VoidResult()
 
 
 @_registry.register("select")
-def action_select(session: BrowserSession, step: SelectStep) -> VoidResult:
-    session.select_option(step.selector, step.value, timeout=step.timeout)
+def action_select(
+    session: BrowserSession, step: SelectStep, behavior: Behavior
+) -> VoidResult:
+    session.select_option(
+        step.selector, step.value, behavior=behavior, timeout=step.timeout
+    )
     return VoidResult()
 
 
 @_registry.register("check")
-def action_check(session: BrowserSession, step: CheckStep) -> VoidResult:
-    session.set_checked(step.selector, step.checked, timeout=step.timeout)
+def action_check(
+    session: BrowserSession, step: CheckStep, behavior: Behavior
+) -> VoidResult:
+    session.set_checked(
+        step.selector, step.checked, behavior=behavior, timeout=step.timeout
+    )
     return VoidResult()
 
 
 @_registry.register("pick")
-def action_pick(session: BrowserSession, step: PickStep) -> VoidResult:
-    session.pick(step.selector, step.value)
+def action_pick(
+    session: BrowserSession, step: PickStep, behavior: Behavior
+) -> VoidResult:
+    session.pick(step.selector, step.value, behavior=behavior)
     return VoidResult()
 
 
 @_registry.register("press")
-def action_press(session: BrowserSession, step: PressStep) -> VoidResult:
-    session.press(step.selector, step.key, timeout=step.timeout)
+def action_press(
+    session: BrowserSession, step: PressStep, behavior: Behavior
+) -> VoidResult:
+    session.press(step.selector, step.key, behavior=behavior, timeout=step.timeout)
     return VoidResult()
 
 
@@ -171,13 +208,17 @@ def action_press(session: BrowserSession, step: PressStep) -> VoidResult:
 
 
 @_registry.register("goto")
-def action_goto(session: BrowserSession, step: GotoStep) -> VoidResult:
+def action_goto(
+    session: BrowserSession, step: GotoStep, behavior: Behavior
+) -> VoidResult:
     session.goto(step.url, wait_until=step.wait_until)
     return VoidResult()
 
 
 @_registry.register("wait_for")
-def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
+def action_wait_for(
+    session: BrowserSession, step: WaitForStep, behavior: Behavior
+) -> VoidResult:
     """A timeout here rides ``execute_action``'s handler: the step fails with
     the selector/state message, and ``optional: true`` turns it into a skip."""
     session.wait_for_element(
@@ -191,7 +232,9 @@ def action_wait_for(session: BrowserSession, step: WaitForStep) -> VoidResult:
 
 
 @_registry.register("screenshot")
-def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesResult:
+def action_screenshot(
+    session: BrowserSession, step: ScreenshotStep, behavior: Behavior
+) -> BytesResult:
     """``step.path`` is not consulted: the runner returns the PNG and the CLI
     is what writes it."""
     return BytesResult(
@@ -205,7 +248,9 @@ def action_screenshot(session: BrowserSession, step: ScreenshotStep) -> BytesRes
 
 
 @_registry.register("read")
-def action_read(session: BrowserSession, step: ReadStep) -> ParsedResult:
+def action_read(
+    session: BrowserSession, step: ReadStep, behavior: Behavior
+) -> ParsedResult:
     raw = session.parse_elements(step.selector, step.extract)
     rows: list[BaseModel | None] = [
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
@@ -215,7 +260,9 @@ def action_read(session: BrowserSession, step: ReadStep) -> ParsedResult:
 
 
 @_registry.register("parse")
-def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
+def action_parse(
+    session: BrowserSession, step: ParseStep, behavior: Behavior
+) -> ParsedResult:
     # Schema path is CWD-relative or absolute.
     Model = build_model(step.schema_path)  # type: ignore[no-untyped-call]
     raw = session.parse_elements(step.selector, Model._spec())
@@ -227,7 +274,9 @@ def action_parse(session: BrowserSession, step: ParseStep) -> ParsedResult:
 
 
 @_registry.register("dom")
-def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
+def action_dom(
+    session: BrowserSession, step: DomStep, behavior: Behavior
+) -> TextResult:
     return TextResult(
         text=session.dom(step.selector, max_depth=step.max_depth, level=step.level)
     )
@@ -237,29 +286,32 @@ def action_dom(session: BrowserSession, step: DomStep) -> TextResult:
 
 
 @_registry.register("download")
-def action_download(session: BrowserSession, step: DownloadStep) -> BytesResult:
+def action_download(
+    session: BrowserSession, step: DownloadStep, behavior: Behavior
+) -> BytesResult:
     """``step.path`` is not consulted: the runner returns the bytes and the
     CLI is what writes them."""
-    return session.download_file(step.selector, timeout=step.timeout)
+    return session.download_file(step.selector, behavior=behavior, timeout=step.timeout)
 
 
 # --- Pacing actions ---
 
 
 @_registry.register("scroll")
-def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
+def action_scroll(
+    session: BrowserSession, step: ScrollStep, behavior: Behavior
+) -> VoidResult:
     for tick in range(step.times):
-        session.scroll(
-            0,
-            jittered_delta(step.delta, session.behavior),
-        )
+        session.scroll(0, step.delta, behavior=behavior)
         if tick < step.times - 1:
             jittered_sleep(step.pause)
     return VoidResult()
 
 
 @_registry.register("think")
-def action_think(session: BrowserSession, step: ThinkStep) -> VoidResult:
+def action_think(
+    session: BrowserSession, step: ThinkStep, behavior: Behavior
+) -> VoidResult:
     jitter = Jitter(min_ms=step.min_ms, max_ms=step.max_ms)
     delay = jitter.sample_seconds()
     if delay > 0:

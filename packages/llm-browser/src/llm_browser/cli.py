@@ -355,6 +355,16 @@ def goto(ctx: click.Context, url: str) -> None:
     default=SanitizeLevel.HIGH.value,
     help="How hard a failure's DOM snapshot is sanitized. Default: high.",
 )
+@click.option(
+    "--behavior",
+    "behavior_spec",
+    default=None,
+    help=(
+        "Humanization for this run: human, off, or a path to a behavior YAML. "
+        "Every step takes it unless it sets its own `humanize`. "
+        "When omitted, the session's own behavior."
+    ),
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -367,6 +377,7 @@ def run(
     out_dir: str,
     capture_dir: str | None,
     capture_level: str,
+    behavior_spec: str | None,
 ) -> None:
     """Run a YAML flow top-to-bottom (or from --from <step> onward).
 
@@ -393,10 +404,16 @@ def run(
     data = json.loads(data_json)
     document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
     flow = load_flow_document(document, selector_map=selector_map)
+    behavior = resolve_behavior(behavior_spec)
 
     def execute(target: BrowserSession) -> object:
         result = run_cli_flow(
-            target, flow, data, from_step=from_step, flow_path=file_path(flow_path)
+            target,
+            flow,
+            data,
+            from_step=from_step,
+            flow_path=file_path(flow_path),
+            behavior=behavior,
         )
         return write_run(
             result,
@@ -581,6 +598,22 @@ def file_path(flow_path: str | None) -> str | None:
     return str(Path(flow_path).resolve())
 
 
+BEHAVIOR_PRESETS = {"human": Behavior.human, "off": Behavior.off}
+
+
+def resolve_behavior(spec: str | None) -> Behavior | None:
+    """``--behavior``'s value: a preset name, or a path to a behavior YAML."""
+    if spec is None:
+        return None
+    preset = BEHAVIOR_PRESETS.get(spec)
+    if preset is not None:
+        return preset()
+    try:
+        return load_behavior(spec)
+    except (BehaviorConfigError, OSError) as e:
+        raise click.ClickException(f"--behavior: {e}") from e
+
+
 def run_cli_flow(
     session: BrowserSession,
     flow: Flow,
@@ -588,10 +621,11 @@ def run_cli_flow(
     *,
     from_step: str | None,
     flow_path: str | None = None,
+    behavior: Behavior | None = None,
 ) -> FlowResult:
     """``flow_path`` only fills ``retry_hint.flow_path``; the flow is already
     built."""
-    result = run_flow(session, flow, data, from_step=from_step)
+    result = run_flow(session, flow, data, from_step=from_step, behavior=behavior)
     if flow_path is None:
         return result
     return with_flow_path(result, flow_path)

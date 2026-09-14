@@ -5,6 +5,7 @@ out) and stage three (run it). Neither stage touches the filesystem — every
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from llm_browser.behavior import Behavior, profile
 from llm_browser.results import (
     ActionResult,
     BytesResult,
@@ -81,17 +82,27 @@ def run_flow(
     *,
     from_step: str | None = None,
     redact: Iterable[str] = (),
+    behavior: Behavior | None = None,
 ) -> FlowResult:
     """``from_step`` does not propagate into sub-flows; children always run
     top-to-bottom. ``redact`` scrubs every text the result carries — outputs,
-    the error, and the failure DOM; binary payloads are left as they are."""
+    the error, and the failure DOM; binary payloads are left as they are.
+
+    ``behavior`` is this run's humanization default: every step takes it
+    unless it sets its own ``humanize``. It is carried down to each step
+    rather than written onto the session, so the session a caller passed in
+    comes back out of the run exactly as it went in."""
     secrets = clean_secrets(redact)
     with redacting_logs(secrets):
-        result = run_loaded_flow(session, flow, data, from_step=from_step)
+        result = run_loaded_flow(
+            session, flow, data, from_step=from_step, behavior=behavior
+        )
+    ran_as = profile(behavior if behavior is not None else session.behavior)
     if isinstance(result, FlowSuccess):
         return FlowSuccess(
             step=result.step,
             outputs=redact_secrets(result.outputs, secrets),
+            behavior=ran_as,
         )
     # `result.step` is qualified; its first segment is the top-level step
     # name, which is what ``--from`` operates on.
@@ -107,6 +118,7 @@ def run_flow(
             failed_step=result.step.split("/", 1)[0],
             error=redact_secrets(str(result.data), secrets),
         ),
+        behavior=ran_as,
     )
 
 
@@ -148,15 +160,17 @@ def run_loaded_flow(
     data: dict[str, object],
     *,
     from_step: str | None = None,
+    behavior: Behavior | None = None,
 ) -> FlowSuccess | FlowError:
-    """``SubFlow``'s leaf-only constraint bounds the recursion at depth one."""
+    """``SubFlow``'s leaf-only constraint bounds the recursion at depth one.
+    ``behavior`` defaults every step of this flow and its sub-flows."""
     flow_data = flow.validate_data(data)
     outputs: dict[str, object] = {}
     for step in select_steps(flow.steps, from_step):
         outcome: ActionResult | FlowSuccess | FlowError = (
-            run_subflow(session, step, flow_data)
+            run_subflow(session, step, flow_data, behavior)
             if isinstance(step, RunFlowStep)
-            else execute_step(session, step, flow_data)
+            else execute_step(session, step, flow_data, behavior)
         )
         match outcome:
             case FlowError():
@@ -179,6 +193,7 @@ def run_subflow(
     session: BrowserSession,
     step: RunFlowStep,
     flow_data: FlowData,
+    behavior: Behavior | None = None,
 ) -> FlowSuccess | FlowError:
     """A skipped step comes back as an empty success; a swallowed
     ``optional:`` failure comes back as a success carrying the child's
@@ -188,7 +203,7 @@ def run_subflow(
         raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
         return FlowSuccess(step=resolved.name)
-    result = run_loaded_flow(session, resolved.flow, resolved.data)
+    result = run_loaded_flow(session, resolved.flow, resolved.data, behavior=behavior)
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(step=resolved.name, outputs=result.outputs)
     return result

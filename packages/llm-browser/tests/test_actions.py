@@ -68,7 +68,7 @@ def test_click(input_session: MagicMock) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=5_000)
     execute_action(input_session, step)
     input_session.click.assert_called_once_with(
-        step.selector, dispatch=False, humanize=None, timeout=5_000
+        step.selector, dispatch=False, behavior=Behavior.off(), timeout=5_000
     )
 
 
@@ -82,7 +82,7 @@ def test_fill(input_session: MagicMock) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(input_session, step)
     input_session.fill.assert_called_once_with(
-        step.selector, "hello", humanize=None, timeout=step.timeout
+        step.selector, "hello", behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -92,14 +92,38 @@ def test_type(input_session: MagicMock) -> None:
     )
     execute_action(input_session, step)
     input_session.type.assert_called_once_with(
-        step.selector, "query", delay_ms=50, humanize=None, timeout=step.timeout
+        step.selector,
+        "query",
+        delay_ms=50,
+        behavior=Behavior.off(),
+        timeout=step.timeout,
     )
 
 
-def test_click_passes_humanize_through(input_session: MagicMock) -> None:
+def test_click_resolves_humanize_into_the_behavior_it_passes(
+    input_session: MagicMock,
+) -> None:
+    """The step's flag is spent here: the session method is handed the
+    behaviour it asked for, not the flag."""
     step = ClickStep(name="s", action="click", selector="#btn", humanize=True)
     execute_action(input_session, step)
-    assert input_session.click.call_args.kwargs["humanize"] is True
+    assert input_session.click.call_args.kwargs["behavior"].mouse_move is True
+
+
+def test_a_run_level_behavior_reaches_a_step_that_says_nothing(
+    input_session: MagicMock,
+) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn")
+    execute_action(input_session, step, Behavior.human())
+    assert input_session.click.call_args.kwargs["behavior"] == Behavior.human()
+
+
+def test_a_step_humanize_false_beats_the_run_level_behavior(
+    input_session: MagicMock,
+) -> None:
+    step = ClickStep(name="s", action="click", selector="#btn", humanize=False)
+    execute_action(input_session, step, Behavior.human())
+    assert input_session.click.call_args.kwargs["behavior"].mouse_move is False
 
 
 def test_type_passes_a_jittered_delay_through(input_session: MagicMock) -> None:
@@ -114,7 +138,7 @@ def test_select(input_session: MagicMock) -> None:
     step = SelectStep(name="s", action="select", selector="#dropdown", value="opt2")
     execute_action(input_session, step)
     input_session.select_option.assert_called_once_with(
-        step.selector, "opt2", timeout=step.timeout
+        step.selector, "opt2", behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -122,7 +146,7 @@ def test_check(input_session: MagicMock) -> None:
     step = CheckStep(name="s", action="check", selector="#cb")
     execute_action(input_session, step)
     input_session.set_checked.assert_called_once_with(
-        step.selector, True, timeout=step.timeout
+        step.selector, True, behavior=Behavior.off(), timeout=step.timeout
     )
 
 
@@ -499,7 +523,7 @@ def test_press_on_selector(input_session: MagicMock) -> None:
     step = PressStep(name="s", action="press", selector="#box", key="Enter")
     execute_action(input_session, step)
     input_session.press.assert_called_once_with(
-        step.selector, "Enter", timeout=step.timeout
+        step.selector, "Enter", behavior=Behavior.off(), timeout=step.timeout
     )
 
 

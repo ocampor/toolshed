@@ -173,6 +173,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:params.required` | params required |
 | `api:redact` | redact |
 | `api:retry_hint` | retry hint |
+| `api:run_flow.behavior` | run-level behavior |
 | `api:sanitize.high` | sanitize levels |
 | `api:sanitize.low` | sanitize levels |
 | `api:sanitize.medium` | sanitize levels |

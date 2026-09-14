@@ -67,6 +67,7 @@ REQUIRED_API = (
     "params.required",
     "redact",
     "retry_hint",
+    "run_flow.behavior",
     "sanitize.high",
     "sanitize.low",
     "sanitize.medium",

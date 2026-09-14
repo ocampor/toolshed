@@ -14,6 +14,18 @@
 - On `fill` it switches `Behavior.fill_as_type`: `humanize: true` types the
   value key by key on the humanized cadence even on a session with
   humanization off, `false` writes it in one go on a session that has it on.
+- `behavior=` on every `BrowserSession` input method (`click`, `fill`, `type`,
+  `press`, `select_option`, `set_checked`, `pick`, `scroll`, `download_file`):
+  one call runs under the `Behavior` it is handed. Precedence is `behavior=`,
+  then the `humanize` shorthand, then the session's own — which a call never
+  rewrites.
+- `run_flow(..., behavior=)` / `run_loaded_flow(..., behavior=)`: one run's
+  humanization default, carried down to every step (sub-flows included) unless
+  the step sets its own `humanize`. Nothing on the session changes.
+- `llm-browser run --behavior human|off|<behavior.yaml>` — the same default
+  from the CLI, the path loaded by the `behavior_config` schema.
+- `FlowSuccess.behavior` / `FlowError.behavior`: the profile the run used —
+  `human`, `off`, or `custom` when a knob differs from both presets.
 - `type` accepts `delay: [min, max]` — a per-key jitter instead of a constant
   cadence, carried as a `Jitter` through `session.type(delay_ms=)`.
 - Word-boundary pauses while typing: `Behavior.type_word_pause` fires on a
@@ -35,6 +47,15 @@
 - Humanization is stateless: every mouse path starts from a fresh random point
   within 200 px of its target, so two clicks never share a trail and nothing
   survives an action for a detector to correlate.
+- A flow step's `humanize` is resolved once, where the step is dispatched, so
+  the pacing around the action and the input call inside it are the same
+  behaviour; `scroll`'s delta jitter moved from the action into
+  `BrowserSession.scroll`, which now takes `behavior=` like every other input
+  method.
+- `session_input.behavior_for` takes the base `Behavior` instead of the
+  session; `session_input.effective_behavior(session, humanize, behavior)` is
+  the one place a call's behaviour is resolved. Action handlers take the
+  resolved `Behavior` as a third argument.
 - `min_gap_ms` is a jittered pause (±20%) paid *before* every paced action
   rather than a floor measured from the previous one. The gap is now paid even
   after a long idle, which costs a slow flow one extra wait per step.
