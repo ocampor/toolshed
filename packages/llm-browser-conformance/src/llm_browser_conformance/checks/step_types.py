@@ -56,10 +56,12 @@ ATTRIBUTE_ROWS = [
 ]
 
 # What `flows/read-properties` reads off the same page.
+ROW_NAMES = ("Alpha", "Beta", "Gamma")
 PROPERTY_ROWS = [
     {"text": name, "tag": "LI", "children": "3", "href": f"/{name.lower()}.html"}
-    for name in ("Alpha", "Beta", "Gamma")
+    for name in ROW_NAMES
 ]
+BARE_ROWS = [{"text": name} for name in ROW_NAMES]
 
 # What `flows/think.yaml` declares.
 THINK_MIN_MS = 400
@@ -387,6 +389,8 @@ def dom_returns_the_body_as_one_element(ctx: Context) -> None:
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
+    # A `read` with no `extract:` used to hand back a row of `None` per match.
+    assert outputs["bare"] == BARE_ROWS
 
 
 SCENARIOS = [

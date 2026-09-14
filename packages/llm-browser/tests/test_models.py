@@ -239,6 +239,26 @@ def test_a_read_takes_the_compact_extract_form_docs_advertise(
     assert (field.child_selector, field.attribute) == expected
 
 
+def test_a_read_without_an_extract_reads_the_row_text() -> None:
+    """A bare `read` used to carry an empty spec, so every row came back
+    `None`; the row's own text under `text` is what it means."""
+    step = validate_step({"name": "s", "action": "read", "selector": "body"})
+    assert isinstance(step, ReadStep)
+    assert list(step.extract) == ["text"]
+    field = step.extract["text"]
+    assert (field.child_selector, field.attribute) == (None, "textContent")
+
+
+@pytest.mark.parametrize("extract", [["td.name"], 5])
+def test_an_extract_that_is_not_a_mapping_fails_validation(extract: object) -> None:
+    """Only an absent (or empty) `extract` means the default field; anything
+    else of the wrong shape is an author's typo."""
+    with pytest.raises(ValidationError):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "extract": extract}
+        )
+
+
 @pytest.mark.parametrize("spec", [["td.name"], 5, None])
 def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
     spec: object,

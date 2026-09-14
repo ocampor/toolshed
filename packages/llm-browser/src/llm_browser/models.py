@@ -27,7 +27,7 @@ from llm_browser.constants import (
     DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
-from llm_browser.parse import ExtractField
+from llm_browser.parse import ExtractField, parse_extract_spec
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
 
@@ -187,7 +187,9 @@ class ReadStep(SelectorStep):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     action: Literal["read"]
-    extract: dict[str, ExtractField] = {}
+    extract: dict[str, ExtractField] = Field(
+        default_factory=lambda: parse_extract_spec(None)
+    )
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 
@@ -195,10 +197,13 @@ class ReadStep(SelectorStep):
     @classmethod
     def _coerce_extract(cls, v: Any) -> Any:
         # A flow writes each spec compactly ("td.name@href") or as a mapping;
-        # `ExtractField.coerce` is the one rule for both.
+        # `parse_extract_spec` is the one rule for both — and for a bare `read`
+        # naming no field, which reads the row's own text as `text`.
+        if v is None or v == {}:
+            return parse_extract_spec(None)
         if not isinstance(v, dict):
             return v
-        return {k: ExtractField.coerce(spec) for k, spec in v.items()}
+        return parse_extract_spec(v)
 
 
 class ParseStep(SelectorStep):

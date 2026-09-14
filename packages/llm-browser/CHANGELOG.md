@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.0 — 2026-09-14
+
+### Changed
+
+- A `read` step with no `extract:` now reads the matched element's own text as
+  `text` (was: an empty spec, so every row came back `null`).
+
 ## 0.16.1 — 2026-09-13
 
 ### Changed
