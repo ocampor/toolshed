@@ -391,9 +391,10 @@ steps:
   - name: credentials
     selector: "body"
     action: read
-    extract:
-      text: { attribute: textContent }
 ```
+
+No `extract:` needed — a bare `read` gives the default `text` field (see
+FLOWS.md's [data actions](FLOWS.md#data-actions)).
 
 - No `goto` in the flow. Open the link by hand in a live tab and address that tab:
   `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` ([ATTACH.md](ATTACH.md)). A

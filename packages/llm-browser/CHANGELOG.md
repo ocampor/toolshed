@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.17.0 — 2026-09-14
+## 0.17.0 — 2026-09-13
 
 ### Changed
 
 - A `read` step with no `extract:` now reads the matched element's own text as
   `text` (was: an empty spec, so every row came back `null`).
+- An explicit `extract: {}` (or `extract: null`) on a `read` now means the
+  same default `text` field as no `extract:` (was: no fields, so every row
+  came back `null`).
 
 ## 0.16.1 — 2026-09-13
 
