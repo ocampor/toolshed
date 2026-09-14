@@ -4,7 +4,6 @@ Time is faked throughout — a real poll loop would make these tests sleep.
 """
 
 import itertools
-import random
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterator
@@ -336,7 +335,6 @@ def test_poll_for_state_is_driver_agnostic() -> None:
         state="attached",
         timeout_ms=DEFAULT_WAIT_TIMEOUT_MS,
         interval_ms=DEFAULT_POLL_INTERVAL_MS,
-        rng=random.Random(0),
     )
 
     assert driver.count.call_count == 1

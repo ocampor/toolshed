@@ -125,9 +125,7 @@ def test_the_default_humanized_type_sends_one_key_per_char_on_the_cadence(
         type_punct_pause=Jitter(),
         type_word_pause_chance=0.0,
     )
-    runtime = behavior.runtime()
-
-    Driver.humanized_type(driver, MagicMock(), "locator", "hi", behavior, runtime)
+    Driver.humanized_type(driver, MagicMock(), "locator", "hi", behavior)
 
     assert [call.args for call in driver.type.call_args_list] == [
         ("locator", "h"),

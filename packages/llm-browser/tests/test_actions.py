@@ -53,7 +53,6 @@ def input_session(tmp_path: object) -> MagicMock:
     """A session mock: input actions must not reach past it to a driver."""
     s = MagicMock(spec=BrowserSession)
     s.behavior = Behavior.off()
-    s.behavior_runtime = s.behavior.runtime()
     return s
 
 

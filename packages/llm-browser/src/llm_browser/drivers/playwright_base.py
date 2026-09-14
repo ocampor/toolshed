@@ -15,7 +15,6 @@ from typing import Any, Callable, ClassVar, Protocol, cast
 
 from llm_browser.behavior import (
     Behavior,
-    BehaviorRuntime,
     humanized_click,
     humanized_type,
 )
@@ -140,9 +139,8 @@ class PlaywrightDriverBase(Driver):
         page: Any,
         locator: Any,
         behavior: Behavior,
-        runtime: BehaviorRuntime,
     ) -> None:
-        humanized_click(page, locator, behavior, runtime)
+        humanized_click(page, locator, behavior)
 
     def humanized_type(
         self,
@@ -150,9 +148,8 @@ class PlaywrightDriverBase(Driver):
         locator: Any,
         text: str,
         behavior: Behavior,
-        runtime: BehaviorRuntime,
     ) -> None:
-        humanized_type(page, locator, text, behavior, runtime)
+        humanized_type(page, locator, text, behavior)
 
     def press(self, locator: Any, key: str) -> None:
         _pw_loc(locator).press(key)

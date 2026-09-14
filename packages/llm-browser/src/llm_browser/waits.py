@@ -10,7 +10,6 @@ single reads — because a tick that waited inside the driver would blow past
 this loop's deadline.
 """
 
-import random
 import time
 from typing import Any, Callable
 
@@ -99,7 +98,6 @@ def poll_for_state(
     state: WaitState,
     timeout_ms: int,
     interval_ms: int,
-    rng: random.Random,
     settle_ms: int = DEFAULT_SETTLE_MS,
 ) -> None:
     """Block until ``selector`` reaches ``state``, or raise ``TimeoutError``.
@@ -127,4 +125,4 @@ def poll_for_state(
                 f"{describe_selector(selector)} did not become "
                 f"{state} within {timeout_ms}ms"
             )
-        time.sleep(min(pause.sample_seconds(rng), remaining))
+        time.sleep(min(pause.sample_seconds(), remaining))

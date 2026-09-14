@@ -83,7 +83,7 @@ def execute_action(session: BrowserSession, step: Step) -> ActionResult:
     if step.action is None:
         return VoidResult()
     try:
-        with paced(session.behavior, session.behavior_runtime):
+        with paced(session.behavior):
             return get_registry().get(step.action)(session, step)
     except Exception as exc:
         if not is_step_failure(exc):
@@ -251,17 +251,17 @@ def action_scroll(session: BrowserSession, step: ScrollStep) -> VoidResult:
     for tick in range(step.times):
         session.scroll(
             0,
-            jittered_delta(step.delta, session.behavior, session.behavior_runtime.rng),
+            jittered_delta(step.delta, session.behavior),
         )
         if tick < step.times - 1:
-            jittered_sleep(step.pause, session.behavior_runtime.rng)
+            jittered_sleep(step.pause)
     return VoidResult()
 
 
 @_registry.register("think")
 def action_think(session: BrowserSession, step: ThinkStep) -> VoidResult:
     jitter = Jitter(min_ms=step.min_ms, max_ms=step.max_ms)
-    delay = jitter.sample_seconds(session.behavior_runtime.rng)
+    delay = jitter.sample_seconds()
     if delay > 0:
         time.sleep(delay)
     return VoidResult()

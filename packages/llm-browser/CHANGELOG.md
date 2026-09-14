@@ -32,12 +32,29 @@
   (half to all of it is sampled per move); default 30 → 20.
 - The path is clamped to the viewport and paced: a 4-16 ms jittered gap between
   points, so the trail has a speed as well as a shape.
-- `BehaviorRuntime.mouse_xy` starts unknown and is cleared by `session.scroll`
-  and `session.goto` — both move the pointer behind our back — so the next
-  curve starts near its target instead of teleporting from a stale point.
+- Humanization is stateless: every mouse path starts from a fresh random point
+  within 200 px of its target, so two clicks never share a trail and nothing
+  survives an action for a detector to correlate.
+- `min_gap_ms` is a jittered pause (±20%) paid *before* every paced action
+  rather than a floor measured from the previous one. The gap is now paid even
+  after a long idle, which costs a slow flow one extra wait per step.
+- Jitter is sampled from the unseeded module `random`; `Jitter.sample_seconds()`,
+  `waits.poll_for_state` and the humanization helpers no longer take an RNG.
 - `Driver.humanized_type`'s default (nodriver) now sends one key at a time on
   the behaviour's cadence instead of handing the whole string to `type`, so
   `delay: [min, max]` is a real per-key jitter on every driver.
+
+### Removed
+
+- `BehaviorRuntime` and `session.behavior_runtime` — there is no per-session
+  humanization state left to hold.
+- `Behavior.seed` and `Behavior.runtime()`. A fixed seed makes every run
+  reproduce the same timings, which is itself a fingerprint.
+
+Migration: drop `seed:` from any behavior YAML (it is now an unknown key and is
+rejected) and delete `session.behavior_runtime` assignments; `paced`,
+`humanized_click`, `humanized_type`, `type_chars`, `jittered_sleep` and
+`jittered_delta` lose their trailing runtime/rng argument.
 
 ### Fixed
 

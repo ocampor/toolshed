@@ -66,7 +66,6 @@ def test_click_humanizes_when_the_behavior_moves_the_mouse(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.click("#btn")
     driver(session).humanized_click.assert_called_once()
     driver(session).click.assert_not_called()
@@ -84,7 +83,6 @@ def test_click_humanize_false_overrides_a_human_session(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.click("#btn", humanize=False)
     driver(session).click.assert_called_once_with("element")
     driver(session).humanized_click.assert_not_called()
@@ -107,7 +105,6 @@ def test_type_humanize_false_overrides_a_human_session(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.type("#search", "query", humanize=False)
     driver(session).type.assert_called_once_with("element", "query", delay_ms=0)
     driver(session).humanized_type.assert_not_called()
@@ -121,9 +118,7 @@ def test_a_jitter_delay_types_humanized_with_that_jitter(
     delay = Jitter(min_ms=30, max_ms=90)
     session.type("#search", "query", delay_ms=delay)
     driver(session).type.assert_not_called()
-    _page, _element, _value, behavior, _runtime = driver(
-        session
-    ).humanized_type.call_args.args
+    _page, _element, _value, behavior = driver(session).humanized_type.call_args.args
     assert behavior.type_char_delay == delay
 
 
@@ -136,7 +131,6 @@ def test_fill_uses_the_plain_primitive_when_fill_as_type_is_off(
 
 def test_fill_types_when_fill_as_type_is_on(session: BrowserSession) -> None:
     session.behavior = Behavior.pace()
-    session.behavior_runtime = session.behavior.runtime()
     session.fill("#input", "hello")
     driver(session).humanized_type.assert_called_once()
     driver(session).fill.assert_not_called()
@@ -154,7 +148,6 @@ def test_fill_humanize_false_sets_the_value_on_a_human_session(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.fill("#input", "hello", humanize=False)
     driver(session).fill.assert_called_once_with("element", "hello")
     driver(session).humanized_type.assert_not_called()
@@ -165,9 +158,7 @@ def test_fill_humanize_true_types_at_the_behaviors_cadence(
 ) -> None:
     """The forced fill types on the humanized cadence, not at zero delay."""
     session.fill("#input", "hello", humanize=True)
-    _page, _element, _value, behavior, _runtime = driver(
-        session
-    ).humanized_type.call_args.args
+    _page, _element, _value, behavior = driver(session).humanized_type.call_args.args
     assert behavior.type_char_delay == Behavior.human().type_char_delay
 
 
@@ -175,7 +166,6 @@ def test_type_with_an_explicit_delay_beats_the_behavior(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.type("#search", "query", delay_ms=50)
     driver(session).type.assert_called_once_with("element", "query", delay_ms=50)
     driver(session).humanized_type.assert_not_called()
@@ -185,7 +175,6 @@ def test_type_humanizes_when_the_behavior_has_a_key_delay(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.type("#search", "query")
     driver(session).humanized_type.assert_called_once()
 
@@ -230,17 +219,22 @@ def test_set_checked(session: BrowserSession) -> None:
 # --- pacing ---
 
 
-def test_input_marks_the_action_done(session: BrowserSession) -> None:
-    assert session.behavior_runtime.last_action_monotonic is None
+def test_input_pauses_before_the_action_by_the_min_gap(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """The gap is memoryless: every action pays it, idle or not."""
+    session.behavior = PACED.model_copy(update={"min_gap_ms": 100})
     session.click("#btn")
-    assert session.behavior_runtime.last_action_monotonic is not None
+    session.click("#btn")
+    gaps = [slept for slept in sleeps if slept != PACE_MS / 1000.0]
+    assert len(gaps) == 2
+    assert all(0.08 <= gap <= 0.12 for gap in gaps)
 
 
 def test_input_pauses_after_the_action(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
     session.behavior = PACED
-    session.behavior_runtime = session.behavior.runtime()
     session.click("#btn")
     assert sleeps == [PACE_MS / 1000.0]
 
@@ -256,7 +250,6 @@ def test_press_pauses_before_the_key_when_the_behavior_moves_the_mouse(
             "pre_click_pause": Jitter(min_ms=PRE_CLICK_MS, max_ms=PRE_CLICK_MS),
         }
     )
-    session.behavior_runtime = session.behavior.runtime()
     session.press("#field", "Enter")
     assert sleeps == [PRE_CLICK_MS / 1000.0, PACE_MS / 1000.0]
 
@@ -268,7 +261,6 @@ def test_press_skips_the_pre_click_pause_when_the_mouse_stays_put(
     session.behavior = PACED.model_copy(
         update={"pre_click_pause": Jitter(min_ms=PRE_CLICK_MS, max_ms=PRE_CLICK_MS)}
     )
-    session.behavior_runtime = session.behavior.runtime()
     session.press("#field", "Enter")
     assert sleeps == [PACE_MS / 1000.0]
 
@@ -277,7 +269,6 @@ def test_a_failed_input_skips_the_post_pause(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
     session.behavior = PACED
-    session.behavior_runtime = session.behavior.runtime()
     session.driver.click.side_effect = TimeoutError("gone")
     with pytest.raises(TimeoutError):
         session.click("#btn")
@@ -290,7 +281,6 @@ def test_an_action_paces_once_not_twice(
     """``execute_action`` opens the pacing scope; the session method it calls
     must defer to it rather than pause a second time."""
     session.behavior = PACED
-    session.behavior_runtime = session.behavior.runtime()
     execute_action(session, ClickStep(name="s", action="click", selector="#btn"))
     assert sleeps == [PACE_MS / 1000.0]
 
@@ -300,7 +290,6 @@ def test_an_action_paces_once_not_twice(
 
 def test_pick_clicks_the_way_a_click_step_does(session: BrowserSession) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.driver.text_content.return_value = "Banana"
     session.driver.count.return_value = 2
     session.pick(".option", "Banana")
@@ -312,7 +301,6 @@ def test_download_arms_the_trigger_with_the_same_click(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     session.download_file("#dl")
     _page, trigger, _timeout = driver(session).download_bytes.call_args.args
     trigger()
@@ -368,29 +356,12 @@ def test_humanize_false_still_jitters_an_explicit_delay_pair(
     """`humanize: false` drops the mouse path and the humanized pacing; a
     `[min, max]` the caller wrote is a cadence they asked for, so it stays."""
     session.behavior = Behavior.human()
-    session.behavior_runtime = session.behavior.runtime()
     delay = Jitter(min_ms=40, max_ms=80)
     session.type("#search", "query", delay_ms=delay, humanize=False)
     driver(session).type.assert_not_called()
-    _page, _element, _value, behavior, _runtime = driver(
-        session
-    ).humanized_type.call_args.args
+    _page, _element, _value, behavior = driver(session).humanized_type.call_args.args
     assert behavior.type_char_delay == delay
     assert behavior.mouse_move is False
-
-
-def test_scroll_and_goto_forget_where_the_pointer_was(
-    session: BrowserSession,
-) -> None:
-    """Both move the pointer behind our back — a wheel parks it over what it
-    scrolls, a navigation resets it — so the next curve must not start there."""
-    session.behavior_runtime.mouse_xy = (10.0, 20.0)
-    session.scroll(0, 300)
-    assert session.behavior_runtime.mouse_xy is None
-
-    session.behavior_runtime.mouse_xy = (10.0, 20.0)
-    session.goto("https://example.com")
-    assert session.behavior_runtime.mouse_xy is None
 
 
 def test_humanize_true_leaves_a_tuned_knob_alone(session: BrowserSession) -> None:

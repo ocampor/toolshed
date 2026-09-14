@@ -79,7 +79,7 @@ def click(
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
     for overlays that real input cannot reach."""
     behavior = behavior_for(session, humanize)
-    with paced(behavior, session.behavior_runtime):
+    with paced(behavior):
         click_element(
             session,
             session.find(selector, timeout=timeout),
@@ -106,9 +106,7 @@ def click_element(
     if dispatch:
         session.driver.dispatch_event(element, "click")
     elif behavior.mouse_move:
-        session.driver.humanized_click(
-            session.get_page(), element, behavior, session.behavior_runtime
-        )
+        session.driver.humanized_click(session.get_page(), element, behavior)
     else:
         session.driver.click(element)
 
@@ -124,7 +122,7 @@ def fill(
     """``fill_as_type`` is one of the knobs ``humanize`` switches, so ``True``
     types the value key by key and ``False`` writes it in one go."""
     behavior = behavior_for(session, humanize)
-    with paced(behavior, session.behavior_runtime):
+    with paced(behavior):
         element = session.find(selector, timeout=timeout)
         if behavior.fill_as_type:
             type_humanized(session, element, value, behavior)
@@ -145,7 +143,7 @@ def type(  # shadows the builtin to mirror the `type` action's name
     behaviour's: a constant types at a constant rate, a :class:`Jitter` becomes
     the per-key delay of the humanized path."""
     behavior = behavior_for(session, humanize)
-    with paced(behavior, session.behavior_runtime):
+    with paced(behavior):
         element = session.find(selector, timeout=timeout)
         if isinstance(delay_ms, Jitter):
             jittered = behavior.model_copy(update={"type_char_delay": delay_ms})
@@ -164,11 +162,9 @@ def press(
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     """``selector=None`` presses whatever holds focus."""
-    with paced(session.behavior, session.behavior_runtime):
+    with paced(session.behavior):
         if session.behavior.mouse_move:
-            jittered_sleep(
-                session.behavior.pre_click_pause, session.behavior_runtime.rng
-            )
+            jittered_sleep(session.behavior.pre_click_pause)
         if selector is None:
             session.driver.press_focused(session.get_page(), key)
             return
@@ -182,7 +178,7 @@ def select_option(
     *,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
-    with paced(session.behavior, session.behavior_runtime):
+    with paced(session.behavior):
         element = session.find(selector, timeout=timeout)
         expect_select(session, element, selector)
         session.driver.select_option(element, value)
@@ -214,7 +210,7 @@ def set_checked(
     *,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
-    with paced(session.behavior, session.behavior_runtime):
+    with paced(session.behavior):
         session.driver.set_checked(session.find(selector, timeout=timeout), checked)
 
 
@@ -229,5 +225,4 @@ def type_humanized(
         element,
         value,
         behavior if behavior is not None else session.behavior,
-        session.behavior_runtime,
     )

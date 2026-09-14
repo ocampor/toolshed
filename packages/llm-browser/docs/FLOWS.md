@@ -54,7 +54,9 @@ switches on what is still off: a knob the session tuned (a slower
 `type_char_delay`, a tighter `click_offset_ratio`) is left as it was, and so is
 a driver's own opt-out — camoufox leaves the mouse path to its native engine,
 so `humanize: true` does not stack ours on top. The rate limit (`min_gap_ms`)
-is never a humanization knob and survives either way.
+is never a humanization knob and survives either way; it is a jittered pause
+paid before every step, not a floor measured from the last one, so an already
+slow flow still waits it out.
 
 `humanize: false` turns off the mouse path and the humanized pacing, not an
 explicit `delay: [min, max]`: a pair you wrote is a cadence you asked for, so
