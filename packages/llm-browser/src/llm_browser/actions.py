@@ -40,7 +40,7 @@ from llm_browser.results import (
     VoidResult,
 )
 from llm_browser.session import BrowserSession
-from llm_browser.session_input import behavior_for
+from llm_browser.session_input import behavior_for, with_driver_opt_outs
 
 
 # Param type is loose because each handler accepts a specific Step subclass, and
@@ -84,14 +84,16 @@ def step_behavior(
     session: BrowserSession, step: Step, run_behavior: Behavior | None
 ) -> Behavior:
     """What this step runs under: the run's default when it has one, the
-    session's otherwise, with the step's own ``humanize`` switched into it.
+    session's otherwise, with the step's own ``humanize`` switched into it and
+    the driver's opt-outs applied last.
 
     Resolved once, here, so the pacing around the action and the input call
     inside it are the same behaviour, and so a run-level default reaches a
     step without anything on the session changing.
     """
     base = run_behavior if run_behavior is not None else session.behavior
-    return behavior_for(base, getattr(step, "humanize", None))
+    stepped = behavior_for(base, getattr(step, "humanize", None))
+    return with_driver_opt_outs(session.behavior, stepped)
 
 
 def execute_action(

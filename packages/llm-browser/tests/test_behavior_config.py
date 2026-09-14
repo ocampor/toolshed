@@ -70,6 +70,13 @@ def test_unknown_driver_rejected(tmp_path: Path) -> None:
         load_behavior(write(tmp_path, "driver: future-driver\n"))
 
 
+def test_malformed_yaml_rejected(tmp_path: Path) -> None:
+    """A syntax error is a config error like any other, so both CLI entry
+    points turn it into a usage message instead of a traceback."""
+    with pytest.raises(BehaviorConfigError):
+        load_behavior(write(tmp_path, "min_gap_ms: [unclosed\n"))
+
+
 # ---- Overrides ----
 
 

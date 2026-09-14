@@ -49,14 +49,17 @@ clicks on a curved path with a hover dwell, an in-box offset and a jittered
 press even when the session runs with humanization off, `false` takes the plain
 path even when it is on, and leaving it out follows the session. On `fill` it
 switches `fill_as_type`: `true` types the value key by key on the humanized
-cadence, `false` writes it in one go. `true` only
-switches on what is still off: a knob the session tuned (a slower
-`type_char_delay`, a tighter `click_offset_ratio`) is left as it was, and so is
-a driver's own opt-out — camoufox leaves the mouse path to its native engine,
-so `humanize: true` does not stack ours on top. The rate limit (`min_gap_ms`)
-is never a humanization knob and survives either way; it is a jittered pause
-paid before every step, not a floor measured from the last one, so an already
-slow flow still waits it out.
+cadence, `false` writes it in one go. `true` only switches on what is still
+off: a knob the session tuned (a slower `type_char_delay`, a tighter
+`click_offset_ratio`) is left as it was.
+
+A driver's own opt-out is applied last, to whatever the step resolved to — a
+`humanize`, a run-level `behavior=`, a `--behavior human`: camoufox leaves the
+mouse path to its native engine, so none of them stacks ours on top unless the
+session's own behavior YAML asked for it. The rate limit (`min_gap_ms`) is
+never a humanization knob and survives either way; it is a jittered pause paid
+before every step, not a floor measured from the last one, so an already slow
+flow still waits it out.
 
 `humanize: false` turns off the mouse path and the humanized pacing, not an
 explicit `delay: [min, max]`: a pair you wrote is a cadence you asked for, so
@@ -168,9 +171,21 @@ run_flow(session, flow, data)
 
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `behavior=` is the run's humanization default — every step takes it unless it sets its own `humanize`, and the session's own `Behavior` is left as it was. `FlowSuccess.behavior` / `FlowError.behavior` name the profile the run used: `human`, `off`, or `custom` when a knob differs from both presets. `llm-browser run --behavior human|off|<behavior.yaml>` sets the same default from the CLI. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes. `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
+`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes.
+
+`redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
 
 A failing run also carries the page itself: `FlowError.screenshot` is PNG bytes and `FlowError.dom` is sanitized HTML text, both in memory and controlled by `BrowserSession(capture="screenshot" | "dom" | "both" | "none")`. `model_dump(mode="json")` base64-encodes the bytes and validating that back decodes them, so the result round-trips; `llm-browser run` instead writes both to `--capture-dir` and prints the paths.
+
+### The run's behaviour
+
+| knob | where | what it decides |
+|---|---|---|
+| `behavior=` | `run_flow(..., behavior=)`, `run_loaded_flow(..., behavior=)` | the run's humanization default: every step takes it unless it sets its own `humanize` |
+| `--behavior` | `llm-browser run --behavior human\|off\|<behavior.yaml>` | the same default from the CLI; a path is loaded by the `behavior_config` schema |
+| `FlowSuccess.behavior` | the result (`FlowError.behavior` too) | the profile the run used: `human`, `off`, or `custom` when a knob differs from both presets |
+
+The session's own `Behavior` is left as it was — a run carries its behaviour, it does not leave it behind. The driver's opt-outs are applied last to it exactly as they are to a step's `humanize`, so `--behavior human` on camoufox still leaves the mouse path to the native engine.
 
 ### Capturing artifacts
 

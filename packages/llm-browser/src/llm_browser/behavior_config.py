@@ -87,7 +87,10 @@ def load_behavior(config_path: str | Path) -> Behavior:
     If ``driver`` is absent, the loader fills in the default tag
     before validation — pydantic discriminated unions require a
     tag in the data."""
-    data = yaml.safe_load(Path(config_path).read_text()) or {}
+    try:
+        data = yaml.safe_load(Path(config_path).read_text()) or {}
+    except yaml.YAMLError as e:
+        raise BehaviorConfigError(f"{config_path}: {e}") from e
     if isinstance(data, dict):
         data.setdefault("driver", DEFAULT_DRIVER)
     try:

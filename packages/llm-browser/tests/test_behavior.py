@@ -174,9 +174,12 @@ def test_click_target_spreads_with_the_offset_ratio() -> None:
 
 
 def test_a_curve_bows_off_the_straight_line() -> None:
-    points = curve_points((0.0, 0.0), (100.0, 0.0), 10)
-    assert points[-1] == (100.0, 0.0)
-    assert max(abs(y) for _x, y in points) > 1.0
+    """The bow is sampled either way and one draw can land near zero, so the
+    claim is about paths rather than about a path."""
+    curves = [curve_points((0.0, 0.0), (100.0, 0.0), 10) for _ in range(200)]
+    assert all(points[-1] == (100.0, 0.0) for points in curves)
+    bowed = [max(abs(y) for _x, y in points) > 1.0 for points in curves]
+    assert sum(bowed) > len(bowed) * 0.8
 
 
 def test_a_curve_is_monotonic_towards_its_end() -> None:

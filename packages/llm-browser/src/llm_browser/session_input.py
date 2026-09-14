@@ -39,6 +39,28 @@ def driver_opt_out(behavior: Behavior, field: str) -> bool:
     return bool(declared.default != Behavior.model_fields[field].default)
 
 
+def driver_opt_outs(session_behavior: Behavior) -> dict[str, Any]:
+    """The knobs the session's driver owns, at the value it chose.
+
+    A session that set one itself has overruled the driver and keeps its own
+    value; everything else the class redefined is the driver's to decide.
+    """
+    declared = session_behavior.__class__.model_fields
+    return {
+        name: declared[name].default
+        for name in Behavior.model_fields
+        if driver_opt_out(session_behavior, name)
+        and getattr(session_behavior, name) == declared[name].default
+    }
+
+
+def with_driver_opt_outs(session_behavior: Behavior, resolved: Behavior) -> Behavior:
+    """One rule, applied last to whatever a call resolved to: a behaviour the
+    caller wrote by hand cannot switch on what the driver humanizes itself."""
+    opt_outs = driver_opt_outs(session_behavior)
+    return resolved.model_copy(update=opt_outs) if opt_outs else resolved
+
+
 def switched_on(behavior: Behavior) -> dict[str, Any]:
     """The knobs ``humanize: true`` turns on: those still sitting at their
     ``off()`` value. One the session tuned — a slower key delay, a tighter
@@ -48,7 +70,6 @@ def switched_on(behavior: Behavior) -> dict[str, Any]:
         name: getattr(human, name)
         for name in HUMANIZE_KNOBS
         if getattr(behavior, name) == getattr(off, name)
-        and not driver_opt_out(behavior, name)
     }
 
 
@@ -74,12 +95,14 @@ def effective_behavior(
 ) -> Behavior:
     """The behaviour one call runs under: an explicit ``behavior`` first, then
     the ``humanize`` shorthand applied to the session's default, then that
-    default unchanged. The session's own ``Behavior`` is never rewritten —
-    a call carries its behaviour, it does not leave it behind.
+    default unchanged, and the driver's own opt-outs applied last to all three.
+    The session's own ``Behavior`` is never rewritten — a call carries its
+    behaviour, it does not leave it behind.
     """
-    if behavior is not None:
-        return behavior
-    return behavior_for(session.behavior, humanize)
+    resolved = (
+        behavior if behavior is not None else behavior_for(session.behavior, humanize)
+    )
+    return with_driver_opt_outs(session.behavior, resolved)
 
 
 def click(
@@ -108,7 +131,7 @@ def click_element(
     element: Any,
     *,
     dispatch: bool = False,
-    behavior: Behavior | None = None,
+    behavior: Behavior,
 ) -> None:
     """Click an element the caller already resolved.
 
@@ -117,7 +140,6 @@ def click_element(
     list, ``download_file`` arming a download — clicks like every other click.
     Pacing belongs to whoever opened the action, not here.
     """
-    behavior = behavior if behavior is not None else session.behavior
     if dispatch:
         session.driver.dispatch_event(element, "click")
     elif behavior.mouse_move:
@@ -239,11 +261,6 @@ def type_humanized(
     session: "BrowserSession",
     element: Any,
     value: str,
-    behavior: Behavior | None = None,
+    behavior: Behavior,
 ) -> None:
-    session.driver.humanized_type(
-        session.get_page(),
-        element,
-        value,
-        behavior if behavior is not None else session.behavior,
-    )
+    session.driver.humanized_type(session.get_page(), element, value, behavior)

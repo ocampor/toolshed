@@ -69,3 +69,13 @@ def test_a_missing_path_is_a_usage_error(tmp_path: Path, session: MagicMock) -> 
     exit_code, _ = run_cli(tmp_path, "--behavior", str(tmp_path / "nope.yaml"))
 
     assert exit_code != 0
+
+
+def test_a_malformed_yaml_is_a_usage_error(tmp_path: Path, session: MagicMock) -> None:
+    """A syntax error in the file is the user's typo, not a traceback."""
+    config = tmp_path / "behavior.yaml"
+    config.write_text("min_gap_ms: [unclosed\n")
+
+    exit_code, _ = run_cli(tmp_path, "--behavior", str(config))
+
+    assert exit_code != 0

@@ -56,6 +56,11 @@
   session; `session_input.effective_behavior(session, humanize, behavior)` is
   the one place a call's behaviour is resolved. Action handlers take the
   resolved `Behavior` as a third argument.
+- A driver's own opt-out (camoufox's `mouse_move` / `focus_drift`) is applied
+  last, to every behaviour a call can run under — a step's `humanize`, a
+  run-level `behavior=`, `--behavior human` — so none of them stacks our mouse
+  path on the driver's native one. A session that set the knob itself in its
+  behavior YAML still overrules the driver.
 - `min_gap_ms` is a jittered pause (±20%) paid *before* every paced action
   rather than a floor measured from the previous one. The gap is now paid even
   after a long idle, which costs a slow flow one extra wait per step.
@@ -72,24 +77,38 @@
 - `Behavior.seed` and `Behavior.runtime()`. A fixed seed makes every run
   reproduce the same timings, which is itself a fingerprint.
 
-Migration: drop `seed:` from any behavior YAML (it is now an unknown key and is
-rejected) and delete `session.behavior_runtime` assignments; `paced`,
-`humanized_click`, `humanized_type`, `type_chars`, `jittered_sleep` and
-`jittered_delta` lose their trailing runtime/rng argument.
-
 ### Fixed
 
 - A `delay` list that is not `[min_ms, max_ms]`, or whose bounds are negative
   or inverted, is rejected with one message naming the shape instead of two
   union errors.
+- A malformed behavior YAML is a usage error on both `--behavior` and
+  `--behavior-config`: `load_behavior` raises `BehaviorConfigError` for a YAML
+  syntax error instead of letting `yaml.YAMLError` reach the user as a
+  traceback.
 
 ### Breaking
 
 - `Behavior.click_offset_px` is replaced by `Behavior.click_offset_ratio`
   (default 0.3): the click lands that fraction of the way from the element's
   centre to an edge, so the spread scales with the target instead of shrinking
-  to a fixed pixel box on a large one. Migration: drop `click_offset_px` from
-  behavior YAML — `extra="forbid"` rejects it — and set `click_offset_ratio`.
+  to a fixed pixel box on a large one.
+
+Migration:
+
+- Drop `seed:` from any behavior YAML — it is an unknown key now and is
+  rejected — and drop `click_offset_px:` for `click_offset_ratio:`.
+- Delete `session.behavior_runtime` assignments; `BehaviorRuntime` is gone.
+- Drop the trailing runtime/rng argument from `paced`, `humanized_click`,
+  `humanized_type`, `type_chars`, `jittered_sleep`, `jittered_delta`,
+  `Jitter.sample_seconds` and `waits.poll_for_state`.
+- `session_input.behavior_for(base, humanize)` takes the base `Behavior`, not
+  the session; resolve a call's behaviour with
+  `session_input.effective_behavior(session, humanize, behavior)`.
+- Action handlers registered on `actions.get_registry()` take a third
+  argument: `(session, step)` becomes `(session, step, behavior)`.
+- `session_input.click_element` and `session_input.type_humanized` require
+  `behavior`; it no longer defaults to the session's.
 
 ## 0.14.0 — 2026-09-13
 

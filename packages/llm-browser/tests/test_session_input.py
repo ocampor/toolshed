@@ -344,10 +344,56 @@ def test_humanize_true_honours_a_drivers_own_mouse_humanization(
     session.behavior = CamoufoxBehaviorConfig(
         driver="camoufox", type_char_delay=Jitter()
     )
-    forced = behavior_for(session.behavior, True)
+    forced = effective_behavior(session, True)
     assert forced.mouse_move is False
     assert forced.focus_drift is False
     assert forced.type_char_delay == Behavior.human().type_char_delay
+
+
+CAMOUFOX = CamoufoxBehaviorConfig(driver="camoufox")
+
+
+def test_an_explicit_behavior_honours_a_drivers_own_mouse_humanization(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """Opt-outs are applied last, to a hand-written `Behavior` as much as to
+    `humanize: true` — `--behavior human` on camoufox must not stack our
+    Bézier on the native one."""
+    session.behavior = CAMOUFOX
+    session.click("#btn", behavior=Behavior.human())
+    driver(session).click.assert_called_once_with("element")
+    driver(session).humanized_click.assert_not_called()
+
+
+def test_a_run_level_behavior_honours_a_drivers_own_mouse_humanization(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    session.behavior = CAMOUFOX
+    step = ClickStep(name="c", action="click", selector="#btn")
+    execute_action(session, step, Behavior.human())
+    driver(session).click.assert_called_once_with("element")
+    driver(session).humanized_click.assert_not_called()
+
+
+def test_an_explicit_behavior_keeps_the_knobs_the_driver_does_not_own(
+    session: BrowserSession,
+) -> None:
+    """The opt-out is one knob, not a veto on the whole behaviour."""
+    session.behavior = CAMOUFOX
+    resolved = effective_behavior(session, behavior=Behavior.human())
+    assert resolved.mouse_move is False
+    assert resolved.focus_drift is False
+    assert resolved.type_char_delay == Behavior.human().type_char_delay
+
+
+def test_a_session_that_set_the_knob_itself_overrules_the_driver(
+    session: BrowserSession,
+) -> None:
+    """The opt-out is the driver's default, not a lock: a config that asks for
+    our mouse path on camoufox gets it."""
+    session.behavior = CamoufoxBehaviorConfig(driver="camoufox", mouse_move=True)
+    assert effective_behavior(session, behavior=Behavior.human()).mouse_move is True
+    assert effective_behavior(session, behavior=Behavior.off()).mouse_move is False
 
 
 def test_humanize_false_still_jitters_an_explicit_delay_pair(
