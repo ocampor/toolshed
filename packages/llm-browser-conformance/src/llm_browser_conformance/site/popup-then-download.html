@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popup then download</title>
+<!-- What a portal's print window really does: render something, then go and
+     get the file. By then the tab is a document of its own, and the download
+     belongs to it rather than to the page that opened it.
+
+     No `?delay=` and no isTrusted recorder: nothing clicks here, and the wait
+     that matters is only "long enough to commit a document". -->
+<p id="status">Preparing…</p>
+<script>
+setTimeout(() => { location.href = "/billtax/print.action"; }, 300);
+</script>

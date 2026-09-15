@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Popup download</title>
+<!-- The shapes a portal uses to hand over a receipt: a popup that redirects
+     to the file, one that renders a page and fetches it afterwards, a
+     target=_blank link and a target=_blank form post. Only #attach keeps the
+     file in the tab the session is driving. -->
+<button id="popup_inline" onclick="window.open('/billtax/print.action')">Print</button>
+<button id="popup_attach" onclick="window.open('/billtax/attach.action')">Save</button>
+<button id="popup_deferred" onclick="window.open('popup-then-download.html')">Print later</button>
+<button id="popup_html" onclick="window.open('new-tab-target.html')">Open</button>
+<a id="attach" href="/attach.pdf">Attachment</a>
+<a id="blank_link" href="/attach.pdf" target="_blank">Attachment in a new tab</a>
+<form id="blank_form" method="post" action="/billtax/downloadFile.action" target="_blank">
+  <button id="blank_form_submit" type="submit">Post to a new tab</button>
+</form>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+</script>

@@ -334,8 +334,15 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
     The close is deferred onto a timer because a synchronous ``window.close()``
     destroys the target before it answers the CDP call, and nodriver's sync
     bridge then waits forever on a reply that will never come.
+
+    Asking a tab that has already gone — a popup the browser turned into a
+    download closes itself, sometimes between the tab list and this call — is
+    not an error: it is the outcome being asked for, and the loop below still
+    has to see it in the tab list either way.
     """
-    ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
+    # Verified by the loop below, not by this call.
+    with contextlib.suppress(Exception):
+        ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
     while ctx.session.latest_tab() is tab:
         assert time.monotonic() < deadline, "the opened tab never closed"
         # Reading the opener is also the refresh: nodriver only learns that a
@@ -345,7 +352,7 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
         time.sleep(0.05)
 
 
-def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
+def close_opened_tabs(ctx: Context, opener: Any, opened: str | None) -> None:
     """Put the browser back to the single tab ``opener``.
 
     Test isolation: one browser drives every row of a driver's column, so a
@@ -354,9 +361,11 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
 
     ``opened`` names the page the click opened, because a popup is not in the
     driver's tab list the instant the click returns — the same lag
-    ``latest_tab_url`` polls out.
+    ``latest_tab_url`` polls out. ``None`` where there may be no tab to wait
+    for: a popup the browser turned into a download closes itself.
     """
-    latest_tab_url(ctx, opened)
+    if opened is not None:
+        latest_tab_url(ctx, opened)
     deadline = time.monotonic() + TAB_CLOSE_TIMEOUT_S
     while (extra := ctx.session.latest_tab()) is not opener:
         # The inner wait has its own deadline, but it is skipped whenever
@@ -367,7 +376,9 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
 
 
 @contextlib.contextmanager
-def tabs_closed_after(ctx: Context, opener: Any, opened: str) -> Iterator[None]:
+def tabs_closed_after(
+    ctx: Context, opener: Any, opened: str | None = None
+) -> Iterator[None]:
     """Run a scenario body, then put the browser back to the one tab ``opener``.
 
     The cleanup has to run on the failing path — that is the path it exists
