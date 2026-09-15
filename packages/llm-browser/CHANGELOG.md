@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.1 — 2026-09-15
+
+### Fixed
+
+- `patchright_shim` guards patchright's unawaited `setRequestInterception(true)` in the driver bundle so a closed CDP session no longer kills the driver and hangs the client (ocampor/toolshed#41).
+
+### Changed
+
+- `patchright` pinned to `>=1.62.3,<1.63`; the shim matches that bundle only.
+
 ## 0.17.0 — 2026-09-13
 
 ### Changed

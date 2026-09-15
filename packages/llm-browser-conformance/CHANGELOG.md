@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1 — 2026-09-15
+
+Tracks `llm-browser` 0.17.1.
+
+### Changed
+
+- `patchright` pinned to `1.62.*`, matching `llm-browser`'s `>=1.62.3,<1.63`.
+
 ## 0.10.0 — 2026-09-15
 
 ### Added

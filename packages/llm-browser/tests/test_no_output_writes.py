@@ -52,6 +52,7 @@ WRITE_MODES = set("wax+")
 ALLOWED = {
     "cli.py": "the CLI is what writes what a run returned",
     "state.py": "state.json is how a detached browser is found again",
+    "drivers/patchright_shim.py": "it patches patchright's own Node bundle in place",
 }
 
 

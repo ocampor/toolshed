@@ -160,8 +160,8 @@ def test_patchright_reattaches_from_cdp_endpoint(
     fake_pw.chromium.connect_over_cdp.return_value = fake_browser
 
     monkeypatch.setattr(
-        "llm_browser.drivers.patchright.sync_playwright",
-        lambda: MagicMock(start=lambda: fake_pw),
+        "llm_browser.drivers.patchright.start_playwright",
+        lambda: fake_pw,
     )
 
     driver = PatchrightDriver()

@@ -1,12 +1,12 @@
 [project]
 name = "llm-browser"
-version = "0.17.0"
+version = "0.17.1"
 description = "Playwright browser automation with declarative YAML flows for LLM agents."
 requires-python = ">=3.13"
 dependencies = [
     "click>=8.1",
     "pydantic>=2.0",
-    "patchright>=1.40",
+    "patchright>=1.62.3,<1.63",
     "pyyaml>=6.0",
     "yaml-engine",
     "lxml[html_clean]>=5.0",
