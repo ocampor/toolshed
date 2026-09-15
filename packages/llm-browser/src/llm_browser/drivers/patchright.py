@@ -22,10 +22,10 @@ from patchright.sync_api import (
     BrowserContext,
     Page,
     Playwright,
-    sync_playwright,
 )
 
 from llm_browser.drivers.handle import DriverHandle
+from llm_browser.drivers.patchright_shim import start_playwright
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 
 
@@ -53,7 +53,7 @@ class PatchrightDriver(PlaywrightDriverBase):
         executable_path: str | None = None,
     ) -> DriverHandle:
         user_data_dir.mkdir(parents=True, exist_ok=True)
-        self._playwright = sync_playwright().start()
+        self._playwright = start_playwright()
         self._context = self._playwright.chromium.launch_persistent_context(
             **_build_launch_kwargs(user_data_dir, headed, executable_path)
         )
@@ -146,7 +146,7 @@ class PatchrightDriver(PlaywrightDriverBase):
         driver process and the websocket.
         """
         if self._playwright is None:
-            self._playwright = sync_playwright().start()
+            self._playwright = start_playwright()
         if self._browser is None or not self._browser.is_connected():
             self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
         self._context = _first_context_or_new(self._browser)

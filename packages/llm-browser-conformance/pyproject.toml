@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser-conformance"
-version = "0.10.0"
+version = "0.10.1"
 description = "Real-browser conformance suite for llm-browser drivers."
 requires-python = ">=3.13"
 dependencies = [
@@ -9,7 +9,7 @@ dependencies = [
     # The suite answers "did my change break a driver?", so it has to run the
     # driver versions llm-browser is developed against. These minors mirror
     # packages/llm-browser/uv.lock; bump them together.
-    "patchright==1.58.*",
+    "patchright==1.62.*",
 ]
 
 [project.optional-dependencies]

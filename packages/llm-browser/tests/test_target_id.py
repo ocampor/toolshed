@@ -41,8 +41,8 @@ def fake_playwright(monkeypatch: pytest.MonkeyPatch, context: Any) -> Any:
     pw = MagicMock()
     pw.chromium.connect_over_cdp.return_value = browser
     monkeypatch.setattr(
-        "llm_browser.drivers.patchright.sync_playwright",
-        lambda: MagicMock(start=lambda: pw),
+        "llm_browser.drivers.patchright.start_playwright",
+        lambda: pw,
     )
     return pw
 
@@ -157,8 +157,8 @@ def test_reattach_reuses_the_playwright_connection(
         return pw
 
     monkeypatch.setattr(
-        "llm_browser.drivers.patchright.sync_playwright",
-        lambda: MagicMock(start=counting_start),
+        "llm_browser.drivers.patchright.start_playwright",
+        counting_start,
     )
 
     driver = PatchrightDriver()

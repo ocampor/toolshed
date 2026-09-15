@@ -30,6 +30,10 @@ outcomes against specific vendors — always probe the actual target.
 The 2026 measurements behind that advice — and the finding that attach mode voids patchright's
 patches — are in `docs/RESEARCH.md` in the llm-browser package.
 
+The first patchright session start in a given process rewrites the driver bundle inside
+`site-packages` (see `drivers/patchright_shim.py`), so `site-packages` must be writable at
+least once — see `ocampor/toolshed#41`.
+
 ## Selector and key support
 
 Not every selector form or key reaches every backend. Both gaps below fail *quietly enough to

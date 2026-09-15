@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.17.1 — 2026-09-15
+
+### Changed
+
+- `patchright` pinned to `>=1.62.3,<1.63`: the shim matches that bundle only.
+- Every patchright start that can build a `CRPage` goes through
+  `patchright_shim.start_playwright`. `chrome.chromium_executable` never builds
+  one, so it stays on plain `sync_playwright` and needs no guard.
+
+### Fixed
+
+- Patchright driver: `ensure_request_interception_guarded` patches patchright's
+  Node bundle so its unawaited `setRequestInterception(true)` can no longer kill
+  the driver (and hang the client) when a CDP session closes mid-attach. The
+  patched bundle keeps its original file mode, and a bundle with both guarded
+  and unguarded calls is guarded instead of reported clean.
+
 ## 0.17.0 — 2026-09-13
 
 ### Changed
