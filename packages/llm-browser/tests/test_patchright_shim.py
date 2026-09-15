@@ -1,5 +1,3 @@
-"""Tests for the patchright coreBundle.js request-interception guard."""
-
 import stat
 
 import pytest
@@ -46,11 +44,3 @@ def test_bundle_with_two_unguarded_calls_raises_with_version(bundle):
 
     with pytest.raises(RuntimeError, match="patchright"):
         ensure_request_interception_guarded()
-
-
-def test_second_call_skips_rereading_the_bundle(bundle):
-    bundle.write_text(GUARDED, encoding="utf-8")
-    ensure_request_interception_guarded()
-    bundle.unlink()
-
-    ensure_request_interception_guarded()

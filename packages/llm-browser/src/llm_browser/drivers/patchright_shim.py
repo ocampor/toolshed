@@ -1,5 +1,3 @@
-"""Start patchright with its Node driver bundle guarded against closed CDP sessions."""
-
 import importlib.metadata
 import os
 import shutil
@@ -19,7 +17,6 @@ _guarded = False
 
 
 def start_playwright() -> Playwright:
-    """The only supported way to start patchright: guard the bundle, then start."""
     ensure_request_interception_guarded()
     return sync_playwright().start()
 
