@@ -43,7 +43,7 @@ DOWNLOAD_TIMEOUT_MS = 4_000
 # One reason for every row that fails for it; the issue number lands here.
 POPUP_DOWNLOAD_GAP = (
     "download_bytes listens on the page the trigger was clicked on, so a file "
-    "the browser delivers to another tab is never seen: see issue <TBD>"
+    "the browser delivers to another tab is never seen: see #40"
 )
 
 

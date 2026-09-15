@@ -19,9 +19,9 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
 | dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
-| popup to inline pdf | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see issue &lt;TBD> |
-| blank form post | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see issue &lt;TBD> |
-| popup renders then fetches | patchright | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see issue &lt;TBD> |
-| popup renders then fetches | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see issue &lt;TBD> |
+| popup to inline pdf | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
+| blank form post | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
+| popup renders then fetches | patchright | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
+| popup renders then fetches | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | behavior human paces input | camoufox | the plain locator.type() path already spends ~70ms a key on Camoufox's patched Firefox, inside Behavior.human()'s own 30-90ms jitter band, so the humanized path is not measurably slower |
 | behavior human paces input | nodriver | NodriverDriver leaves humanized_type defaulted because its native CDP input already types like a person, so Behavior.human() adds paced()'s post-action pause and no per-key delay |
