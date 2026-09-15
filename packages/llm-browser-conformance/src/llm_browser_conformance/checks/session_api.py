@@ -328,6 +328,34 @@ def require_latest_tab(ctx: Context) -> None:
         raise ctx.skip(str(exc)) from exc
 
 
+# What a driver says when the tab is already gone. Playwright, patchright and
+# nodriver each raise their own class for it, so the message is the portable
+# test — and the only failure this helper is allowed to walk past.
+TARGET_CLOSED = ("has been closed", "target closed")
+
+
+def target_already_closed(error: BaseException) -> bool:
+    return any(phrase in str(error).lower() for phrase in TARGET_CLOSED)
+
+
+def ask_to_close(ctx: Context, tab: Any) -> BaseException | None:
+    """Ask ``tab`` to close, and say whether it had already gone.
+
+    A popup the browser turned into a download closes itself, sometimes
+    between reading the tab list and this call, and that is the outcome being
+    asked for rather than a failure. Every other reason ``evaluate`` can fail
+    is raised: losing it would leave the caller spinning out its deadline to
+    report ``never closed`` about an unrelated fault.
+    """
+    try:
+        ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
+    except Exception as error:
+        if not target_already_closed(error):
+            raise
+        return error
+    return None
+
+
 def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
     """Ask ``tab`` to close and wait for the driver's tab list to drop it.
 
@@ -335,9 +363,11 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
     destroys the target before it answers the CDP call, and nodriver's sync
     bridge then waits forever on a reply that will never come.
     """
-    ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
+    already_gone = ask_to_close(ctx, tab)
     while ctx.session.latest_tab() is tab:
-        assert time.monotonic() < deadline, "the opened tab never closed"
+        assert time.monotonic() < deadline, (
+            f"the opened tab never closed ({already_gone})"
+        )
         # Reading the opener is also the refresh: nodriver only learns that a
         # target is gone while its own event loop runs, and only a driver call
         # makes that happen.
@@ -345,7 +375,7 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
         time.sleep(0.05)
 
 
-def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
+def close_opened_tabs(ctx: Context, opener: Any, opened: str | None) -> None:
     """Put the browser back to the single tab ``opener``.
 
     Test isolation: one browser drives every row of a driver's column, so a
@@ -354,9 +384,11 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
 
     ``opened`` names the page the click opened, because a popup is not in the
     driver's tab list the instant the click returns — the same lag
-    ``latest_tab_url`` polls out.
+    ``latest_tab_url`` polls out. ``None`` where there may be no tab to wait
+    for: a popup the browser turned into a download closes itself.
     """
-    latest_tab_url(ctx, opened)
+    if opened is not None:
+        latest_tab_url(ctx, opened)
     deadline = time.monotonic() + TAB_CLOSE_TIMEOUT_S
     while (extra := ctx.session.latest_tab()) is not opener:
         # The inner wait has its own deadline, but it is skipped whenever
@@ -367,7 +399,9 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str) -> None:
 
 
 @contextlib.contextmanager
-def tabs_closed_after(ctx: Context, opener: Any, opened: str) -> Iterator[None]:
+def tabs_closed_after(
+    ctx: Context, opener: Any, opened: str | None = None
+) -> Iterator[None]:
     """Run a scenario body, then put the browser back to the one tab ``opener``.
 
     The cleanup has to run on the failing path — that is the path it exists

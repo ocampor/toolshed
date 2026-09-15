@@ -55,6 +55,12 @@ from llm_browser_conformance.scenarios import select
     help="Print docs/coverage.md as the scenarios define it, and exit.",
 )
 @click.option(
+    "--headed",
+    "headed",
+    is_flag=True,
+    help="Launch a visible browser instead of headless; needs a display.",
+)
+@click.option(
     "--delay",
     "delay_ms",
     default=DEFAULT_DELAY_MS,
@@ -69,6 +75,7 @@ def main(
     as_json_output: bool,
     print_gaps: bool,
     print_coverage: bool,
+    headed: bool,
     delay_ms: int,
 ) -> None:
     """Run every conformance scenario against one or all installed drivers.
@@ -102,14 +109,14 @@ def main(
         if only_failed
         else full_plan(selected, scenarios)
     )
-    results = run(plan, delay_ms)
+    results = run(plan, delay_ms, headed)
     # Always merged, never replaced: `--only` and `--driver` produce a partial
     # result set too, and a record that forgot the other columns is one
     # `--failed` cannot pick the work back up from.
     history.save(history.merge(previous, results))
     columns = list(plan)
     report = (
-        as_json(results, columns, delay_ms)
+        as_json(results, columns, delay_ms, headed)
         if as_json_output
         else format_table(results, columns)
     )

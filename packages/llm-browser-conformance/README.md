@@ -37,6 +37,7 @@ uv run llm-browser-check --failed              # just what broke last run
 
 uv run llm-browser-check --json                # machine-readable, for agents
 uv run llm-browser-check --delay 2500          # slower machine, slower fixtures
+uv run llm-browser-check --headed              # visible browser; needs a display
 ```
 
 Exit code is non-zero if any scenario **failed** — or if a known gap has

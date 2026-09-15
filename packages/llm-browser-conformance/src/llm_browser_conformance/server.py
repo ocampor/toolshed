@@ -2,9 +2,12 @@
 
 Everything the suite needs is in ``site/``; nothing reaches the public
 internet, so a run is reproducible on a laptop, in CI and inside a sandbox.
-The two dynamic routes are ``/redirect``, because a 302 cannot be expressed as
-a static file, and ``/slow-resource``, because a file served instantly cannot
-hold a page's ``load`` event open.
+The dynamic routes are the ones a static file cannot express: ``/redirect``,
+``/billtax/print.action`` and ``/billtax/attach.action``, because a 302 is not
+a file; ``/slow-resource``, because a file served instantly cannot hold a
+page's ``load`` event open; and ``/billtax/downloadFile.action`` and
+``/attach.pdf``, because what they pin is the ``Content-Disposition`` a
+browser reads off them.
 """
 
 import base64
@@ -22,6 +25,38 @@ SITE_DIR = Path(__file__).parent / "site"
 
 REDIRECT_PATH = "/redirect"
 REDIRECT_TARGET = "/redirect-target.html"
+
+# The popup-download routes, named after the portal shape they came from: a
+# button opens an ``.action`` URL in a new tab, which 302s to the file itself.
+PRINT_ACTION_PATH = "/billtax/print.action"
+ATTACH_ACTION_PATH = "/billtax/attach.action"
+INLINE_PDF_PATH = "/billtax/downloadFile.action"
+ATTACHMENT_PDF_PATH = "/attach.pdf"
+
+INLINE_PDF_FILENAME = "ComprobanteSATDPA.pdf"
+ATTACHMENT_PDF_FILENAME = "attach.pdf"
+
+REDIRECTS = {
+    REDIRECT_PATH: REDIRECT_TARGET,
+    PRINT_ACTION_PATH: INLINE_PDF_PATH,
+    ATTACH_ACTION_PATH: ATTACHMENT_PDF_PATH,
+}
+
+PDF_DISPOSITIONS = {
+    INLINE_PDF_PATH: f'inline; filename="{INLINE_PDF_FILENAME}"',
+    ATTACHMENT_PDF_PATH: f'attachment; filename="{ATTACHMENT_PDF_FILENAME}"',
+}
+
+# Every download scenario asserts on this prefix.
+PDF_MAGIC = b"%PDF"
+
+# One page, valid enough for a viewer to open: a browser that rejected the
+# file would never start the download the scenarios are about.
+PDF_BODY = (SITE_DIR / "receipt.pdf").read_bytes()
+
+# Long enough that the file lands after the tab that asked for it has opened,
+# short enough to cost the suite nothing.
+PDF_DELAY_S = 0.3
 
 SLOW_RESOURCE_PATH = "/slow-resource"
 # The same default every fixture page uses for ``?delay=``.
@@ -42,20 +77,45 @@ def requested_delay_ms(query: str) -> int:
 
 
 class SiteHandler(http.server.SimpleHTTPRequestHandler):
-    """Static files, plus a 302 and a deliberately slow image."""
+    """Static files, plus the 302s, a deliberately slow image and the PDFs."""
 
     def do_GET(self) -> None:
         path, _, query = self.path.partition("?")
         if path == SLOW_RESOURCE_PATH:
             self.serve_slow_resource(query)
             return
-        if path == REDIRECT_PATH:
-            target = f"{REDIRECT_TARGET}?{query}" if query else REDIRECT_TARGET
-            self.send_response(302)
-            self.send_header("Location", target)
-            self.end_headers()
+        if path in REDIRECTS:
+            self.serve_redirect(REDIRECTS[path], query)
+            return
+        if path in PDF_DISPOSITIONS:
+            self.serve_pdf(PDF_DISPOSITIONS[path])
             return
         super().do_GET()
+
+    def do_POST(self) -> None:
+        """``#blank_form`` posts to the PDF route.
+
+        The body is drained and discarded — a later POST fixture that carried
+        one would otherwise desync a kept-alive connection — and then answered
+        by the GET table, which makes every static file POST-able too.
+        """
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.do_GET()
+
+    def serve_redirect(self, target: str, query: str) -> None:
+        self.send_response(302)
+        self.send_header("Location", f"{target}?{query}" if query else target)
+        self.end_headers()
+
+    def serve_pdf(self, disposition: str) -> None:
+        """Answer late, so the file arrives after the tab that asked for it."""
+        time.sleep(PDF_DELAY_S)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(PDF_BODY)))
+        self.send_header("Content-Disposition", disposition)
+        self.end_headers()
+        self.wfile.write(PDF_BODY)
 
     def serve_slow_resource(self, query: str) -> None:
         """Sleep first, then answer — a page embedding this cannot fire

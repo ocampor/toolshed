@@ -32,9 +32,20 @@ The suite is meant to grow out of production failures. The recipe:
 | isTrusted recorder | every page taking input | `data-trusted` / `data-trusted-input`, read by `Context.trusted` |
 | `/redirect` | `server.py` | a 302, which no static file can express |
 | `/slow-resource` | `server.py` | a body served only after `?delay=` ms, so a page's `load` event can be held open |
+| `/billtax/print.action`, `/billtax/attach.action` | `server.py` | a 302 to a file, the way a portal's popup reaches one |
+| `/billtax/downloadFile.action`, `/attach.pdf` | `server.py` | a PDF under the `Content-Disposition` — `inline` or `attachment` — a browser turns into a download |
 | `schemas/*.yaml` | package dir | the typed schema a `parse` step validates rows against |
 
 A `parse` step's `schema_path` and a `download`/`screenshot`/`read` step's
 `path` are CWD-relative or absolute, so a scenario passes the packaged
 absolute path in through a `{{ }}` param rather than assuming a working
 directory.
+
+
+## Worked example: downloads that leave the tab
+
+`popup-download.html` carries every shape a portal uses to hand a file over —
+a popup that redirects to it, a `target=_blank` link, a `target=_blank` form
+post, and a popup that renders a page before fetching. Only the last escapes
+the page `download_bytes` listens on, so `popup renders then fetches` is the
+gap and the others pin behaviour that holds today.

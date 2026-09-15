@@ -1,0 +1,10 @@
+# One download step, pointed at whichever trigger the scenario is pinning.
+# The budget is short on purpose: a trigger whose file never reaches this tab
+# has to fail inside it rather than hang.
+params:
+  - selector
+steps:
+  - name: download
+    action: download
+    selector: "{{ selector }}"
+    timeout: 4000
