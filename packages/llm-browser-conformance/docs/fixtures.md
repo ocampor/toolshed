@@ -32,7 +32,8 @@ The suite is meant to grow out of production failures. The recipe:
 | isTrusted recorder | every page taking input | `data-trusted` / `data-trusted-input`, read by `Context.trusted` |
 | `/redirect` | `server.py` | a 302, which no static file can express |
 | `/slow-resource` | `server.py` | a body served only after `?delay=` ms, so a page's `load` event can be held open |
-| `/billtax/*.action`, `/attach.pdf` | `server.py` | a 302 into a PDF, and the `Content-Disposition` a browser turns into a download |
+| `/billtax/print.action`, `/billtax/attach.action` | `server.py` | a 302 to a file, the way a portal's popup reaches one |
+| `/billtax/downloadFile.action`, `/attach.pdf` | `server.py` | a PDF under the `Content-Disposition` — `inline` or `attachment` — a browser turns into a download |
 | `schemas/*.yaml` | package dir | the typed schema a `parse` step validates rows against |
 
 A `parse` step's `schema_path` and a `download`/`screenshot`/`read` step's

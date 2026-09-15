@@ -16,11 +16,17 @@ run; the others are here so that the day a driver starts listening
 context-wide, the table says which shapes changed.
 """
 
+import time
+from typing import NamedTuple
+
 from llm_browser.flows import run_flow
 from llm_browser.models import FlowError, FlowSuccess
 from llm_browser.results import BytesResult
 
-from llm_browser_conformance.checks.session_api import tabs_closed_after
+from llm_browser_conformance.checks.session_api import (
+    NEW_TAB_TARGET,
+    tabs_closed_after,
+)
 from llm_browser_conformance.checks.support import error_message
 from llm_browser_conformance.scenario import (
     SLACK_MS,
@@ -37,8 +43,8 @@ from llm_browser_conformance.server import (
 PAGE = "popup-download.html"
 FLOW = "popup-download"
 
-# What `flows/popup-download.yaml` declares.
-DOWNLOAD_TIMEOUT_MS = 4_000
+# The page `#popup_deferred` opens, and the one it leaves behind.
+DEFERRED_POPUP = "popup-then-download.html"
 
 # One reason for every row that fails for it; the issue number lands here.
 POPUP_DOWNLOAD_GAP = (
@@ -47,26 +53,49 @@ POPUP_DOWNLOAD_GAP = (
 )
 
 
-def download(ctx: Context, selector: str) -> FlowSuccess | FlowError:
+class Attempt(NamedTuple):
+    """The flow's verdict and what the download step alone cost."""
+
+    result: FlowSuccess | FlowError
+    took: float
+
+
+def declared_timeout_ms(ctx: Context) -> int:
+    """The budget `flows/popup-download.yaml` declares, read off the flow so
+    lowering it there cannot leave a scenario asserting an old ceiling."""
+    step = ctx.flow(FLOW).steps[0]
+    return step.timeout
+
+
+def download(ctx: Context, selector: str, opened: str | None = None) -> Attempt:
     """Click ``selector`` and hand back the flow's verdict, one tab again.
 
     The opener is read before the click on purpose: afterwards the newest tab
     may be the popup, and the cleanup would then close the page every later
-    scenario runs on.
+    scenario runs on. ``opened`` names the page a trigger leaves behind, so
+    the cleanup waits for a popup that has not registered yet; the shapes the
+    browser closes by itself pass nothing.
+
+    Only ``run_flow`` is timed: the visit before it and the tab teardown after
+    it are not what the step's budget covers.
     """
     ctx.visit(PAGE)
     opener = ctx.session.get_page()
-    with tabs_closed_after(ctx, opener):
+    with tabs_closed_after(ctx, opener, opened):
         try:
+            started = time.monotonic()
             result = run_flow(ctx.session, ctx.flow(FLOW), {"selector": selector})
+            took = time.monotonic() - started
         except NotImplementedError as exc:
             raise ctx.skip(str(exc)) from exc
     assert isinstance(result, FlowSuccess | FlowError), result
-    return result
+    return Attempt(result, took)
 
 
-def expect_pdf(ctx: Context, selector: str, filename: str) -> None:
-    result = download(ctx, selector)
+def expect_pdf(
+    ctx: Context, selector: str, filename: str, opened: str | None = None
+) -> None:
+    result = download(ctx, selector, opened).result
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     payload = result.outputs["download"]
     assert isinstance(payload, BytesResult), payload
@@ -105,20 +134,19 @@ def a_target_blank_form_post_is_captured(ctx: Context) -> None:
 def a_popup_that_renders_before_downloading_is_captured(ctx: Context) -> None:
     """The one that broke a real run: the popup is a page for a moment before
     it asks for the file, so the download is the popup's, not the opener's."""
-    expect_pdf(ctx, "#popup_deferred", INLINE_PDF_FILENAME)
+    expect_pdf(ctx, "#popup_deferred", INLINE_PDF_FILENAME, opened=DEFERRED_POPUP)
 
 
 def a_popup_with_no_file_fails_inside_its_budget(ctx: Context) -> None:
     """The negative case, and the one a caller feels first: a trigger that
     opens an ordinary page must report that no download arrived, inside the
     budget the step declared, rather than hang."""
-    result: list[FlowSuccess | FlowError] = []
-    took = ctx.elapsed(lambda: result.append(download(ctx, "#popup_html")))
-    failure = result[0]
+    attempt = download(ctx, "#popup_html", opened=NEW_TAB_TARGET)
+    failure = attempt.result
     assert isinstance(failure, FlowError), f"a plain popup produced {failure.outputs}"
     assert failure.step == "download", failure.step
-    ceiling = (DOWNLOAD_TIMEOUT_MS + 2 * SLACK_MS) / 1000
-    assert took <= ceiling, f"took {took:.3f}s, budget {ceiling}s"
+    ceiling = (declared_timeout_ms(ctx) + SLACK_MS) / 1000
+    assert attempt.took <= ceiling, f"took {attempt.took:.3f}s, budget {ceiling}s"
     assert error_message(failure), "the failure carries no message to act on"
 
 

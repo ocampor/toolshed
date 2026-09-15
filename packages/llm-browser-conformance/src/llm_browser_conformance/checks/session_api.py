@@ -328,23 +328,46 @@ def require_latest_tab(ctx: Context) -> None:
         raise ctx.skip(str(exc)) from exc
 
 
+# What a driver says when the tab is already gone. Playwright, patchright and
+# nodriver each raise their own class for it, so the message is the portable
+# test — and the only failure this helper is allowed to walk past.
+TARGET_CLOSED = ("has been closed", "target closed")
+
+
+def target_already_closed(error: BaseException) -> bool:
+    return any(phrase in str(error).lower() for phrase in TARGET_CLOSED)
+
+
+def ask_to_close(ctx: Context, tab: Any) -> BaseException | None:
+    """Ask ``tab`` to close, and say whether it had already gone.
+
+    A popup the browser turned into a download closes itself, sometimes
+    between reading the tab list and this call, and that is the outcome being
+    asked for rather than a failure. Every other reason ``evaluate`` can fail
+    is raised: losing it would leave the caller spinning out its deadline to
+    report ``never closed`` about an unrelated fault.
+    """
+    try:
+        ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
+    except Exception as error:
+        if not target_already_closed(error):
+            raise
+        return error
+    return None
+
+
 def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
     """Ask ``tab`` to close and wait for the driver's tab list to drop it.
 
     The close is deferred onto a timer because a synchronous ``window.close()``
     destroys the target before it answers the CDP call, and nodriver's sync
     bridge then waits forever on a reply that will never come.
-
-    Asking a tab that has already gone — a popup the browser turned into a
-    download closes itself, sometimes between the tab list and this call — is
-    not an error: it is the outcome being asked for, and the loop below still
-    has to see it in the tab list either way.
     """
-    # Verified by the loop below, not by this call.
-    with contextlib.suppress(Exception):
-        ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
+    already_gone = ask_to_close(ctx, tab)
     while ctx.session.latest_tab() is tab:
-        assert time.monotonic() < deadline, "the opened tab never closed"
+        assert time.monotonic() < deadline, (
+            f"the opened tab never closed ({already_gone})"
+        )
         # Reading the opener is also the refresh: nodriver only learns that a
         # target is gone while its own event loop runs, and only a driver call
         # makes that happen.

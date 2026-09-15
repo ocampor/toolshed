@@ -2,10 +2,11 @@
 
 Everything the suite needs is in ``site/``; nothing reaches the public
 internet, so a run is reproducible on a laptop, in CI and inside a sandbox.
-The dynamic routes are the ones a static file cannot express: ``/redirect``
-and the two ``.action`` routes, because a 302 is not a file; ``/slow-resource``,
-because a file served instantly cannot hold a page's ``load`` event open; and
-the two PDF routes, because what they pin is the ``Content-Disposition`` the
+The dynamic routes are the ones a static file cannot express: ``/redirect``,
+``/billtax/print.action`` and ``/billtax/attach.action``, because a 302 is not
+a file; ``/slow-resource``, because a file served instantly cannot hold a
+page's ``load`` event open; and ``/billtax/downloadFile.action`` and
+``/attach.pdf``, because what they pin is the ``Content-Disposition`` a
 browser reads off them.
 """
 
@@ -49,6 +50,10 @@ PDF_DISPOSITIONS = {
 # Every download scenario asserts on this prefix.
 PDF_MAGIC = b"%PDF"
 
+# One page, valid enough for a viewer to open: a browser that rejected the
+# file would never start the download the scenarios are about.
+PDF_BODY = (SITE_DIR / "receipt.pdf").read_bytes()
+
 # Long enough that the file lands after the tab that asked for it has opened,
 # short enough to cost the suite nothing.
 PDF_DELAY_S = 0.3
@@ -62,40 +67,6 @@ SLOW_RESOURCE_BODY = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ"
     "DwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
-
-
-def minimal_pdf() -> bytes:
-    """A one-page PDF a real viewer will open.
-
-    Assembled incrementally because the xref table has to carry each object's
-    true byte offset, and a browser that rejects the file would never start
-    the download the scenarios are about.
-    """
-    stream = b"BT /F1 24 Tf 72 700 Td (conformance) Tj ET"
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
-        ),
-        b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream),
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ]
-    out = bytearray(PDF_MAGIC + b"-1.4\n")
-    offsets = []
-    for number, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
-    xref_at = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
-    out += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
-    out += b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1)
-    out += b"startxref\n%d\n%%%%EOF" % xref_at
-    return bytes(out)
-
-
-PDF_BODY = minimal_pdf()
 
 
 def requested_delay_ms(query: str) -> int:
@@ -122,7 +93,13 @@ class SiteHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
-        """``#blank_form`` posts to the PDF route; the body is never read."""
+        """``#blank_form`` posts to the PDF route.
+
+        The body is drained and discarded — a later POST fixture that carried
+        one would otherwise desync a kept-alive connection — and then answered
+        by the GET table, which makes every static file POST-able too.
+        """
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
         self.do_GET()
 
     def serve_redirect(self, target: str, query: str) -> None:

@@ -15,8 +15,6 @@
   <button id="blank_form_submit" type="submit">Post to a new tab</button>
 </form>
 <script>
-const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
-
 const recordTrust = (e) => {
   if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
 };

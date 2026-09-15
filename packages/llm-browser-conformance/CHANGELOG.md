@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.0 — 2026-09-15
+
+### Added
+
+- Seven `popup and new-tab download` scenarios on `site/popup-download.html`:
+  same-tab attachment, popup to inline pdf, popup to attachment, blank link to
+  a file, blank form post, popup renders then fetches, popup with no file.
+- `flows/popup-download.yaml`: one `download` step aimed at a `{{ selector }}`.
+- `site/popup-then-download.html`, the popup that commits a document before it
+  fetches the file — the shape behind gap #40.
+- `/billtax/print.action` and `/billtax/attach.action` (302s), plus
+  `/billtax/downloadFile.action` and `/attach.pdf` (`site/receipt.pdf` under an
+  `inline` or `attachment` `Content-Disposition`).
+- `known_gaps` for #40: `popup renders then fetches` on patchright and
+  camoufox, `popup to inline pdf` and `blank form post` on camoufox.
+
+### Fixed
+
+- `close_tab` no longer fails the cleanup when the tab closed itself, and
+  `close_opened_tabs` accepts `opened=None` where no tab is guaranteed.
+
 ## 0.9.0 — 2026-09-13
 
 Tracks `llm-browser` 0.17.0.
