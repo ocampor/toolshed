@@ -258,7 +258,9 @@ def test_a_teardown_error_gets_its_own_row_and_keeps_the_results(
     answered every question, so its column must survive."""
     monkeypatch.setattr(runner, "unavailable", lambda driver: None)
     monkeypatch.setattr(
-        runner, "launched_session", lambda driver: session_that_fails_to_close()
+        runner,
+        "launched_session",
+        lambda driver, headed=False: session_that_fails_to_close(),
     )
     results = run_driver(FAKE_DRIVER, "http://127.0.0.1:1", list(FAKE_SCENARIOS), 1000)
     teardown = [r for r in results if r.scenario == TEARDOWN_ROW]
@@ -280,7 +282,9 @@ def test_a_launch_error_marks_every_applicable_scenario(
 ) -> None:
     monkeypatch.setattr(runner, "unavailable", lambda driver: None)
     monkeypatch.setattr(
-        runner, "launched_session", lambda driver: session_that_fails_to_launch()
+        runner,
+        "launched_session",
+        lambda driver, headed=False: session_that_fails_to_launch(),
     )
     results = run_driver(FAKE_DRIVER, "http://127.0.0.1:1", list(FAKE_SCENARIOS), 1000)
     applicable = [s for s in FAKE_SCENARIOS if s.applies_to(FAKE_DRIVER)]

@@ -92,8 +92,9 @@ def bound_action_timeout(session: BrowserSession, driver: str) -> None:
 
 
 @contextmanager
-def launched_session(driver: str) -> Iterator[BrowserSession]:
-    """One headless browser, on a throwaway profile, closed on the way out.
+def launched_session(driver: str, headed: bool = False) -> Iterator[BrowserSession]:
+    """One browser — headless unless ``headed`` — on a throwaway profile,
+    closed on the way out.
 
     ``ignore_cleanup_errors`` narrowly covers the profile directory, not the
     session: ``close()`` releases the connection and returns, but Chromium is
@@ -124,7 +125,7 @@ def launched_session(driver: str) -> Iterator[BrowserSession]:
             executable_path=chrome_binary() if driver == "nodriver" else None,
         )
         try:
-            session.launch(headed=False)
+            session.launch(headed=headed)
         except BaseException:
             unregister_launch_placeholder(placeholder)
             raise

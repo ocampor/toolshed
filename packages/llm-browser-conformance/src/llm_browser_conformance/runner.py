@@ -115,7 +115,11 @@ def driver_rows(
 
 
 def run_driver(
-    driver: str, site_url: str, scenarios: list[Scenario], delay_ms: int
+    driver: str,
+    site_url: str,
+    scenarios: list[Scenario],
+    delay_ms: int,
+    headed: bool = False,
 ) -> list[Result]:
     """Results are kept outside the ``try``.
 
@@ -129,7 +133,7 @@ def run_driver(
     applicable = [s for s in scenarios if s.applies_to(driver)]
     results: list[Result] = []
     try:
-        with launched_session(driver) as session:
+        with launched_session(driver, headed) as session:
             ctx = Context(session, site_url, driver, delay_ms)
             results.extend(run_scenario(s, ctx) for s in applicable)
     except Exception as failure:  # noqa: BLE001 - a broken browser is a row, not a crash
@@ -157,7 +161,9 @@ def full_plan(
 
 
 def run(
-    plan: Mapping[str, list[Scenario]], delay_ms: int = DEFAULT_DELAY_MS
+    plan: Mapping[str, list[Scenario]],
+    delay_ms: int = DEFAULT_DELAY_MS,
+    headed: bool = False,
 ) -> list[Result]:
     """``plan`` names the scenarios per driver, because ``--failed`` reruns a
     different set for each: the drivers disagree about what is broken."""
@@ -165,7 +171,7 @@ def run(
         return [
             row
             for driver, scenarios in plan.items()
-            for row in run_driver(driver, site_url, scenarios, delay_ms)
+            for row in run_driver(driver, site_url, scenarios, delay_ms, headed)
         ]
 
 
@@ -232,10 +238,13 @@ def scenario_list(names: list[str]) -> str:
     return names[0] if len(names) == 1 else f"{len(names)} scenarios"
 
 
-def as_json(results: list[Result], drivers: list[str], delay_ms: int) -> str:
+def as_json(
+    results: list[Result], drivers: list[str], delay_ms: int, headed: bool = False
+) -> str:
     payload: dict[str, Any] = {
         "drivers": drivers,
         "delay_ms": delay_ms,
+        "headed": headed,
         "ok": not failed(results),
         "results": [asdict(r) for r in results],
     }

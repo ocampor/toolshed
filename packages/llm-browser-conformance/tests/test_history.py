@@ -167,7 +167,7 @@ def test_a_filtered_run_merges_into_the_record_it_did_not_cover(
         tmp_path / history.HISTORY_FILE,
     )
     monkeypatch.setattr(
-        cli, "run", lambda plan, delay: [row("a", "fake", Outcome.PASS)]
+        cli, "run", lambda plan, delay, headed: [row("a", "fake", Outcome.PASS)]
     )
     invoke(tmp_path, monkeypatch, "--only", "wait")
     recorded = history.load(tmp_path / history.HISTORY_FILE)

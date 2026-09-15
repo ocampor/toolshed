@@ -13,6 +13,7 @@
 - `/billtax/print.action` and `/billtax/attach.action` (302s), plus
   `/billtax/downloadFile.action` and `/attach.pdf` (`site/receipt.pdf` under an
   `inline` or `attachment` `Content-Disposition`).
+- `--headed` runs the suite in a visible browser instead of headless.
 - `known_gaps` for #40: `popup renders then fetches` on patchright and
   camoufox, `popup to inline pdf` and `blank form post` on camoufox.
 
