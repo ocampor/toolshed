@@ -8,7 +8,9 @@
   whitespace-normalised `innerText` of the page or of what `selector` matches,
   substring by default and whole-text with `exact: true`, present for
   `attached`/`visible` and absent for `detached`/`hidden`
-  (ocampor/browser-api#49).
+  (ocampor/browser-api#49). Only rendered text counts: a non-rendered scope —
+  `display:none`, or a `selector` matching nothing — reads as gone, and
+  `script`/`style`/`template` never match.
 - `when: [{ text_present: { text: T, selector: S, exact: B } }]` — the same
   match as a condition.
 - `BrowserSession.wait_for_text(text, selector=, exact=, state=, timeout=,

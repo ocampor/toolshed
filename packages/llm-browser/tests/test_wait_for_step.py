@@ -125,9 +125,17 @@ def test_either_target_validates(overrides: dict[str, Any]) -> None:
 
 
 def test_a_text_wait_rejects_an_element_only_state() -> None:
-    """`stable` reads an element's text over time; there is no element here."""
-    with pytest.raises(ValidationError, match="needs a selector"):
-        validate_step(wait_for_step(selector=None, text="done", state="stable"))
+    """`stable` reads an element's text over time; a text wait has no element,
+    and the message may not send the author after a selector they gave."""
+    with pytest.raises(ValidationError, match="asks about an element, not text"):
+        validate_step(wait_for_step(text="done", state="stable"))
+
+
+def test_empty_text_is_rejected() -> None:
+    """Every string contains "", so the wait would return on the first tick
+    however empty the page is."""
+    with pytest.raises(ValidationError, match="text"):
+        validate_step(wait_for_step(text=""))
 
 
 def test_the_action_waits_on_text_when_the_step_names_it(

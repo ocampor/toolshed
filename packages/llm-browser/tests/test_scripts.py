@@ -349,15 +349,26 @@ def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
 
 
 TEXT_MATCH_HARNESS = """
-const node = (innerText, children = []) => ({
+// `getClientRects` is what the script asks before reading `innerText`, and
+// `querySelectorAll` honours the `:not(...)` clauses the way a real one does.
+const node = (innerText, children = [], tag = "DIV", visible = true) => ({
   innerText,
-  querySelectorAll: () => children,
+  tagName: tag,
+  getClientRects: () => (visible ? [{}] : []),
+  querySelectorAll: (selector) =>
+    children.filter(
+      (child) => !selector.includes(`:not(${child.tagName.toLowerCase()})`),
+    ),
 });
-const toast = node("Sesión  finalizada\\n");
-globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
+const toast = node("Sesión  finalizada\\n");
+const buried = node("Sesión  finalizada\\n", [], "DIV", false);
+const scripted = node("", [node("Sesión  finalizada", [], "SCRIPT")]);
+globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
 console.log(JSON.stringify({
   page: MATCH(),
   scoped: MATCH(toast),
+  hidden: MATCH(buried),
+  scripted: MATCH(scripted),
   elsewhere: MATCH(node("Cargando")),
 }));
 """
@@ -477,16 +488,53 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
     ("text", "exact", "expected"),
     [
         # Newlines and the `&nbsp;` an XPath `contains(text(), ...)` trips over
-        # both normalise away.
+        # both normalise away. `hidden` and `scripted` hold the text but are
+        # never rendered, so no mode may see it.
         (
             "Sesión finalizada",
             False,
-            {"page": True, "scoped": True, "elsewhere": False},
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "scripted": False,
+                "elsewhere": False,
+            },
         ),
-        ("finalizada", False, {"page": True, "scoped": True, "elsewhere": False}),
+        (
+            "finalizada",
+            False,
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
         # Exact: the toast's own text, which the page holds only as a subtree.
-        ("Sesión finalizada", True, {"page": True, "scoped": True, "elsewhere": False}),
-        ("finalizada", True, {"page": False, "scoped": False, "elsewhere": False}),
+        (
+            "Sesión finalizada",
+            True,
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
+        (
+            "finalizada",
+            True,
+            {
+                "page": False,
+                "scoped": False,
+                "hidden": False,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
     ],
 )
 def test_text_match_js_reads_normalised_rendered_text(

@@ -55,8 +55,8 @@ def check_text_state(state: WaitState) -> bool:
     """``True`` when ``state`` means the text should be there."""
     if state not in TEXT_STATES:
         raise ValueError(
-            f"state {state!r} needs a selector; a text wait takes "
-            f"{', '.join(TEXT_STATES)}"
+            f"state {state!r} asks about an element, not text; a text wait "
+            f"takes {', '.join(TEXT_STATES)}"
         )
     return TEXT_STATES[state]
 
@@ -309,7 +309,7 @@ class WaitForStep(BaseStep):
 
     action: Literal["wait_for"]
     selector: Selector | None = None
-    text: str | None = None
+    text: str | None = Field(None, min_length=1)
     exact: bool = False
     state: WaitState = "attached"
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)

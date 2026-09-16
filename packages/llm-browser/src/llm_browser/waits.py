@@ -169,7 +169,9 @@ def text_present(
     Whitespace-normalised ``innerText``, so the accents, ``&nbsp;`` and node
     boundaries an XPath ``contains(text(), ...)`` trips over do not matter.
     ``selector`` scopes the question to what it matches — every match, since a
-    scope like ``.toast`` names a kind of element, not one of them.
+    scope like ``.toast`` names a kind of element, not one of them. A scope
+    that matches nothing has no text, so it answers ``False``: a scope that is
+    gone takes its text with it.
     """
     script = text_match_js(text, exact)
     if selector is None:
