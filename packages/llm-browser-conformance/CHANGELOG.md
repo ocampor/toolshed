@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.11.1 — unreleased
+## 0.11.1 — 2026-09-16
 
-Tracks `llm-browser` 0.18.1.
+Tracks `llm-browser` 0.18.3.
 
 ### Added
 
