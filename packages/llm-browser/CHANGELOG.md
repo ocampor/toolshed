@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0 — unreleased
+
+### Changed
+
+- `dom` returns the first match in document order instead of raising `Expected 1 element` when the selector matches several; a comma list like `main, article, body` therefore yields `body` when it precedes `main` (ocampor/browser-api#27).
+
 ## 0.17.1 — 2026-09-15
 
 ### Fixed

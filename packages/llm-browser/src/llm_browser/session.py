@@ -721,10 +721,11 @@ class BrowserSession:
         max_depth: int = 0,
         level: SanitizeLevel = SanitizeLevel.LOW,
     ) -> str:
-        """Return cleaned HTML snippet of an element."""
+        # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 
-        raw: str = self.driver.evaluate(self.find(selector), "el => el.outerHTML")
+        element = self.driver.first(self.find_all(selector, state="visible"))
+        raw: str = self.driver.evaluate(element, "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth, level)
 
     def probe(

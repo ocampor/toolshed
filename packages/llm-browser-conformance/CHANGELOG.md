@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0 — 2026-09-16
+
+Tracks `llm-browser` 0.18.0.
+
+### Added
+
+- `dom first match`: `dom("main, article, body")` on `site/body-fragment.html`
+  reads the `<body>` that wraps the `<main>`, pinning "first in document
+  order" rather than first in the selector list.
+
 ## 0.10.1 — 2026-09-15
 
 Tracks `llm-browser` 0.17.1.

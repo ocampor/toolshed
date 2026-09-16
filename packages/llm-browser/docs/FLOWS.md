@@ -145,7 +145,7 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 |---|---|---|---|
 | `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `path` | Extract structured data as dicts. No `extract:`, `extract: {}`, or `extract: null` all read each match's own text as `text` — `read` on `body` gives `[{ text: … }]` |
 | `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
-| `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)) |
+| `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)). Several matches → the first in document order. |
 
 ### Composition
 

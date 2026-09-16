@@ -144,7 +144,7 @@ fresh.
 | `wait_for_element(selector, state=, timeout=, interval=, settle=)` | The one wait: polls from Python on a jittered `interval` until the element is `attached` / `detached` / `visible` / `hidden`, or `stable` — its text unchanged for `settle` ms, which is how you wait out streaming replies or a recalculating total. Raises `TimeoutError` naming selector, state and timeout. `timeout` is a real budget — sleeps are clamped to it and `timeout=0` checks once. No in-page script and no driver-native wait |
 | `element_exists(selector)` | Whether the element shows up within `timeout` — `wait_for_element(..., state="attached")` with the timeout read as `False` instead of raising |
 | `pick(selector, value, behavior=None)` | Click list item matching text |
-| `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`) |
+| `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`). Several matches → the first in document order. |
 | `parse_elements(selector, extract)` | Extract structured data |
 | `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ, sample_chars=200)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
 | `explore_many(targets, sample=3, sample_chars=200, timeout_ms=3000)` | The same answer for a list of `ExploreTarget`, from one page call and one wait — a list of `ExploreResult` in the order asked |
