@@ -386,6 +386,15 @@ def dom_returns_the_body_as_one_element(ctx: Context) -> None:
     assert "href=" not in stripped, stripped[:200]
 
 
+def dom_reads_the_first_match_in_document_order(ctx: Context) -> None:
+    """A comma list is not a priority list: `body` wraps `main`, so
+    `main, article, body` reads the body."""
+    outputs = expect_success(ctx, "body-fragment.html", "dom-body")
+    first = str(outputs["first"])
+    assert first.startswith("<body"), first[:80]
+    assert "<main" in first, first[:200]
+
+
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
@@ -463,6 +472,12 @@ SCENARIOS = [
         Section.STEPS,
         dom_returns_the_body_as_one_element,
         covers=frozenset({"field:dom.level"}),
+    ),
+    Scenario(
+        "dom first match",
+        Section.STEPS,
+        dom_reads_the_first_match_in_document_order,
+        covers=frozenset({"session:dom"}),
     ),
     Scenario(
         "read properties",

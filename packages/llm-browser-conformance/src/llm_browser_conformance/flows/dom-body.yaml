@@ -7,3 +7,6 @@ steps:
     action: dom
     selector: body
     level: high
+  - name: first
+    action: dom
+    selector: "main, article, body"

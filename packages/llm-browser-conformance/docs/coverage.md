@@ -117,7 +117,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
 | `session:count_of` | explore a button |
-| `session:dom` | dom snippet, dom step depth, sanitize levels |
+| `session:dom` | dom snippet, dom step depth, dom first match, sanitize levels |
 | `session:dom_snapshot` | flow failure captures artifacts, flow failure capture level |
 | `session:download_file` | download |
 | `session:element_exists` | when element_exists, element exists |

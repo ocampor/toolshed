@@ -724,7 +724,7 @@ class BrowserSession:
         # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 
-        element = self.driver.first(self.find_all(selector))
+        element = self.driver.first(self.find_all(selector, state="visible"))
         raw: str = self.driver.evaluate(element, "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth, level)
 

@@ -228,6 +228,20 @@ def test_dom_returns_first_of_several_matches(
     locator.first.evaluate.assert_called_once_with("el => el.outerHTML")
 
 
+def test_dom_waits_for_the_element_to_become_visible(
+    session: BrowserSession, page: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tolerating several matches did not turn `dom` into an attached read."""
+    monkeypatch.setattr("llm_browser.waits.time.sleep", lambda _: None)
+    locator = _single_locator()
+    locator.first.is_visible.side_effect = [False, True]
+    locator.first.evaluate.return_value = "<div>shown</div>"
+    page.locator.return_value = locator
+
+    assert "shown" in session.dom("#content")
+    assert locator.first.is_visible.call_count == 2
+
+
 def test_dom_level_is_applied(session: BrowserSession, page: MagicMock) -> None:
     from llm_browser.html import SanitizeLevel
 
