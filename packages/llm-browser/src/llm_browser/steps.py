@@ -27,6 +27,8 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
       * ``element_missing`` — skip unless the element is absent
         (idempotent toggles: only click when the post-click element
         isn't already there).
+      * ``text_present``   — skip unless the page renders that text,
+        optionally scoped to ``selector`` and ``exact``.
       * Plain field/op/value forms compiled by ``yaml_engine``.
     """
     if not step.when:
@@ -42,6 +44,15 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
             spec = raw_cond["element_missing"]
             selector = parse_selector(spec["selector"])
             if session.element_exists(selector):
+                return True
+        elif "text_present" in raw_cond:
+            spec = raw_cond["text_present"]
+            scope = spec.get("selector")
+            if not session.text_present(
+                spec["text"],
+                selector=parse_selector(scope) if scope is not None else None,
+                exact=bool(spec.get("exact", False)),
+            ):
                 return True
         else:
             cond = compile_condition(raw_cond)

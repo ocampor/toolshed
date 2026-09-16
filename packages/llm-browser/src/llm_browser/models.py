@@ -41,6 +41,25 @@ WaitState = Literal[
     "attached", "detached", "visible", "hidden", "enabled", "disabled", "stable"
 ]
 
+# Which way a text wait points. Text is read off ``innerText``, so "there" and
+# "rendered" are the same question — the other states ask about an element.
+TEXT_STATES: dict[WaitState, bool] = {
+    "attached": True,
+    "visible": True,
+    "detached": False,
+    "hidden": False,
+}
+
+
+def check_text_state(state: WaitState) -> bool:
+    """``True`` when ``state`` means the text should be there."""
+    if state not in TEXT_STATES:
+        raise ValueError(
+            f"state {state!r} needs a selector; a text wait takes "
+            f"{', '.join(TEXT_STATES)}"
+        )
+    return TEXT_STATES[state]
+
 
 class Repeat(BaseModel):
     """Run one step once per item of a list param.
@@ -273,7 +292,7 @@ def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
         )
 
 
-class WaitForStep(SelectorStep):
+class WaitForStep(BaseStep):
     """Poll until ``selector`` reaches ``state``, or fail the step.
 
     The one wait: four states answer "is the element there yet" and ``stable``
@@ -282,9 +301,16 @@ class WaitForStep(SelectorStep):
     whole budget; ``interval`` is the nominal gap between polls, jittered;
     ``settle`` is how long the text has to hold still, and applies to
     ``stable`` only.
+
+    ``text`` waits on the page's rendered text instead — a landmark a selector
+    cannot name — scoped to ``selector`` when both are given, substring unless
+    ``exact``.
     """
 
     action: Literal["wait_for"]
+    selector: Selector | None = None
+    text: str | None = None
+    exact: bool = False
     state: WaitState = "attached"
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
     # Bounded here so a typo fails at flow load with a field-named error,
@@ -293,7 +319,11 @@ class WaitForStep(SelectorStep):
     settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
 
     @model_validator(mode="after")
-    def _check_settle_budget(self) -> "WaitForStep":
+    def _check_target_and_budget(self) -> "WaitForStep":
+        if self.selector is None and self.text is None:
+            raise ValueError("wait_for needs a selector or text")
+        if self.text is not None:
+            check_text_state(self.state)
         check_settle_budget(self.state, self.settle, self.timeout)
         return self
 

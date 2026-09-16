@@ -348,6 +348,34 @@ def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
     return dict(json.loads(out.stdout))
 
 
+TEXT_MATCH_HARNESS = """
+const node = (innerText, children = []) => ({
+  innerText,
+  querySelectorAll: () => children,
+});
+const toast = node("Sesión  finalizada\\n");
+globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
+console.log(JSON.stringify({
+  page: MATCH(),
+  scoped: MATCH(toast),
+  elsewhere: MATCH(node("Cargando")),
+}));
+"""
+
+
+def run_text_match(text: str, exact: bool, tmp_path: Path) -> dict[str, bool]:
+    from llm_browser.scripts import text_match_js
+
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const MATCH = {text_match_js(text, exact)}\n{TEXT_MATCH_HARNESS}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 @pytest.mark.parametrize(
     ("at", "expected"),
@@ -442,3 +470,26 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
     assert read["gap"] == expected_gap
     assert read["centre"] == [INNER_WIDTH / 2, INNER_HEIGHT / 2]
     assert read["scrollY"] == round(SCROLL_Y)
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+@pytest.mark.parametrize(
+    ("text", "exact", "expected"),
+    [
+        # Newlines and the `&nbsp;` an XPath `contains(text(), ...)` trips over
+        # both normalise away.
+        (
+            "Sesión finalizada",
+            False,
+            {"page": True, "scoped": True, "elsewhere": False},
+        ),
+        ("finalizada", False, {"page": True, "scoped": True, "elsewhere": False}),
+        # Exact: the toast's own text, which the page holds only as a subtree.
+        ("Sesión finalizada", True, {"page": True, "scoped": True, "elsewhere": False}),
+        ("finalizada", True, {"page": False, "scoped": False, "elsewhere": False}),
+    ],
+)
+def test_text_match_js_reads_normalised_rendered_text(
+    text: str, exact: bool, expected: dict[str, bool], tmp_path: Path
+) -> None:
+    assert run_text_match(text, exact, tmp_path) == expected

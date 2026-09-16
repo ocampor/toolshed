@@ -112,6 +112,10 @@ EXTRACT_PROPERTIES_PLACEHOLDER = "EXTRACT_PROPERTIES_JSON"
 # Substituted into ``js/select_option.js``.
 SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
 
+# Substituted into ``js/text_match.js``.
+TEXT_MATCH_TEXT_PLACEHOLDER = "TEXT_MATCH_TEXT_JSON"
+TEXT_MATCH_EXACT_PLACEHOLDER = "TEXT_MATCH_EXACT_BOOL"
+
 # A page needs a human only for a real credential prompt, a live bot challenge or
 # an explicit interstitial — a bare "sign in" link is ordinary page furniture.
 PASSWORD_INPUT_PATTERN = r"<input[^>]*type\s*=\s*[\"']?password"

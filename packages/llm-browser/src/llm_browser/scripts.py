@@ -142,6 +142,19 @@ def select_control_tag_js() -> str:
     return load_script("select_control_tag")
 
 
+def text_match_js(text: str, exact: bool) -> str:
+    """``(el) => bool`` — is ``text`` in the element's rendered text?
+
+    Substituted rather than passed: drivers evaluate a bare script string with
+    no arguments.
+    """
+    return (
+        load_script("text_match")
+        .replace(constants.TEXT_MATCH_TEXT_PLACEHOLDER, json.dumps(text))
+        .replace(constants.TEXT_MATCH_EXACT_PLACEHOLDER, json.dumps(exact))
+    )
+
+
 def page_probe_js(selector: str | None, max_chars: int) -> str:
     """``() => PageProbe`` — password/challenge visibility plus page text.
 

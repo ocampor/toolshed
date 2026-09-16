@@ -20,7 +20,8 @@ from llm_browser.constants import (
     POLL_JITTER_RATIO,
 )
 from llm_browser.drivers.base import Driver
-from llm_browser.models import WaitState
+from llm_browser.models import WaitState, check_text_state
+from llm_browser.scripts import text_match_js
 from llm_browser.selectors import Selector, describe_selector, resolve_selector
 
 StatePredicate = Callable[[Driver, Any], bool]
@@ -126,15 +127,76 @@ def poll_for_state(
     matches.
     """
     reached = state_predicate(state, settle_ms)
+    poll_until(
+        lambda: reached(driver, resolve_selector(driver, page, selector)),
+        f"{describe_selector(selector)} did not become {state}",
+        timeout_ms,
+        interval_ms,
+    )
+
+
+def poll_until(
+    reached: Callable[[], bool],
+    description: str,
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Tick ``reached`` until it says yes, or raise ``TimeoutError``.
+
+    ``description`` is the timeout message up to ``within <timeout>ms``.
+    """
     pause = poll_jitter(interval_ms)
     deadline = time.monotonic() + timeout_ms / 1000.0
     while True:
-        if reached(driver, resolve_selector(driver, page, selector)):
+        if reached():
             return
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError(
-                f"{describe_selector(selector)} did not become "
-                f"{state} within {timeout_ms}ms"
-            )
+            raise TimeoutError(f"{description} within {timeout_ms}ms")
         time.sleep(min(pause.sample_seconds(), remaining))
+
+
+def text_present(
+    driver: Driver,
+    page: Any,
+    text: str,
+    *,
+    selector: Selector | None = None,
+    exact: bool = False,
+) -> bool:
+    """Whether the page renders ``text`` right now, as one read.
+
+    Whitespace-normalised ``innerText``, so the accents, ``&nbsp;`` and node
+    boundaries an XPath ``contains(text(), ...)`` trips over do not matter.
+    ``selector`` scopes the question to what it matches — every match, since a
+    scope like ``.toast`` names a kind of element, not one of them.
+    """
+    script = text_match_js(text, exact)
+    if selector is None:
+        return bool(driver.evaluate(page, script))
+    elements = driver.all(resolve_selector(driver, page, selector))
+    return any(bool(driver.evaluate(element, script)) for element in elements)
+
+
+def poll_for_text(
+    driver: Driver,
+    page: Any,
+    text: str,
+    *,
+    selector: Selector | None = None,
+    exact: bool = False,
+    state: WaitState = "attached",
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Block until ``text`` is present (or absent), or raise ``TimeoutError``."""
+    wanted = check_text_state(state)
+    scope = f" inside {describe_selector(selector)}" if selector is not None else ""
+    poll_until(
+        lambda: (
+            text_present(driver, page, text, selector=selector, exact=exact) is wanted
+        ),
+        f"text {text!r}{scope} did not become {'present' if wanted else 'absent'}",
+        timeout_ms,
+        interval_ms,
+    )

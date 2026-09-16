@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.3 — 2026-09-16
+
+### Added
+
+- `wait_for` accepts `text:` instead of (or scoped by) `selector:`: polls the
+  whitespace-normalised `innerText` of the page or of what `selector` matches,
+  substring by default and whole-text with `exact: true`, present for
+  `attached`/`visible` and absent for `detached`/`hidden`
+  (ocampor/browser-api#49).
+- `when: [{ text_present: { text: T, selector: S, exact: B } }]` — the same
+  match as a condition.
+- `BrowserSession.wait_for_text(text, selector=, exact=, state=, timeout=,
+  interval=)` and `BrowserSession.text_present(text, selector=, exact=)`.
+
+### Changed
+
+- A `wait_for` step with neither `selector` nor `text` is rejected at flow-load
+  time with `wait_for needs a selector or text` (was: a missing-field error on
+  `selector`).
+
 ## 0.18.2 — 2026-09-16
 
 ### Changed

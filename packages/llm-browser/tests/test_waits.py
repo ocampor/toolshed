@@ -485,3 +485,67 @@ def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
     for state in ("enabled", "disabled"):
         with pytest.raises(TimeoutError):
             session.wait_for_element("#submit", state=state, timeout=0)
+
+
+# --- waiting on text ---
+
+
+def driver_with_text(matches: list[bool]) -> MagicMock:
+    """A driver whose text-match evaluations walk ``matches``, repeating the last."""
+    driver = driver_with()
+    driver.evaluate.side_effect = _series(matches)
+    driver.all.side_effect = lambda locator: [locator]
+    return driver
+
+
+def test_wait_for_text_present(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with_text([False, False, True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("Sesión finalizada")
+
+    assert len(clock.sleeps) == 2
+    # Page-wide: the script is the whole predicate, evaluated against the page.
+    assert '"Sesi\\u00f3n finalizada"' in driver.evaluate.call_args.args[1]
+
+
+def test_wait_for_text_absent(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with_text([True, False])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("Cargando", state="detached")
+
+    assert len(clock.sleeps) == 1
+
+
+def test_wait_for_text_scoped(tmp_path: Path, clock: FakeClock) -> None:
+    """A scope selector asks the matched elements, not the page."""
+    driver = driver_with_text([True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=CssSelector(css=".toast"))
+
+    assert driver.resolve.call_args.args[1] == ".toast"
+    assert driver.evaluate.call_args.args[0] is not session._page
+
+
+def test_a_text_timeout_names_the_text_and_the_direction(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    with pytest.raises(TimeoutError) as excinfo:
+        session.wait_for_text("Listo", selector="#panel", timeout=1_000)
+
+    assert str(excinfo.value) == (
+        "text 'Listo' inside #panel did not become present within 1000ms"
+    )
+
+
+def test_text_present_is_one_read_with_no_waiting(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    assert session.text_present("Listo") is False
+    assert clock.sleeps == []

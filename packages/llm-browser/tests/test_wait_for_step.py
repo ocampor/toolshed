@@ -107,9 +107,45 @@ def test_cli_rejects_out_of_range_budgets(
     assert result.exit_code == 2
 
 
-def test_selector_is_required() -> None:
-    with pytest.raises(ValidationError):
+def test_wait_for_requires_selector_or_text() -> None:
+    with pytest.raises(ValidationError, match="needs a selector or text"):
         validate_step({"name": "x", "action": "wait_for"})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"selector": "#late"},
+        {"selector": None, "text": "Sesión finalizada"},
+        {"text": "Sesión finalizada", "exact": True},
+    ],
+)
+def test_either_target_validates(overrides: dict[str, Any]) -> None:
+    assert isinstance(validate_step(wait_for_step(**overrides)), WaitForStep)
+
+
+def test_a_text_wait_rejects_an_element_only_state() -> None:
+    """`stable` reads an element's text over time; there is no element here."""
+    with pytest.raises(ValidationError, match="needs a selector"):
+        validate_step(wait_for_step(selector=None, text="done", state="stable"))
+
+
+def test_the_action_waits_on_text_when_the_step_names_it(
+    mock_session: MagicMock,
+) -> None:
+    step = validate_step(
+        wait_for_step(text="Sesión finalizada", exact=True, state="visible")
+    )
+
+    assert isinstance(execute_action(mock_session, step), VoidResult)
+    mock_session.wait_for_text.assert_called_once_with(
+        "Sesión finalizada",
+        selector="#late",
+        exact=True,
+        state="visible",
+        timeout=3000,
+        interval=500,
+    )
 
 
 # --- Action dispatch ---

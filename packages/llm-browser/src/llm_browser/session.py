@@ -518,6 +518,46 @@ class BrowserSession:
             settle_ms=settle,
         )
 
+    def wait_for_text(
+        self,
+        text: str,
+        *,
+        selector: Selector | None = None,
+        exact: bool = False,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        interval: int = DEFAULT_POLL_INTERVAL_MS,
+    ) -> None:
+        """Poll until ``text`` is on the page; raise ``TimeoutError`` if not.
+
+        ``wait_for_element`` for a landmark no selector names — a confirmation,
+        an error toast. ``selector`` scopes the search; ``state`` says which
+        way the wait points (``attached``/``visible`` for there,
+        ``detached``/``hidden`` for gone). Use ``text_present`` for a bool.
+        """
+        waits.poll_for_text(
+            self.driver,
+            self.get_page(),
+            text,
+            selector=selector,
+            exact=exact,
+            state=state,
+            timeout_ms=timeout,
+            interval_ms=interval,
+        )
+
+    def text_present(
+        self,
+        text: str,
+        *,
+        selector: Selector | None = None,
+        exact: bool = False,
+    ) -> bool:
+        """Whether the page renders ``text`` right now — one read, no waiting."""
+        return waits.text_present(
+            self.driver, self.get_page(), text, selector=selector, exact=exact
+        )
+
     def wait_for_load_state(
         self, state: str = "domcontentloaded", timeout: int = 10_000
     ) -> None:

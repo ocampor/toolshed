@@ -152,13 +152,23 @@ def action_wait_for(
 ) -> VoidResult:
     """A timeout here rides ``execute_action``'s handler: the step fails with
     the selector/state message, and ``optional: true`` turns it into a skip."""
-    session.wait_for_element(
-        step.selector,
-        state=step.state,
-        timeout=step.timeout,
-        interval=step.interval,
-        settle=step.settle,
-    )
+    if step.text is not None:
+        session.wait_for_text(
+            step.text,
+            selector=step.selector,
+            exact=step.exact,
+            state=step.state,
+            timeout=step.timeout,
+            interval=step.interval,
+        )
+    elif step.selector is not None:
+        session.wait_for_element(
+            step.selector,
+            state=step.state,
+            timeout=step.timeout,
+            interval=step.interval,
+            settle=step.settle,
+        )
     return VoidResult()
 
 

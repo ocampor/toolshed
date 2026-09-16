@@ -118,6 +118,18 @@ def test_should_skip_element_exists(mock_session: MagicMock) -> None:
     assert should_skip(mock_session, step, _flow_data()) is True
 
 
+def test_should_skip_text_present(mock_session: MagicMock) -> None:
+    step = EvalStep(
+        name="s",
+        when=[{"text_present": {"text": "Sesión finalizada", "selector": ".toast"}}],
+    )
+    mock_session.text_present.return_value = True
+    assert should_skip(mock_session, step, _flow_data()) is False
+    mock_session.text_present.return_value = False
+    assert should_skip(mock_session, step, _flow_data()) is True
+    assert mock_session.text_present.call_args.kwargs["exact"] is False
+
+
 # --- execute_step ---
 
 
