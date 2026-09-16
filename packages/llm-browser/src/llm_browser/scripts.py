@@ -1,6 +1,7 @@
 """In-page JavaScript loaded from ``js/``."""
 
 import json
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,13 +17,29 @@ def load_script(name: str) -> str:
 
 
 def extract_rows_js() -> str:
-    """``(rows, spec) => list[dict]`` — read every field off every row.
+    """``(rows, {spec, exclude}) => list[dict]`` — read every field off every row.
 
     The property allowlist is substituted in so the page-side rule and
     ``Driver.read_field`` read the same names."""
     return load_script("extract_rows").replace(
         constants.EXTRACT_PROPERTIES_PLACEHOLDER,
         json.dumps(list(constants.EXTRACT_PROPERTIES)),
+    )
+
+
+def read_property_js(name: str, exclude: Sequence[str] = ()) -> str:
+    """``(el) => el.<name>``, read off a copy with the ``exclude`` subtrees gone.
+
+    The pruning mirrors ``js/extract_rows.js``, so the per-element driver path
+    answers what the one-evaluation path would.
+    """
+    if not exclude:
+        return f"(el) => el.{name}"
+    selector = json.dumps(", ".join(exclude))
+    return (
+        "(el) => { const copy = el.cloneNode(true);"
+        f" copy.querySelectorAll({selector}).forEach((node) => node.remove());"
+        f" return copy.{name}; }}"
     )
 
 

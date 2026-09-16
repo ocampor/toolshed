@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.3 — 2026-09-16
+
+### Added
+
+- `read` steps take `exclude: [css, ...]`: matching elements are read as if absent, so nested badges and screen-reader text stay out of the extracted values (ocampor/browser-api#33).
+
 ## 0.17.2 — 2026-09-16
 
 ### Changed

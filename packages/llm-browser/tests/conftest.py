@@ -94,7 +94,9 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         matches: dict[str, int] | None = None,
         since_navigation_ms: int = 120,
     ) -> BrowserSession:
-        def read(target: tuple[int, str | None], name: str) -> str | None:
+        def read(
+            target: tuple[int, str | None], name: str, exclude: object = ()
+        ) -> str | None:
             index, child_selector = target
             if child_selector is None:
                 return rows[index].get(None, text)
@@ -116,8 +118,8 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         driver.get_attribute.side_effect = read
         # The real default, so a canned page exercises the child/read split
         # every driver inherits rather than a mock standing in for it.
-        driver.read_field.side_effect = lambda row, field: Driver.read_field(
-            driver, row, field
+        driver.read_field.side_effect = lambda row, field, exclude=(): (
+            Driver.read_field(driver, row, field, exclude)
         )
         session = BrowserSession(state_dir=tmp_path)
         session.driver = driver

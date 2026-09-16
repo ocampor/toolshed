@@ -264,9 +264,12 @@ def test_read(session: BrowserSession) -> None:
     row = result.rows[0]
     assert isinstance(row, ExtractedRow)
     assert row.model_dump() == {"name": "Alice"}
-    script, spec = locator.evaluate_all.call_args.args
+    script, arg = locator.evaluate_all.call_args.args
     assert "querySelector" in script
-    assert spec == {"name": {"child_selector": "td", "attribute": "textContent"}}
+    assert arg == {
+        "spec": {"name": {"child_selector": "td", "attribute": "textContent"}},
+        "exclude": [],
+    }
 
 
 def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
@@ -282,8 +285,8 @@ def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
     row = result.rows[0]
     assert isinstance(row, ExtractedRow)
     assert row.model_dump() == {"text": "hello"}
-    _, spec = locator.evaluate_all.call_args.args
-    assert spec == {"text": {"child_selector": None, "attribute": "textContent"}}
+    _, arg = locator.evaluate_all.call_args.args
+    assert arg["spec"] == {"text": {"child_selector": None, "attribute": "textContent"}}
 
 
 # --- parse (typed schema action) ---

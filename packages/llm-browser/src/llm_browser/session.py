@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -647,16 +647,18 @@ class BrowserSession:
         self,
         selector: Selector,
         extract: dict[str, ExtractField],
+        exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
         """Extract structured data from matching elements.
 
         ``extract`` maps output field names to ``ExtractField`` specs that say
         which child selector to descend into and which attribute/property to
         read. When ``child_selector`` is None the value is read off the row
-        element itself.
+        element itself. Elements matching ``exclude`` are dropped from the text
+        a field reads, as if they were not on the page.
         """
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        return self.driver.extract_rows(locator, row_spec(extract))
+        return self.driver.extract_rows(locator, row_spec(extract), exclude)
 
     # --- Explore ---
     #

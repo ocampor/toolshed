@@ -25,7 +25,9 @@ def test_playwright_extract_rows_uses_one_evaluate_all() -> None:
     locator.evaluate_all.return_value = [{"name": "Alice"}]
     rows = PatchrightDriver().extract_rows(locator, SPEC)
     assert rows == [{"name": "Alice"}]
-    locator.evaluate_all.assert_called_once_with(extract_rows_js(), SPEC)
+    locator.evaluate_all.assert_called_once_with(
+        extract_rows_js(), {"spec": SPEC, "exclude": []}
+    )
 
 
 class FallbackDriver(Driver):

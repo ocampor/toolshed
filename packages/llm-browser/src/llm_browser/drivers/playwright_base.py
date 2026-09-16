@@ -10,6 +10,7 @@ drivers (e.g. nodriver) don't need to — they implement `Driver` directly
 and never touch these Protocols.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Protocol, cast
 
@@ -21,7 +22,7 @@ from llm_browser.behavior import (
 from llm_browser.constants import READ_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
 from llm_browser.results import BytesResult, guess_media_type
-from llm_browser.scripts import extract_rows_js
+from llm_browser.scripts import extract_rows_js, read_property_js
 
 
 # --- Narrow Playwright-family protocols ---
@@ -230,10 +231,12 @@ class PlaywrightDriverBase(Driver):
         )
         return cast(str | None, value)
 
-    def read_property(self, target: Any, name: str) -> str | None:
+    def read_property(
+        self, target: Any, name: str, exclude: Sequence[str] = ()
+    ) -> str | None:
+        script = read_property_js(name, exclude)
         value = self.now_read(
-            target,
-            lambda loc: loc.evaluate(f"(el) => el.{name}", timeout=READ_TIMEOUT_MS),
+            target, lambda loc: loc.evaluate(script, timeout=READ_TIMEOUT_MS)
         )
         return None if value is None else str(value)
 
@@ -253,11 +256,15 @@ class PlaywrightDriverBase(Driver):
         return _pw_loc(locator).locator(selector)
 
     def extract_rows(
-        self, locator: Any, spec: dict[str, dict[str, str | None]]
+        self,
+        locator: Any,
+        spec: dict[str, dict[str, str | None]],
+        exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
         """One page evaluation over every matched row, instead of a locator
         call per row and field."""
-        rows = _pw_loc(locator).evaluate_all(extract_rows_js(), spec)
+        arg = {"spec": spec, "exclude": list(exclude)}
+        rows = _pw_loc(locator).evaluate_all(extract_rows_js(), arg)
         return cast(list[dict[str, str | None]], rows)
 
     def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:

@@ -23,7 +23,7 @@ from llm_browser.scripts import (
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
     source = extract_rows_js()
-    assert source.startswith("(rows, spec) =>")
+    assert source.startswith("(rows, { spec, exclude }) =>")
     assert "querySelector" in source
     assert "getAttribute" in source
 
@@ -42,6 +42,9 @@ def test_load_script_is_cached_and_reads_from_js_dir() -> None:
 def test_load_script_missing_file() -> None:
     with pytest.raises(FileNotFoundError):
         load_script("no_such_script")
+
+
+JS_RUNTIME = shutil.which("node") or shutil.which("bun")
 
 
 FAKE_DOM_HARNESS = """
@@ -67,11 +70,11 @@ const spec = {
   self: { child_selector: null, attribute: "textContent" },
 };
 row.textContent = "whole row";
-console.log(JSON.stringify(EXTRACT([row], spec)));
+console.log(JSON.stringify(EXTRACT([row], { spec, exclude: [] })));
 """
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
     """Run the real script over fake elements: property reads, attributes,
     a missing child, and a null child_selector meaning the row itself."""
@@ -80,7 +83,7 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
         f"const EXTRACT = {extract_rows_js()};\n{FAKE_DOM_HARNESS}",
     )
     out = subprocess.run(
-        ["node", str(script)], capture_output=True, text=True, check=True
+        [str(JS_RUNTIME), str(script)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == [
         {
@@ -95,6 +98,82 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "self": "whole row",
         }
     ]
+
+
+EXCLUDE_HARNESS = """
+class Node {
+  constructor(sel, text, children) {
+    this.sel = sel;
+    this.text = text || "";
+    this.children = children || [];
+    this.children.forEach((child) => (child.parent = this));
+  }
+  get textContent() {
+    if (!this.children.length) return this.text;
+    return this.children.map((child) => child.textContent).join("");
+  }
+  cloneNode() {
+    return new Node(this.sel, this.text, this.children.map((c) => c.cloneNode()));
+  }
+  querySelectorAll(selector) {
+    const wanted = selector.split(", ");
+    const found = [];
+    const walk = (node) =>
+      node.children.forEach((child) => {
+        if (wanted.includes(child.sel)) found.push(child);
+        walk(child);
+      });
+    walk(this);
+    return found;
+  }
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+  remove() {
+    this.parent.children = this.parent.children.filter((c) => c !== this);
+  }
+  getAttribute() {
+    return null;
+  }
+}
+const spec = { text: { child_selector: null, attribute: "textContent" } };
+const row = () =>
+  new Node("tr", "", [
+    new Node("td.title", "Widget"),
+    new Node("span.badge", " 5 reviews"),
+  ]);
+console.log(
+  JSON.stringify({
+    excluded: EXTRACT([row()], { spec, exclude: EXCLUDE_JSON }),
+    kept: EXTRACT([row()], { spec, exclude: [] }),
+  })
+);
+"""
+
+
+def run_exclude_harness(exclude: list[str], tmp_path: Path) -> dict[str, object]:
+    script = tmp_path / "exclude.mjs"
+    script.write_text(
+        f"const EXTRACT = {extract_rows_js()};\n"
+        + EXCLUDE_HARNESS.replace("EXCLUDE_JSON", json.dumps(exclude))
+    )
+    out = subprocess.run(
+        [str(JS_RUNTIME), str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
+def test_read_exclude_drops_subtree_text(tmp_path: Path) -> None:
+    result = run_exclude_harness(["span.badge"], tmp_path)
+    assert result["excluded"] == [{"text": "Widget"}]
+    assert result["kept"] == [{"text": "Widget 5 reviews"}]
+
+
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
+def test_read_exclude_no_match_is_noop(tmp_path: Path) -> None:
+    result = run_exclude_harness(["span.nothing-here"], tmp_path)
+    assert result["excluded"] == result["kept"] == [{"text": "Widget 5 reviews"}]
 
 
 SELECT_HARNESS = """
@@ -151,12 +230,12 @@ def run_select_harness(
         f"const SELECT = {select_option_js(value)};\n{body}"
     )
     out = subprocess.run(
-        ["node", str(script)], capture_output=True, text=True, check=True
+        [str(JS_RUNTIME), str(script)], capture_output=True, text=True, check=True
     )
     return dict(json.loads(out.stdout))
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -174,7 +253,7 @@ def test_select_option_js_picks_or_says_why_not(
     assert run_select_harness(value, tmp_path) == expected
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 def test_a_disabled_optgroup_is_its_own_answer(tmp_path: Path) -> None:
     """`parentElement.disabled` blamed the option; an option inside a disabled
     `<optgroup>` has no `disabled` of its own and used to be chosen."""
@@ -182,14 +261,14 @@ def test_a_disabled_optgroup_is_its_own_answer(tmp_path: Path) -> None:
     assert result == {"outcome": "group-disabled", **UNTOUCHED}
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 def test_a_disabled_select_is_its_own_answer(tmp_path: Path) -> None:
     """Not "the option is disabled": the option is fine, the control is not."""
     result = run_select_harness("c", tmp_path, select_disabled=True)
     assert result == {"outcome": "select-disabled", **UNTOUCHED}
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
     """The Playwright family resolves one before acting; rejecting it here
     would make nodriver refuse a target the others accept."""
@@ -197,7 +276,7 @@ def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
     assert run_select_harness("c", tmp_path, target=label) == CHOSE_C
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(JS_RUNTIME is None, reason="no JS runtime installed")
 def test_anything_else_is_not_a_select(tmp_path: Path) -> None:
     assert run_select_harness("c", tmp_path, target='{ tagName: "DIV" }') == {
         "outcome": "not-a-select",
