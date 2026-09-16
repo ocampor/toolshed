@@ -1,0 +1,25 @@
+# `exclude:` drops matches from the text a field reads -- and only from that.
+steps:
+  - name: pick
+    action: select
+    selector: "#country"
+    value: mx
+
+  # No `exclude:`: innerText is the rendered text, so the hidden span is out.
+  - name: whole
+    action: read
+    selector: "#card"
+    extract:
+      text:
+        attribute: innerText
+
+  - name: pruned
+    action: read
+    selector: "#card"
+    exclude: [".badge", "select"]
+    extract:
+      text:
+        attribute: innerText
+      country:
+        child_selector: "#country"
+        attribute: value

@@ -153,9 +153,12 @@ def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
         {"name": ExtractField(child_selector="td.name", attribute="textContent")},
     )
     assert result == [{"name": "Alice"}, {"name": "Bob"}]
-    script, spec = locator.evaluate_all.call_args.args
+    script, arg = locator.evaluate_all.call_args.args
     assert script == extract_rows_js()
-    assert spec == {"name": {"child_selector": "td.name", "attribute": "textContent"}}
+    assert arg == {
+        "spec": {"name": {"child_selector": "td.name", "attribute": "textContent"}},
+        "exclude": [],
+    }
 
 
 def test_parse_elements_one_evaluation_for_many_rows(
@@ -188,7 +191,7 @@ def test_parse_elements_spec_preserves_field_order(
             "qty": ExtractField(child_selector="input", attribute="value"),
         },
     )
-    spec = page.locator.return_value.evaluate_all.call_args.args[1]
+    spec = page.locator.return_value.evaluate_all.call_args.args[1]["spec"]
     assert list(spec) == ["name", "url", "qty"]
     assert spec["url"] == {"child_selector": "a", "attribute": "href"}
 
@@ -200,7 +203,7 @@ def test_parse_elements_row_itself_when_no_child_selector(
 
     page.locator.return_value.evaluate_all.return_value = [{"id": "r1"}]
     result = session.parse_elements("tr", {"id": ExtractField(attribute="data-id")})
-    spec = page.locator.return_value.evaluate_all.call_args.args[1]
+    spec = page.locator.return_value.evaluate_all.call_args.args[1]["spec"]
     assert spec == {"id": {"child_selector": None, "attribute": "data-id"}}
     assert result == [{"id": "r1"}]
 

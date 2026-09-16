@@ -698,11 +698,11 @@ class BrowserSession:
         ``extract`` maps output field names to ``ExtractField`` specs that say
         which child selector to descend into and which attribute/property to
         read. When ``child_selector`` is None the value is read off the row
-        element itself. ``exclude``'s matches are pruned from every property
-        read, so a page's chrome can be dropped from the text.
+        element itself. ``exclude``'s matches are dropped from the text a field
+        reads, so a page's chrome can be left out of it.
         """
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        return self.driver.extract_rows(locator, row_spec(extract, exclude))
+        return self.driver.extract_rows(locator, row_spec(extract), exclude)
 
     # --- Explore ---
     #

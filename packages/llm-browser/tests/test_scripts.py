@@ -34,7 +34,7 @@ HAS_JS_RUNTIME = Path(JS_RUNTIME).exists()
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
     source = extract_rows_js()
-    assert source.startswith("(rows, spec) =>")
+    assert source.startswith("(rows, { spec, exclude }) =>")
     assert "querySelector" in source
     assert "getAttribute" in source
 
@@ -78,7 +78,7 @@ const spec = {
   self: { child_selector: null, attribute: "textContent" },
 };
 row.textContent = "whole row";
-console.log(JSON.stringify(EXTRACT([row], spec)));
+console.log(JSON.stringify(EXTRACT([row], { spec, exclude: [] })));
 """
 
 
@@ -109,12 +109,14 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
 
 
 EXCLUDE_HARNESS = """
-// A DOM small enough to read: a node is a tag, a class and its children,
-// each child a node or a string of text. Enough for what the script needs --
-// a deep copy, a group selector, and detaching a match.
-const el = (tag, cls, ...children) => ({
+// A DOM small enough to read: a node is a tag, a class, a value and its
+// children, each child a node or a string of text. Enough for what the script
+// needs -- a deep copy, a group selector, and detaching a match. `cloneNode`
+// drops `value`, the way a real clone drops a <select>'s selectedness.
+const el = (tag, cls, value, ...children) => ({
   tagName: tag.toUpperCase(),
   cls,
+  value,
   children,
   get textContent() {
     return this.children
@@ -126,10 +128,20 @@ const el = (tag, cls, ...children) => ({
       ? this.cls === selector.slice(1)
       : this.tagName === selector.toUpperCase();
   },
+  querySelector(selector) {
+    for (const child of this.children) {
+      if (typeof child === "string") continue;
+      if (child.matches(selector)) return child;
+      const found = child.querySelector(selector);
+      if (found) return found;
+    }
+    return null;
+  },
   cloneNode() {
     return el(
       this.tagName,
       this.cls,
+      "default",
       ...this.children.map((c) => (typeof c === "string" ? c : c.cloneNode())),
     );
   },
@@ -146,33 +158,43 @@ const el = (tag, cls, ...children) => ({
   },
 });
 
-const row = el("body", null, el("nav", null, "Menu"), el("div", "ad", "Buy!"), "Real text");
+const row = el(
+  "body", null, "chosen",
+  el("nav", null, null, "Menu"),
+  el("div", "ad", null, "Buy!"),
+  "Real text",
+);
 const spec = {
-  text: { child_selector: null, attribute: "textContent", exclude: ["nav", ".ad"] },
-  whole: { child_selector: null, attribute: "textContent" },
+  text: { child_selector: null, attribute: "textContent" },
+  picked: { child_selector: null, attribute: "value" },
 };
-console.log(JSON.stringify({ rows: EXTRACT([row], spec), left: row.textContent }));
+const pruned = EXTRACT([row], { spec, exclude: ["nav", ".ad"] });
+const whole = EXTRACT([row], { spec, exclude: [] });
+console.log(JSON.stringify({ pruned, whole, left: row.textContent }));
 """
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_read_exclude_drops_matches(tmp_path: Path) -> None:
-    """`exclude` drops those matches from the text, and leaves the live page
-    alone: the read happens on a copy."""
+    """`exclude` drops those matches from the text, reads `value` off the live
+    element anyway, and leaves the page alone: the text read is on a copy."""
     script = tmp_path / "harness.mjs"
     script.write_text(f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_HARNESS}")
     out = subprocess.run(
         ["node", str(script)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == {
-        "rows": [{"text": "Real text", "whole": "MenuBuy!Real text"}],
+        "pruned": [{"text": "Real text", "picked": "chosen"}],
+        "whole": [{"text": "MenuBuy!Real text", "picked": "chosen"}],
         "left": "MenuBuy!Real text",
     }
 
 
-def test_property_js_reads_a_pruned_copy() -> None:
+def test_property_js_prunes_only_what_a_descendant_is_part_of() -> None:
     """The fallback path applies the same rule without the batch script."""
     assert property_js("textContent") == "(el) => el.textContent"
+    assert property_js("value", ["nav"]) == "(el) => el.value"
+    assert property_js("tagName", ["nav"]) == "(el) => el.tagName"
 
     script = property_js("textContent", ["nav", ".ad"])
     assert "cloneNode(true)" in script

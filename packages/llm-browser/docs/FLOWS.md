@@ -279,9 +279,8 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | Attribute shorthand | `selector: { id: "x" }` → `[id="x"]` |
 | Explicit CSS | `selector: { css: ".my-class" }` |
 | XPath | `selector: { xpath: "//input[@name='q']" }` |
-| Fallback | `selector: { primary: "#new-id", fallback: ".legacy" }` — the first that matches |
 
-A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read`, `parse` and `find` take the whole union — one row per match — while every single-element step (`dom`, `click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. Use a group to read, a `{ primary, fallback }` selector to pick the first of several that exists.
+A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — while every single-element step (`dom`, `click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
 
 ## Template variables
 
@@ -347,7 +346,7 @@ element or the value is missing. The compact form is
 Leaving `extract` out entirely, `extract: {}`, and `extract: null` are all
 that last form under the name `text`: one `{ text: … }` per matched element.
 
-`exclude: [selector, …]` drops those matches from the text: every property read happens on a pruned copy of the element, so `read` on `body` can leave out a notification drawer or a `<select>` list. Attribute reads are untouched — an attribute is the element's own, and no descendant is part of it — and the page itself is never modified. On a copy `innerText` has no layout, so under `exclude` it reads like `textContent`.
+`exclude: [selector, …]` drops those matches from the text: `textContent`, `innerText`, `innerHTML`, `outerHTML` and `childElementCount` are read off a pruned copy of the element, so `read` on `body` can leave out a notification drawer or a `<select>` list. Attributes, `value` and `tagName` are untouched — they are the element's own, and no descendant is part of them — and the page itself is never modified. On a copy `innerText` has no layout, so under `exclude` it reads like `textContent`.
 
 ```yaml
 - name: read the article

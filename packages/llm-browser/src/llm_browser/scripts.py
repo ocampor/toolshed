@@ -30,13 +30,20 @@ def substitute(source: str, values: dict[str, str]) -> str:
 
 
 def extract_rows_js() -> str:
-    """``(rows, spec) => list[dict]`` — read every field off every row.
+    """``(rows, {spec, exclude}) => list[dict]`` — every field off every row.
 
-    The property allowlist is substituted in so the page-side rule and
+    Both property allowlists are substituted in so the page-side rule and
     ``Driver.read_field`` read the same names."""
-    return load_script("extract_rows").replace(
-        constants.EXTRACT_PROPERTIES_PLACEHOLDER,
-        json.dumps(list(constants.EXTRACT_PROPERTIES)),
+    return substitute(
+        load_script("extract_rows"),
+        {
+            constants.EXTRACT_PROPERTIES_PLACEHOLDER: json.dumps(
+                list(constants.EXTRACT_PROPERTIES)
+            ),
+            constants.EXCLUDABLE_PROPERTIES_PLACEHOLDER: json.dumps(
+                list(constants.EXCLUDABLE_PROPERTIES)
+            ),
+        },
     )
 
 
@@ -45,8 +52,10 @@ def property_js(name: str, exclude: Sequence[str] = ()) -> str:
 
     A copy, not the page: the flow goes on driving the live element. On a
     detached copy ``innerText`` has no layout, so it reads like ``textContent``.
+    Only a property a descendant is part of takes the copy — a clone loses an
+    ``<option>``'s selectedness, so ``value`` stays on the live element.
     """
-    if not exclude:
+    if not exclude or name not in constants.EXCLUDABLE_PROPERTIES:
         return f"(el) => el.{name}"
     selector = json.dumps(",".join(exclude))
     return (

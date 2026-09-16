@@ -136,6 +136,19 @@ EXTRACT_PROPERTIES = (
     "value",
 )
 
+# The subset a `read` step's ``exclude`` can change: what a descendant is part
+# of. ``value`` and ``tagName`` are the element's own, and reading them off a
+# pruned clone would answer wrong -- a clone loses an <option>'s selectedness.
+EXCLUDABLE_PROPERTIES = (
+    "childElementCount",
+    "innerHTML",
+    "innerText",
+    "outerHTML",
+    "textContent",
+)
+
+EXCLUDABLE_PROPERTIES_PLACEHOLDER = "EXCLUDABLE_PROPERTIES_JSON"
+
 EXTRACT_ATTRIBUTE_SEPARATOR = "@"
 DEFAULT_EXTRACT_ATTRIBUTE = "textContent"
 DEFAULT_EXTRACT_FIELD = "text"

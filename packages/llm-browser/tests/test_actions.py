@@ -264,9 +264,9 @@ def test_read(session: BrowserSession) -> None:
     row = result.rows[0]
     assert isinstance(row, ExtractedRow)
     assert row.model_dump() == {"name": "Alice"}
-    script, spec = locator.evaluate_all.call_args.args
+    script, arg = locator.evaluate_all.call_args.args
     assert "querySelector" in script
-    assert spec == {"name": {"child_selector": "td", "attribute": "textContent"}}
+    assert arg["spec"] == {"name": {"child_selector": "td", "attribute": "textContent"}}
 
 
 def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
@@ -282,25 +282,22 @@ def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
     row = result.rows[0]
     assert isinstance(row, ExtractedRow)
     assert row.model_dump() == {"text": "hello"}
-    _, spec = locator.evaluate_all.call_args.args
-    assert spec == {"text": {"child_selector": None, "attribute": "textContent"}}
+    _, arg = locator.evaluate_all.call_args.args
+    assert arg["spec"] == {"text": {"child_selector": None, "attribute": "textContent"}}
 
 
 def test_read_exclude_reaches_the_page_read(session: BrowserSession) -> None:
-    """`exclude:` rides the spec each field is read with, so the page drops
-    those matches from the text."""
+    """`exclude:` rides the page evaluation the step's fields are read with,
+    so the page drops those matches from the text."""
     locator = _rows_locator(session, [{"text": "keep"}])
 
     step = ReadStep(name="s", action="read", selector="body", exclude=["nav", ".ad"])
     execute_action(session, step)
 
-    _, spec = locator.evaluate_all.call_args.args
-    assert spec == {
-        "text": {
-            "child_selector": None,
-            "attribute": "textContent",
-            "exclude": ["nav", ".ad"],
-        }
+    _, arg = locator.evaluate_all.call_args.args
+    assert arg == {
+        "spec": {"text": {"child_selector": None, "attribute": "textContent"}},
+        "exclude": ["nav", ".ad"],
     }
 
 

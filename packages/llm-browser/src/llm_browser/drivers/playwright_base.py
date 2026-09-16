@@ -258,11 +258,15 @@ class PlaywrightDriverBase(Driver):
         return _pw_loc(locator).locator(selector)
 
     def extract_rows(
-        self, locator: Any, spec: dict[str, dict[str, Any]]
+        self,
+        locator: Any,
+        spec: dict[str, dict[str, str | None]],
+        exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
         """One page evaluation over every matched row, instead of a locator
         call per row and field."""
-        rows = _pw_loc(locator).evaluate_all(extract_rows_js(), spec)
+        arg = {"spec": spec, "exclude": list(exclude)}
+        rows = _pw_loc(locator).evaluate_all(extract_rows_js(), arg)
         return cast(list[dict[str, str | None]], rows)
 
     def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:

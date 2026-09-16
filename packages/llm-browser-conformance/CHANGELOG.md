@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.2 — 2026-09-17
+
+Tracks `llm-browser` 0.18.4.
+
+### Added
+
+- `read exclude`, on `site/read-exclude.html` and `flows/read-exclude.yaml`:
+  the excluded text is gone, the read is on a detached copy (so `innerText`
+  reads like `textContent`), and `value` still answers off the live element.
+
 ## 0.11.1 — 2026-09-16
 
 Tracks `llm-browser` 0.18.3.
