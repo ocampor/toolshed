@@ -216,6 +216,27 @@ def test_dom(session: BrowserSession, page: MagicMock) -> None:
     locator.first.evaluate.assert_called_once_with("el => el.outerHTML")
 
 
+def test_dom_multiple_matches_returns_first(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    locator = _single_locator()
+    locator.count.return_value = 3
+    locator.first.evaluate.return_value = "<div>first</div>"
+    page.locator.return_value = locator
+    assert "first" in session.dom("div")
+
+
+def test_dom_comma_list_returns_first_in_document_order(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    locator = _single_locator()
+    locator.count.return_value = 2
+    locator.first.evaluate.return_value = "<body>page</body>"
+    page.locator.return_value = locator
+    assert "page" in session.dom("main, article, body")
+    page.locator.assert_called_with("main, article, body")
+
+
 def test_dom_level_is_applied(session: BrowserSession, page: MagicMock) -> None:
     from llm_browser.html import SanitizeLevel
 
