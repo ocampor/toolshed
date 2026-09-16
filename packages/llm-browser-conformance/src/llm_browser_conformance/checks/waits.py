@@ -1,12 +1,19 @@
 """Every ``wait_for`` state against the page built for it, plus the three
 things a wait must refuse to do: return early, wait out an ambiguous
 selector, and poll a settle window that cannot fit its budget.
+
+The text waits live here too: a real browser is the only place ``innerText``'s
+rendered-vs-``textContent`` semantics can be proved.
 """
+
+from collections.abc import Callable
+from typing import Any
 
 from llm_browser_conformance.checks.support import expect_success, one_text
 from llm_browser_conformance.scenario import (
     POLL_MS,
     SETTLE_MS,
+    TIMEOUT_MS,
     Context,
     Scenario,
     Section,
@@ -94,6 +101,54 @@ def aria_disabled_reads_as_disabled(ctx: Context) -> None:
 def a_flow_waits_out_a_locked_field_before_filling_it(ctx: Context) -> None:
     outputs = expect_success(ctx, "unlock-input.html", "wait-enabled")
     assert one_text(outputs, "result") == "typed"
+
+
+def text_wait(ctx: Context, text: str, **options: Any) -> Callable[[], None]:
+    """``ctx.wait`` for the text wait, which names no element."""
+    return lambda: ctx.session.wait_for_text(
+        text, timeout=TIMEOUT_MS, interval=POLL_MS, **options
+    )
+
+
+def a_text_wait_waits_for_the_page_to_say_it(ctx: Context) -> None:
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"), text_wait(ctx, "Sesión finalizada")
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def a_text_wait_waits_for_the_words_to_go(ctx: Context) -> None:
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Cargando", state="detached"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
+    """The modal keeps its text and stops being rendered. ``innerText`` on a
+    non-rendered element answers with its ``textContent``, so a scope read that
+    trusted it would poll out the whole budget on text nobody can see."""
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Sesión iniciada", selector=".modal", state="hidden"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def text_present_answers_in_one_read(ctx: Context) -> None:
+    """The bool half: what the page renders now, never what a ``<script>``
+    merely holds as source, and it does not block on text that is not there."""
+    ctx.visit("text-wait.html")
+    assert ctx.session.text_present("Cargando")
+    assert not ctx.session.text_present("Contraseña caducada", exact=True)
+    took = ctx.elapsed(lambda: ctx.session.text_present("Sesión finalizada"))
+    assert took < IMMEDIATE_S
+
+
+def a_flow_waits_for_the_whole_text_of_an_element(ctx: Context) -> None:
+    outputs = expect_success(ctx, "text-wait.html", "wait-text")
+    assert one_text(outputs, "result") == "Sesión finalizada"
 
 
 def a_short_timeout_names_selector_and_state(ctx: Context) -> None:
@@ -198,6 +253,36 @@ SCENARIOS = [
         Section.WAITS,
         a_flow_waits_out_a_locked_field_before_filling_it,
         covers=frozenset({"field:wait_for.state", "field:check.checked", "step:check"}),
+    ),
+    Scenario(
+        "wait text present",
+        Section.WAITS,
+        a_text_wait_waits_for_the_page_to_say_it,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "wait text absent",
+        Section.WAITS,
+        a_text_wait_waits_for_the_words_to_go,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "hidden scope has no text",
+        Section.WAITS,
+        a_hidden_scope_reads_as_absent,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "text_present is one read",
+        Section.WAITS,
+        text_present_answers_in_one_read,
+        covers=frozenset({"session:text_present"}),
+    ),
+    Scenario(
+        "wait exact text scoped",
+        Section.WAITS,
+        a_flow_waits_for_the_whole_text_of_an_element,
+        covers=frozenset({"field:wait_for.text", "field:wait_for.exact"}),
     ),
     Scenario(
         "timeout message",
