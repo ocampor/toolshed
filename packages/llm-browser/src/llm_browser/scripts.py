@@ -124,6 +124,12 @@ def hit_test_js(point: tuple[float, float]) -> str:
     )
 
 
+def viewport_fit_js() -> str:
+    """``(el) => {gap, centre}`` — how far to wheel ``el`` into view, and the
+    viewport's middle."""
+    return load_script("viewport_fit")
+
+
 def select_option_js(value: str) -> str:
     """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(

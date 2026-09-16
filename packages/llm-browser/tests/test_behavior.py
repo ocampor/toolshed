@@ -26,8 +26,11 @@ from llm_browser.session import BrowserSession
 def _locator_with_box(box: dict[str, float] | None = None) -> MagicMock:
     locator = MagicMock()
     locator.count.return_value = 1
-    # What the page answers the humanized click's hit test: the target itself.
+    # What the page answers the two scripts a humanized click runs: the box is
+    # in view, and the pointer ended on the target itself.
     locator.first.evaluate.return_value = {
+        "gap": 0,
+        "centre": [400.0, 300.0],
         "target": True,
         "hit": {"tag": "button", "text": "Go", "class": "primary"},
     }

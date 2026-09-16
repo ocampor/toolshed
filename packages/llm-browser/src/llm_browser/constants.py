@@ -98,6 +98,10 @@ PROBE_MAX_CHARS_PLACEHOLDER = "MAX_CHARS_INT"
 # the pointer sits pressed-ready on the page.
 HIT_TEST_TIMEOUT_MS = 1_000
 
+# Wheel ticks a humanized click may spend bringing its target into view before
+# it gives up and jumps the page with ``scroll_into_view`` instead.
+WHEEL_INTO_VIEW_TICKS = 20
+
 # Substituted into ``js/hit_test.js``.
 HIT_POINT_PLACEHOLDER = "HIT_POINT_JSON"
 HIT_TEXT_MAX_PLACEHOLDER = "HIT_TEXT_MAX_INT"
