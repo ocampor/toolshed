@@ -37,6 +37,7 @@ from llm_browser.models import (
 from llm_browser.parse import build_model
 from llm_browser.results import (
     BytesResult,
+    ClickResult,
     ExtractedRow,
     ParsedResult,
     TextResult,
@@ -62,14 +63,15 @@ _registry = get_registry()
 @_registry.register("click")
 def action_click(
     session: BrowserSession, step: ClickStep, behavior: Behavior
-) -> VoidResult:
-    session.click(
-        step.selector,
-        dispatch=step.dispatch,
-        behavior=behavior,
-        timeout=step.timeout,
+) -> ClickResult:
+    return ClickResult(
+        hit_target=session.click(
+            step.selector,
+            dispatch=step.dispatch,
+            behavior=behavior,
+            timeout=step.timeout,
+        )
     )
-    return VoidResult()
 
 
 @_registry.register("fill")

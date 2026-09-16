@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.1 — unreleased
+
+### Added
+
+- `click` answers a `ClickResult` carrying `hit_target` (`tag`, `text`, `class`):
+  what the pointer was actually over when the press fired.
+
+### Fixed
+
+- A humanized `click` re-runs the hit test at the pointer's final position,
+  after the Bézier move and before mouse-down, and fails with
+  `not actionable: covered-after-move` naming the covering element instead of
+  clicking a menu its own path opened (ocampor/browser-api#47).
+
 ## 0.18.0 — unreleased
 
 ### Changed

@@ -23,6 +23,7 @@ def session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock.session_dir = tmp_path
     mock.behavior = Behavior.human()
     mock.capture = "screenshot"
+    mock.click.return_value = None
     monkeypatch.setattr("llm_browser.cli.build_session", lambda **kwargs: mock)
     return mock
 

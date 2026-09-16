@@ -302,3 +302,57 @@ def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
     assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
     assert "doc.querySelectorAll(selector).length" in source
     assert constants.SURVEY_COUNT_PLACEHOLDER not in source
+
+
+HIT_HARNESS = """
+const el = (tag, text, cls) => ({
+  tagName: tag,
+  innerText: text,
+  getAttribute: (name) => (name === "class" ? cls : null),
+  contains(node) { return node === this; },
+});
+const link = el("A", "Salir", "headerlogout");
+const span = el("SPAN", "Salir", "label");
+const menu = el("LI", "Estados de cuenta", "menu-item");
+link.contains = (node) => node === link || node === span;
+globalThis.document = { elementFromPoint: () => AT };
+console.log(JSON.stringify(HIT(link)));
+"""
+
+
+def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
+    from llm_browser.scripts import hit_test_js
+
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const HIT = {hit_test_js((12.0, 34.0))}\n{HIT_HARNESS.replace('AT', at)}"
+    )
+    out = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.parametrize(
+    ("at", "expected"),
+    [
+        ("link", {"target": True, "tag": "a", "class": "headerlogout"}),
+        # The hit lands on the innermost node, so the span inside the link is
+        # the link: a descendant is never a cover.
+        ("span", {"target": True, "tag": "span", "class": "label"}),
+        ("menu", {"target": False, "tag": "li", "class": "menu-item"}),
+        ("null", {"target": True, "tag": None, "class": None}),
+    ],
+)
+def test_hit_test_js_says_what_the_point_is_over(
+    at: str, expected: dict[str, object], tmp_path: Path
+) -> None:
+    read = run_hit_harness(at, tmp_path)
+    hit = read["hit"] or {}
+
+    assert {
+        "target": read["target"],
+        "tag": hit.get("tag"),  # type: ignore[union-attr]
+        "class": hit.get("class"),  # type: ignore[union-attr]
+    } == expected

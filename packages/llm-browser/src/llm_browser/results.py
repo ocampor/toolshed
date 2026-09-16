@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
+    Field,
     PlainSerializer,
     SerializeAsAny,
 )
@@ -77,7 +78,25 @@ class ActionResult(BaseModel):
 
 
 class VoidResult(ActionResult):
-    """Action succeeded with no payload (click, fill, select, press, ...)."""
+    """Action succeeded with no payload (fill, select, press, ...)."""
+
+
+class HitTarget(BaseModel):
+    """The element the pointer was actually over when a click fired."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    tag: str
+    text: str = ""
+    class_name: str = Field(default="", alias="class")
+
+
+class ClickResult(ActionResult):
+    """Click landed. ``hit_target`` is what the pointer was over — the target
+    or a descendant of it, since a humanized click that ends over anything
+    else fails instead — and ``None`` when nothing hit-tested the point."""
+
+    hit_target: HitTarget | None = None
 
 
 class BytesResult(ActionResult):

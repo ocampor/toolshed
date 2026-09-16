@@ -1,5 +1,6 @@
 """The session's input methods: resolve, pace, pick the driver primitive."""
 
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.models import ClickStep
+from llm_browser.results import ClickResult, HitTarget
 from llm_browser.session_input import behavior_for, effective_behavior
 from llm_browser.session import BrowserSession
 
@@ -561,3 +563,78 @@ def test_a_library_bug_is_not_retried(session: BrowserSession) -> None:
         session.click("#btn")
 
     driver(session).scroll_into_view.assert_not_called()
+
+
+# --- the hit test a humanized click runs after its move ---
+
+COVERED = {
+    "target": False,
+    "hit": {"tag": "li", "text": "Estados de cuenta", "class": "menu-item"},
+}
+ON_TARGET = {
+    "target": True,
+    "hit": {"tag": "a", "text": "Salir", "class": "headerlogout"},
+}
+DESCENDANT = {"target": True, "hit": {"tag": "span", "text": "Salir", "class": "label"}}
+
+
+def humanized_page(session: BrowserSession, answer: dict[str, Any]) -> Any:
+    """Run the real humanized click over a page that answers ``answer`` when
+    asked what the pointer ended up over."""
+    session.behavior = Behavior.human()
+    element = MagicMock()
+    element.bounding_box.return_value = {
+        "x": 10.0,
+        "y": 20.0,
+        "width": 100.0,
+        "height": 40.0,
+    }
+    driver(session).first.return_value = element
+    driver(session).evaluate.return_value = answer
+    driver(session).humanized_click.side_effect = behavior_module.humanized_click
+    return session.get_page()
+
+
+def test_humanized_click_aborts_when_covered_after_move(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    page = humanized_page(session, COVERED)
+
+    with pytest.raises(ValueError) as failure:
+        session.click("#logout")
+
+    assert "covered-after-move" in str(failure.value)
+    assert all(part in str(failure.value) for part in ("li", "menu-item", "Estados"))
+    page.mouse.down.assert_not_called()
+    page.mouse.up.assert_not_called()
+
+
+def test_humanized_click_reports_hit_target(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    page = humanized_page(session, ON_TARGET)
+
+    result = execute_action(
+        session, ClickStep(name="s", action="click", selector="#logout")
+    )
+
+    assert result == ClickResult(
+        hit_target=HitTarget(tag="a", text="Salir", class_name="headerlogout")
+    )
+    page.mouse.down.assert_called_once()
+    # Asked about where the pointer actually stopped, not where `find` looked.
+    landed = page.mouse.move.call_args_list[-1].args
+    assert json.dumps(list(landed)) in driver(session).evaluate.call_args.args[1]
+
+
+def test_humanized_click_accepts_descendant_hit(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """The page owns the containment answer: the span inside the link is the
+    target, so a hit whose tag differs is not a miss."""
+    page = humanized_page(session, DESCENDANT)
+
+    hit = session.click("#logout")
+
+    assert hit == HitTarget(tag="span", text="Salir", class_name="label")
+    page.mouse.down.assert_called_once()

@@ -26,6 +26,11 @@ from llm_browser.session import BrowserSession
 def _locator_with_box(box: dict[str, float] | None = None) -> MagicMock:
     locator = MagicMock()
     locator.count.return_value = 1
+    # What the page answers the humanized click's hit test: the target itself.
+    locator.first.evaluate.return_value = {
+        "target": True,
+        "hit": {"tag": "button", "text": "Go", "class": "primary"},
+    }
     locator.first.bounding_box.return_value = box or {
         "x": 100.0,
         "y": 50.0,

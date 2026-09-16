@@ -47,7 +47,7 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField, row_spec
-from llm_browser.results import BytesResult
+from llm_browser.results import BytesResult, HitTarget
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
@@ -537,8 +537,9 @@ class BrowserSession:
         humanize: bool | None = None,
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
-    ) -> None:
-        session_input.click(
+    ) -> HitTarget | None:
+        """Answers what the pointer was over, when the humanized path looked."""
+        return session_input.click(
             self,
             selector,
             dispatch=dispatch,

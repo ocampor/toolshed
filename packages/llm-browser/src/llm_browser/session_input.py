@@ -9,10 +9,10 @@ one-line method; actions and the CLI call those and never reach for the driver.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from llm_browser.behavior import Behavior, Jitter, jittered_sleep, paced
+from llm_browser.behavior import Behavior, HitTest, Jitter, jittered_sleep, paced
 from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS, LOGGER_NAME
-from llm_browser.results import is_step_failure, is_timeout
-from llm_browser.scripts import select_control_tag_js
+from llm_browser.results import HitTarget, is_step_failure, is_timeout
+from llm_browser.scripts import hit_test_js, select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
@@ -117,12 +117,12 @@ def click(
     humanize: bool | None = None,
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
-) -> None:
+) -> HitTarget | None:
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
     for overlays that real input cannot reach."""
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
-        click_element(
+        return click_element(
             session,
             session.find(selector, timeout=timeout),
             dispatch=dispatch,
@@ -136,7 +136,7 @@ def click_element(
     *,
     dispatch: bool = False,
     behavior: Behavior,
-) -> None:
+) -> HitTarget | None:
     """Click an element the caller already resolved.
 
     The one place the humanized-vs-plain-vs-dispatch choice is made, so a
@@ -146,10 +146,38 @@ def click_element(
     """
     if dispatch:
         session.driver.dispatch_event(element, "click")
-    elif behavior.mouse_move:
-        session.driver.humanized_click(session.get_page(), element, behavior)
-    else:
-        click_or_centre_and_retry(session, element)
+        return None
+    if behavior.mouse_move:
+        return session.driver.humanized_click(
+            session.get_page(), element, behavior, hit_test_after_move(session, element)
+        )
+    click_or_centre_and_retry(session, element)
+    return None
+
+
+def hit_test_after_move(session: "BrowserSession", element: Any) -> HitTest:
+    """Refuse the press when the pointer's own path opened something under it.
+
+    A humanized click travels, and what ``find`` resolved is not necessarily
+    what is under the cursor when it arrives: a nav the curve crossed can drop
+    a menu over the target, and the click would land on the menu and report
+    success. The point is asked again, at the end of the path, and only the
+    target or a descendant of it is allowed to take the press.
+    """
+
+    def check(point: tuple[float, float]) -> HitTarget | None:
+        read = session.driver.evaluate(element, hit_test_js(point))
+        if read["hit"] is None:
+            return None
+        hit = HitTarget.model_validate(read["hit"])
+        if not read["target"]:
+            raise ValueError(
+                "not actionable: covered-after-move; the pointer path ended "
+                f"over <{hit.tag} class={hit.class_name!r}> {hit.text!r}"
+            )
+        return hit
+
+    return check
 
 
 DISPATCH_HINT = "still intercepted after scrolling it into view; try dispatch: true"
