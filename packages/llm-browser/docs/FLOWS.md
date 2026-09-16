@@ -280,7 +280,7 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | Explicit CSS | `selector: { css: ".my-class" }` |
 | XPath | `selector: { xpath: "//input[@name='q']" }` |
 
-A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — while every single-element step (`dom`, `click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
+A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
 
 ## Template variables
 

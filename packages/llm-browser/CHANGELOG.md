@@ -14,8 +14,8 @@
 ### Changed
 
 - `docs/FLOWS.md` states how a CSS group (`main, article`) resolves: the union
-  for `read`/`parse`, and `Expected 1 element …, found N` for every
-  single-element step (ocampor/browser-api#33).
+  for `read`/`parse`, the first match for `dom`, and `Expected 1 element …,
+  found N` for every other single-element step (ocampor/browser-api#33).
 
 ## 0.18.3 — 2026-09-16
 
