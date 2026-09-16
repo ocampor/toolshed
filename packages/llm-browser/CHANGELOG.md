@@ -1,14 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.17.2 — 2026-09-16
 
 ### Changed
 
-- `dom` returns the first match in document order instead of raising
-  `Expected 1 element` when the selector matches several, and waits for
-  `attached` rather than `visible` (ocampor/browser-api#27). A comma list such
-  as `main, article, body` therefore resolves to whichever alternative comes
-  first in the document — pass `main` alone to prefer it over `body`.
+- `dom` returns the first match in document order instead of raising `Expected 1 element` when the selector matches several; a comma list like `main, article, body` therefore yields `body` when it precedes `main` (ocampor/browser-api#27).
+- `dom` waits for `attached`, not `visible`, so a hidden element's DOM reads instead of timing out.
 
 ## 0.17.1 — 2026-09-15
 

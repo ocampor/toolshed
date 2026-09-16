@@ -721,7 +721,7 @@ class BrowserSession:
         max_depth: int = 0,
         level: SanitizeLevel = SanitizeLevel.LOW,
     ) -> str:
-        # Reads tolerate several matches, so no expect_single: a comma list yields document order.
+        # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 
         element = self.driver.first(self.find_all(selector))
