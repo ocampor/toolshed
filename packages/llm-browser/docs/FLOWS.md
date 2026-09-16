@@ -323,9 +323,10 @@ element or the value is missing. The compact form is
 Leaving `extract` out entirely, `extract: {}`, and `extract: null` are all
 that last form under the name `text`: one `{ text: … }` per matched element.
 
-`exclude` is a list of CSS selectors read as if they were not on the page —
-every property field sees the element with those subtrees removed, so a "5
-reviews" badge inside the title cell stays out of the title:
+`exclude` is a list of CSS selectors: descendants matching `exclude` are
+pruned before the value is read, so a "5 reviews" badge inside the title cell
+stays out of the title. A matched row that itself matches `exclude` is
+unchanged — the pruning sees descendants only:
 
 ```yaml
 - name: read titles

@@ -456,9 +456,7 @@ class NodriverDriver(Driver):
         el = await self.resolve_now(loc)
         if el is None:
             return None
-        if is_async_literal(script):
-            return await apply_awaiting(el, script)
-        return await el.apply(script)
+        return await apply_function(el, script, await_promise=is_async_literal(script))
 
     # --- Interactions ---
 
@@ -814,8 +812,15 @@ async def _evaluate_by_value(tab: Any, expression: str) -> Any:
     return remote_object.value if remote_object else None
 
 
-async def apply_awaiting(element: Any, script: str) -> Any:
-    """``Element.apply`` with ``awaitPromise``, for an ``async (el) => …``."""
+async def apply_function(
+    element: Any, script: str, *, await_promise: bool = False
+) -> Any:
+    """``Element.apply``, but a page exception raises instead of being answered.
+
+    ``Element.apply`` drops ``exceptionDetails``, so a script the page throws on
+    — a selector a caller wrote, say — comes back as the serialized ``Error``.
+    ``await_promise`` resolves an ``async (el) => …``.
+    """
     nodriver = load_optional_module("nodriver", "nodriver")
     cdp = nodriver.cdp
     remote = await element.tab.send(
@@ -829,7 +834,7 @@ async def apply_awaiting(element: Any, script: str) -> Any:
                 arguments=[cdp.runtime.CallArgument(object_id=remote.object_id)],
                 return_by_value=True,
                 user_gesture=True,
-                await_promise=True,
+                await_promise=await_promise,
             )
         )
     finally:

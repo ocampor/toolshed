@@ -208,6 +208,28 @@ def test_parse_elements_row_itself_when_no_child_selector(
     assert result == [{"id": "r1"}]
 
 
+def test_parse_elements_normalizes_exclude(
+    session: BrowserSession, page: MagicMock
+) -> None:
+    """Both pruning copies get one list: the JS joins blanks away, the
+    per-element `querySelectorAll("")` would throw."""
+    from llm_browser.models import ExtractField
+
+    page.locator.return_value.evaluate_all.return_value = []
+    session.parse_elements("tr", {"name": ExtractField()}, ["  span.badge ", "", " "])
+    arg = page.locator.return_value.evaluate_all.call_args.args[1]
+    assert arg["exclude"] == ["span.badge"]
+
+
+def test_parse_elements_rejects_an_exclude_of_only_blanks(
+    session: BrowserSession,
+) -> None:
+    from llm_browser.models import ExtractField
+
+    with pytest.raises(ValueError, match="no selector"):
+        session.parse_elements("tr", {"name": ExtractField()}, ["", "  "])
+
+
 # --- dom ---
 
 

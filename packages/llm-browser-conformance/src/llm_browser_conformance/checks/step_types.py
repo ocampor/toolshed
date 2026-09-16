@@ -63,6 +63,9 @@ PROPERTY_ROWS = [
 ]
 BARE_ROWS = [{"text": name} for name in ROW_NAMES]
 
+# The badge `site/rows-badges.html` nests inside each row's title cell.
+BADGES = {"Alpha": "5 reviews", "Beta": "3 reviews", "Gamma": "9 reviews"}
+
 # What `flows/think.yaml` declares.
 THINK_MIN_MS = 400
 THINK_MAX_MS = 600
@@ -173,6 +176,16 @@ def read_pulls_a_different_attribute_per_field(ctx: Context) -> None:
             )
         assert not target.exists(), "`path:` is CLI-only; the runner wrote a file"
     assert outputs["rows"] == ATTRIBUTE_ROWS
+
+
+def read_drops_an_excluded_badge_from_the_text(ctx: Context) -> None:
+    outputs = expect_success(ctx, "rows-badges.html", "read-exclude")
+    assert texts(outputs, "filtered") == list(ROW_NAMES)
+    assert texts(outputs, "unfiltered") == [
+        f"{name}{BADGES[name]}" for name in ROW_NAMES
+    ]
+    # A match that is itself excluded keeps its own text: only descendants go.
+    assert texts(outputs, "badges") == [BADGES[name] for name in ROW_NAMES]
 
 
 def parse_coerces_every_cell_to_its_declared_type(ctx: Context) -> None:
@@ -431,6 +444,12 @@ SCENARIOS = [
         covers=frozenset(
             {"field:read.extract", "field:read.path", "session:parse_elements"}
         ),
+    ),
+    Scenario(
+        "read exclude",
+        Section.STEPS,
+        read_drops_an_excluded_badge_from_the_text,
+        covers=frozenset({"field:read.exclude"}),
     ),
     Scenario(
         "parse typed rows",

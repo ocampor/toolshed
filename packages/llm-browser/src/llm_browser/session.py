@@ -654,11 +654,19 @@ class BrowserSession:
         ``extract`` maps output field names to ``ExtractField`` specs that say
         which child selector to descend into and which attribute/property to
         read. When ``child_selector`` is None the value is read off the row
-        element itself. Elements matching ``exclude`` are dropped from the text
-        a field reads, as if they were not on the page.
+        element itself. Descendants matching ``exclude`` are pruned before a
+        property field is read; a matched row that itself matches ``exclude``
+        is read unchanged.
+
+        Normalized here, once, so the page-side and per-element pruning get the
+        same list: blanks go, and an ``exclude`` of nothing but blanks is an
+        error rather than a selector the page cannot parse.
         """
+        selectors = [entry.strip() for entry in exclude if entry.strip()]
+        if exclude and not selectors:
+            raise ValueError("exclude holds no selector")
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        return self.driver.extract_rows(locator, row_spec(extract), exclude)
+        return self.driver.extract_rows(locator, row_spec(extract), selectors)
 
     # --- Explore ---
     #

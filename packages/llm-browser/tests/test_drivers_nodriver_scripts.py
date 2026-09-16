@@ -19,10 +19,11 @@ from llm_browser.drivers import nodriver as nodriver_driver
 from llm_browser.drivers.nodriver import (
     NodriverDriver,
     NodriverLocator,
-    apply_awaiting,
+    apply_function,
     is_async_literal,
     is_function_literal,
 )
+from llm_browser.scripts import read_property_js
 
 
 @pytest.mark.parametrize(
@@ -52,12 +53,16 @@ def test_an_expression_is_not_a_function_literal(script: str) -> None:
     assert not is_function_literal(script)
 
 
-class RecordingElement:
-    def __init__(self) -> None:
-        self.scripts: list[str] = []
+@pytest.fixture
+def applied(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, bool]]:
+    """`apply_function` talks raw CDP; this records what it was handed."""
+    calls: list[tuple[str, bool]] = []
 
-    async def apply(self, script: str) -> None:
-        self.scripts.append(script)
+    async def record(element: Any, script: str, *, await_promise: bool = False) -> None:
+        calls.append((script, await_promise))
+
+    monkeypatch.setattr(nodriver_driver, "apply_function", record)
+    return calls
 
 
 def driver_with_loop() -> NodriverDriver:
@@ -66,18 +71,22 @@ def driver_with_loop() -> NodriverDriver:
     return driver
 
 
-def test_an_element_function_literal_is_passed_through() -> None:
-    driver = driver_with_loop()
-    element = RecordingElement()
-    driver.evaluate(NodriverLocator(tab=None, element=element), "el => el.outerHTML")
-    assert element.scripts == ["el => el.outerHTML"]
+def test_an_element_function_literal_is_passed_through(
+    applied: list[tuple[str, bool]],
+) -> None:
+    driver_with_loop().evaluate(
+        NodriverLocator(tab=None, element=object()), "el => el.outerHTML"
+    )
+    assert applied == [("el => el.outerHTML", False)]
 
 
-def test_an_element_expression_is_wrapped_as_a_body() -> None:
-    driver = driver_with_loop()
-    element = RecordingElement()
-    driver.evaluate(NodriverLocator(tab=None, element=element), "return el.value")
-    assert element.scripts == ["(el) => { return el.value }"]
+def test_an_element_expression_is_wrapped_as_a_body(
+    applied: list[tuple[str, bool]],
+) -> None:
+    driver_with_loop().evaluate(
+        NodriverLocator(tab=None, element=object()), "return el.value"
+    )
+    assert applied == [("(el) => { return el.value }", False)]
 
 
 def test_a_page_function_literal_is_invoked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -394,26 +403,16 @@ def test_an_async_literal_is_recognised_behind_its_comments(
     assert is_async_literal(script) is asynchronous
 
 
-def test_a_commented_async_script_takes_the_awaiting_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    awaited: list[str] = []
-
-    async def record(element: Any, script: str) -> None:
-        awaited.append(script)
-
-    monkeypatch.setattr(nodriver_driver, "apply_awaiting", record)
-    element = RecordingElement()
+def test_a_commented_async_script_is_awaited(applied: list[tuple[str, bool]]) -> None:
     script = "// two rects a beat apart\nasync (el) => el.value"
 
-    driver_with_loop().evaluate(NodriverLocator(tab=None, element=element), script)
+    driver_with_loop().evaluate(NodriverLocator(tab=None, element=object()), script)
 
-    assert awaited == [script]
-    assert element.scripts == []
+    assert applied == [(script, True)]
 
 
 class RemoteTab:
-    """Answers the three CDP calls `apply_awaiting` makes, in order."""
+    """Answers the three CDP calls `apply_function` makes, in order."""
 
     def __init__(self, value: Any) -> None:
         self.sent: list[Any] = []
@@ -447,7 +446,11 @@ def test_an_async_script_is_awaited_and_its_handle_released(cdp_module: Any) -> 
     release, every `explore` leaks a node handle for the life of the tab."""
     tab = RemoteTab({"first": {"tag": "a"}})
     result = asyncio.new_event_loop().run_until_complete(
-        apply_awaiting(RemoteElement(tab), "async (el) => el.getBoundingClientRect()")
+        apply_function(
+            RemoteElement(tab),
+            "async (el) => el.getBoundingClientRect()",
+            await_promise=True,
+        )
     )
 
     assert result == {"first": {"tag": "a"}}
@@ -464,9 +467,25 @@ def test_a_failed_async_script_still_releases_its_handle(cdp_module: Any) -> Non
 
     with pytest.raises(RuntimeError, match="evaluate failed"):
         asyncio.new_event_loop().run_until_complete(
-            apply_awaiting(RemoteElement(tab), "async (el) => nope")
+            apply_function(RemoteElement(tab), "async (el) => nope", await_promise=True)
         )
 
     assert cdp_module.cdp.runtime.release_object.call_args.kwargs == {
         "object_id": "obj-1"
     }
+
+
+def test_a_bad_exclude_selector_raises_instead_of_being_answered(
+    cdp_module: Any,
+) -> None:
+    """`Element.apply` drops `exceptionDetails`, so the thrown `SyntaxError`
+    would serialize to `{}` and land in the row as the field's value."""
+    tab = RemoteTab(None)
+    tab.replies[1] = (
+        SimpleNamespace(value={}),
+        "SyntaxError: 'div[' is not a valid selector",
+    )
+    locator = NodriverLocator(tab=None, element=RemoteElement(tab))
+
+    with pytest.raises(RuntimeError, match="evaluate failed"):
+        driver_with_loop().evaluate(locator, read_property_js("textContent", ["div["]))

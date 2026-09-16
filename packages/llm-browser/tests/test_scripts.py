@@ -17,6 +17,7 @@ from llm_browser.scripts import (
     explore_many_js,
     extract_rows_js,
     load_script,
+    read_property_js,
     survey_js,
 )
 
@@ -32,6 +33,16 @@ def test_extract_rows_js_reads_the_property_allowlist_from_python() -> None:
     """One list, substituted in, so the page-side rule cannot drift from
     ``Driver.read_field``."""
     assert json.dumps(list(EXTRACT_PROPERTIES)) in extract_rows_js()
+
+
+def test_read_property_js_prunes_only_when_asked() -> None:
+    """The per-element path mirrors `js/extract_rows.js`: one selector list,
+    pruned off a copy, and nothing at all to do when `exclude` is empty."""
+    assert read_property_js("textContent") == "(el) => el.textContent"
+    with_exclude = read_property_js("textContent", ["span.badge", ".sr-only"])
+    assert 'querySelectorAll("span.badge, .sr-only")' in with_exclude
+    assert "cloneNode(true)" in with_exclude
+    assert with_exclude.endswith("return copy.textContent; }")
 
 
 def test_load_script_is_cached_and_reads_from_js_dir() -> None:

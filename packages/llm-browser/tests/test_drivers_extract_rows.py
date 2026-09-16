@@ -113,19 +113,23 @@ class ScopedElement:
     async def query_selector_all(self, selector: str) -> list["ScopedElement"]:
         return self.subtree.get(selector, [])
 
-    async def apply(self, script: str) -> Any:
-        """`Runtime.callFunctionOn`, which is how a property read reaches a
-        nodriver handle."""
-        assert script.endswith(".textContent"), script
-        return self.text
-
 
 class DocumentTab(ScopedElement):
     """The document: its `query_selector_all` sees every node on the page."""
 
 
-def test_nodriver_reads_each_row_inside_that_row() -> None:
+def test_nodriver_reads_each_row_inside_that_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from llm_browser.drivers import nodriver as nodriver_driver
     from llm_browser.drivers.nodriver import NodriverDriver, NodriverLocator
+
+    # `apply_function` talks raw CDP; these fakes answer at the element.
+    async def read(element: Any, script: str, *, await_promise: bool = False) -> Any:
+        assert script.endswith(".textContent"), script
+        return element.text
+
+    monkeypatch.setattr(nodriver_driver, "apply_function", read)
 
     rows = [ScopedElement(cell=[ScopedElement(text=f"row-{n}")]) for n in range(1, 4)]
     tab = DocumentTab(row=rows, cell=[ScopedElement(text="row-1")])

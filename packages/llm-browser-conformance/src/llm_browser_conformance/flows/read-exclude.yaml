@@ -1,0 +1,22 @@
+# `exclude:` prunes the badge nested in the title cell before its text is read.
+steps:
+  - name: filtered
+    action: read
+    selector: ".row"
+    exclude:
+      - ".badge"
+    extract:
+      text: ".title"
+
+  - name: unfiltered
+    action: read
+    selector: ".row"
+    extract:
+      text: ".title"
+
+  # Only descendants are pruned: an element that is itself excluded reads whole.
+  - name: badges
+    action: read
+    selector: ".badge"
+    exclude:
+      - ".badge"

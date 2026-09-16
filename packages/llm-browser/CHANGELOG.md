@@ -4,7 +4,7 @@
 
 ### Added
 
-- `read` steps take `exclude: [css, ...]`: matching elements are read as if absent, so nested badges and screen-reader text stay out of the extracted values (ocampor/browser-api#33).
+- `read` steps take `exclude: [css, ...]`: descendants matching `exclude` are pruned before the value is read; a matched row that itself matches `exclude` is unchanged. Nested badges and screen-reader text stay out of the extracted values (ocampor/browser-api#33).
 
 ## 0.17.2 — 2026-09-16
 

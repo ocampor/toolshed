@@ -145,7 +145,7 @@ fresh.
 | `element_exists(selector)` | Whether the element shows up within `timeout` — `wait_for_element(..., state="attached")` with the timeout read as `False` instead of raising |
 | `pick(selector, value, behavior=None)` | Click list item matching text |
 | `dom(selector, max_depth, level=)` | Cleaned HTML snippet; `level` is a `SanitizeLevel` (`low`/`medium`/`high`/`xhigh`). Several matches → the first in document order. |
-| `parse_elements(selector, extract, exclude=())` | Extract structured data; `exclude` selectors are read as if absent |
+| `parse_elements(selector, extract, exclude=())` | Extract structured data; descendants matching `exclude` are pruned before a property is read |
 | `explore(selector, extract=None, sample=3, timeout_ms=3000, intent=Intent.READ, sample_chars=200)` | Count and sample what a selector matches, and read the first one as a click would find it — an `ExploreResult`, never a click |
 | `explore_many(targets, sample=3, sample_chars=200, timeout_ms=3000)` | The same answer for a list of `ExploreTarget`, from one page call and one wait — a list of `ExploreResult` in the order asked |
 | `survey(max_items=60)` | What the page is made of before any selector is written: a `Survey` of landmarks, link shapes, repeats and hydration. Never clicks, never scrolls |

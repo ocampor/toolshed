@@ -190,8 +190,8 @@ class ReadStep(SelectorStep):
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None)
     )
-    # CSS selectors whose elements are read as if absent — a "5 reviews" badge
-    # inside the title cell, say.
+    # CSS selectors whose matching descendants are pruned before the value is
+    # read — a "5 reviews" badge inside the title cell, say.
     exclude: list[str] = Field(default_factory=list)
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
