@@ -3,11 +3,19 @@
 // drivers launch with `no_viewport`, where Playwright reports no size at all.
 (el) => {
   const box = el.getBoundingClientRect();
-  // How far to wheel down (negative: up) to bring the box in, 0 once it is
-  // in. A box taller than the viewport is brought to its top edge.
-  const below = box.top + Math.min(box.height, innerHeight) - innerHeight;
+  // How far to wheel down (negative: up) to put the box's middle in the
+  // viewport's middle, the rule `Driver.scroll_into_view` follows: the caller
+  // is here because a fixed header or footer swallowed a click, and only the
+  // middle is clear of both. A box already clear of both edges by `margin` is
+  // left alone, so an in-view target is not nudged on every click. A box
+  // taller than the viewport cannot be centred and is brought to its top edge.
+  const margin = innerHeight * 0.15;
+  const tall = box.height > innerHeight;
+  const clear = box.top >= margin && box.bottom <= innerHeight - margin;
+  const gap = tall ? box.top : box.top + box.height / 2 - innerHeight / 2;
   return {
-    gap: Math.round(below > 0 ? below : Math.min(0, box.top)),
+    gap: !tall && clear ? 0 : Math.round(gap),
     centre: [innerWidth / 2, innerHeight / 2],
+    scrollY: Math.round(scrollY),
   };
 };

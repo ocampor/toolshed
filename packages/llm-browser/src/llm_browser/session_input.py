@@ -15,6 +15,7 @@ from llm_browser.behavior import (
     HitTest,
     Jitter,
     jittered_delta,
+    jittered_point,
     jittered_sleep,
     move_mouse_to,
     paced,
@@ -200,6 +201,7 @@ def hit_test_after_move(
                 element, hit_test_js(point), timeout_ms=HIT_TEST_TIMEOUT_MS
             )
         except Exception as exc:
+            retreat_pointer(session, element, behavior, point)
             raise ValueError(f"not actionable: hit-test-failed; {exc}") from exc
         if read["hit"] is None:
             return None
@@ -216,16 +218,22 @@ def hit_test_after_move(
 
 
 class ViewportFit(NamedTuple):
-    """``gap``: pixels to wheel down (negative: up) to bring the box in view."""
+    """What one wheel tick needs: how far the box still has to travel to reach
+    the viewport's middle, where that middle is, and whether the page moved."""
 
     gap: int
     centre: tuple[float, float]
+    scroll_y: int
 
 
 def viewport_fit(session: "BrowserSession", element: Any) -> ViewportFit:
     read = session.driver.evaluate(element, viewport_fit_js())
     x, y = read["centre"]
-    return ViewportFit(gap=int(read["gap"]), centre=(float(x), float(y)))
+    return ViewportFit(
+        gap=int(read["gap"]),
+        centre=(float(x), float(y)),
+        scroll_y=int(read["scrollY"]),
+    )
 
 
 def wheel_into_view(
@@ -236,19 +244,28 @@ def wheel_into_view(
     ``scroll_into_view`` teleports the page in a single frame and emits no
     wheel events at all, which is the tell this path exists to avoid. Each
     tick is re-measured, because a sticky header or a lazy list moves the box
-    while the page scrolls under it. The programmatic jump is the fallback for
-    a page the wheel cannot move and for a driver that has no wheel.
+    while the page scrolls under it, and a tick that did not move the page at
+    all — an inner scroller under the pointer, an ``overflow: hidden`` body —
+    stops the loop rather than burning twenty of them. The programmatic jump
+    is the fallback for a page the wheel cannot move and for a driver that has
+    no wheel.
     """
     page = session.get_page()
+    fit = viewport_fit(session, element)
     for _ in range(WHEEL_INTO_VIEW_TICKS):
-        gap = viewport_fit(session, element).gap
-        if gap == 0:
-            return
+        if fit.gap == 0:
+            break
         try:
-            session.driver.scroll(page, 0, jittered_delta(gap, behavior))
+            session.driver.scroll(page, 0, jittered_delta(fit.gap, behavior))
         except NotImplementedError:
             break
         jittered_sleep(WHEEL_SETTLE_PAUSE)
+        before = fit.scroll_y
+        fit = viewport_fit(session, element)
+        if fit.scroll_y == before:
+            break
+    if fit.gap == 0:
+        return
     logger.debug("could not wheel %s into view; scrolling it in instead", element)
     session.driver.scroll_into_view(element)
 
@@ -263,14 +280,21 @@ def retreat_pointer(
 
     A pointer left parked on the menu its own path opened keeps that menu
     open for whatever the caller does next; the viewport centre is clear of a
-    nav's dropdown. A page that cannot be asked where its centre is keeps the
-    refusal it was about to get, not a second error on top of it.
+    nav's dropdown, jittered because a pixel-exact centre repeated across
+    refusals is itself a tell. Best-effort by construction: the refusal the
+    caller is about to get is the one worth raising, so a page that closes or
+    navigates mid-retreat costs a debug line and nothing else.
     """
     try:
-        centre = viewport_fit(session, element).centre
+        fit = viewport_fit(session, element)
+        destination = jittered_point(
+            fit.centre, fit.centre, behavior.click_offset_ratio
+        )
+        move_mouse_to(
+            session.get_page(), destination, max(1, path_steps(behavior) // 2), point
+        )
     except Exception:
-        return
-    move_mouse_to(session.get_page(), centre, max(1, path_steps(behavior) // 2), point)
+        logger.debug("could not retreat the pointer from %s", point, exc_info=True)
 
 
 DISPATCH_HINT = "still intercepted after scrolling it into view; try dispatch: true"

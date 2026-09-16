@@ -9,7 +9,7 @@ can answer that.
 
 import random
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, NamedTuple
 
 import pytest
 
@@ -17,25 +17,58 @@ from llm_browser import session_input
 from llm_browser.behavior import Behavior
 from llm_browser.session import BrowserSession
 
-# A fixed nav whose hover menu drops over the page, and a logout link far
-# below the fold: the shape the hit test was written for.
+# A fixed nav whose hover menu drops over the page, and a logout link the
+# wheel has to bring in: the shape the hit test was written for. The nav's
+# edge and the link's place vary, because a wheel that parks the target flush
+# against a viewport edge lands it under exactly such a nav.
 PAGE = """
 <style>
-  body { margin: 0; height: 3000px; font: 16px sans-serif; }
-  nav { position: fixed; top: 0; left: 0; right: 0; height: 60px;
-        background: #223344; color: #fff; padding: 18px; }
-  nav .menu { display: none; position: absolute; top: 60px; left: 0; right: 0;
-              height: 200px; margin: 0; padding: 0; background: #cceeff; }
-  nav:hover .menu { display: block; }
-  nav .menu li { list-style: none; padding: 24px; }
-  a.logout { position: absolute; top: 2400px; left: 120px; padding: 14px 22px;
-             background: #eeeeee; }
+  body {{ margin: 0; height: 3000px; font: 16px sans-serif; }}
+  nav {{ position: fixed; {nav_edge}: 0; left: 0; right: 0; height: {nav_height}px;
+        z-index: 10; background: #223344; color: #fff; padding: 18px; }}
+  nav .menu {{ display: none; position: absolute; top: {nav_height}px; left: 0;
+              right: 0; height: 200px; margin: 0; padding: 0;
+              background: #cceeff; }}
+  nav:hover .menu {{ display: block; }}
+  nav .menu li {{ list-style: none; padding: 24px; }}
+  a.logout {{ position: absolute; top: {link_top}px; left: 120px;
+             padding: 14px 22px; background: #eeeeee; }}
 </style>
 <nav>Cuenta
   <ul class="menu"><li class="menu-item">Estados de cuenta</li></ul>
 </nav>
 <a class="logout" id="logout" href="#gone"><span class="label">Salir</span></a>
 """
+
+
+class Case(NamedTuple):
+    """A page and where it starts scrolled, plus whether the click must land.
+
+    ``must_click`` is off only for the original shape, where the path crosses
+    the nav on its way down and the menu legitimately takes the point.
+    """
+
+    nav_edge: str
+    nav_height: int
+    link_top: int
+    start_at: int
+    must_click: bool
+
+    def html(self) -> str:
+        return PAGE.format(
+            nav_edge=self.nav_edge, nav_height=self.nav_height, link_top=self.link_top
+        )
+
+
+CASES = {
+    "below the fold, nav on top": Case("top", 60, 2400, 0, must_click=False),
+    # Wheeling up: the minimal scroll stops with the box flush against the top
+    # edge, which is where the fixed nav is.
+    "above the fold, nav on top": Case("top", 60, 800, 1200, must_click=True),
+    # Wheeling down: the minimal scroll stops with the box flush against the
+    # bottom edge, which is where this nav is.
+    "below the fold, nav on the bottom": Case("bottom", 80, 2400, 0, must_click=True),
+}
 
 
 @pytest.fixture
@@ -73,12 +106,14 @@ def main_world_at(cdp: Any, point: tuple[float, float]) -> str:
     return str(read["result"]["value"])
 
 
+@pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
 def test_hit_test_agrees_with_the_main_world_in_patchright(
-    live_session: BrowserSession, monkeypatch: pytest.MonkeyPatch
+    live_session: BrowserSession, monkeypatch: pytest.MonkeyPatch, case: Case
 ) -> None:
     random.seed(20260916)
     page = live_session.get_page()
-    page.set_content(PAGE)
+    page.set_content(case.html())
+    page.evaluate(f"() => window.scrollTo(0, {case.start_at})")
     cdp = page.context.new_cdp_session(page)
     jumped: list[Any] = []
     monkeypatch.setattr(
@@ -105,6 +140,7 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
         hit = live_session.click("#logout")
     except ValueError as refusal:
         # The path crossed the nav and the menu it opened took the point.
+        assert not case.must_click, str(refusal)
         assert "covered-after-move" in str(refusal)
         assert seen == ["li|menu-item"]
     else:
@@ -112,6 +148,13 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
         assert seen == [f"{hit.tag}|{hit.class_name}"]
         assert hit.tag in {"a", "span"}
 
-    # The wheel, not the programmatic jump, is what brought the link in.
-    assert page.evaluate("() => window.scrollY") > 0
+    # The wheel, not the programmatic jump, is what brought the link in, and
+    # it left the target clear of the nav rather than flush against its edge.
+    assert page.evaluate("() => window.scrollY") != case.start_at
     assert jumped == []
+    box = page.evaluate(
+        "() => { const r = document.querySelector('#logout')"
+        ".getBoundingClientRect();"
+        " return [r.top, r.bottom, innerHeight]; }"
+    )
+    assert box[0] > case.nav_height and box[1] < box[2] - case.nav_height

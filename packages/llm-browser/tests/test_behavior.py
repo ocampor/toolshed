@@ -30,6 +30,7 @@ def _locator_with_box(box: dict[str, float] | None = None) -> MagicMock:
     # in view, and the pointer ended on the target itself.
     locator.first.evaluate.return_value = {
         "gap": 0,
+        "scrollY": 0,
         "centre": [400.0, 300.0],
         "target": True,
         "hit": {"tag": "button", "text": "Go", "class": "primary"},
