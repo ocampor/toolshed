@@ -4,17 +4,13 @@
 (el) => {
   const [x, y] = HIT_POINT_JSON;
   const at = document.elementFromPoint(x, y);
-  // `explore_element`'s `covered_by` rule: the hit lands on the innermost
-  // node, so a descendant is the target; an ancestor means the point fell in
-  // a gap in the target's own box; a label answers for the control it labels.
+  // The hit lands on the innermost node, so a descendant is the target; a
+  // label answers for the control it labels. An ancestor is not the target:
+  // the point fell in a gap in the target's own box, and the press there goes
+  // to the ancestor, not to `el`.
   const labels = (a, b) => a.closest?.("label")?.control === b;
   const target =
-    !at ||
-    at === el ||
-    el.contains(at) ||
-    at.contains(el) ||
-    labels(el, at) ||
-    labels(at, el);
+    !at || at === el || el.contains(at) || labels(el, at) || labels(at, el);
   const squeeze = (value, max) =>
     String(value || "")
       .replace(/\s+/g, " ")
@@ -25,7 +21,7 @@
     hit: at && {
       tag: at.tagName.toLowerCase(),
       text: squeeze(at.innerText || at.textContent, HIT_TEXT_MAX_INT),
-      class: squeeze(at.getAttribute("class"), HIT_TEXT_MAX_INT),
+      class_name: squeeze(at.getAttribute("class"), HIT_TEXT_MAX_INT),
     },
   };
 };

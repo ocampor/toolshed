@@ -10,7 +10,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from llm_browser.behavior import Behavior, HitTest, Jitter, jittered_sleep, paced
-from llm_browser.constants import DEFAULT_FIND_TIMEOUT_MS, LOGGER_NAME
+from llm_browser.constants import (
+    DEFAULT_FIND_TIMEOUT_MS,
+    HIT_TEST_TIMEOUT_MS,
+    LOGGER_NAME,
+)
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
 from llm_browser.scripts import hit_test_js, select_control_tag_js
 from llm_browser.selectors import Selector, describe_selector
@@ -148,6 +152,11 @@ def click_element(
         session.driver.dispatch_event(element, "click")
         return None
     if behavior.mouse_move:
+        # The pointer can only be moved to a point in the viewport: an element
+        # below the fold would be clicked at the clamped edge, on whatever sits
+        # there. Drivers scroll for their own clicks; this path drives the
+        # mouse itself, so it scrolls first.
+        session.driver.scroll_into_view(element)
         return session.driver.humanized_click(
             session.get_page(), element, behavior, hit_test_after_move(session, element)
         )
@@ -163,10 +172,19 @@ def hit_test_after_move(session: "BrowserSession", element: Any) -> HitTest:
     a menu over the target, and the click would land on the menu and report
     success. The point is asked again, at the end of the path, and only the
     target or a descendant of it is allowed to take the press.
+
+    A check that cannot be made is a refusal too: the window it runs in is the
+    hover dwell, where a navigation or a re-render can destroy the context, and
+    pressing blind is the failure this whole gate exists to stop.
     """
 
     def check(point: tuple[float, float]) -> HitTarget | None:
-        read = session.driver.evaluate(element, hit_test_js(point))
+        try:
+            read = session.driver.evaluate(
+                element, hit_test_js(point), timeout_ms=HIT_TEST_TIMEOUT_MS
+            )
+        except Exception as exc:
+            raise ValueError(f"not actionable: hit-test-failed; {exc}") from exc
         if read["hit"] is None:
             return None
         hit = HitTarget.model_validate(read["hit"])
