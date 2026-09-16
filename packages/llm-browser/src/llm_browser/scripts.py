@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -36,6 +37,22 @@ def extract_rows_js() -> str:
     return load_script("extract_rows").replace(
         constants.EXTRACT_PROPERTIES_PLACEHOLDER,
         json.dumps(list(constants.EXTRACT_PROPERTIES)),
+    )
+
+
+def property_js(name: str, exclude: Sequence[str] = ()) -> str:
+    """``(el) => el.<name>``, read off a copy with ``exclude``'s matches gone.
+
+    A copy, not the page: the flow goes on driving the live element. On a
+    detached copy ``innerText`` has no layout, so it reads like ``textContent``.
+    """
+    if not exclude:
+        return f"(el) => el.{name}"
+    selector = json.dumps(",".join(exclude))
+    return (
+        "(el) => { const copy = el.cloneNode(true); "
+        f"copy.querySelectorAll({selector}).forEach((node) => node.remove()); "
+        f"return copy.{name}; }}"
     )
 
 

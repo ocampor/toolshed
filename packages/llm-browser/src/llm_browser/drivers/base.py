@@ -6,6 +6,7 @@ plug-and-play simple: subclass Driver, implement every abstract method.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 
@@ -13,6 +14,7 @@ from llm_browser.behavior import Behavior, HitTest, type_chars
 from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.drivers.handle import DriverHandle
 from llm_browser.results import BytesResult, HitTarget
+from llm_browser.scripts import property_js
 
 
 class Driver(ABC):
@@ -250,7 +252,7 @@ class Driver(ABC):
     def child(self, locator: Any, selector: str) -> Any: ...
 
     def extract_rows(
-        self, locator: Any, spec: dict[str, dict[str, str | None]]
+        self, locator: Any, spec: dict[str, dict[str, Any]]
     ) -> list[dict[str, str | None]]:
         """Read every field of ``spec`` off every element matched by ``locator``.
 
@@ -264,23 +266,27 @@ class Driver(ABC):
             for row in self.all(locator)
         ]
 
-    def read_field(self, row: Any, field: dict[str, str | None]) -> str | None:
+    def read_field(self, row: Any, field: dict[str, Any]) -> str | None:
         """Read one ``spec`` field off one row element.
 
         The same rule ``js/extract_rows.js`` applies, off the same allowlist:
         a name in it is a DOM property, anything else an HTML attribute.
+        ``field["exclude"]`` prunes the property read, never the attribute one:
+        an attribute is the row's own, and no descendant can be dropped from it.
         """
         child_selector = field["child_selector"]
         target = self.child(row, child_selector) if child_selector else row
         name = field["attribute"]
         assert name is not None
         if name in EXTRACT_PROPERTIES:
-            return self.read_property(target, name)
+            return self.read_property(target, name, field.get("exclude") or ())
         return self.get_attribute(target, name)
 
-    def read_property(self, target: Any, name: str) -> str | None:
+    def read_property(
+        self, target: Any, name: str, exclude: Sequence[str] = ()
+    ) -> str | None:
         """``el[name]`` as text; ``None`` when the element or the value is."""
-        value = self.evaluate(target, f"(el) => el.{name}")
+        value = self.evaluate(target, property_js(name, exclude))
         return None if value is None else str(value)
 
     @abstractmethod

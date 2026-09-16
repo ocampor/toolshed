@@ -286,6 +286,24 @@ def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
     assert spec == {"text": {"child_selector": None, "attribute": "textContent"}}
 
 
+def test_read_exclude_reaches_the_page_read(session: BrowserSession) -> None:
+    """`exclude:` rides the spec each field is read with, so the page drops
+    those matches from the text."""
+    locator = _rows_locator(session, [{"text": "keep"}])
+
+    step = ReadStep(name="s", action="read", selector="body", exclude=["nav", ".ad"])
+    execute_action(session, step)
+
+    _, spec = locator.evaluate_all.call_args.args
+    assert spec == {
+        "text": {
+            "child_selector": None,
+            "attribute": "textContent",
+            "exclude": ["nav", ".ad"],
+        }
+    }
+
+
 # --- parse (typed schema action) ---
 
 

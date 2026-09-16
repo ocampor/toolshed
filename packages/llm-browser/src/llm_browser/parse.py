@@ -20,7 +20,7 @@ raw ``{child_selector, attribute}`` mapping, both through
 ``ExtractField.coerce``.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Self
 
@@ -90,10 +90,17 @@ class ExtractField(FieldInfo):
         )
 
 
-def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None]]:
+def row_spec(
+    extract: dict[str, ExtractField], exclude: Sequence[str] = ()
+) -> dict[str, dict[str, Any]]:
     """The driver-facing form of an extract map, as ``extract_rows`` wants it."""
+    pruning = {"exclude": list(exclude)} if exclude else {}
     return {
-        name: {"child_selector": field.child_selector, "attribute": field.attribute}
+        name: {
+            "child_selector": field.child_selector,
+            "attribute": field.attribute,
+            **pruning,
+        }
         for name, field in extract.items()
     }
 

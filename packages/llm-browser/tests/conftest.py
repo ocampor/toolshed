@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -95,7 +95,9 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         matches: dict[str, int] | None = None,
         since_navigation_ms: int = 120,
     ) -> BrowserSession:
-        def read(target: tuple[int, str | None], name: str) -> str | None:
+        def read(
+            target: tuple[int, str | None], name: str, exclude: Sequence[str] = ()
+        ) -> str | None:
             index, child_selector = target
             if child_selector is None:
                 return rows[index].get(None, text)

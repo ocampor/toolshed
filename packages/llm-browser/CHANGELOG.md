@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.4 — 2026-09-17
+
+### Added
+
+- `exclude: [selector, …]` on a `read` step: those matches are dropped from
+  every property read, so `read` on `body` can leave out a nav, a drawer or a
+  `<select>` list. The read happens on a copy — the page is not modified — and
+  `innerText` on that copy reads like `textContent` (ocampor/browser-api#33).
+
+### Changed
+
+- `docs/FLOWS.md` states how a CSS group (`main, article`) resolves: the union
+  for `read`/`parse`/`find`, and `Expected 1 element …, found N` for every
+  single-element step (ocampor/browser-api#33).
+
 ## 0.18.3 — 2026-09-16
 
 ### Added

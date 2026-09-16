@@ -135,3 +135,18 @@ def test_nodriver_reads_each_row_inside_that_row() -> None:
         {"text": {"child_selector": "cell", "attribute": "textContent"}},
     )
     assert extracted == [{"text": "row-1"}, {"text": "row-2"}, {"text": "row-3"}]
+
+
+def test_the_per_element_path_prunes_before_it_reads() -> None:
+    """The nodriver route reads a property through one script, so `exclude`
+    has to reach that script rather than the batch one."""
+    driver = FallbackDriver([])
+    seen: list[str] = []
+    driver.evaluate = lambda target, script: seen.append(script)  # type: ignore[method-assign]
+
+    driver.read_field(
+        object(),
+        {"child_selector": None, "attribute": "innerText", "exclude": ["nav"]},
+    )
+
+    assert 'querySelectorAll("nav")' in seen[0]

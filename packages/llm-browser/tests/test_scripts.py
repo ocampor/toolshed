@@ -18,6 +18,7 @@ from llm_browser.scripts import (
     explore_many_js,
     extract_rows_js,
     load_script,
+    property_js,
     survey_js,
     viewport_fit_js,
 )
@@ -105,6 +106,78 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "self": "whole row",
         }
     ]
+
+
+EXCLUDE_HARNESS = """
+// A DOM small enough to read: a node is a tag, a class and its children,
+// each child a node or a string of text. Enough for what the script needs --
+// a deep copy, a group selector, and detaching a match.
+const el = (tag, cls, ...children) => ({
+  tagName: tag.toUpperCase(),
+  cls,
+  children,
+  get textContent() {
+    return this.children
+      .map((c) => (typeof c === "string" ? c : c.textContent))
+      .join("");
+  },
+  matches(selector) {
+    return selector.startsWith(".")
+      ? this.cls === selector.slice(1)
+      : this.tagName === selector.toUpperCase();
+  },
+  cloneNode() {
+    return el(
+      this.tagName,
+      this.cls,
+      ...this.children.map((c) => (typeof c === "string" ? c : c.cloneNode())),
+    );
+  },
+  querySelectorAll(group) {
+    const parts = group.split(",").map((s) => s.trim());
+    const out = [];
+    for (const child of this.children) {
+      if (typeof child === "string") continue;
+      if (parts.some((p) => child.matches(p)))
+        out.push({ remove: () => this.children.splice(this.children.indexOf(child), 1) });
+      out.push(...child.querySelectorAll(group));
+    }
+    return out;
+  },
+});
+
+const row = el("body", null, el("nav", null, "Menu"), el("div", "ad", "Buy!"), "Real text");
+const spec = {
+  text: { child_selector: null, attribute: "textContent", exclude: ["nav", ".ad"] },
+  whole: { child_selector: null, attribute: "textContent" },
+};
+console.log(JSON.stringify({ rows: EXTRACT([row], spec), left: row.textContent }));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_read_exclude_drops_matches(tmp_path: Path) -> None:
+    """`exclude` drops those matches from the text, and leaves the live page
+    alone: the read happens on a copy."""
+    script = tmp_path / "harness.mjs"
+    script.write_text(f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_HARNESS}")
+    out = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == {
+        "rows": [{"text": "Real text", "whole": "MenuBuy!Real text"}],
+        "left": "MenuBuy!Real text",
+    }
+
+
+def test_property_js_reads_a_pruned_copy() -> None:
+    """The fallback path applies the same rule without the batch script."""
+    assert property_js("textContent") == "(el) => el.textContent"
+
+    script = property_js("textContent", ["nav", ".ad"])
+    assert "cloneNode(true)" in script
+    assert 'querySelectorAll("nav,.ad")' in script
+    assert script.endswith("return copy.textContent; }")
 
 
 SELECT_HARNESS = """
