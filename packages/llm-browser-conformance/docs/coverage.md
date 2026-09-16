@@ -153,7 +153,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:verified_candidates` | explore a button |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, wait enabled, wait aria-disabled, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
-| `session:wait_for_text` | wait text present, wait text absent, hidden scope has no text |
+| `session:wait_for_text` | wait text present, wait text absent, hidden scope has no text, display:contents scope |
 
 ## library behaviour
 

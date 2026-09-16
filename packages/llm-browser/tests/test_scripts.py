@@ -354,6 +354,7 @@ TEXT_MATCH_HARNESS = """
 const node = (innerText, children = [], tag = "DIV", visible = true) => ({
   innerText,
   tagName: tag,
+  children,
   getClientRects: () => (visible ? [{}] : []),
   querySelectorAll: (selector) =>
     children.filter(
@@ -361,13 +362,22 @@ const node = (innerText, children = [], tag = "DIV", visible = true) => ({
     ),
 });
 const toast = node("Sesión  finalizada\\n");
-const buried = node("Sesión  finalizada\\n", [], "DIV", false);
+// Not rendered, and neither is what it holds: `innerText` falls back to the
+// subtree's `textContent`, which is the trap.
+const buried = node("Sesión  finalizada\\n", [
+  node("Sesión  finalizada", [], "DIV", false),
+], "DIV", false);
+// `display:contents`: no box of its own, children laid out as usual.
+const wrapper = node("Sesión  finalizada", [
+  node("Sesión  finalizada\\n"),
+], "DIV", false);
 const scripted = node("", [node("Sesión  finalizada", [], "SCRIPT")]);
 globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
 console.log(JSON.stringify({
   page: MATCH(),
   scoped: MATCH(toast),
   hidden: MATCH(buried),
+  contents: MATCH(wrapper),
   scripted: MATCH(scripted),
   elsewhere: MATCH(node("Cargando")),
 }));
@@ -489,7 +499,8 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
     [
         # Newlines and the `&nbsp;` an XPath `contains(text(), ...)` trips over
         # both normalise away. `hidden` and `scripted` hold the text but are
-        # never rendered, so no mode may see it.
+        # never rendered, so no mode may see it; `contents` renders no box of
+        # its own yet lays out a child that does, so every mode must.
         (
             "Sesión finalizada",
             False,
@@ -497,6 +508,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "page": True,
                 "scoped": True,
                 "hidden": False,
+                "contents": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -508,6 +520,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "page": True,
                 "scoped": True,
                 "hidden": False,
+                "contents": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -520,6 +533,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "page": True,
                 "scoped": True,
                 "hidden": False,
+                "contents": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -531,6 +545,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "page": False,
                 "scoped": False,
                 "hidden": False,
+                "contents": False,
                 "scripted": False,
                 "elsewhere": False,
             },

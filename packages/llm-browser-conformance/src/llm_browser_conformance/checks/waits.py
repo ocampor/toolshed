@@ -136,6 +136,17 @@ def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
     timing.assert_within(ctx.delay_ms)
 
 
+def a_display_contents_scope_reads_its_children(ctx: Context) -> None:
+    """The wrapper draws no box of its own, so it is not rendered — but its
+    child is laid out as usual. A scope read that stopped at the root would
+    call visible text absent and poll out the whole budget."""
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Sesión finalizada", selector=".wrapper"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
 def text_present_answers_in_one_read(ctx: Context) -> None:
     """The bool half: what the page renders now, never what a ``<script>``
     merely holds as source, and it does not block on text that is not there."""
@@ -270,6 +281,12 @@ SCENARIOS = [
         "hidden scope has no text",
         Section.WAITS,
         a_hidden_scope_reads_as_absent,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "display:contents scope",
+        Section.WAITS,
+        a_display_contents_scope_reads_its_children,
         covers=frozenset({"session:wait_for_text"}),
     ),
     Scenario(

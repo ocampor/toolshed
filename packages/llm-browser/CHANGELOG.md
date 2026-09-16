@@ -9,7 +9,8 @@
   substring by default and whole-text with `exact: true`, present for
   `attached`/`visible` and absent for `detached`/`hidden`
   (ocampor/browser-api#49). Only rendered text counts: a non-rendered scope —
-  `display:none`, or a `selector` matching nothing — reads as gone, and
+  `display:none`, or a `selector` matching nothing — reads as gone, a
+  `display: contents` scope is worth its rendered children's text, and
   `script`/`style`/`template` never match.
 - `when: [{ text_present: { text: T, selector: S, exact: B } }]` — the same
   match as a condition.

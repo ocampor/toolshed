@@ -106,8 +106,9 @@ and the text moving to a child node are all invisible to it, unlike an XPath
 there" and `detached`/`hidden` as "it is gone"; the element-only states
 (`enabled`, `disabled`, `stable`) are rejected. Only rendered text counts — a
 `display:none` subtree reads as gone whether the wait is page-wide or scoped
-to it — and a `selector` that matches nothing has no text, so it too reads as
-gone.
+to it, and a `selector` that matches nothing has no text, so it too reads as
+gone. A scope that draws no box of its own but lays its children out
+(`display: contents`) is worth exactly their rendered text.
 
 `wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` (a text wait: `text '<text>' [inside <selector>] did not become present|absent within <timeout>ms`) plus whatever `BrowserSession(capture=)` asks for, in memory on the `FlowError`; `optional: true` turns that into a skip.
 

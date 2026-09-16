@@ -6,10 +6,10 @@ Tracks `llm-browser` 0.18.1.
 
 ### Added
 
-- Five `wait_for` text scenarios on `site/text-wait.html`: the text arriving,
-  the text going, a `display:none` scope reading as absent, `text_present`
-  answering in one read, and `flows/wait-text.yaml` for `text:` with
-  `exact: true`.
+- Six `wait_for` text scenarios on `site/text-wait.html`: the text arriving,
+  the text going, a `display:none` scope reading as absent, a
+  `display: contents` scope reading its children, `text_present` answering in
+  one read, and `flows/wait-text.yaml` for `text:` with `exact: true`.
 
 ## 0.11.0 — 2026-09-16
 
