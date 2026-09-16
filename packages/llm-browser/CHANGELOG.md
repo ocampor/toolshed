@@ -4,12 +4,13 @@
 
 ### Changed
 
-- A humanized `click` wheels an offscreen target into view with jittered mouse
-  deltas instead of jumping the page with `scrollIntoView`, which emits no wheel
+- A humanized `click` wheels an offscreen target to the middle of the viewport with
+  jittered mouse deltas instead of jumping the page with `scrollIntoView`, which emits no wheel
   events at all; the programmatic jump is the fallback (ocampor/browser-api#47).
-- A humanized `click` refused as `covered-after-move` walks the pointer off the
-  cover to the viewport centre before raising, so the hover menu its own path
-  opened closes behind it (ocampor/browser-api#47).
+- A humanized `click` refused as `covered-after-move` or `hit-test-failed` walks
+  the pointer off the cover to a jittered point near the viewport middle before
+  raising, so the hover menu its own path opened closes behind it
+  (ocampor/browser-api#47).
 
 ## 0.18.1 — unreleased
 
