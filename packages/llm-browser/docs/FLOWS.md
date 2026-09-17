@@ -266,7 +266,10 @@ missing = missing_selectors(flow, selector_map)              # [] before you run
 result = run_flow(session, flow, {}, selector_map=selector_map)
 ```
 
-A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`, which is used as the selector string. One map serves a run: a sub-flow's refs resolve from the same one. A ref the map lacks raises `MissingSelectorsError` (a `ValueError` carrying `.missing` and `.available`) as its step runs, so check `missing_selectors` first. `llm-browser run` and `llm-browser validate` do exactly that behind `--selector-map PATH`: a flow with no `ref:` never reads that file, `validate` reports `missing_selectors` in its JSON, and `run` exits non-zero naming them before the browser is touched.
+- A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`, which is used as the selector string.
+- One map serves a run: a sub-flow's refs resolve from the same one.
+- A ref the map lacks raises `MissingSelectorsError` (a `ValueError` carrying `.missing` and `.available`) as its step runs, so check `missing_selectors` first.
+- `llm-browser run` and `llm-browser validate` take the map as `--selector-map PATH`. A flow with no `ref:` never reads that file; a path that is not there fails naming it; a ref the map lacks exits non-zero, naming every one of them under `missing_selectors`, before the browser is touched.
 
 ## Running, outputs, and redaction
 

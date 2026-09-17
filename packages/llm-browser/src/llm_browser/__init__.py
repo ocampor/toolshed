@@ -4,6 +4,7 @@ from llm_browser.selectors import (
     CssSelector,
     FallbackSelector,
     IdSelector,
+    RefSelector,
     Selector,
     XpathSelector,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "CssSelector",
     "FallbackSelector",
     "IdSelector",
+    "RefSelector",
     "Selector",
     "XpathSelector",
 ]

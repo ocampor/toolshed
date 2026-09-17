@@ -62,8 +62,10 @@ def flow_ref_sites(flow: Flow) -> Iterator[RefSite]:
 
 
 def selector_refs(flow: Flow) -> list[str]:
-    """Every ref the flow names, sub-flows included, sorted and unique — what
-    a host builds its map from."""
+    """Every ref in a selector position — a step's own, its ``fields:`` and
+    ``read:`` entries', sub-flows included — sorted and unique, which is what
+    a host builds its map from. A ``ref:`` under a ``when:`` predicate is not
+    such a position and is not named here."""
     return sorted({site.ref for site in flow_ref_sites(flow)})
 
 

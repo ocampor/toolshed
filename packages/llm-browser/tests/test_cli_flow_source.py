@@ -189,14 +189,29 @@ REF_YAML = yaml.dump({"steps": [{"name": "s1", "action": "click", "ref": "ui.but
 
 
 @pytest.mark.parametrize("command", ["run", "validate"])
-def test_a_ref_without_a_readable_map_fails_naming_the_ref(command: str) -> None:
+def test_a_ref_the_map_lacks_fails_naming_the_ref(command: str, tmp_path: Path) -> None:
+    empty_map = tmp_path / "selector_map.yaml"
+    empty_map.write_text(yaml.dump({"other": {"thing": {"id": "x"}}}))
+
     result = CliRunner().invoke(
-        main, [command, "--flow-yaml", REF_YAML, "--selector-map", "no-such-map.yaml"]
+        main, [command, "--flow-yaml", REF_YAML, "--selector-map", str(empty_map)]
     )
+
     assert result.exit_code == 1
     report = json.loads(result.stderr)
     assert report["ok"] is False
     assert report["missing_selectors"] == ["ui.button"]
+
+
+@pytest.mark.parametrize("command", ["run", "validate"])
+def test_a_selector_map_path_that_is_not_there_fails_naming_the_file(
+    command: str,
+) -> None:
+    result = CliRunner().invoke(
+        main, [command, "--flow-yaml", REF_YAML, "--selector-map", "no-such-map.yaml"]
+    )
+    assert result.exit_code == 1
+    assert "selector map not found: no-such-map.yaml" in result.stderr
 
 
 def test_a_ref_less_flow_never_reads_the_map_file(tmp_path: Path) -> None:

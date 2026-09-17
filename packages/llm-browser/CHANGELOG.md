@@ -4,6 +4,11 @@
 
 ### Breaking
 
+- A step's `fields:` and `read:` entries are typed (`models.TargetSpec`, extra
+  keys kept), so every ref site is a selector position. `read:` and `fields:`
+  were untyped before — `BaseStep` ignores extra keys, so a `read: 'whatever'`
+  or a `read: {total: '#b'}` loaded and was silently dropped; both now fail
+  validation.
 - A `ref:` selector is no longer expanded at load time: `flows.load_flow_document(document)`
   drops its `selector_map=` keyword and validates only, and the map rides the run
   instead — `run_flow(..., selector_map=m)` resolves each ref as its step runs
@@ -11,6 +16,9 @@
 
 Migration:
 
+- A `read:` or `fields:` entry must be a mapping (`{selector: ..., attr: ...}`),
+  and its members are attributes of `models.TargetSpec`, not dict keys:
+  `step.fields[0]["name"]` → `step.fields[0].name`.
 - `load_flow_document(document, selector_map=m)` → `load_flow_document(document)`
   plus `run_flow(session, flow, data, selector_map=m)`.
 - `flows.expand_step_selector_refs` is gone, and so is any load-time expansion:
@@ -26,11 +34,10 @@ Migration:
 
 ### Added
 
-- `selectors.RefSelector` joins the `Selector` union: `{ref: name}` is a selector
+- `selectors.RefSelector` (exported as `llm_browser.RefSelector`) joins the
+  `Selector` union: `{ref: name}` is a selector
   form, so `selector: {ref: ui.button}` validates and a step's `ref: ui.button`
-  is shorthand for it. A step's `fields:` and `read:` entries are typed
-  (`models.TargetSpec`, extra keys kept), so every ref site is a selector
-  position (ocampor/toolshed#56, ocampor/browser-api#63).
+  is shorthand for it (ocampor/toolshed#56, ocampor/browser-api#63).
 - `selector_map.selector_refs(flow)` and `selector_map.missing_selectors(flow, m)`
   — every ref the flow names, and every one the map lacks, sub-flows included,
   sorted and unique, so a host can build its map from a database or any other
@@ -40,15 +47,17 @@ Migration:
 - A selector map value may be a plain string (`text=Continue`), not only a
   mapping; the string is the selector. Previously a string value at field level
   raised `TypeError` when it happened to contain `id`.
-- `llm-browser validate` reports `missing_selectors` in its JSON, and `run` exits
-  non-zero naming them before a browser is touched.
+- `llm-browser validate` names every ref the map lacks under
+  `missing_selectors` in its failure JSON (on success the key is always `[]`),
+  and `run` exits non-zero naming them before a browser is touched.
 
 ### Changed
 
 - `llm-browser run` / `validate` share one loading helper
   (`cli.flow_with_selector_map`): a flow without `ref:` never reads
-  `--selector-map`, and one with refs and no readable map fails naming every ref
-  it needed instead of reporting them one at a time.
+  `--selector-map`, a `--selector-map` path that does not exist fails naming the
+  file instead of reading as an empty map, and a map missing refs fails naming
+  every one of them instead of reporting them one at a time.
 
 ## 0.18.4 — 2026-09-17
 

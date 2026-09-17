@@ -44,7 +44,7 @@ from llm_browser.selector_map import (
     selector_refs,
 )
 from llm_browser.session import BrowserSession
-from llm_browser.steps import resolve_step
+from llm_browser.steps import resolve_step_templates
 
 
 class CliFlow(NamedTuple):
@@ -57,12 +57,18 @@ def flow_with_selector_map(
     document: dict[str, Any], selector_map_path: str | None
 ) -> CliFlow:
     """The loaded flow, the map its refs will be resolved from, and the refs
-    that map lacks. A flow without refs never reads the map file."""
+    that map lacks. A flow without refs never reads the map file; a named map
+    file that is not there is a bad path, not an empty map."""
     flow = load_flow_document(document)
-    if not selector_refs(flow):
+    refs = selector_refs(flow)
+    if not refs:
         return CliFlow(flow, None, [])
-    path = Path(selector_map_path) if selector_map_path else None
-    selector_map = load_selector_map(path) if path and path.exists() else {}
+    if selector_map_path is None:
+        return CliFlow(flow, {}, refs)
+    path = Path(selector_map_path)
+    if not path.exists():
+        raise ValueError(f"selector map not found: {selector_map_path}")
+    selector_map = load_selector_map(path)
     return CliFlow(flow, selector_map, missing_selectors(flow, selector_map))
 
 
@@ -462,7 +468,6 @@ def run(
             data,
             out_dir=Path(out_dir),
             capture_dir=Path(capture_dir) if capture_dir else target.session_dir,
-            selector_map=selector_map,
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
@@ -488,9 +493,7 @@ class CliFlowRun(NamedTuple):
     payload: dict[str, Any]
 
 
-def declared_paths(
-    flow: Flow, data: dict[str, object], selector_map: SelectorMap | None = None
-) -> dict[str, str]:
+def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     """Qualified step name to the ``path:`` that step asked the CLI to write.
 
     The value comes from the resolved step, so ``path: out/{{ id }}.png``
@@ -498,16 +501,17 @@ def declared_paths(
     because that is what ``run_loaded_flow`` keys ``outputs`` on — a step
     whose ``name:`` is itself templated would otherwise never match its own
     output, and its file would silently not be written.
+
+    Only templates are resolved: naming a file needs no selector, so a
+    ``ref:`` the caller never mapped must not cost the run its outputs.
     """
     paths: dict[str, str] = {}
     flow_data = flow.validate_data(data)
     for step in flow.steps:
-        resolved = resolve_step(step, flow_data, selector_map)
+        resolved = resolve_step_templates(step, flow_data)
         if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
             paths.update(
-                declared_paths(
-                    resolved.flow, child_data(flow_data, resolved.data), selector_map
-                )
+                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
             )
             continue
         path = getattr(resolved, "path", None)
@@ -630,11 +634,8 @@ def write_run(
     data: dict[str, object],
     out_dir: Path,
     capture_dir: Path,
-    selector_map: SelectorMap | None = None,
 ) -> CliFlowRun:
-    outputs = write_outputs(
-        result.outputs, declared_paths(flow, data, selector_map), out_dir
-    )
+    outputs = write_outputs(result.outputs, declared_paths(flow, data), out_dir)
     captures = (
         write_captures(result, capture_dir) if isinstance(result, FlowError) else {}
     )
@@ -773,7 +774,8 @@ def validate(
     Loads the flow + every referenced sub-flow and runs all model
     validators. Exits 0 with a JSON summary on success; exits 1 with a
     one-line JSON failure on any validation error, or on a ``ref:`` the
-    ``--selector-map`` does not carry — ``missing_selectors`` names them.
+    ``--selector-map`` does not carry, whose ``missing_selectors`` names
+    every such ref.
 
     Suitable for pre-commit hooks and CI — no browser session is
     created or used.
