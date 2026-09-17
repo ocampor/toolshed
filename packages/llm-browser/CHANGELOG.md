@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.18.3 — 2026-09-16
+
+### Added
+
+- `wait_for` accepts `text:` instead of (or scoped by) `selector:`: polls the
+  whitespace-normalised `innerText` of the page or of what `selector` matches,
+  substring by default and whole-text with `exact: true`, present for
+  `attached`/`visible` and absent for `detached`/`hidden`
+  (ocampor/browser-api#49). Only rendered text counts: a non-rendered scope —
+  `display:none`, or a `selector` matching nothing — reads as gone, a
+  `display: contents` scope is worth what it lays out (text it holds directly
+  as much as its rendered children), and `script`/`style`/`template` never
+  match.
+- `when: [{ text_present: { text: T, selector: S, exact: B } }]` — the same
+  match as a condition.
+- `BrowserSession.wait_for_text(text, selector=, exact=, state=, timeout=,
+  interval=)` and `BrowserSession.text_present(text, selector=, exact=)`.
+
+### Changed
+
+- A `wait_for` step with neither `selector` nor `text` is rejected at flow-load
+  time with `wait_for needs a selector or text` (was: a missing-field error on
+  `selector`).
+- `wait_for_text("")` and `text_present("")` raise `ValueError` instead of
+  answering on the first tick, the same refusal the `wait_for` step and the
+  `when: text_present` condition make at flow-load time.
+- A scoped text wait reads each match under the now-read timeout; a scope that
+  detaches between the match list and the read times out inside that budget and
+  counts as "no text this tick", so waiting for a toast to go no longer blocks
+  on the driver's own default timeout. Any other driver error still fails the
+  run.
+
 ## 0.18.2 — 2026-09-16
 
 ### Changed

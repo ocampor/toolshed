@@ -80,6 +80,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:type.delay` | masked input, type delay, jittered key delay |
 | `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
+| `field:wait_for.text` | wait exact text scoped |
+| `field:wait_for.exact` | wait exact text scoped |
 | `field:wait_for.state` | fill waits for enabled, flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
 | `field:wait_for.settle` | slow xhr rows |
@@ -106,6 +108,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `when:eq` | when eq |
 | `when:is_truthy` | when is_truthy |
 | `when:not_null` | when not_null |
+| `when:text_present` | wait exact text scoped |
 
 ## session methods
 
@@ -146,10 +149,12 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:status` | attach over cdp |
 | `session:stop_detached` | attach over cdp |
 | `session:survey` | survey a page |
+| `session:text_present` | text_present is one read |
 | `session:type` | fill/type/check, typing fires trusted input, typing fires trusted keydown |
 | `session:verified_candidates` | explore a button |
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, wait enabled, wait aria-disabled, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
+| `session:wait_for_text` | wait text present, wait text absent, hidden scope has no text, display:contents scope |
 
 ## library behaviour
 

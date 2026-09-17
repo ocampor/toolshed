@@ -16,6 +16,7 @@ from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     POLL_JITTER_RATIO,
+    READ_TIMEOUT_MS,
 )
 from llm_browser.drivers.base import Driver
 from llm_browser.selectors import (
@@ -485,3 +486,131 @@ def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
     for state in ("enabled", "disabled"):
         with pytest.raises(TimeoutError):
             session.wait_for_element("#submit", state=state, timeout=0)
+
+
+# --- waiting on text ---
+
+
+def driver_with_text(matches: list[bool]) -> MagicMock:
+    """A driver whose text-match evaluations walk ``matches``, repeating the last."""
+    driver = driver_with()
+    driver.evaluate.side_effect = _series(matches)
+    driver.all.side_effect = lambda locator: [locator]
+    return driver
+
+
+def test_wait_for_text_present(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with_text([False, False, True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("Sesión finalizada")
+
+    assert len(clock.sleeps) == 2
+    # Page-wide: the script is the whole predicate, evaluated against the page.
+    assert '"Sesi\\u00f3n finalizada"' in driver.evaluate.call_args.args[1]
+
+
+def test_wait_for_text_absent(tmp_path: Path, clock: FakeClock) -> None:
+    driver = driver_with_text([True, False])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("Cargando", state="detached")
+
+    assert len(clock.sleeps) == 1
+
+
+def test_wait_for_text_scoped(tmp_path: Path, clock: FakeClock) -> None:
+    """A scope selector asks the matched elements, not the page."""
+    driver = driver_with_text([True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=CssSelector(css=".toast"))
+
+    assert driver.resolve.call_args.args[1] == ".toast"
+    assert driver.evaluate.call_args.args[0] is not session._page
+
+
+def test_a_text_timeout_names_the_text_and_the_direction(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    with pytest.raises(TimeoutError) as excinfo:
+        session.wait_for_text("Listo", selector="#panel", timeout=1_000)
+
+    assert str(excinfo.value) == (
+        "text 'Listo' inside #panel did not become present within 1000ms"
+    )
+
+
+def driver_error(name: str, message: str) -> Exception:
+    """Every driver raises its own classes — patchright's ``TimeoutError`` is
+    not playwright's and neither is the builtin — so a fake gets the name
+    right, which is what the code that reads them matches on."""
+    return type(name, (Exception,), {})(message)
+
+
+def test_a_scoped_text_read_is_bounded(tmp_path: Path, clock: FakeClock) -> None:
+    """A tick that let the driver wait for its scope would blow past the
+    loop's own deadline."""
+    driver = driver_with_text([True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=".toast")
+
+    assert driver.evaluate.call_args.args[2] == READ_TIMEOUT_MS
+
+
+def test_a_scope_that_detaches_mid_tick_has_no_text(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """``all()`` hands back a snapshot: the toast a ``detached`` wait watches
+    for can go between the listing and the read, and the wait wants that as
+    "no text", not as the driver's own error."""
+    driver = driver_with_text([True])
+    driver.evaluate.side_effect = driver_error(
+        "TimeoutError", "element is not attached"
+    )
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=".toast", state="detached")
+
+    with pytest.raises(TimeoutError):
+        session.wait_for_text("finalizada", selector=".toast", timeout=0)
+
+
+def test_a_text_script_that_cannot_run_is_not_a_missing_scope(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """Only the detached scope's timeout reads as "no text": a script the page
+    refuses is a bug, and one swallowed would poll out the whole budget and
+    then blame the text."""
+    driver = driver_with_text([True])
+    driver.evaluate.side_effect = driver_error(
+        "ReferenceError", "renderedText is not defined"
+    )
+    session = make_session(tmp_path, driver)
+
+    with pytest.raises(Exception, match="renderedText is not defined"):
+        session.wait_for_text("finalizada", selector=".toast")
+
+
+def test_waiting_for_no_text_is_rejected(tmp_path: Path, clock: FakeClock) -> None:
+    """Every page renders the empty string, so the wait would return on the
+    first tick and the bool would always be ``True`` — every entry point
+    refuses it, the flow step's condition included."""
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    with pytest.raises(ValueError, match="needs text"):
+        session.wait_for_text("")
+    with pytest.raises(ValueError, match="needs text"):
+        session.text_present("")
+
+
+def test_text_present_is_one_read_with_no_waiting(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    assert session.text_present("Listo") is False
+    assert clock.sleeps == []

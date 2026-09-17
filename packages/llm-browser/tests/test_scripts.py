@@ -348,6 +348,86 @@ def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
     return dict(json.loads(out.stdout))
 
 
+TEXT_MATCH_HARNESS = """
+// `getClientRects` is what the script asks before reading `innerText`, and
+// `getComputedStyle` reports each node's own `display`, ancestors unread,
+// exactly as a browser does.
+const ELEMENT = 1;
+const TEXT = 3;
+const words = (data) => ({ nodeType: TEXT, data });
+const node = (
+  innerText,
+  childNodes = [],
+  tag = "DIV",
+  visible = true,
+  display = "block",
+) => ({
+  nodeType: ELEMENT,
+  innerText,
+  tagName: tag,
+  display,
+  childNodes,
+  getClientRects: () => (visible ? [{}] : []),
+});
+globalThis.getComputedStyle = (el) => ({ display: el.display });
+const toast = node("Sesión  finalizada\\n");
+// Not rendered, and neither is what it holds: `innerText` falls back to the
+// subtree's `textContent`, which is the trap. The `display:contents`
+// child is the second trap: its own computed `display` says nothing of
+// the `none` above it, so a walk that trusted it would read a buried
+// subtree as shown.
+const buried = node("Sesión  finalizada\\n", [
+  node("Sesión  finalizada", [], "DIV", false),
+  node("Sesión  finalizada", [
+    words("Sesión  finalizada\\n"),
+  ], "DIV", false, "contents"),
+], "DIV", false, "none");
+// `display:contents`: no box of its own, children laid out as usual.
+const wrapper = node("Sesión  finalizada", [
+  node("Sesión  finalizada\\n"),
+], "DIV", false, "contents");
+// The same, holding the text itself rather than an element that does.
+const bare = node("Sesión  finalizada", [
+  words("Sesión  finalizada\\n"),
+], "DIV", false, "contents");
+const scripted = node("", [node("Sesión  finalizada", [], "SCRIPT")]);
+globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
+console.log(JSON.stringify({
+  page: MATCH(),
+  scoped: MATCH(toast),
+  hidden: MATCH(buried),
+  contents: MATCH(wrapper),
+  bare: MATCH(bare),
+  scripted: MATCH(scripted),
+  elsewhere: MATCH(node("Cargando")),
+}));
+"""
+
+
+def test_text_match_js_does_not_substitute_the_text_it_carries() -> None:
+    """The waited-for text is a value, not source: a page that says a
+    placeholder's name must not rewrite the script that looks for it."""
+    from llm_browser.scripts import text_match_js
+
+    source = text_match_js(constants.TEXT_MATCH_EXACT_PLACEHOLDER, exact=True)
+
+    assert json.dumps(constants.TEXT_MATCH_EXACT_PLACEHOLDER) in source
+    assert "const exact = true;" in source
+
+
+def run_text_match(text: str, exact: bool, tmp_path: Path) -> dict[str, bool]:
+    from llm_browser.scripts import text_match_js
+
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const MATCH = {text_match_js(text, exact)}\n{TEXT_MATCH_HARNESS}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 @pytest.mark.parametrize(
     ("at", "expected"),
@@ -442,3 +522,73 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
     assert read["gap"] == expected_gap
     assert read["centre"] == [INNER_WIDTH / 2, INNER_HEIGHT / 2]
     assert read["scrollY"] == round(SCROLL_Y)
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+@pytest.mark.parametrize(
+    ("text", "exact", "expected"),
+    [
+        # Newlines and the `&nbsp;` an XPath `contains(text(), ...)` trips over
+        # both normalise away. `hidden` and `scripted` hold the text but are
+        # never rendered, so no mode may see it; `contents` and `bare` render
+        # no box of their own yet lay out what they hold — a child element, a
+        # text node — as usual, so every mode must see it.
+        (
+            "Sesión finalizada",
+            False,
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "contents": True,
+                "bare": True,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
+        (
+            "finalizada",
+            False,
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "contents": True,
+                "bare": True,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
+        # Exact: the toast's own text, which the page holds only as a subtree.
+        (
+            "Sesión finalizada",
+            True,
+            {
+                "page": True,
+                "scoped": True,
+                "hidden": False,
+                "contents": True,
+                "bare": True,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
+        (
+            "finalizada",
+            True,
+            {
+                "page": False,
+                "scoped": False,
+                "hidden": False,
+                "contents": False,
+                "bare": False,
+                "scripted": False,
+                "elsewhere": False,
+            },
+        ),
+    ],
+)
+def test_text_match_js_reads_normalised_rendered_text(
+    text: str, exact: bool, expected: dict[str, bool], tmp_path: Path
+) -> None:
+    assert run_text_match(text, exact, tmp_path) == expected

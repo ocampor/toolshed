@@ -1,12 +1,19 @@
 """Every ``wait_for`` state against the page built for it, plus the three
 things a wait must refuse to do: return early, wait out an ambiguous
 selector, and poll a settle window that cannot fit its budget.
+
+The text waits live here too: a real browser is the only place ``innerText``'s
+rendered-vs-``textContent`` semantics can be proved.
 """
+
+from collections.abc import Callable
+from typing import Any
 
 from llm_browser_conformance.checks.support import expect_success, one_text
 from llm_browser_conformance.scenario import (
     POLL_MS,
     SETTLE_MS,
+    TIMEOUT_MS,
     Context,
     Scenario,
     Section,
@@ -94,6 +101,75 @@ def aria_disabled_reads_as_disabled(ctx: Context) -> None:
 def a_flow_waits_out_a_locked_field_before_filling_it(ctx: Context) -> None:
     outputs = expect_success(ctx, "unlock-input.html", "wait-enabled")
     assert one_text(outputs, "result") == "typed"
+
+
+def text_wait(ctx: Context, text: str, **options: Any) -> Callable[[], None]:
+    """``ctx.wait`` for the text wait, which names no element."""
+    return lambda: ctx.session.wait_for_text(
+        text, timeout=TIMEOUT_MS, interval=POLL_MS, **options
+    )
+
+
+def a_text_wait_waits_for_the_page_to_say_it(ctx: Context) -> None:
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"), text_wait(ctx, "Sesión finalizada")
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def a_text_wait_waits_for_the_words_to_go(ctx: Context) -> None:
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Cargando", state="detached"),
+    )
+    timing.assert_within(ctx.delay_ms)
+
+
+def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
+    """The modal keeps its text and stops being rendered. ``innerText`` on a
+    non-rendered element answers with its ``textContent``, so a scope read that
+    trusted it would poll out the whole budget on text nobody can see — and the
+    `display:contents` wrapper it holds still computes "contents", so a read
+    that asked each node on its own would be fooled the same way."""
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Sesión iniciada", selector=".modal", state="hidden"),
+    )
+    timing.assert_within(ctx.delay_ms)
+    assert not ctx.session.text_present("Sesión caducada", selector=".modal")
+    assert not ctx.session.text_present(
+        "Sesión caducada", selector=".modal", exact=True
+    )
+
+
+def a_display_contents_scope_reads_its_children(ctx: Context) -> None:
+    """The wrapper draws no box of its own, so it is not rendered — but what it
+    holds is laid out as usual, a text node of its own as much as a child
+    element. A scope read that stopped at the root, or that only ever
+    descended into elements, would call visible text absent and poll out the
+    whole budget."""
+    timing = ctx.timed(
+        lambda: ctx.visit("text-wait.html"),
+        text_wait(ctx, "Sesión finalizada", selector=".wrapper"),
+    )
+    timing.assert_within(ctx.delay_ms)
+    assert ctx.session.text_present("Sesión abierta", selector=".wrapper")
+    assert ctx.session.text_present("Menú principal", selector="#bare", exact=True)
+
+
+def text_present_answers_in_one_read(ctx: Context) -> None:
+    """The bool half: what the page renders now, never what a ``<script>``
+    merely holds as source, and it does not block on text that is not there."""
+    ctx.visit("text-wait.html")
+    assert ctx.session.text_present("Cargando")
+    assert not ctx.session.text_present("Contraseña caducada", exact=True)
+    took = ctx.elapsed(lambda: ctx.session.text_present("Sesión finalizada"))
+    assert took < IMMEDIATE_S
+
+
+def a_flow_waits_for_the_whole_text_of_an_element(ctx: Context) -> None:
+    outputs = expect_success(ctx, "text-wait.html", "wait-text")
+    assert one_text(outputs, "result") == "Sesión finalizada"
 
 
 def a_short_timeout_names_selector_and_state(ctx: Context) -> None:
@@ -198,6 +274,44 @@ SCENARIOS = [
         Section.WAITS,
         a_flow_waits_out_a_locked_field_before_filling_it,
         covers=frozenset({"field:wait_for.state", "field:check.checked", "step:check"}),
+    ),
+    Scenario(
+        "wait text present",
+        Section.WAITS,
+        a_text_wait_waits_for_the_page_to_say_it,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "wait text absent",
+        Section.WAITS,
+        a_text_wait_waits_for_the_words_to_go,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "hidden scope has no text",
+        Section.WAITS,
+        a_hidden_scope_reads_as_absent,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "display:contents scope",
+        Section.WAITS,
+        a_display_contents_scope_reads_its_children,
+        covers=frozenset({"session:wait_for_text"}),
+    ),
+    Scenario(
+        "text_present is one read",
+        Section.WAITS,
+        text_present_answers_in_one_read,
+        covers=frozenset({"session:text_present"}),
+    ),
+    Scenario(
+        "wait exact text scoped",
+        Section.WAITS,
+        a_flow_waits_for_the_whole_text_of_an_element,
+        covers=frozenset(
+            {"field:wait_for.text", "field:wait_for.exact", "when:text_present"}
+        ),
     ),
     Scenario(
         "timeout message",

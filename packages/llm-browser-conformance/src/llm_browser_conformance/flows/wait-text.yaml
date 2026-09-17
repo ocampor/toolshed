@@ -1,0 +1,22 @@
+# The status line says `Cargando` until the page flips it; `exact: true` asks
+# `#status` for that whole text, so the old text cannot satisfy the wait.
+steps:
+  - name: finished
+    action: wait_for
+    selector: "#status"
+    text: "Sesión finalizada"
+    exact: true
+    timeout: 8000
+    interval: 200
+  - name: result
+    action: read
+    selector: "#status"
+    # The wait just proved it; `text_present` is the same question as a gate.
+    when:
+      - text_present:
+          text: "Sesión finalizada"
+          selector: "#status"
+          exact: true
+    extract:
+      text:
+        attribute: textContent

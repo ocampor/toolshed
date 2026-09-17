@@ -84,7 +84,8 @@ cadence.
 
 ### Waiting
 
-One step covers both kinds of waiting: element presence and text stability.
+One step covers every kind of waiting: element presence, text stability, and
+a page state only its rendered text names.
 
 | State | True when | Notes |
 |---|---|---|
@@ -96,7 +97,21 @@ One step covers both kinds of waiting: element presence and text stability.
 | `disabled` | element is in the DOM and is locked | the inverse, same rule. An element that is not there yet is neither |
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
-`wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` plus whatever `BrowserSession(capture=)` asks for, in memory on the `FlowError`; `optional: true` turns that into a skip.
+`wait_for` takes a `selector`, a `text:`, or both — with neither it is rejected at
+flow-load time. `text:` matches the whitespace-normalised `innerText` of the page
+(or of whatever `selector` matches, when both are given), as a substring unless
+`exact: true`, which asks some element's whole text to equal it. Accents, `&nbsp;`
+and the text moving to a child node are all invisible to it, unlike an XPath
+`contains(text(), …)`. A text wait reads `attached`/`visible` as "the text is
+there" and `detached`/`hidden` as "it is gone"; the element-only states
+(`enabled`, `disabled`, `stable`) are rejected. Only rendered text counts — a
+`display:none` subtree reads as gone whether the wait is page-wide or scoped
+to it, and a `selector` that matches nothing has no text, so it too reads as
+gone. A scope that draws no box of its own but lays out what it
+holds (`display: contents`) is worth exactly that — text it holds directly as
+much as its rendered children.
+
+`wait_for`: `timeout` (ms, default 3000, the whole poll budget — `timeout: 0` checks once), `interval` (ms, default 500, must be > 0), `settle` (ms, default 1500, `stable` only — `timeout` must exceed it, rejected at flow-load time otherwise). On timeout the step fails with `<selector> did not become <state> within <timeout>ms` (a text wait: `text '<text>' [inside <selector>] did not become present|absent within <timeout>ms`) plus whatever `BrowserSession(capture=)` asks for, in memory on the `FlowError`; `optional: true` turns that into a skip.
 
 ```yaml
 - name: captcha appears
@@ -116,6 +131,11 @@ One step covers both kinds of waiting: element presence and text stability.
   action: wait_for
   state: detached
   timeout: 5000
+
+- name: logged out
+  action: wait_for
+  text: "Sesión finalizada"
+  timeout: 15000
 
 - name: isr recalculates
   selector: "#isr-total"
@@ -275,6 +295,7 @@ Skip a step unless every condition holds (AND'ed).
 | `{ field: X, op: not_null }` | param `X` is not null |
 | `{ element_exists: { selector: S } }` | `S` is present on the page |
 | `{ element_missing: { selector: S } }` | `S` is absent from the page — the idempotent-toggle guard: only act when the post-action element isn't already there |
+| `{ text_present: { text: T } }` | the page renders `T` — same matching as `wait_for`'s `text:`, with the same optional `selector` scope and `exact` |
 
 ## Step options
 
@@ -283,7 +304,7 @@ Skip a step unless every condition holds (AND'ed).
 | `name` | string | Step identifier (for logging and error messages) |
 | `action` | string | One of the actions above |
 | `optional` | bool | Swallow `TimeoutError`/`ValueError` from this step (and every child step for `run-flow`) and continue |
-| `selector` | string or dict | Target element (required for element/data actions) |
+| `selector` | string or dict | Target element (required for element/data actions; on `wait_for` with `text:`, the scope to search) |
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |

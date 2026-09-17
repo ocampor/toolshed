@@ -18,9 +18,11 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DESTROYED_CONTEXT_MESSAGE,
     POLL_JITTER_RATIO,
+    READ_TIMEOUT_MS,
 )
 from llm_browser.drivers.base import Driver
-from llm_browser.models import WaitState
+from llm_browser.models import WaitState, check_text_state
+from llm_browser.scripts import text_match_js
 from llm_browser.selectors import Selector, describe_selector, resolve_selector
 
 StatePredicate = Callable[[Driver, Any], bool]
@@ -126,15 +128,96 @@ def poll_for_state(
     matches.
     """
     reached = state_predicate(state, settle_ms)
+    poll_until(
+        lambda: reached(driver, resolve_selector(driver, page, selector)),
+        f"{describe_selector(selector)} did not become {state}",
+        timeout_ms,
+        interval_ms,
+    )
+
+
+def poll_until(
+    reached: Callable[[], bool],
+    description: str,
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Tick ``reached`` until it says yes, or raise ``TimeoutError``.
+
+    ``description`` is the timeout message up to ``within <timeout>ms``.
+    """
     pause = poll_jitter(interval_ms)
     deadline = time.monotonic() + timeout_ms / 1000.0
     while True:
-        if reached(driver, resolve_selector(driver, page, selector)):
+        if reached():
             return
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError(
-                f"{describe_selector(selector)} did not become "
-                f"{state} within {timeout_ms}ms"
-            )
+            raise TimeoutError(f"{description} within {timeout_ms}ms")
         time.sleep(min(pause.sample_seconds(), remaining))
+
+
+def text_present(
+    driver: Driver,
+    page: Any,
+    text: str,
+    *,
+    selector: Selector | None = None,
+    exact: bool = False,
+) -> bool:
+    """Whether the page renders ``text`` right now, as one read.
+
+    Whitespace-normalised ``innerText``, so the accents, ``&nbsp;`` and node
+    boundaries an XPath ``contains(text(), ...)`` trips over do not matter.
+    ``selector`` scopes the question to what it matches — every match, since a
+    scope like ``.toast`` names a kind of element, not one of them. A scope
+    that matches nothing has no text, so it answers ``False``: a scope that is
+    gone takes its text with it.
+    """
+    script = text_match_js(text, exact)
+    if selector is None:
+        return bool(driver.evaluate(page, script))
+    elements = driver.all(resolve_selector(driver, page, selector))
+    return any(matches_now(driver, element, script) for element in elements)
+
+
+def matches_now(driver: Driver, element: Any, script: str) -> bool:
+    """One bounded read, so a scope cannot turn a tick into a driver-side wait.
+
+    ``driver.all`` hands back a snapshot; a scope that detached since — the
+    toast a ``detached``/``hidden`` wait is watching for — cannot be answered
+    about: the locator re-resolves and times out inside the read's budget. It
+    has no text this tick, which is the answer the next tick re-asks. Anything
+    else is the script's own bug, and says so rather than polling out.
+    """
+    try:
+        return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
+    except Exception as exc:
+        # patchright's TimeoutError is not playwright's, and neither is the builtin.
+        if type(exc).__name__ == "TimeoutError":
+            return False
+        raise
+
+
+def poll_for_text(
+    driver: Driver,
+    page: Any,
+    text: str,
+    *,
+    selector: Selector | None = None,
+    exact: bool = False,
+    state: WaitState = "attached",
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Block until ``text`` is present (or absent), or raise ``TimeoutError``."""
+    wanted = check_text_state(state)
+    scope = f" inside {describe_selector(selector)}" if selector is not None else ""
+    poll_until(
+        lambda: (
+            text_present(driver, page, text, selector=selector, exact=exact) is wanted
+        ),
+        f"text {text!r}{scope} did not become {'present' if wanted else 'absent'}",
+        timeout_ms,
+        interval_ms,
+    )
