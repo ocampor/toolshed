@@ -11,6 +11,7 @@ import yaml
 from llm_browser.flows import load_flow_document, load_flow_text, run_flow
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.redact import redact_secrets
+from llm_browser.selector_map import expand_selector_refs
 from llm_browser.results import BytesResult
 from tests.conftest import PNG
 
@@ -36,8 +37,10 @@ def test_load_flow_text_parses_steps() -> None:
 
 def test_load_flow_document_expands_selector_refs() -> None:
     flow = load_flow_document(
-        {"steps": [{"name": "s", "action": "click", "ref": "ui.button"}]},
-        selector_map={"ui.button": {"id": "the-button"}},
+        expand_selector_refs(
+            {"steps": [{"name": "s", "action": "click", "ref": "ui.button"}]},
+            {"ui.button": {"id": "the-button"}},
+        )
     )
     assert "the-button" in str(flow.steps[0])
 

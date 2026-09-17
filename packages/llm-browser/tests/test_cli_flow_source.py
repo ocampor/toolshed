@@ -10,7 +10,13 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from llm_browser.cli import file_path, main, resolve_flow_options, run_cli_flow
+from llm_browser.cli import (
+    file_path,
+    flow_from_document,
+    main,
+    resolve_flow_options,
+    run_cli_flow,
+)
 from llm_browser.flows import load_flow_document
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
@@ -176,6 +182,36 @@ def test_validate_reports_a_missing_flow_file(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["validate", "--flow", str(tmp_path / "no.yaml")])
     assert result.exit_code == 1
     assert json.loads(result.stderr)["error"] == "FlowNotFoundError"
+
+
+REF_YAML = yaml.dump({"steps": [{"name": "s1", "action": "click", "ref": "ui.button"}]})
+
+
+@pytest.mark.parametrize("command", ["run", "validate"])
+def test_a_ref_without_a_readable_map_fails_naming_the_ref(command: str) -> None:
+    result = CliRunner().invoke(
+        main, [command, "--flow-yaml", REF_YAML, "--selector-map", "no-such-map.yaml"]
+    )
+    assert result.exit_code == 1
+    assert "ui.button" in result.stderr + str(result.exception)
+
+
+def test_a_ref_less_document_never_reads_the_map_file(tmp_path: Path) -> None:
+    flow = flow_from_document(FLOW_DOCUMENT, str(tmp_path / "absent.yaml"))
+    assert flow.steps[0].name == "s1"
+
+
+def test_validate_expands_refs_from_the_map_file(tmp_path: Path) -> None:
+    selector_map = tmp_path / "selector_map.yaml"
+    selector_map.write_text(yaml.dump({"ui": {"button": {"id": "the-button"}}}))
+
+    result = CliRunner().invoke(
+        main,
+        ["validate", "--flow-yaml", REF_YAML, "--selector-map", str(selector_map)],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["ok"] is True
 
 
 def test_validate_rejects_two_sources() -> None:

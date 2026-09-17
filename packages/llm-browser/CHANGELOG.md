@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.19.0 — 2026-09-17
+
+### Breaking
+
+- `flows.load_flow_document(document)` drops its `selector_map=` keyword and
+  validates only; `ref:` expansion is now the caller's own stage, so every host
+  composes collect → map → expand → validate the same way (ocampor/toolshed#56).
+
+Migration:
+
+- `load_flow_document(document, selector_map=m)` →
+  `load_flow_document(expand_selector_refs(document, m))`, importing
+  `expand_selector_refs` from `llm_browser.selector_map` (it moved out of
+  `llm_browser.flows`).
+- `flows.expand_step_selector_refs` is gone; use
+  `selector_map.expand_selector_refs(document, m)` for a document, and
+  `selector_map.resolve_refs` only for a single step with no sub-flow — it is
+  step-local and does not descend into an embedded `flow:`.
+- An unknown ref now raises `selector_map.MissingSelectorsError`, a `ValueError`
+  subclass, so `except ValueError` keeps working.
+
+### Added
+
+- `selector_map.selector_refs(document)` — every `ref:` the document names,
+  sub-flows included, sorted and unique, so a host can build its map from a
+  database or any other source before expanding. It shares one traversal with
+  `expand_selector_refs`, so the two cannot drift
+  (ocampor/toolshed#56, ocampor/browser-api#63).
+- `selector_map.MissingSelectorsError` lists every unknown ref at once, sorted,
+  and carries `.missing` and `.available` — a flow with three ref typos reports
+  all three in one load instead of one per load.
+- A selector map value may be a plain string (`text=Continue`), not only a
+  mapping, at step, key, `fields[]` and `read[]` level; a mapping with an `id`
+  key still writes the field's own `id:`, its other keys ignored. Previously a string value at field level raised
+  `TypeError` when the string happened to contain `id`.
+- `docs/FLOWS.md` documents the four loading stages and the `--selector-map`
+  behaviour of `llm-browser run` / `validate`.
+
+### Changed
+
+- `llm-browser run` / `validate` share one loading helper: a document without
+  `ref:` never reads `--selector-map`, and one with refs and no readable map
+  fails naming every ref it needed instead of reporting them one at a time.
+
 ## 0.18.4 — 2026-09-17
 
 ### Added

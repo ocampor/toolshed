@@ -29,7 +29,6 @@ from llm_browser.models import (
     SubFlow,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
-from llm_browser.selector_map import SelectorMap, resolve_refs
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, resolve_step, should_skip
 
@@ -38,36 +37,8 @@ def load_flow_text(text: str) -> Flow:
     return load_flow_document(parse_flow_yaml(text))
 
 
-def load_flow_document(
-    document: Mapping[str, Any],
-    *,
-    selector_map: SelectorMap | None = None,
-) -> Flow:
-    """``selector_map`` expands every ``ref:`` in the document — the parent's
-    steps and any embedded sub-flow's — before validation."""
-    if selector_map is not None:
-        document = expand_selector_refs(document, selector_map)
+def load_flow_document(document: Mapping[str, Any]) -> Flow:
     return Flow.model_validate(document)
-
-
-def expand_selector_refs(
-    document: Mapping[str, Any], selector_map: SelectorMap
-) -> dict[str, Any]:
-    steps = document.get("steps")
-    if not isinstance(steps, list):
-        return dict(document)
-    expanded = [expand_step_selector_refs(step, selector_map) for step in steps]
-    return {**document, "steps": expanded}
-
-
-def expand_step_selector_refs(step: Any, selector_map: SelectorMap) -> Any:
-    if not isinstance(step, dict):
-        return step
-    resolved = resolve_refs(step, selector_map)
-    child = resolved.get("flow")
-    if isinstance(child, Mapping):
-        resolved["flow"] = expand_selector_refs(child, selector_map)
-    return resolved
 
 
 def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:

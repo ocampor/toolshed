@@ -11,7 +11,7 @@ from llm_browser.results import SkippedResult
 from llm_browser.behavior import Behavior
 from llm_browser.constants import WHEN_SKIP_REASON
 from llm_browser.flow_repository import FlowNotFoundError
-from llm_browser.flows import run_flow
+from llm_browser.flows import load_flow_document, run_flow
 from llm_browser.models import (
     ClickStep,
     EvalStep,
@@ -23,8 +23,9 @@ from llm_browser.models import (
     RunFlowStep,
     SubFlow,
 )
+from llm_browser.selector_map import expand_selector_refs
 from llm_browser.steps import execute_step, should_skip
-from tests.flow_helpers import load_flow_file, run_flow_file
+from tests.flow_helpers import load_flow_file, resolve_flow_file, run_flow_file
 
 
 def _flow_data(**kwargs: object) -> FlowData:
@@ -574,23 +575,27 @@ def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
         load_flow_file(parent)
 
 
+def _load_expanded(path: Path, selector_map: dict[str, Any]) -> Flow:
+    return load_flow_document(
+        expand_selector_refs(resolve_flow_file(path), selector_map)
+    )
+
+
 def test_load_flow_resolves_refs_with_selector_map(tmp_path: Path) -> None:
-    """`load_flow_file(path, selector_map=...)` expands `ref:` into
-    concrete `selector:` via pydantic's before-validator."""
+    """Expansion before validation turns `ref:` into a concrete `selector:`."""
     flow_file = _write_named_flow(
         tmp_path,
         "f.yaml",
         [{"name": "click-x", "action": "click", "ref": "ui.button"}],
     )
-    selector_map = {"ui.button": {"id": "the-button"}}
-    flow = load_flow_file(flow_file, selector_map=selector_map)
+    flow = _load_expanded(flow_file, {"ui.button": {"id": "the-button"}})
     step = flow.steps[0]
     # Selector survived validation as the resolved spec.
     assert step.selector.id == "the-button"  # type: ignore[union-attr]
 
 
 def test_load_flow_unknown_ref_fails(tmp_path: Path) -> None:
-    """Unknown ref raises at load time, not deferred into a
+    """Unknown ref raises at expansion time, not deferred into a
     'selector required' cascade."""
     flow_file = _write_named_flow(
         tmp_path,
@@ -598,7 +603,7 @@ def test_load_flow_unknown_ref_fails(tmp_path: Path) -> None:
         [{"name": "click-x", "action": "click", "ref": "ui.missing"}],
     )
     with pytest.raises(ValueError, match="not found in selector_map"):
-        load_flow_file(flow_file, selector_map={"ui.button": {"id": "x"}})
+        _load_expanded(flow_file, {"ui.button": {"id": "x"}})
 
 
 def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
@@ -613,7 +618,7 @@ def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
         "parent.yaml",
         [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
     )
-    flow = load_flow_file(parent, selector_map={"ui.button": {"id": "the-button"}})
+    flow = _load_expanded(parent, {"ui.button": {"id": "the-button"}})
     runflow = flow.steps[0]
     assert isinstance(runflow, RunFlowStep)
     assert isinstance(runflow.flow, SubFlow)

@@ -224,13 +224,18 @@ repeated `run-flow` indexes the child's qualified keys the same way:
 
 ## Loading flows
 
-Getting from flow text to a result is three explicit stages; the repository is the only piece that differs between consumers:
+Getting from flow text to a result is four explicit stages; the repository and the source of the selector map are the only pieces that differ between consumers:
 
 ```
 source (file | text | store)
    │  FlowRepository.get(ref)
    ▼
 resolve_flow / resolve_flow_text     inline every run-flow child (async, only I/O)
+   ▼
+selector_refs(document)              every ref: the document names, sub-flows included
+   │  build a map from any source: a YAML file, a database, a dict
+   ▼
+expand_selector_refs(document, map)  every ref: replaced by its selector
    ▼
 load_flow_document / load_flow_text  pure validation → Flow
    ▼
@@ -240,6 +245,36 @@ run_flow(session, flow, data)
 - `FileFlowRepository(base_dir)` — filesystem; a relative ref reads under `base_dir`, absolute refs are honoured as-is.
 - `DictFlowRepository(flows)` — flows already in hand, keyed by reference.
 - `LayeredFlowRepository(*layers)` — first layer with the reference wins.
+
+### Selector refs
+
+A step names a selector symbolically with `ref: <group>.<name>` — at step level, under any selector-valued key, in `fields[]`, or in `read[]` — and expansion replaces it before validation. `selector_refs` and `expand_selector_refs` share one traversal, so what a host is asked for is exactly what gets expanded:
+
+```python
+import asyncio
+from pathlib import Path
+
+from llm_browser.flow_pipeline import resolve_flow
+from llm_browser.flow_repository import FileFlowRepository
+from llm_browser.flows import load_flow_document
+from llm_browser.selector_map import (
+    MissingSelectorsError,
+    expand_selector_refs,
+    load_selector_map,
+    selector_refs,
+)
+
+repo = FileFlowRepository(Path("flows"))
+document = asyncio.run(resolve_flow("invoice.yaml", repo))
+needed = selector_refs(document)                             # ['invoice.cp', 'invoice.rfc']
+selector_map = load_selector_map(Path("selector_map.yaml"))  # or a dict from anywhere
+try:
+    flow = load_flow_document(expand_selector_refs(document, selector_map))
+except MissingSelectorsError as exc:
+    print(exc.missing, exc.available)                        # every unknown ref, once, sorted
+```
+
+A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`. A mapping with an `id` key writes the field's own `id:` and its other keys are ignored; anything else lands under `selector:`. `llm-browser run` and `llm-browser validate` compose the same stages behind `--selector-map PATH`: a document with no `ref:` never reads that file, and one with refs and no readable map fails naming every ref it needed.
 
 ## Running, outputs, and redaction
 

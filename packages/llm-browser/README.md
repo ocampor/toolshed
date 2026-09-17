@@ -16,6 +16,8 @@ source (file | text | store)
    ▼
 resolve_flow / resolve_flow_text   inline every run-flow child (async, the only I/O)
    ▼
+selector_refs → expand_selector_refs   every ref: replaced by its selector (see docs/FLOWS.md)
+   ▼
 load_flow_document / load_flow_text   pure pydantic validation → Flow
    ▼
 run_flow(session, flow, data)

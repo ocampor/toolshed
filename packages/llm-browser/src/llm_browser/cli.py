@@ -37,9 +37,23 @@ from llm_browser.models import (
     check_settle_budget,
 )
 from llm_browser.results import BytesResult
-from llm_browser.selector_map import load_selector_map
+from llm_browser.selector_map import (
+    expand_selector_refs,
+    load_selector_map,
+    selector_refs,
+)
 from llm_browser.session import BrowserSession
 from llm_browser.steps import resolve_step
+
+
+def flow_from_document(document: dict[str, Any], selector_map_path: str | None) -> Flow:
+    """A document without refs never reads the map file; one with refs and no
+    readable map fails naming them."""
+    if not selector_refs(document):
+        return load_flow_document(document)
+    path = Path(selector_map_path) if selector_map_path else None
+    selector_map = load_selector_map(path) if path and path.exists() else {}
+    return load_flow_document(expand_selector_refs(document, selector_map))
 
 
 @contextmanager
@@ -397,14 +411,9 @@ def run(
 
     session: BrowserSession = ctx.obj["session"]
     session.capture_level = SanitizeLevel(capture_level)
-    selector_map = (
-        load_selector_map(Path(selector_map_path))
-        if selector_map_path and Path(selector_map_path).exists()
-        else None
-    )
     data = json.loads(data_json)
     document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
-    flow = load_flow_document(document, selector_map=selector_map)
+    flow = flow_from_document(document, selector_map_path)
     behavior = resolve_behavior(behavior_spec)
 
     def execute(target: BrowserSession) -> object:
@@ -727,13 +736,8 @@ def validate(
 
     label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
-        selector_map = (
-            load_selector_map(Path(selector_map_path))
-            if selector_map_path and Path(selector_map_path).exists()
-            else None
-        )
         document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
-        flow = load_flow_document(document, selector_map=selector_map)
+        flow = flow_from_document(document, selector_map_path)
     except (
         ValidationError,
         FlowNotFoundError,

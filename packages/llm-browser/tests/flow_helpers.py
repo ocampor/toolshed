@@ -12,11 +12,14 @@ from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.models import Flow, FlowResult
 
 
-def load_flow_file(path: str | Path, *, selector_map: Any = None) -> Flow:
+def resolve_flow_file(path: str | Path) -> dict[str, Any]:
     flow_path = Path(path)
     repo = FileFlowRepository(flow_path.parent)
-    document = asyncio.run(resolve_flow(flow_path.name, repo))
-    return load_flow_document(document, selector_map=selector_map)
+    return asyncio.run(resolve_flow(flow_path.name, repo))
+
+
+def load_flow_file(path: str | Path) -> Flow:
+    return load_flow_document(resolve_flow_file(path))
 
 
 def run_flow_file(
