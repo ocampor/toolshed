@@ -18,6 +18,7 @@ from llm_browser.scripts import (
     explore_many_js,
     extract_rows_js,
     load_script,
+    property_js,
     survey_js,
     viewport_fit_js,
 )
@@ -33,7 +34,7 @@ HAS_JS_RUNTIME = Path(JS_RUNTIME).exists()
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
     source = extract_rows_js()
-    assert source.startswith("(rows, spec) =>")
+    assert source.startswith("(rows, { spec, exclude }) =>")
     assert "querySelector" in source
     assert "getAttribute" in source
 
@@ -77,7 +78,7 @@ const spec = {
   self: { child_selector: null, attribute: "textContent" },
 };
 row.textContent = "whole row";
-console.log(JSON.stringify(EXTRACT([row], spec)));
+console.log(JSON.stringify(EXTRACT([row], { spec, exclude: [] })));
 """
 
 
@@ -105,6 +106,147 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
             "self": "whole row",
         }
     ]
+
+
+EXCLUDE_DOM = """
+// A DOM small enough to read: a node is a tag, a class, a value and its
+// children, each child a node or a string of text. Enough for what the script
+// needs -- a deep copy, a group selector, and detaching a match. `cloneNode`
+// drops `value`, the way a real clone drops a <select>'s selectedness.
+const el = (tag, cls, value, ...children) => ({
+  tagName: tag.toUpperCase(),
+  cls,
+  value,
+  children,
+  get textContent() {
+    return this.children
+      .map((c) => (typeof c === "string" ? c : c.textContent))
+      .join("");
+  },
+  matches(selector) {
+    return selector.startsWith(".")
+      ? this.cls === selector.slice(1)
+      : this.tagName === selector.toUpperCase();
+  },
+  querySelector(selector) {
+    for (const child of this.children) {
+      if (typeof child === "string") continue;
+      if (child.matches(selector)) return child;
+      const found = child.querySelector(selector);
+      if (found) return found;
+    }
+    return null;
+  },
+  cloneNode() {
+    return el(
+      this.tagName,
+      this.cls,
+      "default",
+      ...this.children.map((c) => (typeof c === "string" ? c : c.cloneNode())),
+    );
+  },
+  querySelectorAll(group) {
+    const parts = group.split(",").map((s) => s.trim());
+    const out = [];
+    for (const child of this.children) {
+      if (typeof child === "string") continue;
+      if (parts.some((p) => child.matches(p)))
+        out.push({ remove: () => this.children.splice(this.children.indexOf(child), 1) });
+      out.push(...child.querySelectorAll(group));
+    }
+    return out;
+  },
+});
+
+"""
+
+EXCLUDE_HARNESS = """
+const row = el(
+  "body", null, "chosen",
+  el("nav", null, null, "Menu"),
+  el("div", "ad", null, "Buy!"),
+  "Real text",
+);
+const spec = {
+  text: { child_selector: null, attribute: "textContent" },
+  picked: { child_selector: null, attribute: "value" },
+};
+const pruned = EXTRACT([row], { spec, exclude: ["nav", ".ad"] });
+const whole = EXTRACT([row], { spec, exclude: [] });
+console.log(JSON.stringify({ pruned, whole, left: row.textContent }));
+"""
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+def test_read_exclude_drops_matches(tmp_path: Path) -> None:
+    """`exclude` drops those matches from the text, reads `value` off the live
+    element anyway, and leaves the page alone: the text read is on a copy."""
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_DOM}{EXCLUDE_HARNESS}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == {
+        "pruned": [{"text": "Real text", "picked": "chosen"}],
+        "whole": [{"text": "MenuBuy!Real text", "picked": "chosen"}],
+        "left": "MenuBuy!Real text",
+    }
+
+
+CROSS_PATH_HARNESS = """
+const row = el(
+  "article", null, null,
+  el("aside", null, null, el("span", "note", null, "Note text")),
+  "Body text",
+);
+const spec = {
+  note: { child_selector: ".note", attribute: "textContent" },
+  text: { child_selector: null, attribute: "textContent" },
+};
+const batch = EXTRACT([row], { spec, exclude: ["aside"] })[0];
+// What the per-element path does: resolve the child on the live row, then read
+// the property through its own pruning script.
+const fallback = {
+  note: PROPERTY(row.querySelector(".note")),
+  text: PROPERTY(row),
+};
+console.log(JSON.stringify({ batch, fallback }));
+"""
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+def test_both_paths_agree_on_a_field_inside_an_excluded_subtree(
+    tmp_path: Path,
+) -> None:
+    """`exclude` is about text, never about whether a field's element exists:
+    a `child_selector` resolves on the live row on both paths, so a field
+    living inside an excluded subtree reads the same either way."""
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const EXTRACT = {extract_rows_js()};\n"
+        f"const PROPERTY = {property_js('textContent', ['aside'])};\n"
+        f"{EXCLUDE_DOM}{CROSS_PATH_HARNESS}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    read = json.loads(out.stdout)
+    assert read["batch"] == read["fallback"]
+    assert read["batch"] == {"note": "Note text", "text": "Body text"}
+
+
+def test_property_js_prunes_only_what_a_descendant_is_part_of() -> None:
+    """The fallback path applies the same rule without the batch script."""
+    assert property_js("textContent") == "(el) => el.textContent"
+    assert property_js("value", ["nav"]) == "(el) => el.value"
+    assert property_js("tagName", ["nav"]) == "(el) => el.tagName"
+
+    script = property_js("textContent", ["nav", ".ad"])
+    assert "cloneNode(true)" in script
+    assert 'querySelectorAll("nav,.ad")' in script
+    assert script.endswith("return copy.textContent; }")
 
 
 SELECT_HARNESS = """

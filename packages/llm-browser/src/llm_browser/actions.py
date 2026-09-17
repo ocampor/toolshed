@@ -194,7 +194,7 @@ def action_screenshot(
 def action_read(
     session: BrowserSession, step: ReadStep, behavior: Behavior
 ) -> ParsedResult:
-    raw = session.parse_elements(step.selector, step.extract)
+    raw = session.parse_elements(step.selector, step.extract, step.exclude)
     rows: list[BaseModel | None] = [
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw

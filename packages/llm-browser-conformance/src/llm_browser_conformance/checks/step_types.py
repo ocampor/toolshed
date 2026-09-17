@@ -395,6 +395,32 @@ def dom_reads_the_first_match_in_document_order(ctx: Context) -> None:
     assert "<main" in first, first[:200]
 
 
+def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
+    """Four claims only a browser can settle: the excluded text is gone, the
+    read happens on a detached copy (where `innerText` has no layout and so
+    reads like `textContent`, hidden span and all), `value` — the element's
+    own — still answers off the live page even for an element the same
+    `exclude` drops, and a `child_selector` inside an excluded subtree still
+    resolves, because `exclude` is about text and not about which elements a
+    field can see."""
+    outputs = expect_success(ctx, "read-exclude.html", "read-exclude")
+
+    whole = one_text(outputs, "whole") or ""
+    assert "NEW" in whole, whole
+    assert "HIDDEN" not in whole, whole
+
+    pruned = one_text(outputs, "pruned") or ""
+    assert "Alpha" in pruned, pruned
+    assert "NEW" not in pruned, pruned
+    assert "Mexico" not in pruned, pruned
+    assert "HIDDEN" in pruned, pruned
+    assert "Footnote" not in pruned, pruned
+
+    rows: Any = outputs["pruned"]
+    assert rows[0]["country"] == "mx", rows
+    assert rows[0]["note"] == "Footnote", rows
+
+
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
@@ -432,6 +458,12 @@ SCENARIOS = [
                 "session:screenshot_bytes",
             }
         ),
+    ),
+    Scenario(
+        "read exclude",
+        Section.STEPS,
+        read_exclude_drops_the_text_and_nothing_else,
+        covers=frozenset({"field:read.exclude"}),
     ),
     Scenario(
         "read attributes",

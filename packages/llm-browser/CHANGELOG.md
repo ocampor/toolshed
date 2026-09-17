@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.4 — 2026-09-17
+
+### Added
+
+- `exclude: [selector, …]` on a `read` step: those matches are dropped from the
+  text every field reads, so `read` on `body` can leave out a nav, a drawer or
+  a `<select>` list. The text read happens on a copy — the page is not modified
+  — and `innerText` on that copy reads like `textContent`. `value` and
+  `tagName` are the element's own, so they stay on the live element and
+  `exclude` cannot change them. A field's `child_selector` resolves on the
+  live element too, so a field inside an excluded subtree is still read, and
+  an empty selector in `exclude` is rejected at flow-load time
+  (ocampor/browser-api#33).
+
+### Changed
+
+- `docs/FLOWS.md` states how a CSS group (`main, article`) resolves: the union
+  for `read`/`parse`, the first match for `dom`, and `Expected 1 element …,
+  found N` for every other single-element step (ocampor/browser-api#33).
+
 ## 0.18.3 — 2026-09-16
 
 ### Added

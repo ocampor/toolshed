@@ -282,6 +282,15 @@ def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
         )
 
 
+def test_an_empty_exclude_selector_fails_validation() -> None:
+    """`querySelectorAll("")` is a page-side SyntaxError naming neither the
+    step nor the field; the flow is rejected at load time instead."""
+    with pytest.raises(ValidationError):
+        validate_step(
+            {"name": "s", "action": "read", "selector": "tr", "exclude": ["nav", ""]}
+        )
+
+
 def test_type_delay_accepts_a_constant_or_a_pair() -> None:
     step = validate_step({"name": "s", "action": "type", "selector": "#x", "delay": 60})
     assert isinstance(step, TypeStep) and step.delay == 60

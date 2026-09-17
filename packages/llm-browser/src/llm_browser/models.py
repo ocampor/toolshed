@@ -216,6 +216,9 @@ class ReadStep(SelectorStep):
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None)
     )
+    # CSS selectors dropped from the text, not from the DOM: the read happens
+    # on a copy, and only for a property a descendant is part of.
+    exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 

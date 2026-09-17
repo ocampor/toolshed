@@ -63,6 +63,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:press.key` | enter and escape, autocomplete enter |
 | `field:read.selector` | overlay intercepts click |
 | `field:read.extract` | overlay intercepts click, read attributes |
+| `field:read.exclude` | read exclude |
 | `field:read.path` | read attributes |
 | `field:run-flow.flow` | run-flow embedded, repeat a sub-flow |
 | `field:run-flow.data` | run-flow embedded, repeat a sub-flow |
