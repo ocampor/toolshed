@@ -1,6 +1,25 @@
 # Changelog
 
-## 0.18.1 — unreleased
+## 0.18.2 — 2026-09-16
+
+### Changed
+
+- A humanized `click` wheels an offscreen target to the middle of the viewport with
+  jittered mouse deltas instead of jumping the page with `scrollIntoView`, which emits no wheel
+  events at all; the programmatic jump is the fallback (ocampor/browser-api#47).
+- A humanized `click` refused as `covered-after-move` or `hit-test-failed` walks
+  the pointer off the cover to a jittered point near the viewport middle before
+  raising, so the hover menu its own path opened closes behind it
+  (ocampor/browser-api#47).
+
+### Fixed
+
+- A `patchright` launch or attach that fails after Playwright has started now
+  stops it instead of leaving patchright's event loop running, which made every
+  later `asyncio.run(...)` in the process raise `asyncio.run() cannot be called
+  from a running event loop`.
+
+## 0.18.1 — 2026-09-16
 
 ### Added
 
@@ -10,7 +29,7 @@
 
 ### Fixed
 
-- A humanized `click` scrolls its target into view, then re-runs the hit test at
+- A humanized `click` brings its target into view, then re-runs the hit test at
   the pointer's final position, after the Bézier move and before mouse-down, and
   fails with `not actionable: covered-after-move` naming the covering element
   instead of clicking a menu its own path opened (ocampor/browser-api#47). A hit
@@ -23,7 +42,7 @@
 - Camoufox moves the pointer in its own native Bézier, so its clicks never take
   this path and are not hit-tested.
 
-## 0.18.0 — unreleased
+## 0.18.0 — 2026-09-16
 
 ### Changed
 

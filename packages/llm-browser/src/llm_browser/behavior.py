@@ -148,6 +148,11 @@ def profile(behavior: Behavior) -> BehaviorProfile:
 # in one burst, and a constant interval is as readable as a straight line.
 MOUSE_STEP_PAUSE = Jitter(min_ms=4, max_ms=16)
 
+# The gap between two wheel ticks: a hand rolls a wheel in bursts, and the
+# browser applies a scroll a frame or more after the event, so a tick measured
+# without this pause reads the page as it was and rolls again.
+WHEEL_SETTLE_PAUSE = Jitter(min_ms=60, max_ms=180)
+
 # Whether a `paced` scope is already open on this call stack.
 _pacing: ContextVar[bool] = ContextVar("pacing", default=False)
 
@@ -237,18 +242,27 @@ def humanized_type(page: Any, element: Any, text: str, behavior: Behavior) -> No
     type_chars(lambda ch: element.type(ch, delay=0), text, behavior)
 
 
+def jittered_point(
+    centre: tuple[float, float], half_size: tuple[float, float], ratio: float
+) -> tuple[float, float]:
+    """A point up to ``ratio`` of the way from ``centre`` towards an edge, so
+    the spread scales with the box instead of with a pixel count."""
+    x, y = centre
+    half_width, half_height = half_size
+    return (
+        x + half_width * random.uniform(-ratio, ratio),
+        y + half_height * random.uniform(-ratio, ratio),
+    )
+
+
 def jittered_target(element: Any, behavior: Behavior) -> tuple[float, float]:
-    """A point ``click_offset_ratio`` of the way from the centre to an edge,
-    so the spread scales with the element instead of with a pixel count."""
+    """Where in ``element`` this click lands."""
     box = element.bounding_box()
     if box is None:
         raise RuntimeError("element has no bounding box (detached or not rendered)")
-    ratio = behavior.click_offset_ratio
-    half_width = box["width"] / 2.0
-    half_height = box["height"] / 2.0
-    return (
-        box["x"] + half_width * (1.0 + random.uniform(-ratio, ratio)),
-        box["y"] + half_height * (1.0 + random.uniform(-ratio, ratio)),
+    half = (box["width"] / 2.0, box["height"] / 2.0)
+    return jittered_point(
+        (box["x"] + half[0], box["y"] + half[1]), half, behavior.click_offset_ratio
     )
 
 
@@ -275,13 +289,20 @@ def type_chars(send: Callable[[str], None], text: str, behavior: Behavior) -> No
 
 
 def move_mouse_to(
-    page: Any, target: tuple[float, float], steps: int
+    page: Any,
+    target: tuple[float, float],
+    steps: int,
+    start: tuple[float, float] | None = None,
 ) -> tuple[float, float]:
     """Walk the path and answer where the pointer ended: clamping can leave it
-    short of ``target``, and a hit test asks about the point it is really on."""
+    short of ``target``, and a hit test asks about the point it is really on.
+
+    ``start`` is for a caller that knows where the pointer already is and wants
+    the curve to continue from it rather than begin near ``target``.
+    """
     bounds = viewport_size(page)
     landed = clamp_to_viewport(target, bounds)
-    for point in curve_points(approach_start(target), target, steps):
+    for point in curve_points(start or approach_start(target), target, steps):
         landed = clamp_to_viewport(point, bounds)
         page.mouse.move(*landed)
         jittered_sleep(MOUSE_STEP_PAUSE)

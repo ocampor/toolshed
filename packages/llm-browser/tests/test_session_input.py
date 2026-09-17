@@ -11,6 +11,7 @@ from llm_browser import behavior as behavior_module
 from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
+from llm_browser.constants import WHEEL_INTO_VIEW_TICKS
 from llm_browser.models import ClickStep
 from llm_browser.results import HitTarget
 from llm_browser.session_input import behavior_for, effective_behavior
@@ -35,6 +36,15 @@ def session(tmp_path: Path) -> BrowserSession:
     s.driver.count.return_value = 1
     s.driver.is_visible.return_value = True
     s.driver.first.return_value = "element"
+    # In view, and the pointer on the target: what the two scripts a humanized
+    # click runs answer for a test that is about something else.
+    s.driver.evaluate.return_value = {
+        "gap": 0,
+        "scrollY": 0,
+        "centre": [400.0, 300.0],
+        "target": True,
+        "hit": None,
+    }
     return s
 
 
@@ -581,9 +591,15 @@ DESCENDANT = {
 }
 
 
-def humanized_page(session: BrowserSession, answer: dict[str, Any]) -> Any:
-    """Run the real humanized click over a page that answers ``answer`` when
-    asked what the pointer ended up over."""
+CENTRE = (400.0, 300.0)
+
+
+def humanized_page(
+    session: BrowserSession, answer: dict[str, Any], gap: int = 0
+) -> Any:
+    """Run the real humanized click over a page whose target starts ``gap``
+    pixels out of view and which answers ``answer`` when asked what the pointer
+    ended up over. One wheel tick lands it, as it would on a real page."""
     session.behavior = Behavior.human()
     element = MagicMock()
     element.bounding_box.return_value = {
@@ -593,7 +609,17 @@ def humanized_page(session: BrowserSession, answer: dict[str, Any]) -> Any:
         "height": 40.0,
     }
     driver(session).first.return_value = element
-    driver(session).evaluate.return_value = answer
+    gaps = [gap]
+    scrolled = [0]
+
+    def evaluate(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if "getBoundingClientRect" not in script:
+            return answer
+        next_gap = gaps.pop(0) if gaps else 0
+        scrolled[0] += next_gap
+        return {"gap": next_gap, "centre": list(CENTRE), "scrollY": scrolled[0]}
+
+    driver(session).evaluate.side_effect = evaluate
     driver(session).humanized_click.side_effect = behavior_module.humanized_click
     return session.get_page()
 
@@ -610,6 +636,62 @@ def test_humanized_click_aborts_when_covered_after_move(
     assert all(part in str(failure.value) for part in ("li", "menu-item", "Estados"))
     page.mouse.down.assert_not_called()
     page.mouse.up.assert_not_called()
+
+
+def test_covered_click_moves_the_pointer_away_before_refusing(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """A pointer left parked on the menu its own path opened keeps that menu
+    open for whatever the caller does next, so it walks off before refusing."""
+    page = humanized_page(session, COVERED)
+    moves_when_asked: list[int] = []
+    fits = driver(session).evaluate.side_effect
+
+    def watched(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if "getBoundingClientRect" not in script:
+            moves_when_asked.append(page.mouse.move.call_count)
+        return fits(target, script, timeout_ms)
+
+    driver(session).evaluate.side_effect = watched
+
+    with pytest.raises(ValueError, match="covered-after-move"):
+        session.click("#logout")
+
+    assert page.mouse.move.call_count > moves_when_asked[0]
+    # Near the viewport centre, never exactly on it: a pixel-exact retreat
+    # point repeated across refusals is the constant the jitter exists to hide.
+    parked = page.mouse.move.call_args.args
+    assert parked != CENTRE
+    assert all(abs(was - now) < was for was, now in zip(CENTRE, parked))
+    page.mouse.down.assert_not_called()
+
+
+def test_a_retreat_that_fails_keeps_the_refusal_it_was_walking_away_from(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """The retreat is best-effort: a page that closes while the pointer walks
+    off the cover must not replace the refusal the caller matches on."""
+    page = humanized_page(session, COVERED)
+    refused: list[int] = []
+
+    def move(*args: Any, **kwargs: Any) -> None:
+        if refused:
+            raise RuntimeError("Target page, context or browser has been closed")
+
+    def evaluate(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        read = fits(target, script, timeout_ms)
+        if "getBoundingClientRect" not in script:
+            refused.append(1)
+        return read
+
+    fits = driver(session).evaluate.side_effect
+    driver(session).evaluate.side_effect = evaluate
+    page.mouse.move.side_effect = move
+
+    with pytest.raises(ValueError, match="covered-after-move"):
+        session.click("#logout")
+
+    page.mouse.down.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -637,17 +719,80 @@ def test_humanized_click_reports_what_the_pointer_was_over(
     assert json.dumps(list(landed)) in driver(session).evaluate.call_args.args[1]
 
 
-def test_humanized_click_scrolls_the_target_into_view_before_moving(
+def test_offscreen_target_is_wheeled_into_view_before_the_move(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
     """A target below the fold would be clicked at the clamped viewport edge,
-    on whatever sits there — so the pointer never travels to an offscreen box."""
+    on whatever sits there — and a page that jumps in one frame with no wheel
+    events is the tell, so the pointer wheels it in instead."""
+    page = humanized_page(session, ON_TARGET, gap=320)
+
+    session.click("#logout")
+
+    driver(session).scroll.assert_called_once()
+    scrolled_page, dx, dy = driver(session).scroll.call_args.args
+    assert (scrolled_page, dx) == (page, 0)
+    assert abs(dy - 320) <= round(320 * Behavior.human().scroll_delta_jitter)
+    driver(session).scroll_into_view.assert_not_called()
+    # The path only starts once the box is in view.
+    called = [name for name, *_ in driver(session).method_calls]
+    assert called.index("scroll") < called.index("humanized_click")
+
+
+def test_a_last_tick_that_lands_the_box_does_not_fall_back(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """The gap is re-measured after the final tick: a wheel that arrived on
+    the twentieth must not fire the one-frame jump it just avoided."""
+    page = humanized_page(session, ON_TARGET)
+    remaining = [40] * WHEEL_INTO_VIEW_TICKS
+    scrolled = [0]
+
+    def evaluate(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if "getBoundingClientRect" not in script:
+            return ON_TARGET
+        gap = remaining.pop(0) if remaining else 0
+        scrolled[0] += gap
+        return {"gap": gap, "centre": list(CENTRE), "scrollY": scrolled[0]}
+
+    driver(session).evaluate.side_effect = evaluate
+
+    session.click("#logout")
+
+    assert driver(session).scroll.call_count == WHEEL_INTO_VIEW_TICKS
+    driver(session).scroll_into_view.assert_not_called()
+    page.mouse.down.assert_called_once()
+
+
+def test_a_page_the_wheel_cannot_move_falls_back_after_one_tick(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """An `overflow: hidden` body or an inner scroller under the pointer
+    swallows every tick; twenty of them buy seconds and change nothing."""
+    humanized_page(session, ON_TARGET)
+
+    def stuck(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if "getBoundingClientRect" not in script:
+            return ON_TARGET
+        return {"gap": 900, "centre": list(CENTRE), "scrollY": 0}
+
+    driver(session).evaluate.side_effect = stuck
+
+    session.click("#logout")
+
+    driver(session).scroll.assert_called_once()
+    driver(session).scroll_into_view.assert_called_once()
+
+
+def test_target_in_view_is_not_scrolled(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
     humanized_page(session, ON_TARGET)
 
     session.click("#logout")
 
-    called = [name for name, *_ in driver(session).method_calls]
-    assert called.index("scroll_into_view") < called.index("humanized_click")
+    driver(session).scroll.assert_not_called()
+    driver(session).scroll_into_view.assert_not_called()
 
 
 def test_a_hit_test_that_cannot_run_fails_the_step(
@@ -656,9 +801,16 @@ def test_a_hit_test_that_cannot_run_fails_the_step(
     """A navigation during the dwell destroys the context; pressing blind is
     the failure the gate exists to stop, so it fails as a step instead."""
     page = humanized_page(session, ON_TARGET)
-    driver(session).evaluate.side_effect = RuntimeError(
-        "Execution context was destroyed"
-    )
+
+    moves_when_asked: list[int] = []
+
+    def destroyed(target: Any, script: str, timeout_ms: int | None = None) -> Any:
+        if "getBoundingClientRect" in script:
+            return {"gap": 0, "centre": list(CENTRE), "scrollY": 0}
+        moves_when_asked.append(page.mouse.move.call_count)
+        raise RuntimeError("Execution context was destroyed")
+
+    driver(session).evaluate.side_effect = destroyed
 
     with pytest.raises(ValueError, match="hit-test-failed"):
         session.click("#logout")
@@ -666,4 +818,11 @@ def test_a_hit_test_that_cannot_run_fails_the_step(
     page.mouse.down.assert_not_called()
     # Bounded: a detached target must not buy the driver's 30 s default with
     # the pointer sitting on the page.
-    assert driver(session).evaluate.call_args.kwargs["timeout_ms"] > 0
+    hit_tests = [
+        call
+        for call in driver(session).evaluate.call_args_list
+        if "getBoundingClientRect" not in call.args[1]
+    ]
+    assert hit_tests[-1].kwargs["timeout_ms"] > 0
+    # It walks off whatever it landed on here too, not only when covered.
+    assert page.mouse.move.call_count > moves_when_asked[0]

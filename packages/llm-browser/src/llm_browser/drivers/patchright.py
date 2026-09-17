@@ -14,6 +14,8 @@ DOES survive across CLI invocations — a fresh driver instance will
 reconnect to the persisted CDP endpoint on first ``page(handle)`` call.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -53,25 +55,28 @@ class PatchrightDriver(PlaywrightDriverBase):
         executable_path: str | None = None,
     ) -> DriverHandle:
         user_data_dir.mkdir(parents=True, exist_ok=True)
-        self._playwright = start_playwright()
-        self._context = self._playwright.chromium.launch_persistent_context(
-            **_build_launch_kwargs(user_data_dir, headed, executable_path)
-        )
-        self._page = _first_page_or_new(self._context)
-        if url is not None:
-            self._page.goto(url)
+        with self._playwright_session() as playwright:
+            self._context = playwright.chromium.launch_persistent_context(
+                **_build_launch_kwargs(user_data_dir, headed, executable_path)
+            )
+            self._page = _first_page_or_new(self._context)
+            if url is not None:
+                self._page.goto(url)
         return DriverHandle(driver=self.name, user_data_dir=str(user_data_dir))
 
     def attach(self, cdp_url: str) -> DriverHandle:
         """Attach to an already-running Chromium exposing CDP at cdp_url."""
-        context = self._connect(cdp_url)
-        self._page = context.new_page()
-        return _attached_handle(self.name, cdp_url, page_target_id(context, self._page))
+        with self._playwright_session():
+            context = self._connect(cdp_url)
+            self._page = context.new_page()
+            target_id = page_target_id(context, self._page)
+        return _attached_handle(self.name, cdp_url, target_id)
 
     def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
         """Attach to the existing tab identified by its CDP target id."""
-        context = self._connect(cdp_url)
-        self._page = find_page_by_target_id(context, target_id)
+        with self._playwright_session():
+            context = self._connect(cdp_url)
+            self._page = find_page_by_target_id(context, target_id)
         return _attached_handle(self.name, cdp_url, target_id)
 
     def page(self, handle: DriverHandle) -> Any:
@@ -117,6 +122,24 @@ class PatchrightDriver(PlaywrightDriverBase):
 
     # --- Internals ---
 
+    @contextmanager
+    def _playwright_session(self) -> Iterator[Playwright]:
+        """A Playwright we did not start belongs to an earlier call; a half-built
+        driver must not leave the event loop running.
+        """
+        started = self._playwright is None
+        if self._playwright is None:
+            self._playwright = start_playwright()
+        playwright = self._playwright
+        try:
+            yield playwright
+        except BaseException:
+            if started:
+                playwright.stop()
+                self._playwright = None
+                self._browser = self._context = self._page = None
+            raise
+
     def _reattach_or_raise(self, handle: DriverHandle) -> None:
         """Rebuild live state from ``handle`` when the process is fresh.
 
@@ -130,23 +153,22 @@ class PatchrightDriver(PlaywrightDriverBase):
                 "first; launched mode does not survive across CLI invocations "
                 "(use `llm-browser run` end-to-end, or switch to attach mode)."
             )
-        context = self._connect(handle.endpoint)
-        target_id = handle.extra.get("target_id")
-        self._page = (
-            find_page_by_target_id(context, target_id)
-            if target_id
-            else _last_page_or_new(context)
-        )
+        with self._playwright_session():
+            context = self._connect(handle.endpoint)
+            target_id = handle.extra.get("target_id")
+            self._page = (
+                find_page_by_target_id(context, target_id)
+                if target_id
+                else _last_page_or_new(context)
+            )
 
     def _connect(self, cdp_url: str) -> BrowserContext:
         """Return the context we operate in, reusing a live connection.
 
-        Re-attaching must not start a second Playwright or a second CDP
-        connection: the previous ones would be orphaned, leaking the node
-        driver process and the websocket.
+        Re-attaching must not open a second CDP connection: the previous one
+        would be orphaned, leaking the websocket.
         """
-        if self._playwright is None:
-            self._playwright = start_playwright()
+        assert self._playwright is not None
         if self._browser is None or not self._browser.is_connected():
             self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
         self._context = _first_context_or_new(self._browser)

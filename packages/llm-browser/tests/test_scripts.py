@@ -19,6 +19,7 @@ from llm_browser.scripts import (
     extract_rows_js,
     load_script,
     survey_js,
+    viewport_fit_js,
 )
 
 # These scripts run in a browser, but a plain JS runtime proves their
@@ -374,3 +375,70 @@ def test_hit_test_js_says_what_the_point_is_over(
         "tag": hit.get("tag"),  # type: ignore[union-attr]
         "class_name": hit.get("class_name"),  # type: ignore[union-attr]
     } == expected
+
+
+VIEWPORT_FIT_HARNESS = """
+globalThis.innerWidth = INNER_WIDTH;
+globalThis.innerHeight = INNER_HEIGHT;
+globalThis.scrollY = SCROLL_Y;
+const el = { getBoundingClientRect: () => (BOX) };
+console.log(JSON.stringify(FIT(el)));
+"""
+
+INNER_WIDTH = 1200
+INNER_HEIGHT = 800
+SCROLL_Y = 250.4
+
+
+def run_viewport_fit_harness(
+    box: dict[str, float], tmp_path: Path
+) -> dict[str, object]:
+    body = (
+        VIEWPORT_FIT_HARNESS.replace("INNER_WIDTH", str(INNER_WIDTH))
+        .replace("INNER_HEIGHT", str(INNER_HEIGHT))
+        .replace("SCROLL_Y", str(SCROLL_Y))
+        .replace("BOX", json.dumps(box))
+    )
+    script = tmp_path / "harness.mjs"
+    script.write_text(f"const FIT = {viewport_fit_js()}\n{body}")
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+@pytest.mark.parametrize(
+    ("rect", "expected_gap"),
+    [
+        # Below the fold: gap is the box's centre minus the viewport's centre.
+        pytest.param({"top": 900, "height": 100, "bottom": 1000}, 550, id="below_fold"),
+        # Above the fold: same formula, negative.
+        pytest.param(
+            {"top": -300, "height": 100, "bottom": -200}, -650, id="above_fold"
+        ),
+        # Fully in view and clear of both 15% dead zones: left alone.
+        pytest.param(
+            {"top": 300, "height": 100, "bottom": 400}, 0, id="clear_of_dead_zones"
+        ),
+        # In view but under a fixed nav band inside the top dead zone: the old
+        # minimal-gap rule saw the box in the viewport and returned 0 here.
+        pytest.param(
+            {"top": 50, "height": 50, "bottom": 100}, -325, id="top_dead_zone"
+        ),
+        # Taller than the viewport: brought to its top edge, not centred.
+        pytest.param(
+            {"top": 200, "height": 900, "bottom": 1100},
+            200,
+            id="taller_than_viewport",
+        ),
+    ],
+)
+def test_viewport_fit_js_aims_the_box_at_the_middle(
+    rect: dict[str, float], expected_gap: int, tmp_path: Path
+) -> None:
+    read = run_viewport_fit_harness(rect, tmp_path)
+
+    assert read["gap"] == expected_gap
+    assert read["centre"] == [INNER_WIDTH / 2, INNER_HEIGHT / 2]
+    assert read["scrollY"] == round(SCROLL_Y)

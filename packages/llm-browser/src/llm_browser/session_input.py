@@ -7,16 +7,28 @@ one-line method; actions and the CLI call those and never reach for the driver.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
-from llm_browser.behavior import Behavior, HitTest, Jitter, jittered_sleep, paced
+from llm_browser.behavior import (
+    WHEEL_SETTLE_PAUSE,
+    Behavior,
+    HitTest,
+    Jitter,
+    jittered_delta,
+    jittered_point,
+    jittered_sleep,
+    move_mouse_to,
+    paced,
+    path_steps,
+)
 from llm_browser.constants import (
     DEFAULT_FIND_TIMEOUT_MS,
     HIT_TEST_TIMEOUT_MS,
     LOGGER_NAME,
+    WHEEL_INTO_VIEW_TICKS,
 )
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
-from llm_browser.scripts import hit_test_js, select_control_tag_js
+from llm_browser.scripts import hit_test_js, select_control_tag_js, viewport_fit_js
 from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
@@ -155,16 +167,21 @@ def click_element(
         # The pointer can only be moved to a point in the viewport: an element
         # below the fold would be clicked at the clamped edge, on whatever sits
         # there. Drivers scroll for their own clicks; this path drives the
-        # mouse itself, so it scrolls first.
-        session.driver.scroll_into_view(element)
+        # mouse itself, so it brings the target in first.
+        wheel_into_view(session, element, behavior)
         return session.driver.humanized_click(
-            session.get_page(), element, behavior, hit_test_after_move(session, element)
+            session.get_page(),
+            element,
+            behavior,
+            hit_test_after_move(session, element, behavior),
         )
     click_or_centre_and_retry(session, element)
     return None
 
 
-def hit_test_after_move(session: "BrowserSession", element: Any) -> HitTest:
+def hit_test_after_move(
+    session: "BrowserSession", element: Any, behavior: Behavior
+) -> HitTest:
     """Refuse the press when the pointer's own path opened something under it.
 
     A humanized click travels, and what ``find`` resolved is not necessarily
@@ -184,11 +201,13 @@ def hit_test_after_move(session: "BrowserSession", element: Any) -> HitTest:
                 element, hit_test_js(point), timeout_ms=HIT_TEST_TIMEOUT_MS
             )
         except Exception as exc:
+            retreat_pointer(session, element, behavior, point)
             raise ValueError(f"not actionable: hit-test-failed; {exc}") from exc
         if read["hit"] is None:
             return None
         hit = HitTarget.model_validate(read["hit"])
         if not read["target"]:
+            retreat_pointer(session, element, behavior, point)
             raise ValueError(
                 "not actionable: covered-after-move; the pointer path ended "
                 f"over <{hit.tag} class={hit.class_name!r}> {hit.text!r}"
@@ -196,6 +215,86 @@ def hit_test_after_move(session: "BrowserSession", element: Any) -> HitTest:
         return hit
 
     return check
+
+
+class ViewportFit(NamedTuple):
+    """What one wheel tick needs: how far the box still has to travel to reach
+    the viewport's middle, where that middle is, and whether the page moved."""
+
+    gap: int
+    centre: tuple[float, float]
+    scroll_y: int
+
+
+def viewport_fit(session: "BrowserSession", element: Any) -> ViewportFit:
+    read = session.driver.evaluate(element, viewport_fit_js())
+    x, y = read["centre"]
+    return ViewportFit(
+        gap=int(read["gap"]),
+        centre=(float(x), float(y)),
+        scroll_y=int(read["scrollY"]),
+    )
+
+
+def wheel_into_view(
+    session: "BrowserSession", element: Any, behavior: Behavior
+) -> None:
+    """Wheel the target into view, one jittered delta at a time.
+
+    ``scroll_into_view`` teleports the page in a single frame and emits no
+    wheel events at all, which is the tell this path exists to avoid. Each
+    tick is re-measured, because a sticky header or a lazy list moves the box
+    while the page scrolls under it, and a tick that did not move the page at
+    all — an inner scroller under the pointer, an ``overflow: hidden`` body —
+    stops the loop rather than burning twenty of them. The programmatic jump
+    is the fallback for a page the wheel cannot move and for a driver that has
+    no wheel.
+    """
+    page = session.get_page()
+    fit = viewport_fit(session, element)
+    for _ in range(WHEEL_INTO_VIEW_TICKS):
+        if fit.gap == 0:
+            break
+        try:
+            session.driver.scroll(page, 0, jittered_delta(fit.gap, behavior))
+        except NotImplementedError:
+            break
+        jittered_sleep(WHEEL_SETTLE_PAUSE)
+        before = fit.scroll_y
+        fit = viewport_fit(session, element)
+        if fit.scroll_y == before:
+            break
+    if fit.gap == 0:
+        return
+    logger.debug("could not wheel %s into view; scrolling it in instead", element)
+    session.driver.scroll_into_view(element)
+
+
+def retreat_pointer(
+    session: "BrowserSession",
+    element: Any,
+    behavior: Behavior,
+    point: tuple[float, float],
+) -> None:
+    """Walk off the cover before refusing the click.
+
+    A pointer left parked on the menu its own path opened keeps that menu
+    open for whatever the caller does next; the viewport centre is clear of a
+    nav's dropdown, jittered because a pixel-exact centre repeated across
+    refusals is itself a tell. Best-effort by construction: the refusal the
+    caller is about to get is the one worth raising, so a page that closes or
+    navigates mid-retreat costs a debug line and nothing else.
+    """
+    try:
+        fit = viewport_fit(session, element)
+        destination = jittered_point(
+            fit.centre, fit.centre, behavior.click_offset_ratio
+        )
+        move_mouse_to(
+            session.get_page(), destination, max(1, path_steps(behavior) // 2), point
+        )
+    except Exception:
+        logger.debug("could not retreat the pointer from %s", point, exc_info=True)
 
 
 DISPATCH_HINT = "still intercepted after scrolling it into view; try dispatch: true"
