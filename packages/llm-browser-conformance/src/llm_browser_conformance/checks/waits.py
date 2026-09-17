@@ -137,14 +137,18 @@ def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
 
 
 def a_display_contents_scope_reads_its_children(ctx: Context) -> None:
-    """The wrapper draws no box of its own, so it is not rendered — but its
-    child is laid out as usual. A scope read that stopped at the root would
-    call visible text absent and poll out the whole budget."""
+    """The wrapper draws no box of its own, so it is not rendered — but what it
+    holds is laid out as usual, a text node of its own as much as a child
+    element. A scope read that stopped at the root, or that only ever
+    descended into elements, would call visible text absent and poll out the
+    whole budget."""
     timing = ctx.timed(
         lambda: ctx.visit("text-wait.html"),
         text_wait(ctx, "Sesión finalizada", selector=".wrapper"),
     )
     timing.assert_within(ctx.delay_ms)
+    assert ctx.session.text_present("Sesión abierta", selector=".wrapper")
+    assert ctx.session.text_present("Menú principal", selector="#bare", exact=True)
 
 
 def text_present_answers_in_one_read(ctx: Context) -> None:
@@ -299,7 +303,9 @@ SCENARIOS = [
         "wait exact text scoped",
         Section.WAITS,
         a_flow_waits_for_the_whole_text_of_an_element,
-        covers=frozenset({"field:wait_for.text", "field:wait_for.exact"}),
+        covers=frozenset(
+            {"field:wait_for.text", "field:wait_for.exact", "when:text_present"}
+        ),
     ),
     Scenario(
         "timeout message",

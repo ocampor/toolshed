@@ -8,7 +8,7 @@ import yaml
 from click.testing import CliRunner
 from pydantic import ValidationError
 
-from llm_browser.actions import execute_action
+from llm_browser.actions import action_wait_for, execute_action
 from llm_browser.results import SkippedResult, VoidResult
 from llm_browser.cli import main
 from llm_browser.constants import (
@@ -16,6 +16,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
 )
+from llm_browser.behavior import Behavior
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowError, FlowSuccess, WaitForStep, validate_step
 from llm_browser.steps import execute_step
@@ -136,6 +137,17 @@ def test_empty_text_is_rejected() -> None:
     however empty the page is."""
     with pytest.raises(ValidationError, match="text"):
         validate_step(wait_for_step(text=""))
+
+
+def test_the_action_refuses_a_step_with_neither_target(
+    mock_session: MagicMock,
+) -> None:
+    """The model keeps both from being empty; the action says so itself rather
+    than passing the page silently by."""
+    step = WaitForStep.model_construct(action="wait_for", name="x")
+
+    with pytest.raises(ValueError, match="needs a selector or text"):
+        action_wait_for(mock_session, step, Behavior())
 
 
 def test_the_action_waits_on_text_when_the_step_names_it(

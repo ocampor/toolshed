@@ -16,6 +16,7 @@ from llm_browser.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_WAIT_TIMEOUT_MS,
     POLL_JITTER_RATIO,
+    READ_TIMEOUT_MS,
 )
 from llm_browser.drivers.base import Driver
 from llm_browser.selectors import (
@@ -540,6 +541,46 @@ def test_a_text_timeout_names_the_text_and_the_direction(
     assert str(excinfo.value) == (
         "text 'Listo' inside #panel did not become present within 1000ms"
     )
+
+
+class DetachedHandle(Exception):
+    """What a driver raises for a handle whose element is already gone."""
+
+
+def test_a_scoped_text_read_is_bounded(tmp_path: Path, clock: FakeClock) -> None:
+    """A tick that let the driver wait for its scope would blow past the
+    loop's own deadline."""
+    driver = driver_with_text([True])
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=".toast")
+
+    assert driver.evaluate.call_args.args[2] == READ_TIMEOUT_MS
+
+
+def test_a_scope_that_detaches_mid_tick_has_no_text(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """``all()`` hands back a snapshot: the toast a ``detached`` wait watches
+    for can go between the listing and the read, and the wait wants that as
+    "no text", not as the driver's own error."""
+    driver = driver_with_text([True])
+    driver.evaluate.side_effect = DetachedHandle("element is not attached")
+    session = make_session(tmp_path, driver)
+
+    session.wait_for_text("finalizada", selector=".toast", state="detached")
+
+    with pytest.raises(TimeoutError):
+        session.wait_for_text("finalizada", selector=".toast", timeout=0)
+
+
+def test_waiting_for_no_text_is_rejected(tmp_path: Path, clock: FakeClock) -> None:
+    """Every page renders the empty string, so the wait would return on the
+    first tick — the flow step refuses it and so does the method."""
+    session = make_session(tmp_path, driver_with_text([False]))
+
+    with pytest.raises(ValueError, match="needs text"):
+        session.wait_for_text("")
 
 
 def test_text_present_is_one_read_with_no_waiting(

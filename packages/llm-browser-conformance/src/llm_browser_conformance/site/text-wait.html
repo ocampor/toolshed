@@ -2,9 +2,11 @@
 <meta charset="utf-8">
 <title>Text wait</title>
 <style>.gone { display: none; } .wrapper { display: contents; }</style>
-<!-- The wrapper draws no box of its own, but `#status` inside it is laid
-     out and rendered as usual: a scope read must see its text. -->
-<div class="wrapper"><div id="status">Cargando</div></div>
+<!-- The wrapper draws no box of its own, but what it holds is laid out and
+     rendered as usual — the text node as much as `#status`: a scope read must
+     see both. `#bare` holds only the text, so its whole text is that text. -->
+<div class="wrapper">Sesión abierta <div id="status">Cargando</div></div>
+<div class="wrapper" id="bare">Menú principal</div>
 <div class="modal"><p>Sesión iniciada</p></div>
 <script>
   // A string no node ever renders: a match that read `<script>` source

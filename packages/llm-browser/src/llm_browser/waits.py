@@ -18,6 +18,7 @@ from llm_browser.constants import (
     DEFAULT_SETTLE_MS,
     DESTROYED_CONTEXT_MESSAGE,
     POLL_JITTER_RATIO,
+    READ_TIMEOUT_MS,
 )
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState, check_text_state
@@ -177,7 +178,21 @@ def text_present(
     if selector is None:
         return bool(driver.evaluate(page, script))
     elements = driver.all(resolve_selector(driver, page, selector))
-    return any(bool(driver.evaluate(element, script)) for element in elements)
+    return any(matches_now(driver, element, script) for element in elements)
+
+
+def matches_now(driver: Driver, element: Any, script: str) -> bool:
+    """One bounded read, so a scope cannot turn a tick into a driver-side wait.
+
+    ``driver.all`` hands back a snapshot; a scope that detached since — the
+    toast a ``detached``/``hidden`` wait is watching for — is what every
+    driver reports differently and none can answer about. It has no text this
+    tick, which is the answer the next tick re-asks.
+    """
+    try:
+        return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
+    except Exception:
+        return False
 
 
 def poll_for_text(

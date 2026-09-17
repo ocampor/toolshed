@@ -349,28 +349,47 @@ def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
 
 
 TEXT_MATCH_HARNESS = """
-// `getClientRects` is what the script asks before reading `innerText`, and
+// `getClientRects` is what the script asks before reading `innerText`,
+// `getComputedStyle` is how it spots a `display:contents` scope, and
 // `querySelectorAll` honours the `:not(...)` clauses the way a real one does.
-const node = (innerText, children = [], tag = "DIV", visible = true) => ({
+const ELEMENT = 1;
+const TEXT = 3;
+const words = (data) => ({ nodeType: TEXT, data });
+const node = (
+  innerText,
+  childNodes = [],
+  tag = "DIV",
+  visible = true,
+  display = "block",
+) => ({
+  nodeType: ELEMENT,
   innerText,
   tagName: tag,
-  children,
+  display,
+  childNodes,
   getClientRects: () => (visible ? [{}] : []),
   querySelectorAll: (selector) =>
-    children.filter(
-      (child) => !selector.includes(`:not(${child.tagName.toLowerCase()})`),
+    childNodes.filter(
+      (child) =>
+        child.nodeType === ELEMENT &&
+        !selector.includes(`:not(${child.tagName.toLowerCase()})`),
     ),
 });
+globalThis.getComputedStyle = (el) => ({ display: el.display });
 const toast = node("Sesión  finalizada\\n");
 // Not rendered, and neither is what it holds: `innerText` falls back to the
 // subtree's `textContent`, which is the trap.
 const buried = node("Sesión  finalizada\\n", [
   node("Sesión  finalizada", [], "DIV", false),
-], "DIV", false);
+], "DIV", false, "none");
 // `display:contents`: no box of its own, children laid out as usual.
 const wrapper = node("Sesión  finalizada", [
   node("Sesión  finalizada\\n"),
-], "DIV", false);
+], "DIV", false, "contents");
+// The same, holding the text itself rather than an element that does.
+const bare = node("Sesión  finalizada", [
+  words("Sesión  finalizada\\n"),
+], "DIV", false, "contents");
 const scripted = node("", [node("Sesión  finalizada", [], "SCRIPT")]);
 globalThis.document = { body: node("Menú\\n  Sesión  finalizada\\n", [toast]) };
 console.log(JSON.stringify({
@@ -378,10 +397,22 @@ console.log(JSON.stringify({
   scoped: MATCH(toast),
   hidden: MATCH(buried),
   contents: MATCH(wrapper),
+  bare: MATCH(bare),
   scripted: MATCH(scripted),
   elsewhere: MATCH(node("Cargando")),
 }));
 """
+
+
+def test_text_match_js_does_not_substitute_the_text_it_carries() -> None:
+    """The waited-for text is a value, not source: a page that says a
+    placeholder's name must not rewrite the script that looks for it."""
+    from llm_browser.scripts import text_match_js
+
+    source = text_match_js(constants.TEXT_MATCH_EXACT_PLACEHOLDER, exact=True)
+
+    assert json.dumps(constants.TEXT_MATCH_EXACT_PLACEHOLDER) in source
+    assert "const exact = true;" in source
 
 
 def run_text_match(text: str, exact: bool, tmp_path: Path) -> dict[str, bool]:
@@ -499,8 +530,9 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
     [
         # Newlines and the `&nbsp;` an XPath `contains(text(), ...)` trips over
         # both normalise away. `hidden` and `scripted` hold the text but are
-        # never rendered, so no mode may see it; `contents` renders no box of
-        # its own yet lays out a child that does, so every mode must.
+        # never rendered, so no mode may see it; `contents` and `bare` render
+        # no box of their own yet lay out what they hold — a child element, a
+        # text node — as usual, so every mode must see it.
         (
             "Sesión finalizada",
             False,
@@ -509,6 +541,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "scoped": True,
                 "hidden": False,
                 "contents": True,
+                "bare": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -521,6 +554,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "scoped": True,
                 "hidden": False,
                 "contents": True,
+                "bare": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -534,6 +568,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "scoped": True,
                 "hidden": False,
                 "contents": True,
+                "bare": True,
                 "scripted": False,
                 "elsewhere": False,
             },
@@ -546,6 +581,7 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "scoped": False,
                 "hidden": False,
                 "contents": False,
+                "bare": False,
                 "scripted": False,
                 "elsewhere": False,
             },

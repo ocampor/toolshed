@@ -169,6 +169,8 @@ def action_wait_for(
             interval=step.interval,
             settle=step.settle,
         )
+    else:
+        raise ValueError("wait_for needs a selector or text")
     return VoidResult()
 
 

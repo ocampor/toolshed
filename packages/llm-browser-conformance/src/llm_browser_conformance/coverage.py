@@ -43,6 +43,7 @@ REQUIRED_CONDITIONS = (
     "eq",
     "is_truthy",
     "not_null",
+    "text_present",
 )
 
 # Behaviour with no field or method to introspect. Each one is a promise the

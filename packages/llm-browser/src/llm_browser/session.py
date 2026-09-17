@@ -41,6 +41,7 @@ from llm_browser.explore_models import (
 from llm_browser.models import (
     CaptureMode,
     check_settle_budget,
+    check_text_wanted,
     PageProbe,
     SessionInfo,
     SessionResult,
@@ -535,6 +536,7 @@ class BrowserSession:
         way the wait points (``attached``/``visible`` for there,
         ``detached``/``hidden`` for gone). Use ``text_present`` for a bool.
         """
+        check_text_wanted(text)
         waits.poll_for_text(
             self.driver,
             self.get_page(),

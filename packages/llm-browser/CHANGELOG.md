@@ -10,8 +10,9 @@
   `attached`/`visible` and absent for `detached`/`hidden`
   (ocampor/browser-api#49). Only rendered text counts: a non-rendered scope —
   `display:none`, or a `selector` matching nothing — reads as gone, a
-  `display: contents` scope is worth its rendered children's text, and
-  `script`/`style`/`template` never match.
+  `display: contents` scope is worth what it lays out (text it holds directly
+  as much as its rendered children), and `script`/`style`/`template` never
+  match.
 - `when: [{ text_present: { text: T, selector: S, exact: B } }]` — the same
   match as a condition.
 - `BrowserSession.wait_for_text(text, selector=, exact=, state=, timeout=,
@@ -22,6 +23,12 @@
 - A `wait_for` step with neither `selector` nor `text` is rejected at flow-load
   time with `wait_for needs a selector or text` (was: a missing-field error on
   `selector`).
+- `wait_for_text("")` raises `ValueError` instead of returning on the first
+  tick, the same refusal the `wait_for` step makes at flow-load time.
+- A scoped text wait reads each match under the now-read timeout, and a scope
+  that detaches between the match list and the read counts as "no text this
+  tick" — waiting for a toast to go no longer blocks on the driver's own
+  default timeout, nor fails the run with its error.
 
 ## 0.18.2 — 2026-09-16
 

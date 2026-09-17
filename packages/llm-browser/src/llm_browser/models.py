@@ -61,6 +61,13 @@ def check_text_state(state: WaitState) -> bool:
     return TEXT_STATES[state]
 
 
+def check_text_wanted(text: str) -> str:
+    """Every page renders the empty string, so a wait for it never waits."""
+    if not text:
+        raise ValueError("a text wait needs text to look for")
+    return text
+
+
 class Repeat(BaseModel):
     """Run one step once per item of a list param.
 
@@ -309,7 +316,7 @@ class WaitForStep(BaseStep):
 
     action: Literal["wait_for"]
     selector: Selector | None = None
-    text: str | None = Field(None, min_length=1)
+    text: str | None = None
     exact: bool = False
     state: WaitState = "attached"
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
@@ -323,6 +330,7 @@ class WaitForStep(BaseStep):
         if self.selector is None and self.text is None:
             raise ValueError("wait_for needs a selector or text")
         if self.text is not None:
+            check_text_wanted(self.text)
             check_text_state(self.state)
         check_settle_budget(self.state, self.settle, self.timeout)
         return self

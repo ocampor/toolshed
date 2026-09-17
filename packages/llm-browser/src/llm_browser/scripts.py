@@ -1,6 +1,7 @@
 """In-page JavaScript loaded from ``js/``."""
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,6 +14,18 @@ JS_DIR = Path(__file__).parent / "js"
 def load_script(name: str) -> str:
     """Return the source of ``js/<name>.js``."""
     return (JS_DIR / f"{name}.js").read_text()
+
+
+def substitute(source: str, values: dict[str, str]) -> str:
+    """Fill every placeholder in one pass.
+
+    Chained ``str.replace`` calls would re-scan what the previous one wrote, so
+    a waited-for text or a selector that happens to spell a later placeholder
+    would rewrite the script.
+    """
+    names = sorted(values, key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(name) for name in names))
+    return pattern.sub(lambda hit: values[hit.group()], source)
 
 
 def extract_rows_js() -> str:
@@ -148,10 +161,12 @@ def text_match_js(text: str, exact: bool) -> str:
     Substituted rather than passed: drivers evaluate a bare script string with
     no arguments.
     """
-    return (
-        load_script("text_match")
-        .replace(constants.TEXT_MATCH_TEXT_PLACEHOLDER, json.dumps(text))
-        .replace(constants.TEXT_MATCH_EXACT_PLACEHOLDER, json.dumps(exact))
+    return substitute(
+        load_script("text_match"),
+        {
+            constants.TEXT_MATCH_TEXT_PLACEHOLDER: json.dumps(text),
+            constants.TEXT_MATCH_EXACT_PLACEHOLDER: json.dumps(exact),
+        },
     )
 
 
@@ -162,13 +177,14 @@ def page_probe_js(selector: str | None, max_chars: int) -> str:
     the shared challenge-selector list and the text limit are substituted in.
     """
     challenge = ", ".join(constants.CHALLENGE_SELECTORS)
-    return (
-        load_script("page_probe")
-        .replace(constants.PROBE_SELECTOR_PLACEHOLDER, json.dumps(selector))
-        .replace(
-            constants.PROBE_PASSWORD_PLACEHOLDER,
-            json.dumps(constants.PASSWORD_SELECTOR),
-        )
-        .replace(constants.PROBE_CHALLENGE_PLACEHOLDER, json.dumps(challenge))
-        .replace(constants.PROBE_MAX_CHARS_PLACEHOLDER, str(max_chars))
+    return substitute(
+        load_script("page_probe"),
+        {
+            constants.PROBE_SELECTOR_PLACEHOLDER: json.dumps(selector),
+            constants.PROBE_PASSWORD_PLACEHOLDER: json.dumps(
+                constants.PASSWORD_SELECTOR
+            ),
+            constants.PROBE_CHALLENGE_PLACEHOLDER: json.dumps(challenge),
+            constants.PROBE_MAX_CHARS_PLACEHOLDER: str(max_chars),
+        },
     )

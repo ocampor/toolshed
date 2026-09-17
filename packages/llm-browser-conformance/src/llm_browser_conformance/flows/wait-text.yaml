@@ -11,6 +11,12 @@ steps:
   - name: result
     action: read
     selector: "#status"
+    # The wait just proved it; `text_present` is the same question as a gate.
+    when:
+      - text_present:
+          text: "Sesión finalizada"
+          selector: "#status"
+          exact: true
     extract:
       text:
         attribute: textContent

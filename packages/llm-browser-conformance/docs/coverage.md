@@ -108,6 +108,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `when:eq` | when eq |
 | `when:is_truthy` | when is_truthy |
 | `when:not_null` | when not_null |
+| `when:text_present` | wait exact text scoped |
 
 ## session methods
 
