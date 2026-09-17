@@ -88,6 +88,9 @@ def test_failed_launch_leaves_no_live_state(
 
 @pytest.mark.parametrize("entry_point", [attach, attach_to_tab, reattach])
 def test_failed_attach_leaves_no_live_state(playwright: Any, entry_point: Any) -> None:
+    # These never reach the rollback's state-clearing: connect_over_cdp raises
+    # before anything is assigned. test_attach_after_a_failed_attach_opens_a_
+    # fresh_connection is what actually bites when that clearing goes missing.
     playwright.chromium.connect_over_cdp.side_effect = BOOM
     driver = PatchrightDriver()
 
