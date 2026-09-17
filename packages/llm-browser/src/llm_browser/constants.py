@@ -139,12 +139,8 @@ EXTRACT_PROPERTIES = (
 # The subset a `read` step's ``exclude`` can change: what a descendant is part
 # of. ``value`` and ``tagName`` are the element's own, and reading them off a
 # pruned clone would answer wrong -- a clone loses an <option>'s selectedness.
-EXCLUDABLE_PROPERTIES = (
-    "childElementCount",
-    "innerHTML",
-    "innerText",
-    "outerHTML",
-    "textContent",
+EXCLUDABLE_PROPERTIES = tuple(
+    name for name in EXTRACT_PROPERTIES if name not in ("tagName", "value")
 )
 
 EXCLUDABLE_PROPERTIES_PLACEHOLDER = "EXCLUDABLE_PROPERTIES_JSON"

@@ -396,11 +396,13 @@ def dom_reads_the_first_match_in_document_order(ctx: Context) -> None:
 
 
 def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
-    """Three claims only a browser can settle: the excluded text is gone, the
+    """Four claims only a browser can settle: the excluded text is gone, the
     read happens on a detached copy (where `innerText` has no layout and so
-    reads like `textContent`, hidden span and all), and `value` — the
-    element's own — still answers off the live page, even for an element the
-    same `exclude` drops."""
+    reads like `textContent`, hidden span and all), `value` — the element's
+    own — still answers off the live page even for an element the same
+    `exclude` drops, and a `child_selector` inside an excluded subtree still
+    resolves, because `exclude` is about text and not about which elements a
+    field can see."""
     outputs = expect_success(ctx, "read-exclude.html", "read-exclude")
 
     whole = one_text(outputs, "whole") or ""
@@ -412,9 +414,11 @@ def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
     assert "NEW" not in pruned, pruned
     assert "Mexico" not in pruned, pruned
     assert "HIDDEN" in pruned, pruned
+    assert "Footnote" not in pruned, pruned
 
     rows: Any = outputs["pruned"]
     assert rows[0]["country"] == "mx", rows
+    assert rows[0]["note"] == "Footnote", rows
 
 
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:

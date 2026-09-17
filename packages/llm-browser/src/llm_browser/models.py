@@ -218,7 +218,7 @@ class ReadStep(SelectorStep):
     )
     # CSS selectors dropped from the text, not from the DOM: the read happens
     # on a copy, and only for a property a descendant is part of.
-    exclude: list[str] = Field(default_factory=list)
+    exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
 

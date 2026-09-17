@@ -9,7 +9,10 @@
   a `<select>` list. The text read happens on a copy — the page is not modified
   — and `innerText` on that copy reads like `textContent`. `value` and
   `tagName` are the element's own, so they stay on the live element and
-  `exclude` cannot change them (ocampor/browser-api#33).
+  `exclude` cannot change them. A field's `child_selector` resolves on the
+  live element too, so a field inside an excluded subtree is still read, and
+  an empty selector in `exclude` is rejected at flow-load time
+  (ocampor/browser-api#33).
 
 ### Changed
 

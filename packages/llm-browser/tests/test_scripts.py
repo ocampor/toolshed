@@ -108,7 +108,7 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
     ]
 
 
-EXCLUDE_HARNESS = """
+EXCLUDE_DOM = """
 // A DOM small enough to read: a node is a tag, a class, a value and its
 // children, each child a node or a string of text. Enough for what the script
 // needs -- a deep copy, a group selector, and detaching a match. `cloneNode`
@@ -158,6 +158,9 @@ const el = (tag, cls, value, ...children) => ({
   },
 });
 
+"""
+
+EXCLUDE_HARNESS = """
 const row = el(
   "body", null, "chosen",
   el("nav", null, null, "Menu"),
@@ -174,20 +177,64 @@ console.log(JSON.stringify({ pruned, whole, left: row.textContent }));
 """
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_read_exclude_drops_matches(tmp_path: Path) -> None:
     """`exclude` drops those matches from the text, reads `value` off the live
     element anyway, and leaves the page alone: the text read is on a copy."""
     script = tmp_path / "harness.mjs"
-    script.write_text(f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_HARNESS}")
+    script.write_text(
+        f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_DOM}{EXCLUDE_HARNESS}"
+    )
     out = subprocess.run(
-        ["node", str(script)], capture_output=True, text=True, check=True
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == {
         "pruned": [{"text": "Real text", "picked": "chosen"}],
         "whole": [{"text": "MenuBuy!Real text", "picked": "chosen"}],
         "left": "MenuBuy!Real text",
     }
+
+
+CROSS_PATH_HARNESS = """
+const row = el(
+  "article", null, null,
+  el("aside", null, null, el("span", "note", null, "Note text")),
+  "Body text",
+);
+const spec = {
+  note: { child_selector: ".note", attribute: "textContent" },
+  text: { child_selector: null, attribute: "textContent" },
+};
+const batch = EXTRACT([row], { spec, exclude: ["aside"] })[0];
+// What the per-element path does: resolve the child on the live row, then read
+// the property through its own pruning script.
+const fallback = {
+  note: PROPERTY(row.querySelector(".note")),
+  text: PROPERTY(row),
+};
+console.log(JSON.stringify({ batch, fallback }));
+"""
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+def test_both_paths_agree_on_a_field_inside_an_excluded_subtree(
+    tmp_path: Path,
+) -> None:
+    """`exclude` is about text, never about whether a field's element exists:
+    a `child_selector` resolves on the live row on both paths, so a field
+    living inside an excluded subtree reads the same either way."""
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const EXTRACT = {extract_rows_js()};\n"
+        f"const PROPERTY = {property_js('textContent', ['aside'])};\n"
+        f"{EXCLUDE_DOM}{CROSS_PATH_HARNESS}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    read = json.loads(out.stdout)
+    assert read["batch"] == read["fallback"]
+    assert read["batch"] == {"note": "Note text", "text": "Body text"}
 
 
 def test_property_js_prunes_only_what_a_descendant_is_part_of() -> None:

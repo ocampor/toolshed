@@ -16,10 +16,15 @@ steps:
   - name: pruned
     action: read
     selector: "#card"
-    exclude: [".badge", "select"]
+    exclude: [".badge", "select", "aside"]
     extract:
       text:
         attribute: innerText
       country:
         child_selector: "#country"
         attribute: value
+      # A child_selector resolves on the live element, so an excluded subtree
+      # hides text, never a field.
+      note:
+        child_selector: ".note"
+        attribute: textContent

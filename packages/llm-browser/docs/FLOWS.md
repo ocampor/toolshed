@@ -346,7 +346,7 @@ element or the value is missing. The compact form is
 Leaving `extract` out entirely, `extract: {}`, and `extract: null` are all
 that last form under the name `text`: one `{ text: … }` per matched element.
 
-`exclude: [selector, …]` drops those matches from the text: `textContent`, `innerText`, `innerHTML`, `outerHTML` and `childElementCount` are read off a pruned copy of the element, so `read` on `body` can leave out a notification drawer or a `<select>` list. Attributes, `value` and `tagName` are untouched — they are the element's own, and no descendant is part of them — and the page itself is never modified. On a copy `innerText` has no layout, so under `exclude` it reads like `textContent`.
+`exclude: [selector, …]` drops those matches from the text: `textContent`, `innerText`, `innerHTML`, `outerHTML` and `childElementCount` are read off a pruned copy of the element, so `read` on `body` can leave out a notification drawer or a `<select>` list. Attributes, `value` and `tagName` are untouched — they are the element's own, and no descendant is part of them — and the page itself is never modified. On a copy `innerText` has no layout, so under `exclude` it reads like `textContent`. A selector matching the read element itself is a no-op — only descendants are pruned, so `exclude: ["#card"]` on a `read` of `#card` drops nothing — and a `child_selector` still resolves on the live element, so a field whose element sits inside an excluded subtree is read, not lost.
 
 ```yaml
 - name: read the article
