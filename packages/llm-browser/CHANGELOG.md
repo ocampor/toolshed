@@ -12,6 +12,13 @@
   raising, so the hover menu its own path opened closes behind it
   (ocampor/browser-api#47).
 
+### Fixed
+
+- A `patchright` launch or attach that fails after Playwright has started now
+  stops it instead of leaving patchright's event loop running, which made every
+  later `asyncio.run(...)` in the process raise `asyncio.run() cannot be called
+  from a running event loop`.
+
 ## 0.18.1 — 2026-09-16
 
 ### Added
