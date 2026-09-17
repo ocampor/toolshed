@@ -556,6 +556,7 @@ class BrowserSession:
         exact: bool = False,
     ) -> bool:
         """Whether the page renders ``text`` right now — one read, no waiting."""
+        check_text_wanted(text)
         return waits.text_present(
             self.driver, self.get_page(), text, selector=selector, exact=exact
         )

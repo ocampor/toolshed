@@ -349,9 +349,9 @@ def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
 
 
 TEXT_MATCH_HARNESS = """
-// `getClientRects` is what the script asks before reading `innerText`,
-// `getComputedStyle` is how it spots a `display:contents` scope, and
-// `querySelectorAll` honours the `:not(...)` clauses the way a real one does.
+// `getClientRects` is what the script asks before reading `innerText`, and
+// `getComputedStyle` reports each node's own `display`, ancestors unread,
+// exactly as a browser does.
 const ELEMENT = 1;
 const TEXT = 3;
 const words = (data) => ({ nodeType: TEXT, data });
@@ -368,19 +368,19 @@ const node = (
   display,
   childNodes,
   getClientRects: () => (visible ? [{}] : []),
-  querySelectorAll: (selector) =>
-    childNodes.filter(
-      (child) =>
-        child.nodeType === ELEMENT &&
-        !selector.includes(`:not(${child.tagName.toLowerCase()})`),
-    ),
 });
 globalThis.getComputedStyle = (el) => ({ display: el.display });
 const toast = node("Sesión  finalizada\\n");
 // Not rendered, and neither is what it holds: `innerText` falls back to the
-// subtree's `textContent`, which is the trap.
+// subtree's `textContent`, which is the trap. The `display:contents`
+// child is the second trap: its own computed `display` says nothing of
+// the `none` above it, so a walk that trusted it would read a buried
+// subtree as shown.
 const buried = node("Sesión  finalizada\\n", [
   node("Sesión  finalizada", [], "DIV", false),
+  node("Sesión  finalizada", [
+    words("Sesión  finalizada\\n"),
+  ], "DIV", false, "contents"),
 ], "DIV", false, "none");
 // `display:contents`: no box of its own, children laid out as usual.
 const wrapper = node("Sesión  finalizada", [

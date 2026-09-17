@@ -185,14 +185,18 @@ def matches_now(driver: Driver, element: Any, script: str) -> bool:
     """One bounded read, so a scope cannot turn a tick into a driver-side wait.
 
     ``driver.all`` hands back a snapshot; a scope that detached since — the
-    toast a ``detached``/``hidden`` wait is watching for — is what every
-    driver reports differently and none can answer about. It has no text this
-    tick, which is the answer the next tick re-asks.
+    toast a ``detached``/``hidden`` wait is watching for — cannot be answered
+    about: the locator re-resolves and times out inside the read's budget. It
+    has no text this tick, which is the answer the next tick re-asks. Anything
+    else is the script's own bug, and says so rather than polling out.
     """
     try:
         return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
-    except Exception:
-        return False
+    except Exception as exc:
+        # patchright's TimeoutError is not playwright's, and neither is the builtin.
+        if type(exc).__name__ == "TimeoutError":
+            return False
+        raise
 
 
 def poll_for_text(

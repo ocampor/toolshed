@@ -3,6 +3,8 @@
 (el) => {
   const ELEMENT_NODE = 1;
   const TEXT_NODE = 3;
+  // `script`/`style`/`template` hold source rather than rendered text.
+  const SOURCE_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE"]);
   const normalize = (value) =>
     String(value || "")
       .replace(/\s+/g, " ")
@@ -19,22 +21,29 @@
   const rendered = (node) =>
     Boolean(node.offsetParent || node.getClientRects?.().length);
   const laysOutText = (node) => getComputedStyle(node).display === "contents";
+  // A computed `display` is the node's own, not its ancestors': a
+  // `display:contents` node buried under `display:none` still reports
+  // "contents". So neither walk below enters a node that lays nothing out —
+  // a wholly non-rendered subtree is opaque, as `is_hidden` already treats one.
   const renderedText = (node) => {
     if (rendered(node)) return normalize(node.innerText);
-    const showsText = laysOutText(node);
+    if (!laysOutText(node)) return "";
     const parts = [...node.childNodes].map((child) => {
       if (child.nodeType === ELEMENT_NODE) return renderedText(child);
-      return showsText && child.nodeType === TEXT_NODE ? child.data : "";
+      return child.nodeType === TEXT_NODE ? child.data : "";
     });
     return normalize(parts.join(" "));
   };
   if (!exact) return renderedText(root).includes(wanted);
   // Exact asks for one element whose whole text is the wanted string, so every
-  // node in the scope is asked in turn. `script`/`style`/`template` hold source
-  // rather than rendered text, and answer with their `textContent`.
-  const scope = root.querySelectorAll("*:not(script):not(style):not(template)");
-  return [root, ...scope].some(
-    (node) =>
-      (rendered(node) || laysOutText(node)) && renderedText(node) === wanted,
-  );
+  // node the scope lays out is asked in turn.
+  const textBearing = (node) => {
+    if (SOURCE_TAGS.has(node.tagName)) return [];
+    if (!(rendered(node) || laysOutText(node))) return [];
+    const children = [...node.childNodes].filter(
+      (child) => child.nodeType === ELEMENT_NODE,
+    );
+    return [node, ...children.flatMap(textBearing)];
+  };
+  return textBearing(root).some((node) => renderedText(node) === wanted);
 }

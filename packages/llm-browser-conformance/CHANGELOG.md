@@ -7,7 +7,8 @@ Tracks `llm-browser` 0.18.3.
 ### Added
 
 - Six `wait_for` text scenarios on `site/text-wait.html`: the text arriving,
-  the text going, a `display:none` scope reading as absent, a
+  the text going, a `display:none` scope reading as absent (the
+  `display: contents` wrapper it buries included), a
   `display: contents` scope reading its children, `text_present` answering in
   one read, and `flows/wait-text.yaml` for `text:` with `exact: true`. The
   `display: contents` wrapper holds text of its own, and `flows/wait-text.yaml`

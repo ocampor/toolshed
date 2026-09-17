@@ -128,12 +128,18 @@ def a_text_wait_waits_for_the_words_to_go(ctx: Context) -> None:
 def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
     """The modal keeps its text and stops being rendered. ``innerText`` on a
     non-rendered element answers with its ``textContent``, so a scope read that
-    trusted it would poll out the whole budget on text nobody can see."""
+    trusted it would poll out the whole budget on text nobody can see — and the
+    `display:contents` wrapper it holds still computes "contents", so a read
+    that asked each node on its own would be fooled the same way."""
     timing = ctx.timed(
         lambda: ctx.visit("text-wait.html"),
         text_wait(ctx, "Sesión iniciada", selector=".modal", state="hidden"),
     )
     timing.assert_within(ctx.delay_ms)
+    assert not ctx.session.text_present("Sesión caducada", selector=".modal")
+    assert not ctx.session.text_present(
+        "Sesión caducada", selector=".modal", exact=True
+    )
 
 
 def a_display_contents_scope_reads_its_children(ctx: Context) -> None:

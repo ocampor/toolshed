@@ -7,7 +7,13 @@
      see both. `#bare` holds only the text, so its whole text is that text. -->
 <div class="wrapper">Sesión abierta <div id="status">Cargando</div></div>
 <div class="wrapper" id="bare">Menú principal</div>
-<div class="modal"><p>Sesión iniciada</p></div>
+<!-- The modal goes `display:none` on the timer. The wrapper inside it keeps
+     computing `display:contents` — a node's own `display` says nothing of the
+     `none` above it — so a scope read that trusted it would see hidden text. -->
+<div class="modal">
+  <p>Sesión iniciada</p>
+  <span class="wrapper">Sesión caducada</span>
+</div>
 <script>
   // A string no node ever renders: a match that read `<script>` source
   // instead of rendered text would find it.
