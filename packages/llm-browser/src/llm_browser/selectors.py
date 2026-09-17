@@ -25,6 +25,12 @@ class IdSelector(BaseModel):
     id: str
 
 
+class RefSelector(BaseModel):
+    """A selector named symbolically; the run's selector map supplies it."""
+
+    ref: str
+
+
 class FallbackSelector(BaseModel):
     """Try primary selector first, fall back if no match found."""
 
@@ -32,7 +38,9 @@ class FallbackSelector(BaseModel):
     fallback: "CssSelector | XpathSelector | IdSelector | FallbackSelector"
 
 
-type SelectorSpec = CssSelector | XpathSelector | IdSelector | FallbackSelector
+type SelectorSpec = (
+    CssSelector | XpathSelector | IdSelector | FallbackSelector | RefSelector
+)
 type Selector = str | SelectorSpec
 
 FallbackSelector.model_rebuild()
@@ -55,6 +63,8 @@ def parse_selector(raw: str | dict[str, Any]) -> Selector:
         return IdSelector.model_validate(raw)
     if "primary" in raw:
         return FallbackSelector.model_validate(raw)
+    if "ref" in raw:
+        return RefSelector.model_validate(raw)
     raise ValueError(f"Unknown selector format: {raw!r}")
 
 
@@ -70,6 +80,8 @@ def _selector_string(selector: Selector) -> str:
             return f'[id="{el_id}"]'
         case FallbackSelector():
             raise ValueError("FallbackSelector must be resolved via resolve_selector")
+        case RefSelector(ref=ref):
+            raise ValueError(f"selector ref {ref!r} was never resolved from a map")
     raise ValueError(f"Unknown selector: {selector!r}")
 
 

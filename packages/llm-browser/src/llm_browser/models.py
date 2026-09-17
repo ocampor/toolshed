@@ -90,6 +90,28 @@ class Repeat(BaseModel):
         return self
 
 
+def selector_ref_shorthand(data: Any) -> Any:
+    """``ref: name`` is the compact way to name a selector by ref, and means
+    exactly ``selector: {ref: name}`` — at step level and inside ``fields:``
+    or ``read:`` alike."""
+    if not isinstance(data, dict) or not isinstance(data.get("ref"), str):
+        return data
+    without_ref = {k: v for k, v in data.items() if k != "ref"}
+    return {**without_ref, "selector": {"ref": data["ref"]}}
+
+
+class TargetSpec(BaseModel, extra="allow"):
+    """One entry under a step's ``fields:`` or ``read:``.
+
+    Nothing executes these yet — they are carried for hosts that read them —
+    but a ``ref:`` in one is resolved from the selector map like any other.
+    """
+
+    selector: Selector | None = None
+
+    _shorthand = model_validator(mode="before")(selector_ref_shorthand)
+
+
 class BaseStep(BaseModel):
     """Common fields shared by all step types.
 
@@ -99,7 +121,8 @@ class BaseStep(BaseModel):
     """
 
     name: str = "unnamed"
-    fields: list[dict[str, Any]] = []
+    fields: list[TargetSpec] = []
+    read: dict[str, TargetSpec] = {}
     when: list[dict[str, Any]] = []
     eval: str | None = None
     wait_after: int | None = None
@@ -111,6 +134,8 @@ class BaseStep(BaseModel):
     # top-level steps. Drives ``qualified_name`` for diagnostic output
     # and retry-hint targeting.
     _parent: str | None = PrivateAttr(default=None)
+
+    _shorthand = model_validator(mode="before")(selector_ref_shorthand)
 
     @property
     def qualified_name(self) -> str:

@@ -12,7 +12,7 @@ from click.testing import CliRunner
 
 from llm_browser.cli import (
     file_path,
-    flow_from_document,
+    flow_with_selector_map,
     main,
     resolve_flow_options,
     run_cli_flow,
@@ -148,6 +148,7 @@ def test_validate_accepts_every_inline_source(args: list[str], stdin: str) -> No
         "flow": "<inline>",
         "step_count": 1,
         "subflow_count": 0,
+        "missing_selectors": [],
     }
 
 
@@ -193,15 +194,20 @@ def test_a_ref_without_a_readable_map_fails_naming_the_ref(command: str) -> None
         main, [command, "--flow-yaml", REF_YAML, "--selector-map", "no-such-map.yaml"]
     )
     assert result.exit_code == 1
-    assert "ui.button" in result.stderr + str(result.exception)
+    report = json.loads(result.stderr)
+    assert report["ok"] is False
+    assert report["missing_selectors"] == ["ui.button"]
 
 
-def test_a_ref_less_document_never_reads_the_map_file(tmp_path: Path) -> None:
-    flow = flow_from_document(FLOW_DOCUMENT, str(tmp_path / "absent.yaml"))
-    assert flow.steps[0].name == "s1"
+def test_a_ref_less_flow_never_reads_the_map_file(tmp_path: Path) -> None:
+    loaded = flow_with_selector_map(FLOW_DOCUMENT, str(tmp_path / "absent.yaml"))
+    assert loaded.selector_map is None
+    assert loaded.missing == []
 
 
-def test_validate_expands_refs_from_the_map_file(tmp_path: Path) -> None:
+def test_validate_reports_nothing_missing_when_the_map_has_every_ref(
+    tmp_path: Path,
+) -> None:
     selector_map = tmp_path / "selector_map.yaml"
     selector_map.write_text(yaml.dump({"ui": {"button": {"id": "the-button"}}}))
 
@@ -211,7 +217,9 @@ def test_validate_expands_refs_from_the_map_file(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    assert json.loads(result.stdout)["ok"] is True
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["missing_selectors"] == []
 
 
 def test_validate_rejects_two_sources() -> None:

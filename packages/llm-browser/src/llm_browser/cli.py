@@ -38,22 +38,51 @@ from llm_browser.models import (
 )
 from llm_browser.results import BytesResult
 from llm_browser.selector_map import (
-    expand_selector_refs,
+    SelectorMap,
     load_selector_map,
+    missing_selectors,
     selector_refs,
 )
 from llm_browser.session import BrowserSession
 from llm_browser.steps import resolve_step
 
 
-def flow_from_document(document: dict[str, Any], selector_map_path: str | None) -> Flow:
-    """A document without refs never reads the map file; one with refs and no
-    readable map fails naming them."""
-    if not selector_refs(document):
-        return load_flow_document(document)
+class CliFlow(NamedTuple):
+    flow: Flow
+    selector_map: SelectorMap | None
+    missing: list[str]
+
+
+def flow_with_selector_map(
+    document: dict[str, Any], selector_map_path: str | None
+) -> CliFlow:
+    """The loaded flow, the map its refs will be resolved from, and the refs
+    that map lacks. A flow without refs never reads the map file."""
+    flow = load_flow_document(document)
+    if not selector_refs(flow):
+        return CliFlow(flow, None, [])
     path = Path(selector_map_path) if selector_map_path else None
     selector_map = load_selector_map(path) if path and path.exists() else {}
-    return load_flow_document(expand_selector_refs(document, selector_map))
+    return CliFlow(flow, selector_map, missing_selectors(flow, selector_map))
+
+
+def fail_on_missing_selectors(label: str | None, missing: list[str]) -> None:
+    """Refs no map carries stop the command before a browser is touched."""
+    if not missing:
+        return
+    click.echo(
+        json.dumps(
+            {
+                "ok": False,
+                "flow": label,
+                "error": "MissingSelectorsError",
+                "message": f"selector refs missing from the map: {', '.join(missing)}",
+                "missing_selectors": missing,
+            }
+        ),
+        err=True,
+    )
+    raise SystemExit(1)
 
 
 @contextmanager
@@ -413,7 +442,8 @@ def run(
     session.capture_level = SanitizeLevel(capture_level)
     data = json.loads(data_json)
     document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
-    flow = flow_from_document(document, selector_map_path)
+    flow, selector_map, missing = flow_with_selector_map(document, selector_map_path)
+    fail_on_missing_selectors(flow_path or "<inline>", missing)
     behavior = resolve_behavior(behavior_spec)
 
     def execute(target: BrowserSession) -> object:
@@ -424,6 +454,7 @@ def run(
             from_step=from_step,
             flow_path=file_path(flow_path),
             behavior=behavior,
+            selector_map=selector_map,
         )
         return write_run(
             result,
@@ -431,6 +462,7 @@ def run(
             data,
             out_dir=Path(out_dir),
             capture_dir=Path(capture_dir) if capture_dir else target.session_dir,
+            selector_map=selector_map,
         )
 
     endpoint = cdp_url or ctx.obj.get("cdp_url")
@@ -456,7 +488,9 @@ class CliFlowRun(NamedTuple):
     payload: dict[str, Any]
 
 
-def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
+def declared_paths(
+    flow: Flow, data: dict[str, object], selector_map: SelectorMap | None = None
+) -> dict[str, str]:
     """Qualified step name to the ``path:`` that step asked the CLI to write.
 
     The value comes from the resolved step, so ``path: out/{{ id }}.png``
@@ -468,10 +502,12 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     paths: dict[str, str] = {}
     flow_data = flow.validate_data(data)
     for step in flow.steps:
-        resolved = resolve_step(step, flow_data)
+        resolved = resolve_step(step, flow_data, selector_map)
         if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
             paths.update(
-                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
+                declared_paths(
+                    resolved.flow, child_data(flow_data, resolved.data), selector_map
+                )
             )
             continue
         path = getattr(resolved, "path", None)
@@ -594,8 +630,11 @@ def write_run(
     data: dict[str, object],
     out_dir: Path,
     capture_dir: Path,
+    selector_map: SelectorMap | None = None,
 ) -> CliFlowRun:
-    outputs = write_outputs(result.outputs, declared_paths(flow, data), out_dir)
+    outputs = write_outputs(
+        result.outputs, declared_paths(flow, data, selector_map), out_dir
+    )
     captures = (
         write_captures(result, capture_dir) if isinstance(result, FlowError) else {}
     )
@@ -654,10 +693,18 @@ def run_cli_flow(
     from_step: str | None,
     flow_path: str | None = None,
     behavior: Behavior | None = None,
+    selector_map: SelectorMap | None = None,
 ) -> FlowResult:
     """``flow_path`` only fills ``retry_hint.flow_path``; the flow is already
     built."""
-    result = run_flow(session, flow, data, from_step=from_step, behavior=behavior)
+    result = run_flow(
+        session,
+        flow,
+        data,
+        from_step=from_step,
+        behavior=behavior,
+        selector_map=selector_map,
+    )
     if flow_path is None:
         return result
     return with_flow_path(result, flow_path)
@@ -723,10 +770,10 @@ def validate(
 
     Pass exactly one of --flow PATH (- for stdin) or --flow-yaml TEXT.
 
-    Loads the flow + every referenced sub-flow, expands selector-map
-    refs, and runs all model validators. Exits 0 with a JSON summary
-    on success; exits 1 with a one-line JSON failure on any validation
-    error.
+    Loads the flow + every referenced sub-flow and runs all model
+    validators. Exits 0 with a JSON summary on success; exits 1 with a
+    one-line JSON failure on any validation error, or on a ``ref:`` the
+    ``--selector-map`` does not carry — ``missing_selectors`` names them.
 
     Suitable for pre-commit hooks and CI — no browser session is
     created or used.
@@ -737,7 +784,7 @@ def validate(
     label = "<inline>" if flow_path in (None, "-") else flow_path
     try:
         document = asyncio.run(resolve_flow_options(flow_path, flow_yaml))
-        flow = flow_from_document(document, selector_map_path)
+        flow, _, missing = flow_with_selector_map(document, selector_map_path)
     except (
         ValidationError,
         FlowNotFoundError,
@@ -756,6 +803,7 @@ def validate(
             err=True,
         )
         raise SystemExit(1) from exc
+    fail_on_missing_selectors(label, missing)
     subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
     output(
         {
@@ -763,6 +811,7 @@ def validate(
             "flow": label,
             "step_count": len(flow.steps),
             "subflow_count": subflow_count,
+            "missing_selectors": missing,
         }
     )
 

@@ -3,7 +3,6 @@
 import asyncio
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 from llm_browser.flow_pipeline import resolve_flow
@@ -12,14 +11,10 @@ from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.models import Flow, FlowResult
 
 
-def resolve_flow_file(path: str | Path) -> dict[str, Any]:
+def load_flow_file(path: str | Path) -> Flow:
     flow_path = Path(path)
     repo = FileFlowRepository(flow_path.parent)
-    return asyncio.run(resolve_flow(flow_path.name, repo))
-
-
-def load_flow_file(path: str | Path) -> Flow:
-    return load_flow_document(resolve_flow_file(path))
+    return load_flow_document(asyncio.run(resolve_flow(flow_path.name, repo)))
 
 
 def run_flow_file(

@@ -224,7 +224,7 @@ repeated `run-flow` indexes the child's qualified keys the same way:
 
 ## Loading flows
 
-Getting from flow text to a result is four explicit stages; the repository and the source of the selector map are the only pieces that differ between consumers:
+Getting from flow text to a result is three explicit stages; the repository is the only piece that differs between consumers:
 
 ```
 source (file | text | store)
@@ -232,14 +232,9 @@ source (file | text | store)
    ▼
 resolve_flow / resolve_flow_text     inline every run-flow child (async, only I/O)
    ▼
-selector_refs(document)              every ref: the document names, sub-flows included
-   │  build a map from any source: a YAML file, a database, a dict
+load_flow_document / load_flow_text  pure validation → Flow, ref: selectors and all
    ▼
-expand_selector_refs(document, map)  every ref: replaced by its selector
-   ▼
-load_flow_document / load_flow_text  pure validation → Flow
-   ▼
-run_flow(session, flow, data)
+run_flow(session, flow, data, selector_map=…)   each ref: resolved as its step runs
 ```
 
 - `FileFlowRepository(base_dir)` — filesystem; a relative ref reads under `base_dir`, absolute refs are honoured as-is.
@@ -248,7 +243,7 @@ run_flow(session, flow, data)
 
 ### Selector refs
 
-A step names a selector symbolically with `ref: <group>.<name>` — at step level, under any selector-valued key, in `fields[]`, or in `read[]` — and expansion replaces it before validation. `selector_refs` and `expand_selector_refs` share one traversal, so what a host is asked for is exactly what gets expanded:
+A step names a selector symbolically with `ref: <group>.<name>` — at step level, under `selector:`, or in a `fields[]` / `read[]` entry — and the map is consulted per step at run time, not at load time. A flow full of refs therefore validates on its own; `selector_refs(flow)` names what it will ask for, and `missing_selectors(flow, map)` names what a map lacks, sub-flows included, sorted and unique:
 
 ```python
 import asyncio
@@ -256,29 +251,26 @@ from pathlib import Path
 
 from llm_browser.flow_pipeline import resolve_flow
 from llm_browser.flow_repository import FileFlowRepository
-from llm_browser.flows import load_flow_document
+from llm_browser.flows import load_flow_document, run_flow
 from llm_browser.selector_map import (
-    MissingSelectorsError,
-    expand_selector_refs,
     load_selector_map,
+    missing_selectors,
     selector_refs,
 )
 
 repo = FileFlowRepository(Path("flows"))
-document = asyncio.run(resolve_flow("invoice.yaml", repo))
-needed = selector_refs(document)                             # ['invoice.cp', 'invoice.rfc']
+flow = load_flow_document(asyncio.run(resolve_flow("invoice.yaml", repo)))
+needed = selector_refs(flow)                                 # ['invoice.cp', 'invoice.rfc']
 selector_map = load_selector_map(Path("selector_map.yaml"))  # or a dict from anywhere
-try:
-    flow = load_flow_document(expand_selector_refs(document, selector_map))
-except MissingSelectorsError as exc:
-    print(exc.missing, exc.available)                        # every unknown ref, once, sorted
+missing = missing_selectors(flow, selector_map)              # [] before you run
+result = run_flow(session, flow, {}, selector_map=selector_map)
 ```
 
-A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`. A mapping with an `id` key writes the field's own `id:` and its other keys are ignored; anything else lands under `selector:`. `llm-browser run` and `llm-browser validate` compose the same stages behind `--selector-map PATH`: a document with no `ref:` never reads that file, and one with refs and no readable map fails naming every ref it needed.
+A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`, which is used as the selector string. One map serves a run: a sub-flow's refs resolve from the same one. A ref the map lacks raises `MissingSelectorsError` (a `ValueError` carrying `.missing` and `.available`) as its step runs, so check `missing_selectors` first. `llm-browser run` and `llm-browser validate` do exactly that behind `--selector-map PATH`: a flow with no `ref:` never reads that file, `validate` reports `missing_selectors` in its JSON, and `run` exits non-zero naming them before the browser is touched.
 
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes.
+`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None, selector_map=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes.
 
 `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
 

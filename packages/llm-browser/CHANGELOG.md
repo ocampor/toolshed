@@ -4,45 +4,51 @@
 
 ### Breaking
 
-- `flows.load_flow_document(document)` drops its `selector_map=` keyword and
-  validates only; `ref:` expansion is now the caller's own stage, so every host
-  composes collect → map → expand → validate the same way (ocampor/toolshed#56).
+- A `ref:` selector is no longer expanded at load time: `flows.load_flow_document(document)`
+  drops its `selector_map=` keyword and validates only, and the map rides the run
+  instead — `run_flow(..., selector_map=m)` resolves each ref as its step runs
+  (ocampor/toolshed#56).
 
 Migration:
 
-- `load_flow_document(document, selector_map=m)` →
-  `load_flow_document(expand_selector_refs(document, m))`, importing
-  `expand_selector_refs` from `llm_browser.selector_map` (it moved out of
-  `llm_browser.flows`).
-- `flows.expand_step_selector_refs` is gone; use
-  `selector_map.expand_selector_refs(document, m)` for a document, and
-  `selector_map.resolve_refs` only for a single step with no sub-flow — it is
-  step-local and does not descend into an embedded `flow:`.
-- An unknown ref now raises `selector_map.MissingSelectorsError`, a `ValueError`
+- `load_flow_document(document, selector_map=m)` → `load_flow_document(document)`
+  plus `run_flow(session, flow, data, selector_map=m)`.
+- `flows.expand_step_selector_refs` is gone, and so is any load-time expansion:
+  a flow with refs now validates on its own, so an unknown ref surfaces from the
+  run, not the load. Call `selector_map.missing_selectors(flow, m)` before running
+  to fail early.
+- An unknown ref raises `selector_map.MissingSelectorsError`, a `ValueError`
   subclass, so `except ValueError` keeps working.
+- A host that walked the document dict for refs now walks the typed flow:
+  `selector_map.selector_refs(flow)` takes a `Flow`, not a document.
+- `selector_map.resolve_refs` and `selector_map.is_ref` are gone with the dict
+  walk they served; a step's refs are resolved by the run.
 
 ### Added
 
-- `selector_map.selector_refs(document)` — every `ref:` the document names,
-  sub-flows included, sorted and unique, so a host can build its map from a
-  database or any other source before expanding. It shares one traversal with
-  `expand_selector_refs`, so the two cannot drift
-  (ocampor/toolshed#56, ocampor/browser-api#63).
+- `selectors.RefSelector` joins the `Selector` union: `{ref: name}` is a selector
+  form, so `selector: {ref: ui.button}` validates and a step's `ref: ui.button`
+  is shorthand for it. A step's `fields:` and `read:` entries are typed
+  (`models.TargetSpec`, extra keys kept), so every ref site is a selector
+  position (ocampor/toolshed#56, ocampor/browser-api#63).
+- `selector_map.selector_refs(flow)` and `selector_map.missing_selectors(flow, m)`
+  — every ref the flow names, and every one the map lacks, sub-flows included,
+  sorted and unique, so a host can build its map from a database or any other
+  source and check it before the browser opens.
 - `selector_map.MissingSelectorsError` lists every unknown ref at once, sorted,
-  and carries `.missing` and `.available` — a flow with three ref typos reports
-  all three in one load instead of one per load.
+  and carries `.missing` and `.available`.
 - A selector map value may be a plain string (`text=Continue`), not only a
-  mapping, at step, key, `fields[]` and `read[]` level; a mapping with an `id`
-  key still writes the field's own `id:`, its other keys ignored. Previously a string value at field level raised
-  `TypeError` when the string happened to contain `id`.
-- `docs/FLOWS.md` documents the four loading stages and the `--selector-map`
-  behaviour of `llm-browser run` / `validate`.
+  mapping; the string is the selector. Previously a string value at field level
+  raised `TypeError` when it happened to contain `id`.
+- `llm-browser validate` reports `missing_selectors` in its JSON, and `run` exits
+  non-zero naming them before a browser is touched.
 
 ### Changed
 
-- `llm-browser run` / `validate` share one loading helper: a document without
-  `ref:` never reads `--selector-map`, and one with refs and no readable map
-  fails naming every ref it needed instead of reporting them one at a time.
+- `llm-browser run` / `validate` share one loading helper
+  (`cli.flow_with_selector_map`): a flow without `ref:` never reads
+  `--selector-map`, and one with refs and no readable map fails naming every ref
+  it needed instead of reporting them one at a time.
 
 ## 0.18.4 — 2026-09-17
 

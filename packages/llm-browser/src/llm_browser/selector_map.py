@@ -1,12 +1,14 @@
-"""Selector map: load a YAML file mapping symbolic names to selectors, collect
-the refs a flow document needs, and expand them."""
+"""Selector map: load a YAML file mapping symbolic names to selectors, name the
+refs a flow needs, and swap each one for its selector as a step runs."""
 
-import copy
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
 import yaml
+
+from llm_browser.models import Flow, RunFlowStep, Step, SubFlow
+from llm_browser.selectors import RefSelector, parse_selector
 
 SelectorValue = str | dict[str, Any]
 SelectorMap = dict[str, SelectorValue]
@@ -35,118 +37,49 @@ class MissingSelectorsError(ValueError):
         )
 
 
-# A ``run-flow`` step's ``data:`` is flow arguments, not selectors: a child
-# param that happens to be called ``ref`` is a literal value.
-LITERAL_KEYS = frozenset({"data"})
-
-
-def is_ref(key: str, value: Any) -> bool:
-    """A ``{ref: name}`` mapping standing in for a selector."""
-    return key not in LITERAL_KEYS and isinstance(value, dict) and set(value) == {"ref"}
-
-
 class RefSite(NamedTuple):
-    """One place a document names a selector by ref, and how to fill it in."""
+    """One model whose ``selector`` is a ref, and the name it asks for."""
 
+    owner: Any
     ref: str
-    apply: Callable[[SelectorValue], None]
 
 
-def write_at(target: dict[str, Any], key: str) -> Callable[[SelectorValue], None]:
-    def apply(spec: SelectorValue) -> None:
-        target[key] = spec
-
-    return apply
-
-
-def write_selector(target: dict[str, Any]) -> Callable[[SelectorValue], None]:
-    def apply(spec: SelectorValue) -> None:
-        target.pop("ref")
-        target["selector"] = spec
-
-    return apply
+def step_ref_sites(step: Step) -> Iterator[RefSite]:
+    """Every ref site one step owns — its own selector and its ``fields:`` /
+    ``read:`` entries' — never an embedded sub-flow's: a child step resolves
+    its own refs when it runs."""
+    for owner in (step, *step.fields, *step.read.values()):
+        selector = getattr(owner, "selector", None)
+        if isinstance(selector, RefSelector):
+            yield RefSite(owner, selector.ref)
 
 
-def write_field_selector(field: dict[str, Any]) -> Callable[[SelectorValue], None]:
-    """A field takes a mapping carrying ``id`` as its own ``id``, ignoring that
-    mapping's other keys; anything else, a string included, lands under
-    ``selector``."""
-
-    def apply(spec: SelectorValue) -> None:
-        field.pop("ref")
-        if isinstance(spec, dict) and "id" in spec:
-            field["id"] = spec["id"]
-        else:
-            field["selector"] = spec
-
-    return apply
-
-
-def step_ref_sites(step: dict[str, Any]) -> Iterator[RefSite]:
-    """Every ref one step names, never an embedded ``flow:``'s — that is
-    :func:`document_ref_sites`' business. Step-level ``ref:`` is yielded after
-    the selector-valued keys so it wins on a step carrying both."""
-    for key, value in step.items():
-        if is_ref(key, value):
-            yield RefSite(str(value["ref"]), write_at(step, key))
-    if "ref" in step and not isinstance(step["ref"], dict):
-        yield RefSite(str(step["ref"]), write_selector(step))
-    fields = step.get("fields")
-    if isinstance(fields, list):
-        for field in fields:
-            if isinstance(field, dict) and "ref" in field:
-                yield RefSite(str(field["ref"]), write_field_selector(field))
-    read = step.get("read")
-    if isinstance(read, dict):
-        for spec in read.values():
-            if isinstance(spec, dict) and "ref" in spec:
-                yield RefSite(str(spec["ref"]), write_selector(spec))
-
-
-def document_ref_sites(document: dict[str, Any]) -> Iterator[RefSite]:
-    steps = document.get("steps")
-    if not isinstance(steps, list):
-        return
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
+def flow_ref_sites(flow: Flow) -> Iterator[RefSite]:
+    for step in flow.steps:
         yield from step_ref_sites(step)
-        child = step.get("flow")
-        if isinstance(child, dict):
-            yield from document_ref_sites(child)
+        if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+            yield from flow_ref_sites(step.flow)
 
 
-def selector_refs(document: Mapping[str, Any]) -> list[str]:
-    """Every ref the document needs, sub-flows included, sorted and unique —
-    what a host builds its map from before expanding."""
-    return sorted({site.ref for site in document_ref_sites(dict(document))})
+def selector_refs(flow: Flow) -> list[str]:
+    """Every ref the flow names, sub-flows included, sorted and unique — what
+    a host builds its map from."""
+    return sorted({site.ref for site in flow_ref_sites(flow)})
 
 
-def fill_sites(sites: list[RefSite], selector_map: SelectorMap) -> None:
-    missing = sorted({site.ref for site in sites if site.ref not in selector_map})
-    if missing:
-        raise MissingSelectorsError(missing, sorted(selector_map))
-    for site in sites:
-        site.apply(selector_map[site.ref])
+def missing_selectors(flow: Flow, selector_map: SelectorMap) -> list[str]:
+    """The refs the flow needs and the map lacks, sorted and unique."""
+    return [ref for ref in selector_refs(flow) if ref not in selector_map]
 
 
-def expand_selector_refs(
-    document: Mapping[str, Any], selector_map: SelectorMap
-) -> dict[str, Any]:
-    """Replace every ``ref:`` in the document — the parent's steps and any
-    embedded sub-flow's — with its selector. Raises
+def resolve_step_refs(step: Step, selector_map: SelectorMap | None) -> None:
+    """Swap every ref in ``step`` for the map's selector, in place — the step
+    is ``resolve_step``'s own fresh copy. Raises
     :class:`MissingSelectorsError` naming every ref the map lacks."""
-    expanded = copy.deepcopy(dict(document))
-    fill_sites(list(document_ref_sites(expanded)), selector_map)
-    return expanded
-
-
-def resolve_refs(
-    step_dict: dict[str, Any],
-    selector_map: SelectorMap,
-) -> dict[str, Any]:
-    """One step's refs expanded, the same way :func:`expand_selector_refs`
-    expands a whole document's."""
-    resolved = copy.deepcopy(dict(step_dict))
-    fill_sites(list(step_ref_sites(resolved)), selector_map)
-    return resolved
+    available = selector_map or {}
+    sites = list(step_ref_sites(step))
+    missing = sorted({site.ref for site in sites if site.ref not in available})
+    if missing:
+        raise MissingSelectorsError(missing, sorted(available))
+    for site in sites:
+        site.owner.selector = parse_selector(available[site.ref])
