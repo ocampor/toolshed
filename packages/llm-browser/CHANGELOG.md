@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.18.2 — unreleased
+## 0.18.2 — 2026-09-16
 
 ### Changed
 
@@ -12,7 +12,7 @@
   raising, so the hover menu its own path opened closes behind it
   (ocampor/browser-api#47).
 
-## 0.18.1 — unreleased
+## 0.18.1 — 2026-09-16
 
 ### Added
 
@@ -35,7 +35,7 @@
 - Camoufox moves the pointer in its own native Bézier, so its clicks never take
   this path and are not hit-tested.
 
-## 0.18.0 — unreleased
+## 0.18.0 — 2026-09-16
 
 ### Changed
 
