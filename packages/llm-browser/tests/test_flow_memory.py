@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.flows import load_flow_document, load_flow_text, run_flow
+from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.redact import redact_secrets
 from llm_browser.results import BytesResult
@@ -32,14 +32,6 @@ def test_load_flow_text_parses_steps() -> None:
     flow = load_flow_text(_flow_yaml([{"name": "s1", "action": "goto", "url": "u"}]))
     assert isinstance(flow, Flow)
     assert flow.steps[0].name == "s1"
-
-
-def test_load_flow_document_expands_selector_refs() -> None:
-    flow = load_flow_document(
-        {"steps": [{"name": "s", "action": "click", "ref": "ui.button"}]},
-        selector_map={"ui.button": {"id": "the-button"}},
-    )
-    assert "the-button" in str(flow.steps[0])
 
 
 def test_load_flow_text_rejects_an_unresolved_reference() -> None:

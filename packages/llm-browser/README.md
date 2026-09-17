@@ -18,7 +18,7 @@ resolve_flow / resolve_flow_text   inline every run-flow child (async, the only 
    ▼
 load_flow_document / load_flow_text   pure pydantic validation → Flow
    ▼
-run_flow(session, flow, data)
+run_flow(session, flow, data, selector_map=…)   every ref: resolved per step (see docs/FLOWS.md)
 ```
 
 Running a flow steps down through four layers, each narrower than the one above:

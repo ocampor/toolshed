@@ -10,7 +10,13 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from llm_browser.cli import file_path, main, resolve_flow_options, run_cli_flow
+from llm_browser.cli import (
+    file_path,
+    flow_with_selector_map,
+    main,
+    resolve_flow_options,
+    run_cli_flow,
+)
 from llm_browser.flows import load_flow_document
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
@@ -142,6 +148,7 @@ def test_validate_accepts_every_inline_source(args: list[str], stdin: str) -> No
         "flow": "<inline>",
         "step_count": 1,
         "subflow_count": 0,
+        "missing_selectors": [],
     }
 
 
@@ -176,6 +183,58 @@ def test_validate_reports_a_missing_flow_file(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["validate", "--flow", str(tmp_path / "no.yaml")])
     assert result.exit_code == 1
     assert json.loads(result.stderr)["error"] == "FlowNotFoundError"
+
+
+REF_YAML = yaml.dump({"steps": [{"name": "s1", "action": "click", "ref": "ui.button"}]})
+
+
+@pytest.mark.parametrize("command", ["run", "validate"])
+def test_a_ref_the_map_lacks_fails_naming_the_ref(command: str, tmp_path: Path) -> None:
+    empty_map = tmp_path / "selector_map.yaml"
+    empty_map.write_text(yaml.dump({"other": {"thing": {"id": "x"}}}))
+
+    result = CliRunner().invoke(
+        main, [command, "--flow-yaml", REF_YAML, "--selector-map", str(empty_map)]
+    )
+
+    assert result.exit_code == 1
+    report = json.loads(result.stderr)
+    assert report["ok"] is False
+    assert report["missing_selectors"] == ["ui.button"]
+
+
+@pytest.mark.parametrize("command", ["run", "validate"])
+def test_a_selector_map_path_that_is_not_there_fails_naming_the_file(
+    command: str,
+) -> None:
+    result = CliRunner().invoke(
+        main, [command, "--flow-yaml", REF_YAML, "--selector-map", "no-such-map.yaml"]
+    )
+    assert result.exit_code == 1
+    assert "selector map not found: no-such-map.yaml" in result.stderr
+
+
+def test_a_ref_less_flow_never_reads_the_map_file(tmp_path: Path) -> None:
+    loaded = flow_with_selector_map(FLOW_DOCUMENT, str(tmp_path / "absent.yaml"))
+    assert loaded.selector_map is None
+    assert loaded.missing == []
+
+
+def test_validate_reports_nothing_missing_when_the_map_has_every_ref(
+    tmp_path: Path,
+) -> None:
+    selector_map = tmp_path / "selector_map.yaml"
+    selector_map.write_text(yaml.dump({"ui": {"button": {"id": "the-button"}}}))
+
+    result = CliRunner().invoke(
+        main,
+        ["validate", "--flow-yaml", REF_YAML, "--selector-map", str(selector_map)],
+    )
+
+    assert result.exit_code == 0
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["missing_selectors"] == []
 
 
 def test_validate_rejects_two_sources() -> None:

@@ -574,53 +574,6 @@ def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
         load_flow_file(parent)
 
 
-def test_load_flow_resolves_refs_with_selector_map(tmp_path: Path) -> None:
-    """`load_flow_file(path, selector_map=...)` expands `ref:` into
-    concrete `selector:` via pydantic's before-validator."""
-    flow_file = _write_named_flow(
-        tmp_path,
-        "f.yaml",
-        [{"name": "click-x", "action": "click", "ref": "ui.button"}],
-    )
-    selector_map = {"ui.button": {"id": "the-button"}}
-    flow = load_flow_file(flow_file, selector_map=selector_map)
-    step = flow.steps[0]
-    # Selector survived validation as the resolved spec.
-    assert step.selector.id == "the-button"  # type: ignore[union-attr]
-
-
-def test_load_flow_unknown_ref_fails(tmp_path: Path) -> None:
-    """Unknown ref raises at load time, not deferred into a
-    'selector required' cascade."""
-    flow_file = _write_named_flow(
-        tmp_path,
-        "f.yaml",
-        [{"name": "click-x", "action": "click", "ref": "ui.missing"}],
-    )
-    with pytest.raises(ValueError, match="not found in selector_map"):
-        load_flow_file(flow_file, selector_map={"ui.button": {"id": "x"}})
-
-
-def test_load_flow_resolves_refs_in_subflow(tmp_path: Path) -> None:
-    """The selector map expands refs in the embedded child too."""
-    _write_named_flow(
-        tmp_path,
-        "child.yaml",
-        [{"name": "click-y", "action": "click", "ref": "ui.button"}],
-    )
-    parent = _write_named_flow(
-        tmp_path,
-        "parent.yaml",
-        [{"name": "include", "action": "run-flow", "flow": "child.yaml"}],
-    )
-    flow = load_flow_file(parent, selector_map={"ui.button": {"id": "the-button"}})
-    runflow = flow.steps[0]
-    assert isinstance(runflow, RunFlowStep)
-    assert isinstance(runflow.flow, SubFlow)
-    child_step = runflow.flow.steps[0]
-    assert child_step.selector.id == "the-button"  # type: ignore[union-attr]
-
-
 def test_run_flow_when_skips_subflow(tmp_path: Path, mock_session: MagicMock) -> None:
     _write_named_flow(
         tmp_path,

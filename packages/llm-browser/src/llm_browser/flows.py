@@ -29,7 +29,7 @@ from llm_browser.models import (
     SubFlow,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
-from llm_browser.selector_map import SelectorMap, resolve_refs
+from llm_browser.selector_map import SelectorMap
 from llm_browser.session import BrowserSession
 from llm_browser.steps import execute_step, resolve_step, should_skip
 
@@ -38,36 +38,8 @@ def load_flow_text(text: str) -> Flow:
     return load_flow_document(parse_flow_yaml(text))
 
 
-def load_flow_document(
-    document: Mapping[str, Any],
-    *,
-    selector_map: SelectorMap | None = None,
-) -> Flow:
-    """``selector_map`` expands every ``ref:`` in the document — the parent's
-    steps and any embedded sub-flow's — before validation."""
-    if selector_map is not None:
-        document = expand_selector_refs(document, selector_map)
+def load_flow_document(document: Mapping[str, Any]) -> Flow:
     return Flow.model_validate(document)
-
-
-def expand_selector_refs(
-    document: Mapping[str, Any], selector_map: SelectorMap
-) -> dict[str, Any]:
-    steps = document.get("steps")
-    if not isinstance(steps, list):
-        return dict(document)
-    expanded = [expand_step_selector_refs(step, selector_map) for step in steps]
-    return {**document, "steps": expanded}
-
-
-def expand_step_selector_refs(step: Any, selector_map: SelectorMap) -> Any:
-    if not isinstance(step, dict):
-        return step
-    resolved = resolve_refs(step, selector_map)
-    child = resolved.get("flow")
-    if isinstance(child, Mapping):
-        resolved["flow"] = expand_selector_refs(child, selector_map)
-    return resolved
 
 
 def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:
@@ -86,6 +58,7 @@ def run_flow(
     from_step: str | None = None,
     redact: Iterable[str] = (),
     behavior: Behavior | None = None,
+    selector_map: SelectorMap | None = None,
 ) -> FlowResult:
     """``from_step`` does not propagate into sub-flows; children always run
     top-to-bottom. ``redact`` scrubs every text the result carries — outputs,
@@ -94,11 +67,22 @@ def run_flow(
     ``behavior`` is this run's humanization default: every step takes it
     unless it sets its own ``humanize``. It is carried down to each step
     rather than written onto the session, so the session a caller passed in
-    comes back out of the run exactly as it went in."""
+    comes back out of the run exactly as it went in.
+
+    ``selector_map`` supplies every ``ref:`` selector the flow names, its
+    sub-flows' included, as each step runs; check with
+    :func:`~llm_browser.selector_map.missing_selectors` first, because a ref
+    the map lacks raises
+    :class:`~llm_browser.selector_map.MissingSelectorsError` mid-run."""
     secrets = clean_secrets(redact)
     with redacting_logs(secrets):
         result = run_loaded_flow(
-            session, flow, data, from_step=from_step, behavior=behavior
+            session,
+            flow,
+            data,
+            from_step=from_step,
+            behavior=behavior,
+            selector_map=selector_map,
         )
     ran_as = profile(behavior if behavior is not None else session.behavior)
     if isinstance(result, FlowSuccess):
@@ -148,6 +132,7 @@ def run_loaded_flow(
     *,
     from_step: str | None = None,
     behavior: Behavior | None = None,
+    selector_map: SelectorMap | None = None,
 ) -> FlowSuccess | FlowError:
     """``SubFlow``'s leaf-only constraint bounds the recursion at depth one.
     ``behavior`` defaults every step of this flow and its sub-flows."""
@@ -161,9 +146,9 @@ def run_loaded_flow(
             return repeat_data_error(step, exc, outputs, skipped)
         for index, pass_data in passes:
             outcome: ActionResult | FlowSuccess | FlowError = (
-                run_subflow(session, step, pass_data, behavior)
+                run_subflow(session, step, pass_data, behavior, selector_map)
                 if isinstance(step, RunFlowStep)
-                else execute_step(session, step, pass_data, behavior)
+                else execute_step(session, step, pass_data, behavior, selector_map)
             )
             if isinstance(outcome, FlowError):
                 # A sub-flow failure already carries the child's outputs;
@@ -197,12 +182,13 @@ def run_subflow(
     step: RunFlowStep,
     flow_data: FlowData,
     behavior: Behavior | None = None,
+    selector_map: SelectorMap | None = None,
 ) -> FlowSuccess | FlowError:
     """A skipped step comes back as an empty success; a swallowed
     ``optional:`` failure comes back as a success carrying the child's
     partial outputs, so the parent advances without losing that work. Either
     way the step is named in ``skipped``, child skips included."""
-    resolved = resolve_step(step, flow_data)
+    resolved = resolve_step(step, flow_data, selector_map)
     if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
         raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
     if should_skip(session, resolved, flow_data):
@@ -213,7 +199,11 @@ def run_subflow(
             ],
         )
     result = run_loaded_flow(
-        session, resolved.flow, child_data(flow_data, resolved.data), behavior=behavior
+        session,
+        resolved.flow,
+        child_data(flow_data, resolved.data),
+        behavior=behavior,
+        selector_map=selector_map,
     )
     if isinstance(result, FlowError) and resolved.optional:
         return FlowSuccess(

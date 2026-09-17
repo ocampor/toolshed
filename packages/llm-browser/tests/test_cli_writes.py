@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from llm_browser.cli import main
+from llm_browser.cli import declared_paths, main
+from llm_browser.flows import load_flow_document
 from llm_browser.models import FlowError, FlowResult, FlowSuccess
 from llm_browser.results import BytesResult, ErrorResult
 
@@ -388,3 +389,22 @@ def test_an_unknown_capture_level_is_a_usage_error(cli_run: Any) -> None:
         main, ["run", "--flow", "flow.yml", "--capture-level", "nonsense"]
     )
     assert outcome.exit_code == 2
+
+
+def test_declared_paths_names_the_file_of_a_step_whose_selector_is_a_ref() -> None:
+    """Naming a file needs no selector: a host that ran the flow itself and
+    calls ``write_run`` must not lose its outputs to an unmapped ``ref:``."""
+    flow = load_flow_document(
+        {
+            "steps": [
+                {
+                    "name": "shot",
+                    "action": "screenshot",
+                    "ref": "ui.panel",
+                    "path": "out/panel.png",
+                }
+            ]
+        }
+    )
+
+    assert declared_paths(flow, {}) == {"shot": "out/panel.png"}

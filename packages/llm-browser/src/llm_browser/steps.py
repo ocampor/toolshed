@@ -13,6 +13,7 @@ from llm_browser.results import ActionResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME, WHEN_SKIP_REASON
 from llm_browser.models import FlowData, FlowError, Step, validate_step
 from llm_browser.probe import human_needed
+from llm_browser.selector_map import SelectorMap, resolve_step_refs
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
 
@@ -62,15 +63,17 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
     return False
 
 
-def resolve_step(step: Step, data: FlowData) -> Step:
+def resolve_step_templates(step: Step, data: FlowData) -> Step:
     """Resolve {{ template }} refs inside ``step`` against ``data`` and
-    return a freshly-validated Step. Idempotent — resolving a resolved
-    step is a no-op. Carries ``_parent`` (a private attr set during
-    flow load) across the round trip so qualified names survive.
+    return a freshly-validated Step, its ``ref:`` selectors untouched.
+    Idempotent — resolving a resolved step is a no-op. Carries ``_parent``
+    (a private attr set during flow load) across the round trip so qualified
+    names survive.
 
     A ``run-flow`` step's child body is left untemplated: the child resolves
     its own steps against its own data, so a parent param never substitutes a
-    name the step's ``data:`` binds."""
+    name the step's ``data:`` binds.
+    """
     raw = step.model_dump(exclude_none=True)
     child_flow = raw.pop("flow", None)
     resolved_raw = resolve_templates_in_dict(raw, data.to_template_dict())
@@ -78,6 +81,17 @@ def resolve_step(step: Step, data: FlowData) -> Step:
         resolved_raw["flow"] = child_flow
     resolved = validate_step(resolved_raw)
     resolved._parent = step._parent
+    return resolved
+
+
+def resolve_step(
+    step: Step, data: FlowData, selector_map: SelectorMap | None = None
+) -> Step:
+    """A step ready to execute: templates resolved and every ``ref:``
+    selector swapped for the one ``selector_map`` carries. A ref the map
+    lacks raises :class:`~llm_browser.selector_map.MissingSelectorsError`."""
+    resolved = resolve_step_templates(step, data)
+    resolve_step_refs(resolved, selector_map)
     return resolved
 
 
@@ -99,12 +113,13 @@ def execute_step(
     step: Step,
     data: FlowData,
     behavior: Behavior | None = None,
+    selector_map: SelectorMap | None = None,
 ) -> ActionResult | FlowError:
     """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
     ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it.
     ``behavior`` is the run's default, which the step's own ``humanize``
     refines."""
-    resolved = resolve_step(step, data)
+    resolved = resolve_step(step, data, selector_map)
     if should_skip(session, resolved, data):
         return SkippedResult(reason=WHEN_SKIP_REASON)
     action_result = execute_action(session, resolved, behavior)

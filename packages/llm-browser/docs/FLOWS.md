@@ -232,18 +232,48 @@ source (file | text | store)
    ▼
 resolve_flow / resolve_flow_text     inline every run-flow child (async, only I/O)
    ▼
-load_flow_document / load_flow_text  pure validation → Flow
+load_flow_document / load_flow_text  pure validation → Flow, ref: selectors and all
    ▼
-run_flow(session, flow, data)
+run_flow(session, flow, data, selector_map=…)   each ref: resolved as its step runs
 ```
 
 - `FileFlowRepository(base_dir)` — filesystem; a relative ref reads under `base_dir`, absolute refs are honoured as-is.
 - `DictFlowRepository(flows)` — flows already in hand, keyed by reference.
 - `LayeredFlowRepository(*layers)` — first layer with the reference wins.
 
+### Selector refs
+
+A step names a selector symbolically with `ref: <group>.<name>` — at step level, under `selector:`, or in a `fields[]` / `read[]` entry — and the map is consulted per step at run time, not at load time. A flow full of refs therefore validates on its own; `selector_refs(flow)` names what it will ask for, and `missing_selectors(flow, map)` names what a map lacks, sub-flows included, sorted and unique:
+
+```python
+import asyncio
+from pathlib import Path
+
+from llm_browser.flow_pipeline import resolve_flow
+from llm_browser.flow_repository import FileFlowRepository
+from llm_browser.flows import load_flow_document, run_flow
+from llm_browser.selector_map import (
+    load_selector_map,
+    missing_selectors,
+    selector_refs,
+)
+
+repo = FileFlowRepository(Path("flows"))
+flow = load_flow_document(asyncio.run(resolve_flow("invoice.yaml", repo)))
+needed = selector_refs(flow)                                 # ['invoice.cp', 'invoice.rfc']
+selector_map = load_selector_map(Path("selector_map.yaml"))  # or a dict from anywhere
+missing = missing_selectors(flow, selector_map)              # [] before you run
+result = run_flow(session, flow, {}, selector_map=selector_map)
+```
+
+- A map value is a selector in any accepted form: `{id: "x"}`, `{css: ".y"}`, or a plain string like `"text=Continue"`, which is used as the selector string.
+- One map serves a run: a sub-flow's refs resolve from the same one.
+- A ref the map lacks raises `MissingSelectorsError` (a `ValueError` carrying `.missing` and `.available`) as its step runs, so check `missing_selectors` first.
+- `llm-browser run` and `llm-browser validate` take the map as `--selector-map PATH`. A flow with no `ref:` never reads that file; a path that is not there fails naming it; a ref the map lacks exits non-zero, naming every one of them under `missing_selectors`, before the browser is touched.
+
 ## Running, outputs, and redaction
 
-`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes.
+`run_flow(session, flow, data, *, from_step=None, redact=(), behavior=None, selector_map=None)` runs a loaded `Flow` and never writes a file; pass `from_step=` to re-enter partway through. `FlowSuccess.outputs` (and a failing `FlowError.outputs`) holds every step result, keyed by step name (`"<run-flow step>/<step>"` inside a sub-flow): rows for `read`/`parse`, text for `dom`, a `BytesResult` (`name`, `content`, `media_type`) for `screenshot`/`download`. A step's `path:` is not consulted here — it is what `llm-browser run` writes under `--out-dir`; an embedding Python caller gets the value back and decides where, if anywhere, it goes.
 
 `redact=[...]` (e.g. `redact=[pw]`) replaces each listed value with `***` in the retry hint, the error payload, `outputs`, `FlowError.dom`, and every log record emitted during the run.
 

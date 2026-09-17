@@ -1,15 +1,21 @@
-"""Selector map: load a YAML file mapping symbolic names to selectors."""
+"""Selector map: load a YAML file mapping symbolic names to selectors, name the
+refs a flow needs, and swap each one for its selector as a step runs."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 
-SelectorMap = dict[str, dict[str, Any]]
+from llm_browser.models import Flow, RunFlowStep, Step, SubFlow
+from llm_browser.selectors import RefSelector, parse_selector
+
+SelectorValue = str | dict[str, Any]
+SelectorMap = dict[str, SelectorValue]
 
 
 def load_selector_map(path: Path) -> SelectorMap:
-    """Load a selector_map.yaml into a flat lookup: 'group.name' -> selector dict."""
+    """Load a selector_map.yaml into a flat lookup: 'group.name' -> selector."""
     raw = yaml.safe_load(path.read_text())
     flat: SelectorMap = {}
     for group_name, fields in raw.items():
@@ -18,77 +24,64 @@ def load_selector_map(path: Path) -> SelectorMap:
     return flat
 
 
-def _lookup(selector_map: SelectorMap, ref: str) -> dict[str, Any]:
-    """Look up ``ref`` in the selector map; raise ``ValueError`` with a
-    helpful message if it isn't there."""
-    if ref not in selector_map:
-        raise ValueError(
-            f"selector ref {ref!r} not found in selector_map; "
-            f"available: {sorted(selector_map)}"
+class MissingSelectorsError(ValueError):
+    """Every ref the map does not carry, named once, sorted."""
+
+    def __init__(self, missing: list[str], available: list[str]) -> None:
+        self.missing = missing
+        self.available = available
+        label = "selector ref" if len(missing) == 1 else "selector refs"
+        names = ", ".join(repr(name) for name in missing)
+        super().__init__(
+            f"{label} {names} not found in selector_map; available: {available}"
         )
-    return selector_map[ref]
 
 
-# A ``run-flow`` step's ``data:`` is flow arguments, not selectors: a child
-# param that happens to be called ``ref`` is a literal value.
-LITERAL_KEYS = frozenset({"data"})
+class RefSite(NamedTuple):
+    """One model whose ``selector`` is a ref, and the name it asks for."""
+
+    owner: Any
+    ref: str
 
 
-def is_ref(key: str, value: Any) -> bool:
-    """A ``{ref: name}`` mapping standing in for a selector."""
-    return key not in LITERAL_KEYS and isinstance(value, dict) and set(value) == {"ref"}
+def step_ref_sites(step: Step) -> Iterator[RefSite]:
+    """Every ref site one step owns — its own selector and its ``fields:`` /
+    ``read:`` entries' — never an embedded sub-flow's: a child step resolves
+    its own refs when it runs."""
+    for owner in (step, *step.fields, *step.read.values()):
+        selector = getattr(owner, "selector", None)
+        if isinstance(selector, RefSelector):
+            yield RefSite(owner, selector.ref)
 
 
-def resolve_refs(
-    step_dict: dict[str, Any],
-    selector_map: SelectorMap,
-) -> dict[str, Any]:
-    """Replace ``ref`` keys with actual selectors from the map.
+def flow_ref_sites(flow: Flow) -> Iterator[RefSite]:
+    for step in flow.steps:
+        yield from step_ref_sites(step)
+        if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+            yield from flow_ref_sites(step.flow)
 
-    Strict: raises ``ValueError`` for any ``ref`` not in
-    ``selector_map`` so a typo at flow-load time fails loudly instead
-    of cascading into a "selector required" error from the model
-    validator.
 
-    Handles:
-      - step-level: ``{"ref": "invoice.rfc"} -> {"selector": {"id": "135..."}}``
-      - any selector-valued key: ``{"selector": {"ref": "login.user"}}`` ->
-        the selector itself, which is how a step names a selector-valued
-        field by ref. ``data:`` is exempt — a sub-flow's arguments are
-        values, not selectors.
-      - field-level: ``fields[i]["ref"]`` -> resolved selector as
-        ``id`` (when the map entry is an id) or ``selector`` otherwise.
-      - read-level: ``read[key]["ref"]`` -> resolved as ``selector``.
-    """
-    result: dict[str, Any] = {
-        key: _lookup(selector_map, str(value["ref"])) if is_ref(key, value) else value
-        for key, value in step_dict.items()
-    }
+def selector_refs(flow: Flow) -> list[str]:
+    """Every ref in a selector position — a step's own, its ``fields:`` and
+    ``read:`` entries', sub-flows included — sorted and unique, which is what
+    a host builds its map from. A ``ref:`` under a ``when:`` predicate is not
+    such a position and is not named here."""
+    return sorted({site.ref for site in flow_ref_sites(flow)})
 
-    if "ref" in result:
-        ref = str(result.pop("ref"))
-        result["selector"] = _lookup(selector_map, ref)
 
-    if "fields" in result:
-        resolved_fields = []
-        for field in result["fields"]:
-            if "ref" in field:
-                ref = str(field.pop("ref"))
-                spec = _lookup(selector_map, ref)
-                if "id" in spec:
-                    field["id"] = spec["id"]
-                else:
-                    field["selector"] = spec
-            resolved_fields.append(field)
-        result["fields"] = resolved_fields
+def missing_selectors(flow: Flow, selector_map: SelectorMap) -> list[str]:
+    """The refs the flow needs and the map lacks, sorted and unique."""
+    return [ref for ref in selector_refs(flow) if ref not in selector_map]
 
-    if "read" in result:
-        resolved_read: dict[str, Any] = {}
-        for key, spec in result["read"].items():
-            if "ref" in spec:
-                ref = str(spec.pop("ref"))
-                spec["selector"] = _lookup(selector_map, ref)
-            resolved_read[key] = spec
-        result["read"] = resolved_read
 
-    return result
+def resolve_step_refs(step: Step, selector_map: SelectorMap | None) -> None:
+    """Swap every ref in ``step`` for the map's selector, in place — the step
+    is ``resolve_step``'s own fresh copy. Raises
+    :class:`MissingSelectorsError` naming every ref the map lacks."""
+    available = selector_map or {}
+    sites = list(step_ref_sites(step))
+    missing = sorted({site.ref for site in sites if site.ref not in available})
+    if missing:
+        raise MissingSelectorsError(missing, sorted(available))
+    for site in sites:
+        site.owner.selector = parse_selector(available[site.ref])
