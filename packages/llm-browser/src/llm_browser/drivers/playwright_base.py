@@ -15,12 +15,13 @@ from typing import Any, Callable, ClassVar, Protocol, cast
 
 from llm_browser.behavior import (
     Behavior,
+    HitTest,
     humanized_click,
     humanized_type,
 )
 from llm_browser.constants import READ_TIMEOUT_MS
 from llm_browser.drivers.base import Driver
-from llm_browser.results import BytesResult, guess_media_type
+from llm_browser.results import BytesResult, HitTarget, guess_media_type
 from llm_browser.scripts import extract_rows_js
 
 
@@ -140,8 +141,9 @@ class PlaywrightDriverBase(Driver):
         page: Any,
         locator: Any,
         behavior: Behavior,
-    ) -> None:
-        humanized_click(page, locator, behavior)
+        hit_test: HitTest | None = None,
+    ) -> HitTarget | None:
+        return humanized_click(page, locator, behavior, hit_test)
 
     def humanized_type(
         self,

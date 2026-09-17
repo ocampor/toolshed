@@ -1,5 +1,6 @@
 """The session's input methods: resolve, pace, pick the driver primitive."""
 
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.models import ClickStep
+from llm_browser.results import HitTarget
 from llm_browser.session_input import behavior_for, effective_behavior
 from llm_browser.session import BrowserSession
 
@@ -561,3 +563,107 @@ def test_a_library_bug_is_not_retried(session: BrowserSession) -> None:
         session.click("#btn")
 
     driver(session).scroll_into_view.assert_not_called()
+
+
+# --- the hit test a humanized click runs after its move ---
+
+COVERED = {
+    "target": False,
+    "hit": {"tag": "li", "text": "Estados de cuenta", "class_name": "menu-item"},
+}
+ON_TARGET = {
+    "target": True,
+    "hit": {"tag": "a", "text": "Salir", "class_name": "headerlogout"},
+}
+DESCENDANT = {
+    "target": True,
+    "hit": {"tag": "span", "text": "Salir", "class_name": "label"},
+}
+
+
+def humanized_page(session: BrowserSession, answer: dict[str, Any]) -> Any:
+    """Run the real humanized click over a page that answers ``answer`` when
+    asked what the pointer ended up over."""
+    session.behavior = Behavior.human()
+    element = MagicMock()
+    element.bounding_box.return_value = {
+        "x": 10.0,
+        "y": 20.0,
+        "width": 100.0,
+        "height": 40.0,
+    }
+    driver(session).first.return_value = element
+    driver(session).evaluate.return_value = answer
+    driver(session).humanized_click.side_effect = behavior_module.humanized_click
+    return session.get_page()
+
+
+def test_humanized_click_aborts_when_covered_after_move(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    page = humanized_page(session, COVERED)
+
+    with pytest.raises(ValueError) as failure:
+        session.click("#logout")
+
+    assert "covered-after-move" in str(failure.value)
+    assert all(part in str(failure.value) for part in ("li", "menu-item", "Estados"))
+    page.mouse.down.assert_not_called()
+    page.mouse.up.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        (ON_TARGET, HitTarget(tag="a", text="Salir", class_name="headerlogout")),
+        # The page owns the containment answer: the span inside the link is the
+        # target, so a hit whose tag differs is not a miss.
+        (DESCENDANT, HitTarget(tag="span", text="Salir", class_name="label")),
+    ],
+)
+def test_humanized_click_reports_what_the_pointer_was_over(
+    session: BrowserSession,
+    sleeps: list[float],
+    answer: dict[str, Any],
+    expected: HitTarget,
+) -> None:
+    page = humanized_page(session, answer)
+
+    assert session.click("#logout") == expected
+
+    page.mouse.down.assert_called_once()
+    # Asked about where the pointer actually stopped, not where `find` looked.
+    landed = page.mouse.move.call_args_list[-1].args
+    assert json.dumps(list(landed)) in driver(session).evaluate.call_args.args[1]
+
+
+def test_humanized_click_scrolls_the_target_into_view_before_moving(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """A target below the fold would be clicked at the clamped viewport edge,
+    on whatever sits there — so the pointer never travels to an offscreen box."""
+    humanized_page(session, ON_TARGET)
+
+    session.click("#logout")
+
+    called = [name for name, *_ in driver(session).method_calls]
+    assert called.index("scroll_into_view") < called.index("humanized_click")
+
+
+def test_a_hit_test_that_cannot_run_fails_the_step(
+    session: BrowserSession, sleeps: list[float]
+) -> None:
+    """A navigation during the dwell destroys the context; pressing blind is
+    the failure the gate exists to stop, so it fails as a step instead."""
+    page = humanized_page(session, ON_TARGET)
+    driver(session).evaluate.side_effect = RuntimeError(
+        "Execution context was destroyed"
+    )
+
+    with pytest.raises(ValueError, match="hit-test-failed"):
+        session.click("#logout")
+
+    page.mouse.down.assert_not_called()
+    # Bounded: a detached target must not buy the driver's 30 s default with
+    # the pointer sitting on the page.
+    assert driver(session).evaluate.call_args.kwargs["timeout_ms"] > 0

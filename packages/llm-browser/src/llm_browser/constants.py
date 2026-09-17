@@ -93,6 +93,15 @@ PROBE_PASSWORD_PLACEHOLDER = "PASSWORD_SELECTOR_JSON"
 PROBE_CHALLENGE_PLACEHOLDER = "CHALLENGE_SELECTOR_JSON"
 PROBE_MAX_CHARS_PLACEHOLDER = "MAX_CHARS_INT"
 
+# Bounds the hit test a humanized click runs between its move and its
+# mouse-down, so a detached target cannot buy the driver's 30 s default while
+# the pointer sits pressed-ready on the page.
+HIT_TEST_TIMEOUT_MS = 1_000
+
+# Substituted into ``js/hit_test.js``.
+HIT_POINT_PLACEHOLDER = "HIT_POINT_JSON"
+HIT_TEXT_MAX_PLACEHOLDER = "HIT_TEXT_MAX_INT"
+
 # Substituted into ``js/extract_rows.js``.
 EXTRACT_PROPERTIES_PLACEHOLDER = "EXTRACT_PROPERTIES_JSON"
 

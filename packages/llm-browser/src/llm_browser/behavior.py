@@ -22,6 +22,12 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from llm_browser.results import HitTarget
+
+# Asked what the pointer ended up over, between the move and the mouse-down.
+# Raising is how it refuses the click; ``None`` means nobody looked.
+HitTest = Callable[[tuple[float, float]], HitTarget | None]
+
 PUNCTUATION = ".,?!;:\n"
 
 # How far off the straight line the Bézier control point may sit, as a
@@ -200,20 +206,28 @@ def jittered_delta(delta: int, behavior: Behavior) -> int:
     return round(delta * (1.0 + random.uniform(-spread, spread)))
 
 
-def humanized_click(page: Any, element: Any, behavior: Behavior) -> None:
+def humanized_click(
+    page: Any, element: Any, behavior: Behavior, hit_test: HitTest | None = None
+) -> HitTarget | None:
     """Approach on a curve, dwell, then press and release with a gap.
 
     Trail shape, hover dwell, offset entropy and press duration are the four
     things a behavioral score reads off a pointer, so no part of this is a
     constant.
+
+    The dwell is also when a menu the path opened finishes appearing, so
+    ``hit_test`` is asked where the pointer actually ended, after it, and its
+    refusal is what stops the press.
     """
     jittered_sleep(behavior.pre_click_pause)
     target = jittered_target(element, behavior)
-    move_mouse_to(page, target, path_steps(behavior))
+    landed = move_mouse_to(page, target, path_steps(behavior))
     jittered_sleep(behavior.hover_dwell)
+    hit = hit_test(landed) if hit_test is not None else None
     page.mouse.down()
     jittered_sleep(behavior.press_hold)
     page.mouse.up()
+    return hit
 
 
 def humanized_type(page: Any, element: Any, text: str, behavior: Behavior) -> None:
@@ -260,11 +274,18 @@ def type_chars(send: Callable[[str], None], text: str, behavior: Behavior) -> No
             jittered_sleep(pause)
 
 
-def move_mouse_to(page: Any, target: tuple[float, float], steps: int) -> None:
+def move_mouse_to(
+    page: Any, target: tuple[float, float], steps: int
+) -> tuple[float, float]:
+    """Walk the path and answer where the pointer ended: clamping can leave it
+    short of ``target``, and a hit test asks about the point it is really on."""
     bounds = viewport_size(page)
+    landed = clamp_to_viewport(target, bounds)
     for point in curve_points(approach_start(target), target, steps):
-        page.mouse.move(*clamp_to_viewport(point, bounds))
+        landed = clamp_to_viewport(point, bounds)
+        page.mouse.move(*landed)
         jittered_sleep(MOUSE_STEP_PAUSE)
+    return landed
 
 
 def approach_start(target: tuple[float, float]) -> tuple[float, float]:

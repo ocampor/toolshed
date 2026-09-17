@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import patchright
 import pytest
 
 from llm_browser import constants
@@ -19,6 +20,14 @@ from llm_browser.scripts import (
     load_script,
     survey_js,
 )
+
+# These scripts run in a browser, but a plain JS runtime proves their
+# semantics — and patchright ships the node its own driver runs on, so they
+# run wherever the package is installed, CI included.
+JS_RUNTIME = shutil.which("node") or str(
+    Path(patchright.__file__).parent / "driver" / "node"
+)
+HAS_JS_RUNTIME = Path(JS_RUNTIME).exists()
 
 
 def test_extract_rows_js_is_a_rows_spec_function() -> None:
@@ -71,7 +80,7 @@ console.log(JSON.stringify(EXTRACT([row], spec)));
 """
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
     """Run the real script over fake elements: property reads, attributes,
     a missing child, and a null child_selector meaning the row itself."""
@@ -80,7 +89,7 @@ def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
         f"const EXTRACT = {extract_rows_js()};\n{FAKE_DOM_HARNESS}",
     )
     out = subprocess.run(
-        ["node", str(script)], capture_output=True, text=True, check=True
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
     )
     assert json.loads(out.stdout) == [
         {
@@ -151,12 +160,12 @@ def run_select_harness(
         f"const SELECT = {select_option_js(value)};\n{body}"
     )
     out = subprocess.run(
-        ["node", str(script)], capture_output=True, text=True, check=True
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
     )
     return dict(json.loads(out.stdout))
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -174,7 +183,7 @@ def test_select_option_js_picks_or_says_why_not(
     assert run_select_harness(value, tmp_path) == expected
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_disabled_optgroup_is_its_own_answer(tmp_path: Path) -> None:
     """`parentElement.disabled` blamed the option; an option inside a disabled
     `<optgroup>` has no `disabled` of its own and used to be chosen."""
@@ -182,14 +191,14 @@ def test_a_disabled_optgroup_is_its_own_answer(tmp_path: Path) -> None:
     assert result == {"outcome": "group-disabled", **UNTOUCHED}
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_disabled_select_is_its_own_answer(tmp_path: Path) -> None:
     """Not "the option is disabled": the option is fine, the control is not."""
     result = run_select_harness("c", tmp_path, select_disabled=True)
     assert result == {"outcome": "select-disabled", **UNTOUCHED}
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
     """The Playwright family resolves one before acting; rejecting it here
     would make nodriver refuse a target the others accept."""
@@ -197,7 +206,7 @@ def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
     assert run_select_harness("c", tmp_path, target=label) == CHOSE_C
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_anything_else_is_not_a_select(tmp_path: Path) -> None:
     assert run_select_harness("c", tmp_path, target='{ tagName: "DIV" }') == {
         "outcome": "not-a-select",
@@ -302,3 +311,66 @@ def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
     assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
     assert "doc.querySelectorAll(selector).length" in source
     assert constants.SURVEY_COUNT_PLACEHOLDER not in source
+
+
+HIT_HARNESS = """
+const el = (tag, text, cls) => ({
+  tagName: tag,
+  innerText: text,
+  getAttribute: (name) => (name === "class" ? cls : null),
+  contains(node) { return node === this; },
+});
+const link = el("A", "Salir", "headerlogout");
+const span = el("SPAN", "Salir", "label");
+const menu = el("LI", "Estados de cuenta", "menu-item");
+const page = el("HTML", "", "");
+const label = el("LABEL", "Remember me", "field-label");
+link.contains = (node) => node === link || node === span;
+page.contains = () => true;
+label.closest = (sel) => (sel === "label" ? label : null);
+label.control = link;
+globalThis.document = { elementFromPoint: () => AT };
+console.log(JSON.stringify(HIT(link)));
+"""
+
+
+def run_hit_harness(at: str, tmp_path: Path) -> dict[str, object]:
+    from llm_browser.scripts import hit_test_js
+
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const HIT = {hit_test_js((12.0, 34.0))}\n{HIT_HARNESS.replace('AT', at)}"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    return dict(json.loads(out.stdout))
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+@pytest.mark.parametrize(
+    ("at", "expected"),
+    [
+        ("link", {"target": True, "tag": "a", "class_name": "headerlogout"}),
+        # The hit lands on the innermost node, so the span inside the link is
+        # the link: a descendant is never a cover.
+        ("span", {"target": True, "tag": "span", "class_name": "label"}),
+        ("menu", {"target": False, "tag": "li", "class_name": "menu-item"}),
+        # An ancestor under the pointer means the point fell in a gap in the
+        # target's own box — the press would go to the ancestor.
+        ("page", {"target": False, "tag": "html", "class_name": ""}),
+        ("label", {"target": True, "tag": "label", "class_name": "field-label"}),
+        ("null", {"target": True, "tag": None, "class_name": None}),
+    ],
+)
+def test_hit_test_js_says_what_the_point_is_over(
+    at: str, expected: dict[str, object], tmp_path: Path
+) -> None:
+    read = run_hit_harness(at, tmp_path)
+    hit = read["hit"] or {}
+
+    assert {
+        "target": read["target"],
+        "tag": hit.get("tag"),  # type: ignore[union-attr]
+        "class_name": hit.get("class_name"),  # type: ignore[union-attr]
+    } == expected

@@ -9,10 +9,10 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 
-from llm_browser.behavior import Behavior, type_chars
+from llm_browser.behavior import Behavior, HitTest, type_chars
 from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.drivers.handle import DriverHandle
-from llm_browser.results import BytesResult
+from llm_browser.results import BytesResult, HitTarget
 
 
 class Driver(ABC):
@@ -129,9 +129,15 @@ class Driver(ABC):
         page: Any,
         locator: Any,
         behavior: Behavior,
-    ) -> None:
-        """Humanized click — rule 2; the default fits a natively humanized click."""
+        hit_test: HitTest | None = None,
+    ) -> HitTarget | None:
+        """Humanized click — rule 2; the default fits a natively humanized click.
+
+        A driver that moves the pointer itself owns the hit test too: the
+        default never moves it, so there is no point to re-check.
+        """
         self.click(locator)
+        return None
 
     def humanized_type(
         self,

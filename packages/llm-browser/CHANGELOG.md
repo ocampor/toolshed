@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.18.1 — unreleased
+
+### Added
+
+- `session.click(...)` answers the `HitTarget` (`tag`, `text`, `class_name`) the
+  press landed on, or `None` when nothing hit-tested the point. Flow steps and
+  CLI output are unchanged: no action result carries it yet.
+
+### Fixed
+
+- A humanized `click` scrolls its target into view, then re-runs the hit test at
+  the pointer's final position, after the Bézier move and before mouse-down, and
+  fails with `not actionable: covered-after-move` naming the covering element
+  instead of clicking a menu its own path opened (ocampor/browser-api#47). A hit
+  test that cannot be run — a navigation destroyed the context, the target
+  detached — fails the step as `not actionable: hit-test-failed` rather than
+  pressing blind; `optional: true` swallows both.
+
+### Known limitations
+
+- Camoufox moves the pointer in its own native Bézier, so its clicks never take
+  this path and are not hit-tested.
+
 ## 0.18.0 — unreleased
 
 ### Changed

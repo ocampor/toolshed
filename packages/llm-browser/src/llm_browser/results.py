@@ -80,6 +80,16 @@ class VoidResult(ActionResult):
     """Action succeeded with no payload (click, fill, select, press, ...)."""
 
 
+class HitTarget(BaseModel):
+    """The element the pointer was actually over when a click fired — the
+    target or a descendant of it, since a humanized click that ends over
+    anything else fails instead."""
+
+    tag: str
+    text: str = ""
+    class_name: str = ""
+
+
 class BytesResult(ActionResult):
     """Bytes an action produced — a screenshot, a downloaded file.
 

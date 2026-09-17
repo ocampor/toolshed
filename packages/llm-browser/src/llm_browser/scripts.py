@@ -108,6 +108,22 @@ def count_selectors_js(selectors: list[str]) -> str:
     )
 
 
+def hit_test_js(point: tuple[float, float]) -> str:
+    """``(el) => {target, hit}`` — what sits at ``point`` and whether it is ``el``.
+
+    ``hit`` describes the element the way ``explore`` describes a cover, with
+    the same text cap, and is null when the point is over nothing.
+    """
+    return (
+        load_script("hit_test")
+        .replace(constants.HIT_POINT_PLACEHOLDER, json.dumps(list(point)))
+        .replace(
+            constants.HIT_TEXT_MAX_PLACEHOLDER,
+            str(constants.EXPLORE_COVER_TEXT_MAX_CHARS),
+        )
+    )
+
+
 def select_option_js(value: str) -> str:
     """``(el) => "ok"`` or one of the ``SELECT_FAILURES`` keys, for one value."""
     return load_script("select_option").replace(
