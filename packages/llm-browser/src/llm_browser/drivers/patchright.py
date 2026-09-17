@@ -124,11 +124,8 @@ class PatchrightDriver(PlaywrightDriverBase):
 
     @contextmanager
     def _playwright_session(self) -> Iterator[Playwright]:
-        """Start Playwright if we have none, and undo that if the body raises.
-
-        A half-built driver must not leave patchright's event loop running:
-        every later ``asyncio.run()`` in this process would die on it. A
-        Playwright we did not start belongs to an earlier call — leave it.
+        """A Playwright we did not start belongs to an earlier call; a half-built
+        driver must not leave the event loop running.
         """
         started = self._playwright is None
         if self._playwright is None:
@@ -140,6 +137,7 @@ class PatchrightDriver(PlaywrightDriverBase):
             if started:
                 playwright.stop()
                 self._playwright = None
+                self._browser = self._context = self._page = None
             raise
 
     def _reattach_or_raise(self, handle: DriverHandle) -> None:
@@ -167,12 +165,10 @@ class PatchrightDriver(PlaywrightDriverBase):
     def _connect(self, cdp_url: str) -> BrowserContext:
         """Return the context we operate in, reusing a live connection.
 
-        Re-attaching must not start a second Playwright or a second CDP
-        connection: the previous ones would be orphaned, leaking the node
-        driver process and the websocket.
+        Re-attaching must not open a second CDP connection: the previous one
+        would be orphaned, leaking the websocket.
         """
-        if self._playwright is None:
-            self._playwright = start_playwright()
+        assert self._playwright is not None
         if self._browser is None or not self._browser.is_connected():
             self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
         self._context = _first_context_or_new(self._browser)
