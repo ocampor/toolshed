@@ -125,7 +125,11 @@ def action_check(
     session: BrowserSession, step: CheckStep, behavior: Behavior
 ) -> VoidResult:
     session.set_checked(
-        step.selector, step.checked, behavior=behavior, timeout=step.timeout
+        step.selector,
+        step.checked,
+        dispatch=step.dispatch,
+        behavior=behavior,
+        timeout=step.timeout,
     )
     return VoidResult()
 

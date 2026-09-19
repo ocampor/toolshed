@@ -18,13 +18,6 @@ PREFILLED = "prefilled-autocomplete.html"
 STUBBORN = "fill-does-not-stick.html"
 HIDDEN = "hidden-checkbox.html"
 
-NO_CHECK_DISPATCH = "check has no dispatch: key, so a hidden box is never reached"
-ALL_DRIVERS = ("patchright", "camoufox", "nodriver")
-
-
-def on_every_driver(gap: str) -> dict[str, str]:
-    return dict.fromkeys(ALL_DRIVERS, gap)
-
 
 def run(
     ctx: Context, page: str, flow: str, behavior: Behavior
@@ -177,8 +170,7 @@ SCENARIOS = [
         "hidden checkbox dispatch",
         Section.STEPS,
         a_hidden_checkbox_can_be_checked_when_dispatched,
-        known_gaps=on_every_driver(NO_CHECK_DISPATCH),
-        covers=frozenset({"step:check"}),
+        covers=frozenset({"field:check.dispatch"}),
     ),
     Scenario(
         "hidden checkbox plain",
@@ -190,7 +182,6 @@ SCENARIOS = [
         "hidden checkbox disabled",
         Section.STEPS,
         a_disabled_hidden_checkbox_fails_when_dispatched,
-        known_gaps=on_every_driver(NO_CHECK_DISPATCH),
-        covers=frozenset({"step:check"}),
+        covers=frozenset({"field:check.dispatch"}),
     ),
 ]

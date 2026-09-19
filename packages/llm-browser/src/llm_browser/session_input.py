@@ -27,7 +27,7 @@ from llm_browser.constants import (
     LOGGER_NAME,
     WHEEL_INTO_VIEW_TICKS,
 )
-from llm_browser.models import FillVerify
+from llm_browser.models import FillVerify, WaitState
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
 from llm_browser.scripts import (
     field_value_js,
@@ -141,12 +141,14 @@ def click(
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> HitTarget | None:
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
-    for overlays that real input cannot reach."""
+    for overlays that real input cannot reach — and needs no box, so it
+    reaches a hidden element too."""
     behavior = effective_behavior(session, humanize, behavior)
+    state: WaitState = "attached" if dispatch else "visible"
     with paced(behavior):
         return click_element(
             session,
-            session.find(selector, timeout=timeout),
+            session.find(selector, state=state, timeout=timeout),
             dispatch=dispatch,
             behavior=behavior,
         )
@@ -513,11 +515,42 @@ def set_checked(
     selector: Selector,
     checked: bool,
     *,
+    dispatch: bool = False,
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     with paced(effective_behavior(session, behavior=behavior)):
-        session.driver.set_checked(session.find(selector, timeout=timeout), checked)
+        if not dispatch:
+            element = session.find(selector, timeout=timeout)
+            session.driver.set_checked(element, checked)
+            return
+        element = session.find(selector, state="attached", timeout=timeout)
+        dispatch_checked(session, element, selector, checked)
+
+
+def dispatch_checked(
+    session: "BrowserSession", element: Any, selector: Selector, checked: bool
+) -> None:
+    """A disabled box is refused up front: Chromium toggles one on a dispatched
+    click, Gecko does not. ``Driver.click(dispatch=True)``, not
+    ``dispatch_event``: nodriver's plain ``Event`` never toggles a checkbox."""
+    if is_checked(session, element) == checked:
+        return
+    if not session.driver.is_enabled(element):
+        raise ValueError(
+            f"check {describe_selector(selector)}: the box is disabled, "
+            f"so checked stays {not checked}"
+        )
+    session.driver.click(element, dispatch=True)
+    if is_checked(session, element) != checked:
+        raise ValueError(
+            f"check {describe_selector(selector)}: checked is still "
+            f"{not checked} after a dispatched click"
+        )
+
+
+def is_checked(session: "BrowserSession", element: Any) -> bool:
+    return bool(session.driver.evaluate(element, "(el) => el.checked"))
 
 
 def type_humanized(
