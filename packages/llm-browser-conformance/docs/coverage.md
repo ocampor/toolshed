@@ -93,6 +93,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `option:name` | step name keys the output |
 | `option:fields` | fields are ignored |
+| `option:read` | fields are ignored |
 | `option:when` | when is_truthy |
 | `option:eval` | eval step |
 | `option:wait_after` | wait_after |

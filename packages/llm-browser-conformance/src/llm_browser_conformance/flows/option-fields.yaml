@@ -1,4 +1,4 @@
-# `option-plain` plus a `fields:` block, which validates and is then ignored.
+# `option-plain` plus `fields:` and `read:` blocks, which validate and are then ignored.
 steps:
   - name: gated
     action: read
@@ -7,6 +7,9 @@ steps:
       - name: text
         selector: "#absent"
         attribute: nonsense
+    read:
+      total:
+        selector: "#absent"
     extract:
       text:
         attribute: textContent
