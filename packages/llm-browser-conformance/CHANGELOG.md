@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0 — 2026-09-22
+
+Tracks `llm-browser` 0.21.0.
+
+### Added
+
+- `checks/input_steps.py`: nine input-step scenarios, each run under `Behavior.off()` and `Behavior.human()`, on `site/prefilled-autocomplete.html`, `site/fill-does-not-stick.html` and `site/hidden-checkbox.html` (ocampor/browser-api#68).
 ## 0.12.0 — 2026-09-22
 
 Tracks `llm-browser` 0.20.0.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.21.0 — 2026-09-22
+
+### Added
+
+- `clean` step and `BrowserSession.clean(selector)`: empties a field with trusted select-all + Delete, and fails naming what is left.
+- `Driver.clear(locator)`: presses `ControlOrMeta+a` then `Delete` by default; nodriver uses its `clear_trusted`.
+- `fill` `verify: changed | exact` (`BrowserSession.fill(verify=)`), default `changed`.
+- `wait_for` `value:` with a `selector`, plus `BrowserSession.wait_for_value(selector, value, exact=)`: waits on what a field holds and names what it held on timeout.
+- `check` `dispatch: true` (`BrowserSession.set_checked(dispatch=)`): reaches a hidden checkbox with an untrusted click and fails on a disabled one.
+
+### Changed
+
+- `click` `dispatch: true` resolves the element attached rather than visible, so it reaches hidden elements.
+
+### Fixed
+
+- A humanized `fill` (`Behavior.fill_as_type`, on under `Behavior.human()`) clears a non-empty field before typing; `fill ''` no longer leaves the value, and `fill 'x'` no longer appends (ocampor/browser-api#68).
+- `fill` reads the field back and raises `ValueError` naming the expected and actual value when the field still holds what it held before (`verify: exact`: on any mismatch).
 ## 0.20.0 — 2026-09-19
 
 ### Breaking
