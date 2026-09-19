@@ -12,9 +12,8 @@ steps:
     selector: "input[id$='textboxautocomplete32']"
     extract: {text: {attribute: value}}
   - {name: wait-options, action: wait_for, selector: "li.ui-menu-item", state: attached, timeout: 8000}
-  - name: pick
-    action: click
-    selector: {xpath: "//li[contains(@class,'ui-menu-item') and contains(.,'Peso Mexicano')]"}
+  # The issue's XPath click, as a `pick`: nodriver resolves no XPath.
+  - {name: pick, action: pick, selector: "li.ui-menu-item", value: Peso Mexicano}
   - name: result
     action: read
     selector: "#result"

@@ -170,6 +170,10 @@ class FillStep(SelectorStep):
     humanize: bool | None = None
 
 
+class CleanStep(SelectorStep):
+    action: Literal["clean"]
+
+
 class TypeStep(SelectorStep):
     """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
     a constant cadence is itself a fingerprint."""
@@ -409,6 +413,7 @@ def _step_discriminator(v: Any) -> str:
 Step = Annotated[
     Annotated[ClickStep, Tag("click")]
     | Annotated[FillStep, Tag("fill")]
+    | Annotated[CleanStep, Tag("clean")]
     | Annotated[TypeStep, Tag("type")]
     | Annotated[SelectStep, Tag("select")]
     | Annotated[CheckStep, Tag("check")]

@@ -18,6 +18,7 @@ from llm_browser.action_dispatch import (
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep
 from llm_browser.models import (
     CheckStep,
+    CleanStep,
     ClickStep,
     DomStep,
     DownloadStep,
@@ -82,6 +83,14 @@ def action_fill(
         behavior=behavior,
         timeout=step.timeout,
     )
+    return VoidResult()
+
+
+@_registry.register("clean")
+def action_clean(
+    session: BrowserSession, step: CleanStep, behavior: Behavior
+) -> VoidResult:
+    session.clean(step.selector, behavior=behavior, timeout=step.timeout)
     return VoidResult()
 
 

@@ -181,6 +181,11 @@ def select_control_tag_js() -> str:
     return load_script("select_control_tag")
 
 
+def field_value_js() -> str:
+    """``(el) => str`` — ``value``, or ``innerText`` on a contenteditable."""
+    return load_script("field_value")
+
+
 def text_match_js(text: str, exact: bool) -> str:
     """``(el) => bool`` — is ``text`` in the element's rendered text?
 

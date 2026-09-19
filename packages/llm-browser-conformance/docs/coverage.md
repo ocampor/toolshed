@@ -16,6 +16,7 @@ A scenario claims a key through `Scenario.covers`; see
 | item | scenarios |
 | --- | --- |
 | `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox dispatch, hidden checkbox plain, hidden checkbox disabled |
+| `step:clean` | clean step |
 | `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
 | `step:download` | download |
@@ -40,6 +41,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `field:check.selector` | checkbox and radio |
 | `field:check.checked` | fill waits for enabled, checkbox and radio |
+| `field:clean.selector` | clean step |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
 | `field:click.humanize` | humanized click and fill |
@@ -118,6 +120,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `session:attach` | attach over cdp |
 | `session:attach_to_tab` | attach over cdp |
+| `session:clean` | clean step |
 | `session:click` | wait detached, dynamic loading, dynamic controls toggle, dynamic controls enable, click is trusted, dispatch is untrusted, tab order |
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |

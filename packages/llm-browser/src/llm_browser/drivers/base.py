@@ -156,6 +156,11 @@ class Driver(ABC):
         """
         type_chars(lambda ch: self.type(locator, ch), text, behavior)
 
+    def clear(self, locator: Any) -> None:
+        """Empty the field with trusted keys — rule 2 — so the page sees the edit."""
+        self.press(locator, "ControlOrMeta+a")
+        self.press(locator, "Delete")
+
     @abstractmethod
     def press(self, locator: Any, key: str) -> None: ...
 
