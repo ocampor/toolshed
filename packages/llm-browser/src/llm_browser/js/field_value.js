@@ -8,5 +8,6 @@
   const secret = field.type === "password";
   if (!field.isContentEditable) return { text: String(field.value ?? ""), secret };
   const text = field.innerText;
+  // debt: whitespace-only reads as "", so `fill " " verify: exact` / `wait_for value: " "` never pass here.
   return { text: text.trim() === "" ? "" : text, secret };
 }
