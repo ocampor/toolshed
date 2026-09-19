@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -48,13 +49,18 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField, row_spec
-from llm_browser.results import BytesResult, HitTarget
+from llm_browser.results import AcceptedMatch, BytesResult, HitTarget
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
+    MANY,
+    SINGLE,
+    Match,
+    MatchRule,
     Selector,
     css_string,
-    expect_single,
+    match_elements,
+    picked_element,
     resolve_selector,
 )
 from llm_browser.survey_models import Survey
@@ -106,6 +112,26 @@ class BrowserSession:
         self.executable_path: str | None = (
             str(executable_path) if executable_path is not None else None
         )
+        # The count rule the step being run states, and where the mismatches
+        # its ``pick`` accepted are collected — both owned by ``matching``.
+        self.match_rule: MatchRule | None = None
+        self.accepted_matches: list[AcceptedMatch] = []
+
+    @contextmanager
+    def matching(self, rule: MatchRule | None) -> Iterator[list[AcceptedMatch]]:
+        """Run a step under ``rule``, yielding the mismatches it accepted.
+
+        The rule rides the session rather than every ``find`` signature, so a
+        step's ``expect``/``pick`` reaches the element lookup its action
+        happens to make.
+        """
+        previous_rule, previous_accepted = self.match_rule, self.accepted_matches
+        accepted: list[AcceptedMatch] = []
+        self.match_rule, self.accepted_matches = rule, accepted
+        try:
+            yield accepted
+        finally:
+            self.match_rule, self.accepted_matches = previous_rule, previous_accepted
 
     # --- Lifecycle ---
 
@@ -438,28 +464,54 @@ class BrowserSession:
         target = checked_url(url, allowed_schemes)
         self.driver.goto(self.get_page(), target, wait_until)
 
+    def matched(self, selector: Selector, rule: MatchRule) -> Match:
+        """Check what ``selector`` matches right now against ``rule``, keeping
+        any mismatch the rule's ``pick`` accepted."""
+        result = match_elements(
+            self.driver,
+            resolve_selector(self.driver, self.get_page(), selector),
+            selector,
+            rule,
+        )
+        if result.accepted is not None:
+            self.accepted_matches.append(result.accepted)
+        return result
+
     def find(
         self,
         selector: Selector,
         state: WaitState = "visible",
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> Any:
-        """Find exactly one element. Raises ValueError if multiple match.
+        """Find the one element the step acts on — its ``pick`` when it names
+        one, the single match otherwise.
 
         Ambiguity is a mistake, not something to wait out, so it is checked
         before the poll — otherwise a selector matching two elements burns the
-        whole budget and reports a misleading timeout. It is checked again
-        after, because the wait is what makes a match appear, and counting
-        never waits.
+        whole budget and reports a misleading timeout. The full check runs
+        again after, because the wait is what makes a match appear, and
+        counting never waits.
         """
-        page = self.get_page()
-        expect_single(
-            self.driver, resolve_selector(self.driver, page, selector), selector
+        rule = self.match_rule or SINGLE
+        match_elements(
+            self.driver,
+            resolve_selector(self.driver, self.get_page(), selector),
+            selector,
+            rule,
+            waiting=True,
         )
         self.wait_for_element(selector, state=state, timeout=timeout)
-        return expect_single(
-            self.driver, resolve_selector(self.driver, page, selector), selector
-        )
+        return self.matched(selector, rule).locator
+
+    def match_all(
+        self,
+        selector: Selector,
+        state: WaitState = "attached",
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> Match:
+        """Wait for at least one match, then check them against the step's rule."""
+        self.wait_for_element(selector, state=state, timeout=timeout)
+        return self.matched(selector, self.match_rule or MANY)
 
     def find_all(
         self,
@@ -468,8 +520,7 @@ class BrowserSession:
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> Any:
         """Find all matching elements, waiting for at least one."""
-        self.wait_for_element(selector, state=state, timeout=timeout)
-        return resolve_selector(self.driver, self.get_page(), selector)
+        return self.match_all(selector, state, timeout).locator
 
     def element_exists(
         self,
@@ -701,8 +752,14 @@ class BrowserSession:
         element itself. ``exclude``'s matches are dropped from the text a field
         reads, so a page's chrome can be left out of it.
         """
+        match = self.matched(selector, self.match_rule or MANY)
         locator = resolve_selector(self.driver, self.get_page(), selector)
-        return self.driver.extract_rows(locator, row_spec(extract), exclude)
+        rows = self.driver.extract_rows(locator, row_spec(extract), exclude)
+        if match.nth is None:
+            return rows
+        # Sliced here rather than extracted off ``match.locator``: a driver
+        # whose ``nth`` keeps the selector re-reads every match from it.
+        return rows[match.nth : match.nth + 1]
 
     # --- Explore ---
     #
@@ -770,7 +827,7 @@ class BrowserSession:
         # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 
-        element = self.driver.first(self.find_all(selector, state="visible"))
+        element = picked_element(self.driver, self.match_all(selector, state="visible"))
         raw: str = self.driver.evaluate(element, "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth, level)
 

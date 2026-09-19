@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from collections.abc import Callable
+from enum import StrEnum
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
     BaseModel,
@@ -28,8 +30,8 @@ from llm_browser.constants import (
 )
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField, parse_extract_spec
-from llm_browser.results import PayloadBytes
-from llm_browser.selectors import Selector
+from llm_browser.results import PayloadBytes, PickSpec
+from llm_browser.selectors import MatchRule, Selector
 
 # --- Step types ---
 
@@ -145,7 +147,64 @@ class BaseStep(BaseModel):
         return f"{self._parent}/{self.name}" if self._parent else self.name
 
 
-class SelectorStep(BaseStep):
+class MatchTarget(StrEnum):
+    """What a step does with the elements its selector matches."""
+
+    ONE = "one"
+    MANY = "many"
+    BY_TEXT = "by_text"
+
+
+def check_one_target(step: MatchFields) -> None:
+    if step.expect != 1 and step.pick is None:
+        raise ValueError(
+            f"this action drives one element, so expect: {step.expect} needs a "
+            "pick: (first, last or an index)"
+        )
+
+
+def allow_any_count(step: MatchFields) -> None:
+    """A step that reads every match puts no rule on the count."""
+
+
+def check_by_text_target(step: MatchFields) -> None:
+    if step.pick is not None:
+        raise ValueError("action `pick` chooses its match by `value:`, not by `pick:`")
+
+
+MATCH_CHECKS: dict[MatchTarget, Callable[[MatchFields], None]] = {
+    MatchTarget.ONE: check_one_target,
+    MatchTarget.MANY: allow_any_count,
+    MatchTarget.BY_TEXT: check_by_text_target,
+}
+
+ExpectCount = Annotated[int, Field(ge=1)] | Literal["many"]
+PickChoice = Literal["first", "last"] | Annotated[int, Field(ge=0)]
+
+
+class MatchFields(BaseModel):
+    """How many elements a step's selector should match, and which of them the
+    step acts on when it matches more."""
+
+    expect: ExpectCount = 1
+    pick: PickChoice | None = None
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.ONE
+
+    @model_validator(mode="after")
+    def _check_match_fields(self) -> MatchFields:
+        MATCH_CHECKS[self.match_target](self)
+        return self
+
+
+def match_rule_of(step: Step) -> MatchRule | None:
+    """The count rule ``step`` states, or ``None`` for a step that states none."""
+    if not isinstance(step, MatchFields):
+        return None
+    return MatchRule(expect=step.expect, pick=step.pick)
+
+
+class SelectorStep(MatchFields, BaseStep):
     """Base for steps that operate on a DOM element. Selector is required."""
 
     selector: Selector
@@ -205,6 +264,9 @@ class CheckStep(SelectorStep):
 class PickStep(SelectorStep):
     action: Literal["pick"]
     value: str = ""
+    expect: ExpectCount = "many"
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.BY_TEXT
 
 
 class GotoStep(BaseStep):
@@ -213,7 +275,7 @@ class GotoStep(BaseStep):
     wait_until: str = "domcontentloaded"
 
 
-class ScreenshotStep(BaseStep):
+class ScreenshotStep(MatchFields, BaseStep):
     """``path`` is a CLI instruction, not a runner one.
 
     The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
@@ -238,6 +300,10 @@ class ReadStep(SelectorStep):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     action: Literal["read"]
+    expect: ExpectCount = "many"
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None)
     )
@@ -269,12 +335,20 @@ class ParseStep(SelectorStep):
     """
 
     action: Literal["parse"]
+    expect: ExpectCount = "many"
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     schema_path: str = Field(..., min_length=1)
     path: str | None = None
 
 
 class DomStep(SelectorStep):
     action: Literal["dom"]
+    expect: ExpectCount = "many"
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     max_depth: int = 0
     level: SanitizeLevel = SanitizeLevel.LOW
     # CLI-only, like every other `path:` — see ScreenshotStep.
@@ -306,7 +380,7 @@ class ScrollStep(BaseStep):
     pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
-class PressStep(BaseStep):
+class PressStep(MatchFields, BaseStep):
     action: Literal["press"]
     # Optional: when None, press the focused element via ``press_focused``.
     selector: Selector | None = None
@@ -573,6 +647,15 @@ class SkippedStep(BaseModel):
     reason: str
 
 
+class MatchWarning(BaseModel):
+    """A step whose ``pick`` took a count its ``expect`` did not ask for."""
+
+    step: str
+    expected: int | Literal["many"]
+    found: int
+    picked: PickSpec
+
+
 class FlowSuccess(BaseModel):
     """Returned by ``run_flow`` when a flow ran to completion.
 
@@ -584,7 +667,9 @@ class FlowSuccess(BaseModel):
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
-    ``skipped`` names every step the run passed over, in the order it did.
+    ``skipped`` names every step the run passed over, in the order it did, and
+    ``warnings`` every step that ran on a match count its ``expect`` did not
+    ask for.
 
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
@@ -594,6 +679,7 @@ class FlowSuccess(BaseModel):
     step: str
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
+    warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
 
 
@@ -628,6 +714,7 @@ class FlowError(BaseModel):
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
+    warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
 
 

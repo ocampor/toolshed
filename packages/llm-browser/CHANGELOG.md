@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.20.0 — 2026-09-19
+
+### Added
+
+- `expect:` and `pick:` on every step that targets elements (`models.MatchFields`):
+  `expect` is `1`, a count, or `many`; `pick` is `first`, `last` or an index, and
+  is what lets a step act on one of several matches (ocampor/toolshed#62).
+- `selectors.MatchCountError` (a `ValueError`) carries `expected`, `found` and up
+  to `constants.MATCH_SAMPLES` match texts; `results.ErrorResult` reports them as
+  `expected`, `found`, `samples` with a `hint` naming `pick: first`.
+- `models.MatchWarning` on `FlowSuccess.warnings` and `FlowError.warnings`: every
+  step whose `pick` took a count its `expect` did not ask for, keyed like
+  `skipped` (`step[0]`, `parent/step`).
+- `results.AcceptedMatch` on `ActionResult.accepted`, and
+  `BrowserSession.matching(rule)`, the context manager that runs one step under
+  a `selectors.MatchRule`.
+
+### Changed
+
+- `selectors.expect_single` is gone, generalised into `selectors.match_elements`,
+  which takes a `MatchRule` and returns the (possibly picked) locator: an
+  ambiguity now reads `expected 1 element for 'p.price_color', found 7`.
+- An explicit `expect: 1` on `read` or `parse` fails on zero matches; the default
+  `expect: many` keeps returning zero rows.
+
 ## 0.19.0 — 2026-09-17
 
 ### Breaking

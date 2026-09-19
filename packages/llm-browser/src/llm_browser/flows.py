@@ -22,6 +22,7 @@ from llm_browser.models import (
     FlowError,
     FlowResult,
     FlowSuccess,
+    MatchWarning,
     RetryHint,
     RunFlowStep,
     SkippedStep,
@@ -90,6 +91,7 @@ def run_flow(
             step=result.step,
             outputs=redact_secrets(result.outputs, secrets),
             skipped=redact_secrets(result.skipped, secrets),
+            warnings=redact_secrets(result.warnings, secrets),
             behavior=ran_as,
         )
     # `result.step` is qualified and names the failing `repeat` pass; the
@@ -100,6 +102,7 @@ def run_flow(
         data=redact_secrets(result.data, secrets),
         outputs=redact_secrets(result.outputs, secrets),
         skipped=redact_secrets(result.skipped, secrets),
+        warnings=redact_secrets(result.warnings, secrets),
         screenshot=result.screenshot,
         dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
@@ -139,11 +142,12 @@ def run_loaded_flow(
     flow_data = flow.validate_data(data)
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
+    warnings: list[MatchWarning] = []
     for step in select_steps(flow.steps, from_step):
         try:
             passes = list(repeat_passes(step, flow_data))
         except ValueError as exc:
-            return repeat_data_error(step, exc, outputs, skipped)
+            return repeat_data_error(step, exc, outputs, skipped, warnings)
         for index, pass_data in passes:
             outcome: ActionResult | FlowSuccess | FlowError = (
                 run_subflow(session, step, pass_data, behavior, selector_map)
@@ -170,11 +174,20 @@ def run_loaded_flow(
                                 for s in outcome.skipped
                             ),
                         ],
+                        "warnings": [
+                            *warnings,
+                            *(
+                                w.model_copy(update={"step": indexed(w.step, index)})
+                                for w in outcome.warnings
+                            ),
+                        ],
                     }
                 )
-            record_outcome(step, outcome, index, outputs, skipped)
+            record_outcome(step, outcome, index, outputs, skipped, warnings)
     last_name = flow.steps[-1].name if flow.steps else "end"
-    return FlowSuccess(step=last_name, outputs=outputs, skipped=skipped)
+    return FlowSuccess(
+        step=last_name, outputs=outputs, skipped=skipped, warnings=warnings
+    )
 
 
 def run_subflow(
@@ -209,6 +222,7 @@ def run_subflow(
         return FlowSuccess(
             step=resolved.name,
             outputs=result.outputs,
+            warnings=result.warnings,
             skipped=[
                 *result.skipped,
                 SkippedStep(

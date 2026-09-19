@@ -10,7 +10,8 @@ from typing import Callable
 from yaml_engine.registry import Registry
 
 from llm_browser.behavior import Behavior, paced
-from llm_browser.models import Step
+from llm_browser.constants import MATCH_COUNT_HINT
+from llm_browser.models import Step, match_rule_of
 from llm_browser.results import (
     ActionResult,
     ErrorResult,
@@ -19,6 +20,7 @@ from llm_browser.results import (
     is_step_failure,
     is_timeout,
 )
+from llm_browser.selectors import MatchCountError
 from llm_browser.session import BrowserSession
 from llm_browser.session_input import behavior_for, with_driver_opt_outs
 
@@ -57,24 +59,42 @@ def execute_action(
         return VoidResult()
     resolved = step_behavior(session, step, behavior)
     try:
-        with paced(resolved):
-            return get_registry().get(step.action)(session, step, resolved)
+        with paced(resolved), session.matching(match_rule_of(step)) as accepted:
+            result = get_registry().get(step.action)(session, step, resolved)
+        # One action, one warning: a step that found its element twice
+        # accepted the same mismatch twice.
+        return (
+            result.model_copy(update={"accepted": accepted[0]}) if accepted else result
+        )
     except Exception as exc:
         if not is_step_failure(exc):
             raise
         if step.optional:
             return SkippedResult(reason=f"{type(exc).__name__}: {str(exc)[:200]}")
-        selector = getattr(step, "selector", None)
-        return ErrorResult(
-            error=type(exc).__name__,
-            # Collapse whitespace so multi-line errors (Pydantic ValidationError,
-            # patchright tracebacks) survive the 300-char cap meaningfully.
-            message=" ".join(str(exc).split())[:300],
-            step_name=step.name,
-            selector=repr(selector) if selector is not None else None,
-            hint=(
-                "element hidden, missing, or slow to render"
-                if is_timeout(exc)
-                else None
-            ),
-        )
+        return failure_result(step, exc)
+
+
+def failure_result(step: Step, exc: BaseException) -> ErrorResult:
+    """What a step failure reads as: the error, and what would fix it."""
+    selector = getattr(step, "selector", None)
+    counted = exc if isinstance(exc, MatchCountError) else None
+    return ErrorResult(
+        error=type(exc).__name__,
+        # Collapse whitespace so multi-line errors (Pydantic ValidationError,
+        # patchright tracebacks) survive the 300-char cap meaningfully.
+        message=" ".join(str(exc).split())[:300],
+        step_name=step.name,
+        selector=repr(selector) if selector is not None else None,
+        hint=failure_hint(exc),
+        expected=counted.expected if counted else None,
+        found=counted.found if counted else None,
+        samples=counted.samples if counted else None,
+    )
+
+
+def failure_hint(exc: BaseException) -> str | None:
+    if isinstance(exc, MatchCountError):
+        return MATCH_COUNT_HINT
+    if is_timeout(exc):
+        return "element hidden, missing, or slow to render"
+    return None

@@ -12,6 +12,7 @@ from llm_browser.models import (
     FlowData,
     FlowError,
     FlowSuccess,
+    MatchWarning,
     SkippedStep,
     Step,
 )
@@ -102,6 +103,7 @@ def repeat_data_error(
     exc: ValueError,
     outputs: dict[str, object],
     skipped: list[SkippedStep],
+    warnings: list[MatchWarning],
 ) -> FlowError:
     """A ``repeat`` over something that is not a list fails like any other step.
 
@@ -115,6 +117,7 @@ def repeat_data_error(
         ),
         outputs=dict(outputs),
         skipped=list(skipped),
+        warnings=list(warnings),
     )
 
 
@@ -124,14 +127,26 @@ def record_outcome(
     index: int | None,
     outputs: dict[str, object],
     skipped: list[SkippedStep],
+    warnings: list[MatchWarning],
 ) -> None:
-    """Fold one pass's result into the run's outputs and skip list."""
+    """Fold one pass's result into the run's outputs, skips and warnings."""
+    if isinstance(outcome, ActionResult) and outcome.accepted is not None:
+        warnings.append(
+            MatchWarning(
+                step=indexed(step.qualified_name, index),
+                **outcome.accepted.model_dump(),
+            )
+        )
     match outcome:
         case FlowSuccess():
             outputs.update({indexed(k, index): v for k, v in outcome.outputs.items()})
             skipped.extend(
                 s.model_copy(update={"name": indexed(s.name, index)})
                 for s in outcome.skipped
+            )
+            warnings.extend(
+                w.model_copy(update={"step": indexed(w.step, index)})
+                for w in outcome.warnings
             )
         case SkippedResult():
             skipped.append(

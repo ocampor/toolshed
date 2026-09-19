@@ -21,6 +21,7 @@ from llm_browser.flows import load_flow_document
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.session import BrowserSession
 from tests.conftest import PNG
+from tests.flow_helpers import stub_matching
 
 FLOW_DOCUMENT = {
     "steps": [{"name": "s1", "action": "goto", "url": "https://example.com"}]
@@ -58,7 +59,7 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     session.driver = MagicMock()
     session.get_page.return_value = MagicMock()
     session.screenshot_bytes.return_value = PNG
-    return session
+    return stub_matching(session)
 
 
 # --- source selection ---

@@ -340,8 +340,50 @@ Skip a step unless every condition holds (AND'ed).
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
+| `expect` / `pick` | count / choice | How many elements the selector should match, and which one to use ([below](#match-count-expect-and-pick)) |
 | `repeat` | `{ over, as }` | Run the step once per item of a list param ([below](#repetition)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
+
+### Match count: `expect` and `pick`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `expect` | `1`, a count, or `many` | `1`; `many` on `read`, `parse`, `dom`, `pick` | How many elements the selector should match |
+| `pick` | `first`, `last`, or an index | none, so a mismatch fails | Which match the step uses when more are found |
+
+| `expect` | `pick` | Page has 1 | Page has 7 | Page has 0 |
+|----------|--------|------------|------------|------------|
+| `1` | none | runs | fails with the count | fails |
+| `1` | `first` | runs | runs on the first match, warns | fails |
+| `many` | none | runs | runs on every match | runs, zero rows |
+| `many` | `last` | runs | runs on the last match | fails |
+
+An acting step (`click`, `fill`, …) drives one element, so an `expect` other
+than `1` on it needs a `pick`. `wait_for` takes neither: it waits on a state,
+not on a count. A failed count is a step error, under the run result's `data`:
+
+```json
+{
+  "ok": false,
+  "error": "MatchCountError",
+  "message": "expected 1 element for 'p.price_color', found 7",
+  "step_name": "price",
+  "selector": "'p.price_color'",
+  "hint": "tighten the selector, or add pick: first if the first match is the right one",
+  "expected": 1, "found": 7,
+  "samples": ["£45.17", "£51.33", "£37.59"]
+}
+```
+
+A `pick` that took a count `expect` did not ask for runs, and says so in the
+run's `warnings`:
+
+```json
+{
+  "outputs": {"price": [{"text": "£45.17"}]},
+  "warnings": [{"step": "price", "expected": 1, "found": 7, "picked": "first"}]
+}
+```
 
 ### What `timeout` bounds
 
