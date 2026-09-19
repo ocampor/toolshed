@@ -1,0 +1,3 @@
+# A disabled box ignores the dispatched click; the step must say so.
+steps:
+  - {name: check, action: check, selector: "#locked", dispatch: true, timeout: 1000}

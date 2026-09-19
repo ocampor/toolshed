@@ -15,15 +15,15 @@ A scenario claims a key through `Scenario.covers`; see
 
 | item | scenarios |
 | --- | --- |
-| `step:check` | fill waits for enabled, checkbox and radio |
+| `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox dispatch, hidden checkbox plain, hidden checkbox disabled |
 | `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
-| `step:fill` | shadow dom, controlled input |
+| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick, fill verify exact |
 | `step:goto` | redirect, goto wait_until |
 | `step:parse` | parse typed rows |
-| `step:pick` | pick by text |
+| `step:pick` | wait_for value, pick by text |
 | `step:press` | enter and escape, autocomplete enter |
 | `step:read` | overlay intercepts click, slow xhr rows |
 | `step:run-flow` | run-flow embedded |
@@ -32,7 +32,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:select` | custom select rejects select, native select optgroup |
 | `step:think` | think pauses |
 | `step:type` | controlled input, masked input |
-| `step:wait_for` | flow failure captures artifacts, enter and escape, slow xhr rows |
+| `step:wait_for` | flow failure captures artifacts, enter and escape, slow xhr rows, wait_for value |
 
 ## step fields
 
@@ -50,7 +50,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:download.selector` | download |
 | `field:download.path` | download |
 | `field:fill.selector` | shadow dom |
-| `field:fill.value` | shadow dom, controlled input |
+| `field:fill.value` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill |
 | `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
