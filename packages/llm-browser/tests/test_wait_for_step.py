@@ -126,11 +126,20 @@ def test_either_target_validates(overrides: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize(
-    "overrides",
-    [{"selector": None, "text": "x", "value": "x"}, {"text": "x", "value": "x"}],
+    ("overrides", "message"),
+    [
+        (
+            {"selector": None, "text": "x", "value": "x"},
+            "needs a selector, and no text",
+        ),
+        ({"text": "x", "value": "x"}, "needs a selector, and no text"),
+        ({"value": "x", "state": "detached"}, "takes no state"),
+    ],
 )
-def test_a_value_wait_needs_a_selector_and_no_text(overrides: dict[str, Any]) -> None:
-    with pytest.raises(ValidationError, match="value needs a selector, and no text"):
+def test_a_value_wait_needs_a_selector_alone(
+    overrides: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
         validate_step(wait_for_step(**overrides))
 
 
@@ -392,3 +401,9 @@ def test_cli_rejects_an_unknown_state(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert result.exit_code == 2
+
+
+def test_a_value_wait_survives_the_run_time_revalidation() -> None:
+    """A step is re-validated from its own dump when it runs, `state` included."""
+    step = validate_step(wait_for_step(value="Peso Mexicano"))
+    assert isinstance(validate_step(step.model_dump()), WaitForStep)

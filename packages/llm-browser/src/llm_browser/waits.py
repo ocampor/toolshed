@@ -11,7 +11,7 @@ this loop's deadline.
 """
 
 import time
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from llm_browser.behavior import Jitter
 from llm_browser.constants import (
@@ -23,7 +23,12 @@ from llm_browser.constants import (
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState, check_text_state
 from llm_browser.scripts import field_value_js, text_match_js
-from llm_browser.selectors import Selector, describe_selector, resolve_selector
+from llm_browser.selectors import (
+    Selector,
+    describe_selector,
+    expect_single,
+    resolve_selector,
+)
 
 StatePredicate = Callable[[Driver, Any], bool]
 
@@ -228,6 +233,23 @@ def poll_for_text(
     )
 
 
+class FieldRead(NamedTuple):
+    text: str
+    secret: bool
+
+    def shown(self) -> str:
+        """The text for a message; a password field shows only its length."""
+        return f"{len(self.text)} characters" if self.secret else repr(self.text)
+
+
+def read_field(driver: Driver, element: Any) -> FieldRead:
+    """``ValueError`` when the bounded read timed out on a node that went away."""
+    read = evaluate_now(driver, element, field_value_js())
+    if read is None:
+        raise ValueError("the field could not be read back: it went away")
+    return FieldRead(text=str(read["text"]), secret=bool(read["secret"]))
+
+
 def poll_for_value(
     driver: Driver,
     page: Any,
@@ -240,25 +262,37 @@ def poll_for_value(
 ) -> None:
     """Block until the field holds ``value`` (a substring unless ``exact``), or
     raise ``TimeoutError`` naming what it held last."""
-    held: list[str | None] = [None]
+    held: FieldRead | None = None
 
     def reached() -> bool:
-        held[0] = value_now(driver, page, selector)
-        if held[0] is None:
+        nonlocal held
+        held = value_now(driver, page, selector)
+        if held is None:
             return False
-        return held[0] == value if exact else value in held[0]
+        return held.text == value if exact else value in held.text
 
-    description = f"{describe_selector(selector)} did not hold {value!r}"
     try:
-        poll_until(reached, description, timeout_ms, interval_ms)
-    except TimeoutError as exc:
-        raise TimeoutError(f"{exc}; it held {held[0]!r}") from None
+        poll_until(reached, describe_selector(selector), timeout_ms, interval_ms)
+    except TimeoutError:
+        raise TimeoutError(value_timeout(selector, value, held, timeout_ms)) from None
 
 
-def value_now(driver: Driver, page: Any, selector: Selector) -> str | None:
-    """The first match's field value; ``None`` while nothing matches."""
+def value_timeout(
+    selector: Selector, value: str, held: FieldRead | None, timeout_ms: int
+) -> str:
+    """Names what the field held; for a password field, lengths only."""
+    wanted = f"{len(value)} characters" if held and held.secret else repr(value)
+    last = held.shown() if held else "nothing: no element matched"
+    return (
+        f"{describe_selector(selector)} did not hold {wanted} "
+        f"within {timeout_ms}ms; it held {last}"
+    )
+
+
+def value_now(driver: Driver, page: Any, selector: Selector) -> FieldRead | None:
+    """``None`` while nothing matches; several matches are a mistake, as in
+    ``BrowserSession.find``."""
     locator = resolve_selector(driver, page, selector)
     if driver.count(locator) == 0:
         return None
-    read = evaluate_now(driver, driver.first(locator), field_value_js())
-    return None if read is None else str(read)
+    return read_field(driver, expect_single(driver, locator, selector))

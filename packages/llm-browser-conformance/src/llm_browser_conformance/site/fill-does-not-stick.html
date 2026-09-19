@@ -4,6 +4,8 @@
 <title>Fill does not stick</title>
 <input type="text" id="stubborn" value="alpha">
 <input type="text" id="short" maxlength="3">
+<input type="text" id="digits" value="123">
+<div id="note" contenteditable="true">alpha</div>
 <script>
 const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
 
@@ -17,5 +19,10 @@ document.addEventListener("keydown", recordTrust, true);
 const stubborn = document.getElementById("stubborn");
 stubborn.addEventListener("input", () => {
   stubborn.value = "alpha";
+});
+
+// Digits only: a select-all + Delete gets through, every letter is dropped.
+document.getElementById("digits").addEventListener("keypress", (e) => {
+  if (!/[0-9]/.test(e.key)) e.preventDefault();
 });
 </script>

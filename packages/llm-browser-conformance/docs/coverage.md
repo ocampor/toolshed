@@ -16,12 +16,12 @@ A scenario claims a key through `Scenario.covers`; see
 | item | scenarios |
 | --- | --- |
 | `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox plain |
-| `step:clean` | clean step |
+| `step:clean` | clean step, clean contenteditable |
 | `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
-| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick |
+| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick, fill refused keys |
 | `step:goto` | redirect, goto wait_until |
 | `step:parse` | parse typed rows |
 | `step:pick` | pick by text |

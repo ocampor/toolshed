@@ -619,10 +619,13 @@ def test_text_present_is_one_read_with_no_waiting(
 # --- waiting on a field's value ---
 
 
-def driver_with_values(values: list[str]) -> MagicMock:
-    """An attached field whose value reads walk ``values``, repeating the last."""
-    driver = driver_with(counts=[1])
-    driver.evaluate.side_effect = _series(values)
+def driver_with_values(
+    values: list[str], secret: bool = False, count: int = 1
+) -> MagicMock:
+    """A field whose value reads walk ``values``, repeating the last."""
+    driver = driver_with(counts=[count])
+    take = _series(values)
+    driver.evaluate.side_effect = lambda *_: {"text": take(), "secret": secret}
     return driver
 
 
@@ -652,3 +655,25 @@ def test_wait_for_value_times_out_naming_what_the_field_held(
         match="did not hold 'Dólar' within 1000ms; it held 'Peso Mexicano'",
     ):
         session.wait_for_value("#moneda", "Dólar", timeout=1000)
+
+
+def test_a_password_value_wait_names_lengths_never_contents(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_values(["hunt"], secret=True))
+
+    with pytest.raises(TimeoutError) as failure:
+        session.wait_for_value("#pw", "hunter2", timeout=1000)
+
+    message = str(failure.value)
+    assert "hunt" not in message, message
+    assert "did not hold 7 characters within 1000ms; it held 4 characters" in message
+
+
+def test_a_value_wait_refuses_an_ambiguous_selector(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_values(["x"], count=2))
+
+    with pytest.raises(ValueError, match="Expected 1 element for '.field', found 2"):
+        session.wait_for_value(".field", "x")

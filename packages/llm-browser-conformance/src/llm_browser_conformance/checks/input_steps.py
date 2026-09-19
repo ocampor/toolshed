@@ -18,6 +18,11 @@ PREFILLED = "prefilled-autocomplete.html"
 STUBBORN = "fill-does-not-stick.html"
 HIDDEN = "hidden-checkbox.html"
 
+NODRIVER_HUMANIZED_CLICK_GAP = (
+    "a humanized click on nodriver reads no viewport fit and raises before "
+    "clicking, so the human profile's pick never lands: see #59"
+)
+
 
 def run(
     ctx: Context, page: str, flow: str, behavior: Behavior
@@ -92,6 +97,25 @@ def verify_exact_fails_where_the_default_passes(ctx: Context) -> None:
         assert "abcdef" in message and "'abc'" in message, f"{profile}: {message}"
 
 
+def a_fill_the_field_refused_never_reports_ok(ctx: Context) -> None:
+    """A plain fill may write past the filter; a typed one loses every key.
+    Either way the step must not report ok on a field that lost the value."""
+    for profile, behavior in PROFILES.items():
+        result = run(ctx, STUBBORN, "fill-refused-keys", behavior)
+        if isinstance(result, FlowSuccess):
+            assert ctx.value("#digits") == "abc", profile
+            continue
+        message = error_message(result)
+        assert "'abc'" in message, f"{profile}: {message}"
+
+
+def clean_empties_a_contenteditable(ctx: Context) -> None:
+    for profile, behavior in PROFILES.items():
+        expect_success(ctx, STUBBORN, "clean-contenteditable", behavior=behavior)
+        text = ctx.js("document.querySelector('#note').innerText")
+        assert str(text).strip() == "", f"{profile}: {text!r}"
+
+
 def wait_for_value_reads_the_field(ctx: Context) -> None:
     for profile, behavior in PROFILES.items():
         expect_success(
@@ -134,6 +158,7 @@ SCENARIOS = [
         "prefilled autocomplete clear",
         Section.STEPS,
         a_prefilled_autocomplete_is_cleared_before_typing,
+        known_gaps={"nodriver": NODRIVER_HUMANIZED_CLICK_GAP},
         covers=frozenset({"step:fill", "field:fill.value"}),
     ),
     Scenario(
@@ -161,9 +186,22 @@ SCENARIOS = [
         covers=frozenset({"field:fill.verify"}),
     ),
     Scenario(
+        "fill refused keys",
+        Section.STEPS,
+        a_fill_the_field_refused_never_reports_ok,
+        covers=frozenset({"step:fill"}),
+    ),
+    Scenario(
+        "clean contenteditable",
+        Section.STEPS,
+        clean_empties_a_contenteditable,
+        covers=frozenset({"step:clean"}),
+    ),
+    Scenario(
         "wait_for value",
         Section.STEPS,
         wait_for_value_reads_the_field,
+        known_gaps={"nodriver": NODRIVER_HUMANIZED_CLICK_GAP},
         covers=frozenset({"field:wait_for.value", "session:wait_for_value"}),
     ),
     Scenario(

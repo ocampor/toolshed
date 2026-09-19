@@ -30,12 +30,12 @@ from llm_browser.constants import (
 from llm_browser.models import FillVerify, WaitState
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
 from llm_browser.scripts import (
-    field_value_js,
     hit_test_js,
     select_control_tag_js,
     viewport_fit_js,
 )
 from llm_browser.selectors import Selector, describe_selector
+from llm_browser.waits import FieldRead, evaluate_now, read_field
 
 if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
@@ -388,28 +388,47 @@ def fill(
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
-        before = field_value(session, element)
         if behavior.fill_as_type:
-            # An empty field needs no clear: nobody select-alls nothing.
-            if before:
-                session.driver.clear(element)
+            baseline = cleared(session, element)
             type_humanized(session, element, value, behavior)
         else:
+            baseline = read_field(session.driver, element).text
             session.driver.fill(element, value)
-        after = field_value(session, element)
-    if fill_failed(value, before, after, verify):
-        raise ValueError(
-            f"fill {describe_selector(selector)}: expected {value!r}, "
-            f"field holds {after!r}"
-        )
+        after = read_field(session.driver, element)
+    if fill_failed(value, baseline, after.text, verify):
+        raise ValueError(fill_error(selector, value, after))
 
 
-def fill_failed(value: str, before: str, after: str, verify: FillVerify) -> bool:
-    """``changed`` tolerates a page that reformats or truncates what it was
-    given (a mask, ``maxlength``) and objects only to a field left as it was."""
+def cleared(session: "BrowserSession", element: Any) -> str:
+    """What the field holds once emptied, right before typing; an empty field
+    needs no clear: nobody select-alls nothing."""
+    held = read_field(session.driver, element).text
+    if not held:
+        return held
+    session.driver.clear(element)
+    return read_field(session.driver, element).text
+
+
+def fill_failed(value: str, baseline: str, after: str, verify: FillVerify) -> bool:
+    """``baseline`` is the field right before the value went in. ``changed``
+    tolerates a page that reformats or truncates what it was given (a mask,
+    ``maxlength``) — a rewrite that is never empty — and objects to a field
+    the value never reached."""
     if verify == "exact":
         return after != value
-    return after == before != value
+    if value and not after:
+        return True
+    return after == baseline != value
+
+
+def fill_error(selector: Selector, value: str, after: FieldRead) -> str:
+    target = f"fill {describe_selector(selector)}"
+    if after.secret:
+        return (
+            f"{target}: the field differs from the value asked for "
+            f"({len(value)} characters asked, {after.shown()} held)"
+        )
+    return f"{target}: expected {value!r}, field holds {after.shown()}"
 
 
 def clean(
@@ -422,15 +441,11 @@ def clean(
     with paced(effective_behavior(session, behavior=behavior)):
         element = session.find(selector, timeout=timeout)
         session.driver.clear(element)
-        held = field_value(session, element)
-    if held:
+        held = read_field(session.driver, element)
+    if held.text:
         raise ValueError(
-            f"clean {describe_selector(selector)}: field still holds {held!r}"
+            f"clean {describe_selector(selector)}: field still holds {held.shown()}"
         )
-
-
-def field_value(session: "BrowserSession", element: Any) -> str:
-    return str(session.driver.evaluate(element, field_value_js()))
 
 
 def type(  # shadows the builtin to mirror the `type` action's name
@@ -550,7 +565,10 @@ def dispatch_checked(
 
 
 def is_checked(session: "BrowserSession", element: Any) -> bool:
-    return bool(session.driver.evaluate(element, "(el) => el.checked"))
+    checked = evaluate_now(session.driver, element, "(el) => el.checked")
+    if checked is None:
+        raise ValueError("the checkbox could not be read back: it went away")
+    return bool(checked)
 
 
 def type_humanized(

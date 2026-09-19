@@ -62,14 +62,16 @@ def driver(session: BrowserSession) -> Any:
     return session.driver
 
 
-def field_reads(session: BrowserSession, *values: str) -> None:
-    """The field's value as a fill reads it before and after; every other
-    script keeps the fixture's answer."""
+def field_reads(session: BrowserSession, *values: str, secret: bool = False) -> None:
+    """The field's value at each read a fill or clean makes, in order; every
+    other script keeps the fixture's answer."""
     reads = iter(values)
     other = driver(session).evaluate.return_value
 
     def evaluate(_element: Any, script: str, *_: Any) -> Any:
-        return next(reads) if script == field_value_js() else other
+        if script != field_value_js():
+            return other
+        return {"text": next(reads), "secret": secret}
 
     driver(session).evaluate.side_effect = evaluate
 
@@ -162,7 +164,7 @@ def test_fill_clears_then_types_when_fill_as_type_is_on(
 ) -> None:
     """Typing appends, so a prefilled field is emptied first."""
     session.behavior = Behavior.pace()
-    field_reads(session, "old", "hello")
+    field_reads(session, "old", "", "hello")
     session.fill("#input", "hello")
     calls = [c[0] for c in driver(session).mock_calls]
     assert calls.index("clear") < calls.index("humanized_type"), calls
@@ -180,7 +182,7 @@ def test_fill_skips_the_clear_on_an_empty_field(session: BrowserSession) -> None
 def test_clean_empties_the_field_or_fails(
     session: BrowserSession, held: str, fails: bool
 ) -> None:
-    driver(session).evaluate.return_value = held
+    field_reads(session, held)
     if fails:
         with pytest.raises(ValueError, match="#input: field still holds 'left'"):
             session.clean("#input")
@@ -194,6 +196,7 @@ def test_clean_empties_the_field_or_fails(
     [
         ("changed", "alpha", "alpha", True),
         ("changed", "", "abc", False),
+        ("changed", "123", "", True),
         ("exact", "", "abc", True),
         ("exact", "", "abcdef", False),
     ],
@@ -209,6 +212,34 @@ def test_a_fill_the_field_did_not_take_fails(
         ValueError, match=f"expected 'abcdef', field holds '{re.escape(after)}'"
     ):
         session.fill("#input", "abcdef", verify=verify)
+
+
+def test_a_humanized_fill_the_field_refused_fails_after_the_clear(
+    session: BrowserSession,
+) -> None:
+    """A keypress filter lets the clear through and drops every typed key: the
+    field moved, but only to empty, so the step must not report ok."""
+    session.behavior = Behavior.pace()
+    field_reads(session, "123", "", "")
+    with pytest.raises(ValueError, match="expected 'abc', field holds ''"):
+        session.fill("#digits", "abc")
+
+
+def test_a_password_field_names_lengths_never_contents(
+    session: BrowserSession,
+) -> None:
+    field_reads(session, "", "hunt", secret=True)
+    with pytest.raises(ValueError) as failure:
+        session.fill("#pw", "hunter2", verify="exact")
+    message = str(failure.value)
+    assert "hunt" not in message and "hunter2" not in message, message
+    assert "7 characters asked, 4 characters held" in message
+
+
+def test_an_unreadable_field_fails_the_fill(session: BrowserSession) -> None:
+    driver(session).evaluate.side_effect = TimeoutError("detached")
+    with pytest.raises(ValueError, match="could not be read back"):
+        session.fill("#input", "x")
 
 
 def test_a_fill_to_the_value_already_held_passes(session: BrowserSession) -> None:

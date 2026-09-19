@@ -1,5 +1,6 @@
 """Tests for the behavior layer (humanization config + its helpers)."""
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,6 +21,7 @@ from llm_browser.behavior import (
     jittered_target,
 )
 from llm_browser.models import ClickStep, FillStep, ScrollStep, ThinkStep, TypeStep
+from llm_browser.scripts import field_value_js
 from llm_browser.session import BrowserSession
 
 
@@ -28,13 +30,25 @@ def _locator_with_box(box: dict[str, float] | None = None) -> MagicMock:
     locator.count.return_value = 1
     # What the page answers the two scripts a humanized click runs: the box is
     # in view, and the pointer ended on the target itself.
-    locator.first.evaluate.return_value = {
+    page_answer = {
         "gap": 0,
         "scrollY": 0,
         "centre": [400.0, 300.0],
         "target": True,
         "hit": {"tag": "button", "text": "Go", "class": "primary"},
     }
+    # The field a fill writes and reads back: `fill` sets it, `type` appends.
+    field = {"text": "", "secret": False}
+
+    def evaluate(script: str, *_: Any, **__: Any) -> Any:
+        return dict(field) if script == field_value_js() else page_answer
+
+    def append(text: str, **_: Any) -> None:
+        field["text"] += text
+
+    locator.first.evaluate.side_effect = evaluate
+    locator.first.fill.side_effect = lambda text: field.update(text=text)
+    locator.first.type.side_effect = append
     locator.first.bounding_box.return_value = box or {
         "x": 100.0,
         "y": 50.0,

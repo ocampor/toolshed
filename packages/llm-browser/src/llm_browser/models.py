@@ -349,7 +349,7 @@ class WaitForStep(BaseStep):
     ``text`` waits on the page's rendered text instead — a landmark a selector
     cannot name — scoped to ``selector`` when both are given, substring unless
     ``exact``. ``value`` waits on what the ``selector`` field holds, matched the
-    same way; ``state`` does not apply to it.
+    same way, and takes no ``state``.
     """
 
     action: Literal["wait_for"]
@@ -370,6 +370,10 @@ class WaitForStep(BaseStep):
             raise ValueError("wait_for needs a selector or text")
         if self.value is not None and (self.selector is None or self.text is not None):
             raise ValueError("wait_for value needs a selector, and no text")
+        # Compared to the default, not `model_fields_set`: a step is re-validated
+        # from its own dump when it runs, which sets every field.
+        if self.value is not None and self.state != "attached":
+            raise ValueError("wait_for value takes no state: it waits for the value")
         if self.text is not None:
             check_text_wanted(self.text)
             check_text_state(self.state)
