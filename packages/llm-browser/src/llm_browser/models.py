@@ -208,6 +208,7 @@ class SelectStep(SelectorStep):
 class CheckStep(SelectorStep):
     action: Literal["check"]
     checked: bool = True
+    dispatch: bool = False
 
 
 class PickStep(SelectorStep):

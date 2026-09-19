@@ -15,7 +15,7 @@ A scenario claims a key through `Scenario.covers`; see
 
 | item | scenarios |
 | --- | --- |
-| `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox dispatch, hidden checkbox plain, hidden checkbox disabled |
+| `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox plain |
 | `step:clean` | clean step |
 | `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
@@ -41,6 +41,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `field:check.selector` | checkbox and radio |
 | `field:check.checked` | fill waits for enabled, checkbox and radio |
+| `field:check.dispatch` | hidden checkbox dispatch, hidden checkbox disabled |
 | `field:clean.selector` | clean step |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |

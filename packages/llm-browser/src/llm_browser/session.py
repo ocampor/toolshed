@@ -690,11 +690,19 @@ class BrowserSession:
         selector: Selector,
         checked: bool,
         *,
+        dispatch: bool = False,
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """``dispatch=True`` reaches a hidden box with an untrusted click and
+        raises ``ValueError`` when the box still disagrees (a disabled one)."""
         session_input.set_checked(
-            self, selector, checked, behavior=behavior, timeout=timeout
+            self,
+            selector,
+            checked,
+            dispatch=dispatch,
+            behavior=behavior,
+            timeout=timeout,
         )
 
     def pick(

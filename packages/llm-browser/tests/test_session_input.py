@@ -308,6 +308,38 @@ def test_set_checked(session: BrowserSession) -> None:
     driver(session).set_checked.assert_called_once_with("element", False)
 
 
+def test_a_dispatched_click_finds_a_hidden_element(session: BrowserSession) -> None:
+    driver(session).is_visible.return_value = False
+    session.click("#hidden", dispatch=True, timeout=0)
+    driver(session).dispatch_event.assert_called_once_with("element", "click")
+
+
+@pytest.mark.parametrize(("reads", "clicks"), [([False, True], 1), ([True, True], 0)])
+def test_a_dispatched_check_clicks_only_when_the_state_differs(
+    session: BrowserSession, reads: list[bool], clicks: int
+) -> None:
+    driver(session).is_visible.return_value = False
+    driver(session).evaluate.side_effect = reads
+    session.set_checked("#cb", True, dispatch=True, timeout=0)
+    assert driver(session).click.call_count == clicks
+    driver(session).set_checked.assert_not_called()
+
+
+def test_a_dispatched_check_the_box_ignored_fails(session: BrowserSession) -> None:
+    driver(session).evaluate.side_effect = [False, False]
+    with pytest.raises(ValueError, match="#cb: checked is still False"):
+        session.set_checked("#cb", True, dispatch=True)
+    driver(session).click.assert_called_once_with("element", dispatch=True)
+
+
+def test_a_dispatched_check_refuses_a_disabled_box(session: BrowserSession) -> None:
+    driver(session).evaluate.return_value = False
+    driver(session).is_enabled.return_value = False
+    with pytest.raises(ValueError, match="#cb: the box is disabled, so checked"):
+        session.set_checked("#cb", True, dispatch=True)
+    driver(session).click.assert_not_called()
+
+
 # --- pacing ---
 
 
