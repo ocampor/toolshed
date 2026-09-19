@@ -26,11 +26,12 @@ steps:
 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
-| `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
-| `fill` | — | `value`, `humanize` (bool) | Clears the field, then sets `value` in one write — or types it character by character when the session's `Behavior.fill_as_type` is on, which is the default under a behavior YAML |
+| `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach; it needs the element attached, not visible |
+| `fill` | — | `value`, `verify` (`changed` or `exact`, default `changed`), `humanize` (bool) | Clears the field, then sets `value` in one write — or, when the session's `Behavior.fill_as_type` is on (the default under a behavior YAML), clears it with select-all + Delete and types the value character by character. Then reads the field back and fails naming expected and actual (only lengths, for a password field): `changed` when the field still holds what it held right before the value went in, or ends empty for a non-empty `value` (a mask or `maxlength` that rewrote the value passes), `exact` when it holds anything but `value` |
+| `clean` | — | — | Empties the field with select-all + Delete, as trusted keys; fails if anything is left |
 | `type` | — | `value`, `delay` (ms, or `[min, max]` for a per-key jitter, default 0), `humanize` (bool) | Types character by character |
 | `select` | — | `value` | Picks a `<select>` option |
-| `check` | — | `checked` (bool, default true) | Sets checkbox state |
+| `check` | — | `checked` (bool, default true), `dispatch` (bool, default false) | Sets checkbox state. `dispatch: true` reaches a hidden box with an untrusted click, only when its state differs, and fails on a disabled box or one that still differs after the click |
 | `pick` | — | `value` | Clicks the list item matching this text |
 | `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
 | `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
@@ -98,7 +99,11 @@ a page state only its rendered text names.
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
 `wait_for` takes a `selector`, a `text:`, or both — with neither it is rejected at
-flow-load time. `text:` matches the whitespace-normalised `innerText` of the page
+flow-load time. `value:` with a `selector` (and no `text:`, nor a `state:` other than `attached`) waits until that field
+holds the value (`value`, or `innerText` on a contenteditable) — a substring unless
+`exact: true` — and its timeout names what the field held last (only the length,
+for a password field). A selector matching several elements fails at once, as
+every single-element step does. `text:` matches the whitespace-normalised `innerText` of the page
 (or of whatever `selector` matches, when both are given), as a substring unless
 `exact: true`, which asks some element's whole text to equal it. Accents, `&nbsp;`
 and the text moving to a child node are all invisible to it, unlike an XPath

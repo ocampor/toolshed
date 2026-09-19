@@ -1,0 +1,20 @@
+# The field's default is a script-set property, and the list filters on the
+# whole field text: a clear that leaves anything behind empties it.
+steps:
+  - {name: clear, action: fill, selector: "input[id$='textboxautocomplete32']", value: ""}
+  - name: cleared
+    action: read
+    selector: "input[id$='textboxautocomplete32']"
+    extract: {text: {attribute: value}}
+  - {name: type, action: type, selector: "input[id$='textboxautocomplete32']", value: Peso, delay: 20}
+  - name: typed
+    action: read
+    selector: "input[id$='textboxautocomplete32']"
+    extract: {text: {attribute: value}}
+  - {name: wait-options, action: wait_for, selector: "li.ui-menu-item", state: attached, timeout: 8000}
+  # The issue's XPath click, as a `pick`: nodriver resolves no XPath.
+  - {name: pick, action: pick, selector: "li.ui-menu-item", value: Peso Mexicano}
+  - name: result
+    action: read
+    selector: "#result"
+    extract: {text: {attribute: textContent}}

@@ -18,6 +18,7 @@ from llm_browser.action_dispatch import (
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep
 from llm_browser.models import (
     CheckStep,
+    CleanStep,
     ClickStep,
     DomStep,
     DownloadStep,
@@ -79,9 +80,18 @@ def action_fill(
     session.fill(
         step.selector,
         step.value,
+        verify=step.verify,
         behavior=behavior,
         timeout=step.timeout,
     )
+    return VoidResult()
+
+
+@_registry.register("clean")
+def action_clean(
+    session: BrowserSession, step: CleanStep, behavior: Behavior
+) -> VoidResult:
+    session.clean(step.selector, behavior=behavior, timeout=step.timeout)
     return VoidResult()
 
 
@@ -114,7 +124,11 @@ def action_check(
     session: BrowserSession, step: CheckStep, behavior: Behavior
 ) -> VoidResult:
     session.set_checked(
-        step.selector, step.checked, behavior=behavior, timeout=step.timeout
+        step.selector,
+        step.checked,
+        dispatch=step.dispatch,
+        behavior=behavior,
+        timeout=step.timeout,
     )
     return VoidResult()
 
@@ -152,7 +166,15 @@ def action_wait_for(
 ) -> VoidResult:
     """A timeout here rides ``execute_action``'s handler: the step fails with
     the selector/state message, and ``optional: true`` turns it into a skip."""
-    if step.text is not None:
+    if step.value is not None and step.selector is not None:
+        session.wait_for_value(
+            step.selector,
+            step.value,
+            exact=step.exact,
+            timeout=step.timeout,
+            interval=step.interval,
+        )
+    elif step.text is not None:
         session.wait_for_text(
             step.text,
             selector=step.selector,

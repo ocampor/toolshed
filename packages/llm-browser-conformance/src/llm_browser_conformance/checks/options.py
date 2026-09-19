@@ -108,8 +108,8 @@ def wait_after_costs_the_flow_its_milliseconds(ctx: Context) -> None:
 
 
 def a_fields_block_changes_nothing(ctx: Context) -> None:
-    """``fields:`` is accepted and ignored, so the block in the flow names a
-    selector and an attribute that would be wrong if anything read them."""
+    """``fields:`` and ``read:`` are accepted and ignored, so the blocks in the
+    flow name selectors and an attribute that would be wrong if anything read them."""
     plain = expect_success(ctx, PAGE, "option-plain")
     declared = expect_success(ctx, PAGE, "option-fields")
     assert declared == plain, f"{declared} != {plain}"
@@ -232,7 +232,7 @@ SCENARIOS = [
         "fields are ignored",
         Section.OPTIONS,
         a_fields_block_changes_nothing,
-        covers=frozenset({"option:fields"}),
+        covers=frozenset({"option:fields", "option:read"}),
     ),
     Scenario(
         "step name keys the output",

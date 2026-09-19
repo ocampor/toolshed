@@ -164,10 +164,18 @@ class ClickStep(SelectorStep):
     humanize: bool | None = None
 
 
+FillVerify = Literal["changed", "exact"]
+
+
 class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
+    verify: FillVerify = "changed"
     humanize: bool | None = None
+
+
+class CleanStep(SelectorStep):
+    action: Literal["clean"]
 
 
 class TypeStep(SelectorStep):
@@ -200,6 +208,7 @@ class SelectStep(SelectorStep):
 class CheckStep(SelectorStep):
     action: Literal["check"]
     checked: bool = True
+    dispatch: bool = False
 
 
 class PickStep(SelectorStep):
@@ -339,12 +348,14 @@ class WaitForStep(BaseStep):
 
     ``text`` waits on the page's rendered text instead — a landmark a selector
     cannot name — scoped to ``selector`` when both are given, substring unless
-    ``exact``.
+    ``exact``. ``value`` waits on what the ``selector`` field holds, matched the
+    same way, and takes no ``state``.
     """
 
     action: Literal["wait_for"]
     selector: Selector | None = None
     text: str | None = None
+    value: str | None = None
     exact: bool = False
     state: WaitState = "attached"
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
@@ -357,6 +368,12 @@ class WaitForStep(BaseStep):
     def _check_target_and_budget(self) -> "WaitForStep":
         if self.selector is None and self.text is None:
             raise ValueError("wait_for needs a selector or text")
+        if self.value is not None and (self.selector is None or self.text is not None):
+            raise ValueError("wait_for value needs a selector, and no text")
+        # Compared to the default, not `model_fields_set`: a step is re-validated
+        # from its own dump when it runs, which sets every field.
+        if self.value is not None and self.state != "attached":
+            raise ValueError("wait_for value takes no state: it waits for the value")
         if self.text is not None:
             check_text_wanted(self.text)
             check_text_state(self.state)
@@ -409,6 +426,7 @@ def _step_discriminator(v: Any) -> str:
 Step = Annotated[
     Annotated[ClickStep, Tag("click")]
     | Annotated[FillStep, Tag("fill")]
+    | Annotated[CleanStep, Tag("clean")]
     | Annotated[TypeStep, Tag("type")]
     | Annotated[SelectStep, Tag("select")]
     | Annotated[CheckStep, Tag("check")]

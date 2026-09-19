@@ -1,0 +1,3 @@
+# The page restores "alpha" on every input event.
+steps:
+  - {name: fill, action: fill, selector: "#stubborn", value: beta}

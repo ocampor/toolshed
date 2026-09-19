@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0 — 2026-09-18
+
+Tracks `llm-browser` 0.20.0.
+
+### Added
+
+- `checks/input_steps.py`: eleven input-step scenarios, each run under `Behavior.off()` and `Behavior.human()`, on `site/prefilled-autocomplete.html`, `site/fill-does-not-stick.html` and `site/hidden-checkbox.html` (ocampor/browser-api#68).
+- Gap rows for `prefilled autocomplete clear` and `wait_for value` on nodriver: a humanized click fails there (#59).
+
+### Fixed
+
+- `option:read` is covered: `flows/option-fields.yaml` carries a `read:` block.
+
 ## 0.11.2 — 2026-09-17
 
 Tracks `llm-browser` 0.18.4.

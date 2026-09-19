@@ -1,9 +1,10 @@
 """The session's input methods: resolve, pace, pick the driver primitive."""
 
 import json
+import re
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -12,8 +13,10 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.constants import WHEEL_INTO_VIEW_TICKS
-from llm_browser.models import ClickStep
+from llm_browser.drivers.base import Driver
+from llm_browser.models import ClickStep, FillVerify
 from llm_browser.results import HitTarget
+from llm_browser.scripts import field_value_js
 from llm_browser.session_input import behavior_for, effective_behavior
 from llm_browser.session import BrowserSession
 
@@ -57,6 +60,20 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
 def driver(session: BrowserSession) -> Any:
     return session.driver
+
+
+def field_reads(session: BrowserSession, *values: str, secret: bool = False) -> None:
+    """The field's value at each read a fill or clean makes, in order; every
+    other script keeps the fixture's answer."""
+    reads = iter(values)
+    other = driver(session).evaluate.return_value
+
+    def evaluate(_element: Any, script: str, *_: Any) -> Any:
+        if script != field_value_js():
+            return other
+        return {"text": next(reads), "secret": secret}
+
+    driver(session).evaluate.side_effect = evaluate
 
 
 # --- routing to driver primitives ---
@@ -137,20 +154,112 @@ def test_a_jitter_delay_types_humanized_with_that_jitter(
 def test_fill_uses_the_plain_primitive_when_fill_as_type_is_off(
     session: BrowserSession,
 ) -> None:
+    field_reads(session, "", "hello")
     session.fill("#input", "hello")
     driver(session).fill.assert_called_once_with("element", "hello")
 
 
-def test_fill_types_when_fill_as_type_is_on(session: BrowserSession) -> None:
+def test_fill_clears_then_types_when_fill_as_type_is_on(
+    session: BrowserSession,
+) -> None:
+    """Typing appends, so a prefilled field is emptied first."""
     session.behavior = Behavior.pace()
+    field_reads(session, "old", "", "hello")
     session.fill("#input", "hello")
-    driver(session).humanized_type.assert_called_once()
+    calls = [c[0] for c in driver(session).mock_calls]
+    assert calls.index("clear") < calls.index("humanized_type"), calls
+
+
+def test_fill_skips_the_clear_on_an_empty_field(session: BrowserSession) -> None:
+    session.behavior = Behavior.pace()
+    field_reads(session, "", "hello")
+    session.fill("#input", "hello")
+    driver(session).clear.assert_not_called()
     driver(session).fill.assert_not_called()
+
+
+@pytest.mark.parametrize(("held", "fails"), [("", False), ("left", True)])
+def test_clean_empties_the_field_or_fails(
+    session: BrowserSession, held: str, fails: bool
+) -> None:
+    field_reads(session, held)
+    if fails:
+        with pytest.raises(ValueError, match="#input: field still holds 'left'"):
+            session.clean("#input")
+    else:
+        session.clean("#input")
+    driver(session).clear.assert_called_once_with("element")
+
+
+@pytest.mark.parametrize(
+    ("verify", "before", "after", "fails"),
+    [
+        ("changed", "alpha", "alpha", True),
+        ("changed", "", "abc", False),
+        ("changed", "123", "", True),
+        ("exact", "", "abc", True),
+        ("exact", "", "abcdef", False),
+    ],
+)
+def test_a_fill_the_field_did_not_take_fails(
+    session: BrowserSession, verify: FillVerify, before: str, after: str, fails: bool
+) -> None:
+    field_reads(session, before, after)
+    if not fails:
+        session.fill("#input", "abcdef", verify=verify)
+        return
+    with pytest.raises(
+        ValueError, match=f"expected 'abcdef', field holds '{re.escape(after)}'"
+    ):
+        session.fill("#input", "abcdef", verify=verify)
+
+
+def test_a_humanized_fill_the_field_refused_fails_after_the_clear(
+    session: BrowserSession,
+) -> None:
+    """A keypress filter lets the clear through and drops every typed key: the
+    field moved, but only to empty, so the step must not report ok."""
+    session.behavior = Behavior.pace()
+    field_reads(session, "123", "", "")
+    with pytest.raises(ValueError, match="expected 'abc', field holds ''"):
+        session.fill("#digits", "abc")
+
+
+def test_a_password_field_names_lengths_never_contents(
+    session: BrowserSession,
+) -> None:
+    field_reads(session, "", "hunt", secret=True)
+    with pytest.raises(ValueError) as failure:
+        session.fill("#pw", "hunter2", verify="exact")
+    message = str(failure.value)
+    assert "hunt" not in message and "hunter2" not in message, message
+    assert "7 characters asked, 4 characters held" in message
+
+
+def test_an_unreadable_field_fails_the_fill(session: BrowserSession) -> None:
+    driver(session).evaluate.side_effect = TimeoutError("detached")
+    with pytest.raises(ValueError, match="could not be read back"):
+        session.fill("#input", "x")
+
+
+def test_a_fill_to_the_value_already_held_passes(session: BrowserSession) -> None:
+    field_reads(session, "same", "same")
+    session.fill("#input", "same")
+
+
+def test_the_default_clear_selects_all_then_deletes() -> None:
+    fake = MagicMock()
+    Driver.clear(fake, "element")
+    assert fake.press.call_args_list == [
+        call("element", "ControlOrMeta+a"),
+        call("element", "Delete"),
+    ]
 
 
 def test_fill_humanize_true_types_on_a_session_that_is_off(
     session: BrowserSession,
 ) -> None:
+    field_reads(session, "", "hello")
     session.fill("#input", "hello", humanize=True)
     driver(session).humanized_type.assert_called_once()
     driver(session).fill.assert_not_called()
@@ -160,6 +269,7 @@ def test_fill_humanize_false_sets_the_value_on_a_human_session(
     session: BrowserSession,
 ) -> None:
     session.behavior = Behavior.human()
+    field_reads(session, "", "hello")
     session.fill("#input", "hello", humanize=False)
     driver(session).fill.assert_called_once_with("element", "hello")
     driver(session).humanized_type.assert_not_called()
@@ -169,6 +279,7 @@ def test_fill_humanize_true_types_at_the_behaviors_cadence(
     session: BrowserSession,
 ) -> None:
     """The forced fill types on the humanized cadence, not at zero delay."""
+    field_reads(session, "", "hello")
     session.fill("#input", "hello", humanize=True)
     _page, _element, _value, behavior = driver(session).humanized_type.call_args.args
     assert behavior.type_char_delay == Behavior.human().type_char_delay
@@ -226,6 +337,38 @@ def test_select_on_a_non_select_is_a_value_error(session: BrowserSession) -> Non
 def test_set_checked(session: BrowserSession) -> None:
     session.set_checked("#cb", False)
     driver(session).set_checked.assert_called_once_with("element", False)
+
+
+def test_a_dispatched_click_finds_a_hidden_element(session: BrowserSession) -> None:
+    driver(session).is_visible.return_value = False
+    session.click("#hidden", dispatch=True, timeout=0)
+    driver(session).dispatch_event.assert_called_once_with("element", "click")
+
+
+@pytest.mark.parametrize(("reads", "clicks"), [([False, True], 1), ([True, True], 0)])
+def test_a_dispatched_check_clicks_only_when_the_state_differs(
+    session: BrowserSession, reads: list[bool], clicks: int
+) -> None:
+    driver(session).is_visible.return_value = False
+    driver(session).evaluate.side_effect = reads
+    session.set_checked("#cb", True, dispatch=True, timeout=0)
+    assert driver(session).click.call_count == clicks
+    driver(session).set_checked.assert_not_called()
+
+
+def test_a_dispatched_check_the_box_ignored_fails(session: BrowserSession) -> None:
+    driver(session).evaluate.side_effect = [False, False]
+    with pytest.raises(ValueError, match="#cb: checked is still False"):
+        session.set_checked("#cb", True, dispatch=True)
+    driver(session).click.assert_called_once_with("element", dispatch=True)
+
+
+def test_a_dispatched_check_refuses_a_disabled_box(session: BrowserSession) -> None:
+    driver(session).evaluate.return_value = False
+    driver(session).is_enabled.return_value = False
+    with pytest.raises(ValueError, match="#cb: the box is disabled, so checked"):
+        session.set_checked("#cb", True, dispatch=True)
+    driver(session).click.assert_not_called()
 
 
 # --- pacing ---
@@ -470,6 +613,7 @@ def test_a_call_leaves_the_sessions_behavior_alone(session: BrowserSession) -> N
     default it started with, before and after."""
     session.behavior = Behavior.off()
     session.click("#btn", behavior=Behavior.human())
+    field_reads(session, "", "hello")
     session.fill("#input", "hello", humanize=True)
     assert session.behavior == Behavior.off()
 

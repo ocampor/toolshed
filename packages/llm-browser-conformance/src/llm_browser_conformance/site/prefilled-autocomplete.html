@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- Origin: a tax-portal invoice form, 2026-09-18. Markup kept from the failed run's capture; scripts rebuilt. -->
+<meta charset="utf-8">
+<title>Prefilled autocomplete</title>
+<div class="bd">
+  <div class="sat-height-field"><div>Moneda*:</div></div>
+  <input type="text" class="form-control sat-height-field ui-autocomplete-input" id="135textboxautocomplete32" tabindex="7">
+</div>
+<ul id="ui-id-1" tabindex="0" class="ui-menu ui-widget ui-widget-content ui-autocomplete ui-front"></ul>
+<div id="result"></div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 300);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+const CURRENCIES = ["Peso Mexicano", "Peso Argentino", "Peso chileno", "Peso Colombiano", "Dólar americano"];
+const input = document.getElementById("135textboxautocomplete32");
+const menu = document.getElementById("ui-id-1");
+const result = document.getElementById("result");
+
+// The portal sets the default from script: the DOM carries no `value` attribute, only the property.
+input.value = "Peso Mexicano";
+
+const render = (query) => {
+  menu.replaceChildren();
+  if (query === "") return;
+  const matches = CURRENCIES.filter((name) => name.toLowerCase().includes(query.toLowerCase()));
+  matches.forEach((name, index) => {
+    const li = document.createElement("li");
+    li.className = "ui-menu-item";
+    const wrapper = document.createElement("strong");
+    wrapper.id = "ui-id-" + (19 + index);
+    wrapper.tabIndex = -1;
+    wrapper.className = "ui-menu-item-wrapper";
+    wrapper.textContent = name;
+    li.appendChild(wrapper);
+    menu.appendChild(li);
+  });
+};
+
+// The list is filtered by the WHOLE field text, after a debounce, as jQuery UI does.
+let debounce;
+input.addEventListener("input", () => {
+  menu.replaceChildren();
+  clearTimeout(debounce);
+  debounce = setTimeout(() => render(input.value), delay);
+});
+
+menu.addEventListener("click", (e) => {
+  const item = e.target.closest(".ui-menu-item");
+  if (!item) return;
+  input.value = item.textContent;
+  result.textContent = item.textContent;
+  menu.replaceChildren();
+});
+</script>

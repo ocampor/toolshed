@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Origin: a tax-portal invoice form, 2026-09-18: fields that reject or truncate what was written. -->
+<meta charset="utf-8">
+<title>Fill does not stick</title>
+<input type="text" id="stubborn" value="alpha">
+<input type="text" id="short" maxlength="3">
+<input type="text" id="digits" value="123">
+<div id="note" contenteditable="true">alpha</div>
+<script>
+const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+
+// The page owns this field: every edit is put back the moment it lands.
+const stubborn = document.getElementById("stubborn");
+stubborn.addEventListener("input", () => {
+  stubborn.value = "alpha";
+});
+
+// Digits only: a select-all + Delete gets through, every letter is dropped.
+document.getElementById("digits").addEventListener("keypress", (e) => {
+  if (!/[0-9]/.test(e.key)) e.preventDefault();
+});
+</script>

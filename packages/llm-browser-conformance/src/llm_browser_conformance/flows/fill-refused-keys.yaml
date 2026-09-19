@@ -1,0 +1,3 @@
+# A digits-only field: the clear lands, the letters never do.
+steps:
+  - {name: fill, action: fill, selector: "#digits", value: abc}

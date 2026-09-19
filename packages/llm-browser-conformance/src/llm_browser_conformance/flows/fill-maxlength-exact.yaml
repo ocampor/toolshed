@@ -1,0 +1,2 @@
+steps:
+  - {name: fill, action: fill, selector: "#short", value: abcdef, verify: exact}
