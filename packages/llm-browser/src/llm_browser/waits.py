@@ -22,7 +22,7 @@ from llm_browser.constants import (
 )
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState, check_text_state
-from llm_browser.scripts import text_match_js
+from llm_browser.scripts import field_value_js, text_match_js
 from llm_browser.selectors import Selector, describe_selector, resolve_selector
 
 StatePredicate = Callable[[Driver, Any], bool]
@@ -190,12 +190,17 @@ def matches_now(driver: Driver, element: Any, script: str) -> bool:
     has no text this tick, which is the answer the next tick re-asks. Anything
     else is the script's own bug, and says so rather than polling out.
     """
+    return bool(evaluate_now(driver, element, script))
+
+
+def evaluate_now(driver: Driver, element: Any, script: str) -> Any:
+    """``None`` when the bounded read timed out on a node that went away."""
     try:
-        return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
+        return driver.evaluate(element, script, READ_TIMEOUT_MS)
     except Exception as exc:
         # patchright's TimeoutError is not playwright's, and neither is the builtin.
         if type(exc).__name__ == "TimeoutError":
-            return False
+            return None
         raise
 
 
@@ -221,3 +226,39 @@ def poll_for_text(
         timeout_ms,
         interval_ms,
     )
+
+
+def poll_for_value(
+    driver: Driver,
+    page: Any,
+    selector: Selector,
+    value: str,
+    *,
+    exact: bool = False,
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Block until the field holds ``value`` (a substring unless ``exact``), or
+    raise ``TimeoutError`` naming what it held last."""
+    held: list[str | None] = [None]
+
+    def reached() -> bool:
+        held[0] = value_now(driver, page, selector)
+        if held[0] is None:
+            return False
+        return held[0] == value if exact else value in held[0]
+
+    description = f"{describe_selector(selector)} did not hold {value!r}"
+    try:
+        poll_until(reached, description, timeout_ms, interval_ms)
+    except TimeoutError as exc:
+        raise TimeoutError(f"{exc}; it held {held[0]!r}") from None
+
+
+def value_now(driver: Driver, page: Any, selector: Selector) -> str | None:
+    """The first match's field value; ``None`` while nothing matches."""
+    locator = resolve_selector(driver, page, selector)
+    if driver.count(locator) == 0:
+        return None
+    read = evaluate_now(driver, driver.first(locator), field_value_js())
+    return None if read is None else str(read)

@@ -99,7 +99,9 @@ a page state only its rendered text names.
 | `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
 
 `wait_for` takes a `selector`, a `text:`, or both — with neither it is rejected at
-flow-load time. `text:` matches the whitespace-normalised `innerText` of the page
+flow-load time. `value:` with a `selector` (and no `text:`) waits until that field
+holds the value (`value`, or `innerText` on a contenteditable) — a substring unless
+`exact: true` — and its timeout names what the field held last. `text:` matches the whitespace-normalised `innerText` of the page
 (or of whatever `selector` matches, when both are given), as a substring unless
 `exact: true`, which asks some element's whole text to equal it. Accents, `&nbsp;`
 and the text moving to a child node are all invisible to it, unlike an XPath

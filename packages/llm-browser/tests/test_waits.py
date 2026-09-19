@@ -614,3 +614,41 @@ def test_text_present_is_one_read_with_no_waiting(
 
     assert session.text_present("Listo") is False
     assert clock.sleeps == []
+
+
+# --- waiting on a field's value ---
+
+
+def driver_with_values(values: list[str]) -> MagicMock:
+    """An attached field whose value reads walk ``values``, repeating the last."""
+    driver = driver_with(counts=[1])
+    driver.evaluate.side_effect = _series(values)
+    return driver
+
+
+@pytest.mark.parametrize(
+    ("exact", "values"),
+    [(False, ["", "Peso", "Peso Mexicano"]), (True, ["Peso", "Peso Mexicano"])],
+)
+def test_wait_for_value_returns_once_the_field_holds_it(
+    tmp_path: Path, clock: FakeClock, exact: bool, values: list[str]
+) -> None:
+    session = make_session(tmp_path, driver_with_values(values))
+
+    session.wait_for_value(
+        "#moneda", "Mexicano" if not exact else "Peso Mexicano", exact=exact
+    )
+
+    assert len(clock.sleeps) == len(values) - 1
+
+
+def test_wait_for_value_times_out_naming_what_the_field_held(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_values(["Peso Mexicano"]))
+
+    with pytest.raises(
+        TimeoutError,
+        match="did not hold 'Dólar' within 1000ms; it held 'Peso Mexicano'",
+    ):
+        session.wait_for_value("#moneda", "Dólar", timeout=1000)

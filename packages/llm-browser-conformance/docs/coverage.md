@@ -24,7 +24,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick |
 | `step:goto` | redirect, goto wait_until |
 | `step:parse` | parse typed rows |
-| `step:pick` | wait_for value, pick by text |
+| `step:pick` | pick by text |
 | `step:press` | enter and escape, autocomplete enter |
 | `step:read` | overlay intercepts click, slow xhr rows |
 | `step:run-flow` | run-flow embedded |
@@ -33,7 +33,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:select` | custom select rejects select, native select optgroup |
 | `step:think` | think pauses |
 | `step:type` | controlled input, masked input |
-| `step:wait_for` | flow failure captures artifacts, enter and escape, slow xhr rows, wait_for value |
+| `step:wait_for` | flow failure captures artifacts, enter and escape, slow xhr rows |
 
 ## step fields
 
@@ -112,6 +112,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
 | `field:wait_for.text` | wait exact text scoped |
+| `field:wait_for.value` | wait_for value |
 | `field:wait_for.exact` | wait exact text scoped |
 | `field:wait_for.state` | fill waits for enabled, flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
@@ -195,6 +196,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, wait enabled, wait aria-disabled, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
 | `session:wait_for_text` | wait text present, wait text absent, hidden scope has no text, display:contents scope |
+| `session:wait_for_value` | wait_for value |
 
 ## library behaviour
 

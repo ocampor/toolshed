@@ -125,6 +125,31 @@ def test_either_target_validates(overrides: dict[str, Any]) -> None:
     assert isinstance(validate_step(wait_for_step(**overrides)), WaitForStep)
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [{"selector": None, "text": "x", "value": "x"}, {"text": "x", "value": "x"}],
+)
+def test_a_value_wait_needs_a_selector_and_no_text(overrides: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError, match="value needs a selector, and no text"):
+        validate_step(wait_for_step(**overrides))
+
+
+def test_the_action_waits_on_the_value_when_the_step_names_it(
+    mock_session: MagicMock,
+) -> None:
+    step = validate_step(wait_for_step(value="Peso Mexicano", exact=True))
+
+    assert isinstance(execute_action(mock_session, step), VoidResult)
+    mock_session.wait_for_value.assert_called_once_with(
+        step.selector,
+        "Peso Mexicano",
+        exact=True,
+        timeout=step.timeout,
+        interval=step.interval,
+    )
+    mock_session.wait_for_element.assert_not_called()
+
+
 def test_a_text_wait_rejects_an_element_only_state() -> None:
     """`stable` reads an element's text over time; a text wait has no element,
     and the message may not send the author after a selector they gave."""

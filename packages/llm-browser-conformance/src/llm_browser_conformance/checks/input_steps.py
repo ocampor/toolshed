@@ -18,7 +18,6 @@ PREFILLED = "prefilled-autocomplete.html"
 STUBBORN = "fill-does-not-stick.html"
 HIDDEN = "hidden-checkbox.html"
 
-NO_VALUE_WAIT = "wait_for has no value: key, so it ignores the value asked for"
 NO_CHECK_DISPATCH = "check has no dispatch: key, so a hidden box is never reached"
 ALL_DRIVERS = ("patchright", "camoufox", "nodriver")
 
@@ -172,8 +171,7 @@ SCENARIOS = [
         "wait_for value",
         Section.STEPS,
         wait_for_value_reads_the_field,
-        known_gaps=on_every_driver(NO_VALUE_WAIT),
-        covers=frozenset({"step:wait_for", "step:pick"}),
+        covers=frozenset({"field:wait_for.value", "session:wait_for_value"}),
     ),
     Scenario(
         "hidden checkbox dispatch",
