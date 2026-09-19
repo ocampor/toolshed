@@ -21,7 +21,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
-| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick, fill verify exact |
+| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick |
 | `step:goto` | redirect, goto wait_until |
 | `step:parse` | parse typed rows |
 | `step:pick` | wait_for value, pick by text |
@@ -65,6 +65,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:fill.pick` | match per step |
 | `field:fill.selector` | shadow dom |
 | `field:fill.value` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill |
+| `field:fill.verify` | fill verify exact |
 | `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |

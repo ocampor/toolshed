@@ -41,6 +41,7 @@ from llm_browser.explore_models import (
 )
 from llm_browser.models import (
     CaptureMode,
+    FillVerify,
     check_settle_budget,
     check_text_wanted,
     PageProbe,
@@ -671,14 +672,17 @@ class BrowserSession:
         selector: Selector,
         value: str,
         *,
+        verify: FillVerify = "changed",
         humanize: bool | None = None,
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """``ValueError`` when the field did not take ``value`` (see ``verify``)."""
         session_input.fill(
             self,
             selector,
             value,
+            verify=verify,
             humanize=humanize,
             behavior=behavior,
             timeout=timeout,

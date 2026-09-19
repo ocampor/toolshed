@@ -81,6 +81,7 @@ def action_fill(
     session.fill(
         step.selector,
         step.value,
+        verify=step.verify,
         behavior=behavior,
         timeout=step.timeout,
     )

@@ -27,6 +27,7 @@ from llm_browser.constants import (
     LOGGER_NAME,
     WHEEL_INTO_VIEW_TICKS,
 )
+from llm_browser.models import FillVerify
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
 from llm_browser.scripts import (
     field_value_js,
@@ -375,6 +376,7 @@ def fill(
     selector: Selector,
     value: str,
     *,
+    verify: FillVerify = "changed",
     humanize: bool | None = None,
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
@@ -384,13 +386,28 @@ def fill(
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
+        before = field_value(session, element)
         if behavior.fill_as_type:
             # An empty field needs no clear: nobody select-alls nothing.
-            if field_value(session, element):
+            if before:
                 session.driver.clear(element)
             type_humanized(session, element, value, behavior)
         else:
             session.driver.fill(element, value)
+        after = field_value(session, element)
+    if fill_failed(value, before, after, verify):
+        raise ValueError(
+            f"fill {describe_selector(selector)}: expected {value!r}, "
+            f"field holds {after!r}"
+        )
+
+
+def fill_failed(value: str, before: str, after: str, verify: FillVerify) -> bool:
+    """``changed`` tolerates a page that reformats or truncates what it was
+    given (a mask, ``maxlength``) and objects only to a field left as it was."""
+    if verify == "exact":
+        return after != value
+    return after == before != value
 
 
 def clean(

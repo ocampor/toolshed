@@ -18,7 +18,6 @@ PREFILLED = "prefilled-autocomplete.html"
 STUBBORN = "fill-does-not-stick.html"
 HIDDEN = "hidden-checkbox.html"
 
-FILL_NOT_VERIFIED = "fill reports ok without reading the field back"
 NO_VALUE_WAIT = "wait_for has no value: key, so it ignores the value asked for"
 NO_CHECK_DISPATCH = "check has no dispatch: key, so a hidden box is never reached"
 ALL_DRIVERS = ("patchright", "camoufox", "nodriver")
@@ -161,15 +160,13 @@ SCENARIOS = [
         "fill does not stick",
         Section.STEPS,
         a_fill_that_does_not_stick_fails_clearly,
-        known_gaps=on_every_driver(FILL_NOT_VERIFIED),
         covers=frozenset({"step:fill"}),
     ),
     Scenario(
         "fill verify exact",
         Section.STEPS,
         verify_exact_fails_where_the_default_passes,
-        known_gaps=on_every_driver(FILL_NOT_VERIFIED),
-        covers=frozenset({"step:fill"}),
+        covers=frozenset({"field:fill.verify"}),
     ),
     Scenario(
         "wait_for value",
