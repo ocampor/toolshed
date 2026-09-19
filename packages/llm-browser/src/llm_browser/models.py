@@ -164,9 +164,13 @@ class ClickStep(SelectorStep):
     humanize: bool | None = None
 
 
+FillVerify = Literal["changed", "exact"]
+
+
 class FillStep(SelectorStep):
     action: Literal["fill"]
     value: str = ""
+    verify: FillVerify = "changed"
     humanize: bool | None = None
 
 

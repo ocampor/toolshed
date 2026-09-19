@@ -27,7 +27,7 @@ steps:
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
-| `fill` | — | `value`, `humanize` (bool) | Clears the field, then sets `value` in one write — or, when the session's `Behavior.fill_as_type` is on (the default under a behavior YAML), clears it with select-all + Delete and types the value character by character |
+| `fill` | — | `value`, `verify` (`changed` or `exact`, default `changed`), `humanize` (bool) | Clears the field, then sets `value` in one write — or, when the session's `Behavior.fill_as_type` is on (the default under a behavior YAML), clears it with select-all + Delete and types the value character by character. Then reads the field back and fails naming expected and actual: `changed` when the field still holds what it held before (a mask or `maxlength` that rewrote the value passes), `exact` when it holds anything but `value` |
 | `clean` | — | — | Empties the field with select-all + Delete, as trusted keys; fails if anything is left |
 | `type` | — | `value`, `delay` (ms, or `[min, max]` for a per-key jitter, default 0), `humanize` (bool) | Types character by character |
 | `select` | — | `value` | Picks a `<select>` option |

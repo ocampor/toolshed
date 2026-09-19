@@ -17,12 +17,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
-| fill does not stick | patchright | fill reports ok without reading the field back |
-| fill does not stick | camoufox | fill reports ok without reading the field back |
-| fill does not stick | nodriver | fill reports ok without reading the field back |
-| fill verify exact | patchright | fill reports ok without reading the field back |
-| fill verify exact | camoufox | fill reports ok without reading the field back |
-| fill verify exact | nodriver | fill reports ok without reading the field back |
 | wait_for value | patchright | wait_for has no value: key, so it ignores the value asked for |
 | wait_for value | camoufox | wait_for has no value: key, so it ignores the value asked for |
 | wait_for value | nodriver | wait_for has no value: key, so it ignores the value asked for |
