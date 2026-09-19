@@ -347,12 +347,14 @@ class WaitForStep(BaseStep):
 
     ``text`` waits on the page's rendered text instead — a landmark a selector
     cannot name — scoped to ``selector`` when both are given, substring unless
-    ``exact``.
+    ``exact``. ``value`` waits on what the ``selector`` field holds, matched the
+    same way; ``state`` does not apply to it.
     """
 
     action: Literal["wait_for"]
     selector: Selector | None = None
     text: str | None = None
+    value: str | None = None
     exact: bool = False
     state: WaitState = "attached"
     timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
@@ -365,6 +367,8 @@ class WaitForStep(BaseStep):
     def _check_target_and_budget(self) -> "WaitForStep":
         if self.selector is None and self.text is None:
             raise ValueError("wait_for needs a selector or text")
+        if self.value is not None and (self.selector is None or self.text is not None):
+            raise ValueError("wait_for value needs a selector, and no text")
         if self.text is not None:
             check_text_wanted(self.text)
             check_text_state(self.state)

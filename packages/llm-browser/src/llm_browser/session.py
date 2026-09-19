@@ -549,6 +549,26 @@ class BrowserSession:
             interval_ms=interval,
         )
 
+    def wait_for_value(
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        exact: bool = False,
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        interval: int = DEFAULT_POLL_INTERVAL_MS,
+    ) -> None:
+        """Poll until the field holds ``value``; ``TimeoutError`` names what it held."""
+        waits.poll_for_value(
+            self.driver,
+            self.get_page(),
+            selector,
+            value,
+            exact=exact,
+            timeout_ms=timeout,
+            interval_ms=interval,
+        )
+
     def text_present(
         self,
         text: str,

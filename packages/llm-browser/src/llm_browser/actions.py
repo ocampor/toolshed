@@ -162,7 +162,15 @@ def action_wait_for(
 ) -> VoidResult:
     """A timeout here rides ``execute_action``'s handler: the step fails with
     the selector/state message, and ``optional: true`` turns it into a skip."""
-    if step.text is not None:
+    if step.value is not None and step.selector is not None:
+        session.wait_for_value(
+            step.selector,
+            step.value,
+            exact=step.exact,
+            timeout=step.timeout,
+            interval=step.interval,
+        )
+    elif step.text is not None:
         session.wait_for_text(
             step.text,
             selector=step.selector,
