@@ -684,6 +684,16 @@ class BrowserSession:
             timeout=timeout,
         )
 
+    def clean(
+        self,
+        selector: Selector,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        """Empty a field with trusted keys; ``ValueError`` if anything is left."""
+        session_input.clean(self, selector, behavior=behavior, timeout=timeout)
+
     def type(
         self,
         selector: Selector,

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -12,6 +12,7 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.behavior_config import CamoufoxBehaviorConfig
 from llm_browser.constants import WHEEL_INTO_VIEW_TICKS
+from llm_browser.drivers.base import Driver
 from llm_browser.models import ClickStep
 from llm_browser.results import HitTarget
 from llm_browser.session_input import behavior_for, effective_behavior
@@ -141,11 +142,45 @@ def test_fill_uses_the_plain_primitive_when_fill_as_type_is_off(
     driver(session).fill.assert_called_once_with("element", "hello")
 
 
-def test_fill_types_when_fill_as_type_is_on(session: BrowserSession) -> None:
+def test_fill_clears_then_types_when_fill_as_type_is_on(
+    session: BrowserSession,
+) -> None:
+    """Typing appends, so a prefilled field is emptied first."""
     session.behavior = Behavior.pace()
+    driver(session).evaluate.return_value = "old"
     session.fill("#input", "hello")
-    driver(session).humanized_type.assert_called_once()
+    calls = [c[0] for c in driver(session).mock_calls]
+    assert calls.index("clear") < calls.index("humanized_type"), calls
+
+
+def test_fill_skips_the_clear_on_an_empty_field(session: BrowserSession) -> None:
+    session.behavior = Behavior.pace()
+    driver(session).evaluate.return_value = ""
+    session.fill("#input", "hello")
+    driver(session).clear.assert_not_called()
     driver(session).fill.assert_not_called()
+
+
+@pytest.mark.parametrize(("held", "fails"), [("", False), ("left", True)])
+def test_clean_empties_the_field_or_fails(
+    session: BrowserSession, held: str, fails: bool
+) -> None:
+    driver(session).evaluate.return_value = held
+    if fails:
+        with pytest.raises(ValueError, match="#input: field still holds 'left'"):
+            session.clean("#input")
+    else:
+        session.clean("#input")
+    driver(session).clear.assert_called_once_with("element")
+
+
+def test_the_default_clear_selects_all_then_deletes() -> None:
+    fake = MagicMock()
+    Driver.clear(fake, "element")
+    assert fake.press.call_args_list == [
+        call("element", "ControlOrMeta+a"),
+        call("element", "Delete"),
+    ]
 
 
 def test_fill_humanize_true_types_on_a_session_that_is_off(

@@ -18,11 +18,7 @@ PREFILLED = "prefilled-autocomplete.html"
 STUBBORN = "fill-does-not-stick.html"
 HIDDEN = "hidden-checkbox.html"
 
-HUMANIZED_FILL_APPENDS = (
-    "a humanized fill types without clearing, so it appends to a prefilled field"
-)
 FILL_NOT_VERIFIED = "fill reports ok without reading the field back"
-NO_CLEAN_STEP = "there is no clean step"
 NO_VALUE_WAIT = "wait_for has no value: key, so it ignores the value asked for"
 NO_CHECK_DISPATCH = "check has no dispatch: key, so a hidden box is never reached"
 ALL_DRIVERS = ("patchright", "camoufox", "nodriver")
@@ -147,21 +143,19 @@ SCENARIOS = [
         "prefilled autocomplete clear",
         Section.STEPS,
         a_prefilled_autocomplete_is_cleared_before_typing,
-        known_gaps=on_every_driver(HUMANIZED_FILL_APPENDS),
         covers=frozenset({"step:fill", "field:fill.value"}),
     ),
     Scenario(
         "prefilled autocomplete fill",
         Section.STEPS,
         a_fill_replaces_a_prefilled_value,
-        known_gaps=on_every_driver(HUMANIZED_FILL_APPENDS),
         covers=frozenset({"step:fill", "field:fill.value"}),
     ),
     Scenario(
         "clean step",
         Section.STEPS,
         clean_empties_a_prefilled_field,
-        known_gaps=on_every_driver(NO_CLEAN_STEP),
+        covers=frozenset({"step:clean", "field:clean.selector", "session:clean"}),
     ),
     Scenario(
         "fill does not stick",

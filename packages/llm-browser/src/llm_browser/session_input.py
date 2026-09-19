@@ -28,7 +28,12 @@ from llm_browser.constants import (
     WHEEL_INTO_VIEW_TICKS,
 )
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
-from llm_browser.scripts import hit_test_js, select_control_tag_js, viewport_fit_js
+from llm_browser.scripts import (
+    field_value_js,
+    hit_test_js,
+    select_control_tag_js,
+    viewport_fit_js,
+)
 from llm_browser.selectors import Selector, describe_selector
 
 if TYPE_CHECKING:
@@ -375,14 +380,38 @@ def fill(
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     """``fill_as_type`` is one of the knobs ``humanize`` switches, so ``True``
-    types the value key by key and ``False`` writes it in one go."""
+    clears and types the value key by key and ``False`` writes it in one go."""
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
         if behavior.fill_as_type:
+            # An empty field needs no clear: nobody select-alls nothing.
+            if field_value(session, element):
+                session.driver.clear(element)
             type_humanized(session, element, value, behavior)
         else:
             session.driver.fill(element, value)
+
+
+def clean(
+    session: "BrowserSession",
+    selector: Selector,
+    *,
+    behavior: Behavior | None = None,
+    timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+) -> None:
+    with paced(effective_behavior(session, behavior=behavior)):
+        element = session.find(selector, timeout=timeout)
+        session.driver.clear(element)
+        held = field_value(session, element)
+    if held:
+        raise ValueError(
+            f"clean {describe_selector(selector)}: field still holds {held!r}"
+        )
+
+
+def field_value(session: "BrowserSession", element: Any) -> str:
+    return str(session.driver.evaluate(element, field_value_js()))
 
 
 def type(  # shadows the builtin to mirror the `type` action's name
