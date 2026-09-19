@@ -12,6 +12,7 @@ from llm_browser import constants
 from llm_browser.constants import EXTRACT_PROPERTIES
 from llm_browser.parse import ExtractField, row_spec
 from llm_browser.scripts import (
+    field_value_js,
     JS_DIR,
     count_selectors_js,
     explore_first_js,
@@ -734,3 +735,21 @@ def test_text_match_js_reads_normalised_rendered_text(
     text: str, exact: bool, expected: dict[str, bool], tmp_path: Path
 ) -> None:
     assert run_text_match(text, exact, tmp_path) == expected
+
+
+@pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
+def test_field_value_js_reads_the_control_a_label_names(tmp_path: Path) -> None:
+    script = tmp_path / "harness.mjs"
+    script.write_text(
+        f"const READ = {field_value_js()};\n"
+        "const input = { tagName: 'INPUT', value: 'typed' };\n"
+        "const editable = { tagName: 'DIV', isContentEditable: true, innerText: 'hi' };\n"
+        "console.log(JSON.stringify([\n"
+        "  READ(input), READ({ tagName: 'LABEL', control: input }),\n"
+        "  READ(editable), READ({ tagName: 'DIV' }),\n"
+        "]));\n"
+    )
+    out = subprocess.run(
+        [JS_RUNTIME, str(script)], capture_output=True, text=True, check=True
+    )
+    assert json.loads(out.stdout) == ["typed", "typed", "hi", ""]
