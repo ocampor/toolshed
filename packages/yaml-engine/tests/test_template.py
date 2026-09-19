@@ -2,7 +2,12 @@
 
 import pytest
 
-from yaml_engine.template import resolve_template, resolve_templates_in_dict
+from yaml_engine.template import (
+    TemplatePathError,
+    resolve_template,
+    resolve_templates_in_dict,
+    template_names,
+)
 
 # --- resolve_template ---
 
@@ -71,3 +76,54 @@ def test_resolve_dict_missing_vars_preserved():
     raw = {"field": "{{ known }} and {{ unknown }}"}
     result = resolve_templates_in_dict(raw, {"known": "yes"})
     assert result == {"field": "yes and {{ unknown }}"}
+
+
+# --- dotted paths ---
+
+ROWS = {"link": {"href": "/a", "n": 3}, "links": [{"text": "one"}, {"text": "two"}]}
+
+
+@pytest.mark.parametrize(
+    "template, expected",
+    [
+        ("{{ link.href }}", "/a"),
+        ("{{ link.n }}", "3"),
+        ("{{ links.1.text }}", "two"),
+        ("x{{link.href}}/{{ links.0.text }}", "x/a/one"),
+    ],
+)
+def test_resolve_template_dotted_path(template, expected):
+    assert resolve_template(template, ROWS) == expected
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "{{ link.missing }}",
+        "{{ links.2.text }}",
+        "{{ links.first.text }}",
+        "{{ link.href.deeper }}",
+        "{{ nothing.href }}",
+    ],
+)
+def test_resolve_template_dotted_path_to_nothing_raises(template):
+    with pytest.raises(TemplatePathError, match="resolves to nothing"):
+        resolve_template(template, ROWS)
+
+
+def test_resolve_template_dotted_path_to_none_raises():
+    with pytest.raises(TemplatePathError):
+        resolve_template("{{ link.href }}", {"link": {"href": None}})
+
+
+def test_resolve_templates_in_dict_dotted_path():
+    raw = {"url": "https://x{{ link.href }}", "nested": ["{{ links.0.text }}"]}
+    assert resolve_templates_in_dict(raw, ROWS) == {
+        "url": "https://x/a",
+        "nested": ["one"],
+    }
+
+
+def test_template_names_are_path_roots():
+    raw = {"a": "{{ x }} {{ link.href }}", "b": [{"c": "{{ links.0.text }}"}, 3]}
+    assert template_names(raw) == {"x", "link", "links"}
