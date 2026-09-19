@@ -17,6 +17,30 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
+| prefilled autocomplete clear | patchright | a humanized fill types without clearing, so it appends to a prefilled field |
+| prefilled autocomplete clear | camoufox | a humanized fill types without clearing, so it appends to a prefilled field |
+| prefilled autocomplete clear | nodriver | a humanized fill types without clearing, so it appends to a prefilled field |
+| prefilled autocomplete fill | patchright | a humanized fill types without clearing, so it appends to a prefilled field |
+| prefilled autocomplete fill | camoufox | a humanized fill types without clearing, so it appends to a prefilled field |
+| prefilled autocomplete fill | nodriver | a humanized fill types without clearing, so it appends to a prefilled field |
+| clean step | patchright | there is no clean step |
+| clean step | camoufox | there is no clean step |
+| clean step | nodriver | there is no clean step |
+| fill does not stick | patchright | fill reports ok without reading the field back |
+| fill does not stick | camoufox | fill reports ok without reading the field back |
+| fill does not stick | nodriver | fill reports ok without reading the field back |
+| fill verify exact | patchright | fill reports ok without reading the field back |
+| fill verify exact | camoufox | fill reports ok without reading the field back |
+| fill verify exact | nodriver | fill reports ok without reading the field back |
+| wait_for value | patchright | wait_for has no value: key, so it ignores the value asked for |
+| wait_for value | camoufox | wait_for has no value: key, so it ignores the value asked for |
+| wait_for value | nodriver | wait_for has no value: key, so it ignores the value asked for |
+| hidden checkbox dispatch | patchright | check has no dispatch: key, so a hidden box is never reached |
+| hidden checkbox dispatch | camoufox | check has no dispatch: key, so a hidden box is never reached |
+| hidden checkbox dispatch | nodriver | check has no dispatch: key, so a hidden box is never reached |
+| hidden checkbox disabled | patchright | check has no dispatch: key, so a hidden box is never reached |
+| hidden checkbox disabled | camoufox | check has no dispatch: key, so a hidden box is never reached |
+| hidden checkbox disabled | nodriver | check has no dispatch: key, so a hidden box is never reached |
 | goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
 | dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
 | match on a pick step | nodriver | NodriverDriver.nth keeps the whole selector, so the narrowed locator still counts three and `pick` falls back to matching `value:` — it clicks Beta, not the third option: see #59 |

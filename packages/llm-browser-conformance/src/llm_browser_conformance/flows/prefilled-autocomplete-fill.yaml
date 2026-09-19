@@ -1,0 +1,7 @@
+# One fill replaces the default: no separate clear step.
+steps:
+  - {name: fill, action: fill, selector: "input[id$='textboxautocomplete32']", value: Peso}
+  - name: filled
+    action: read
+    selector: "input[id$='textboxautocomplete32']"
+    extract: {text: {attribute: value}}

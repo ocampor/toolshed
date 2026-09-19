@@ -1,0 +1,7 @@
+# maxlength keeps "abc"; the field changed, so the default verify passes.
+steps:
+  - {name: fill, action: fill, selector: "#short", value: abcdef}
+  - name: filled
+    action: read
+    selector: "#short"
+    extract: {text: {attribute: value}}
