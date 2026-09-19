@@ -2,6 +2,17 @@
 
 ## 0.21.0 — 2026-09-22
 
+### Breaking
+
+- A `fill` whose value did not take now raises `ValueError` where it used to report ok: a `readonly` field, a page that restores its value, a field that refuses typed keys.
+- A humanized `fill` on a prefilled field replaces the value instead of appending to it.
+
+Migration:
+
+- A flow that relied on a humanized `fill` appending → `type`.
+- A `fill ''` meant to empty a field → `clean`.
+- A `fill` on a field the page rewrites → `verify: changed` (the default) passes a rewrite; `optional: true` for a field that may reject it.
+
 ### Added
 
 - `clean` step and `BrowserSession.clean(selector)`: empties a field with trusted select-all + Delete, and fails naming what is left.
@@ -17,7 +28,8 @@
 ### Fixed
 
 - A humanized `fill` (`Behavior.fill_as_type`, on under `Behavior.human()`) clears a non-empty field before typing; `fill ''` no longer leaves the value, and `fill 'x'` no longer appends (ocampor/browser-api#68).
-- `fill` reads the field back and raises `ValueError` naming the expected and actual value when the field still holds what it held before (`verify: exact`: on any mismatch).
+- `fill` reads the field back and raises `ValueError` naming the expected and actual value when the field holds what it held right before the value went in, or ends empty (`verify: exact`: on any mismatch); a password field's contents appear only as lengths.
+
 ## 0.20.0 — 2026-09-19
 
 ### Breaking
