@@ -522,11 +522,16 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
 
 def resolve_after_run(raw: dict[str, Any], data: FlowData) -> dict[str, Any]:
     """``raw`` templated once the run is over, when a pass's item and every
-    ``save_as`` value are gone: a dotted path into one stays as written."""
-    try:
-        return resolve_templates_in_dict(raw, data.to_template_dict())
-    except TemplatePathError:
-        return raw
+    ``save_as`` value are gone: only the key whose value reaches into one stays
+    as written, so its siblings still resolve."""
+    template_data = data.to_template_dict()
+    resolved: dict[str, Any] = {}
+    for key, value in raw.items():
+        try:
+            resolved[key] = resolve_templates_in_dict({key: value}, template_data)[key]
+        except TemplatePathError:
+            resolved[key] = value
+    return resolved
 
 
 def as_text(output: object) -> str:

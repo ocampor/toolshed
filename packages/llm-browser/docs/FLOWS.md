@@ -238,8 +238,9 @@ reach it like any param: in `{{ }}`, in `when:`, in `repeat.over`, in a
   every extracted value is a string: quote numbers.
 - A saved list with zero rows runs zero `repeat` passes.
 - A save belongs to the flow that made it. A sub-flow sees its parent's saves;
-  a save made inside a sub-flow — so inside a `repeat` pass — is visible to the
-  later steps of that pass only.
+  a save made inside a sub-flow is visible to the later steps of that sub-flow
+  run only — repeated or not, and each `repeat` pass is its own run — never to
+  the parent.
 - A skipped or `optional`-swallowed read saves nothing, and `--from` past the
   read starts without it: a plain `{{ name }}` then stays as written and a
   dotted path fails its step.
@@ -249,6 +250,9 @@ Rejected at flow load:
 
 - a `save_as` name that is a declared param, another `save_as`, or — in a
   sub-flow — a name the `run-flow` step binds (`data:` keys, `repeat`'s `as`);
+- a `repeat` binding (`as`, `<as>_index`) named after a `save_as` of the same flow;
+- a `path:` naming a `save_as` of its own flow, or — inside a sub-flow — one of
+  the parent's saves the `run-flow` step does not rebind;
 - a step that uses a saved name before the step that saves it;
 - `field` or a `where` key that is not one of the step's `extract` fields;
 - `where` without `field`;

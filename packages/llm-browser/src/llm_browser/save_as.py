@@ -24,12 +24,15 @@ def saved_value(save_as: SaveAs, rows: list[object]) -> object:
     row = next((row for row in rows if row_matches(row, save_as.where)), None)
     value = row.get(save_as.field) if isinstance(row, dict) else None
     if value is None:
-        raise ValueError(
-            f"save_as {save_as.name!r}: none of {len(rows)} rows has "
-            f"{save_as.field!r}"
-            + (f" where {save_as.where!r}" if save_as.where else "")
-        )
+        raise ValueError(f"save_as {save_as.name!r}: {no_value_reason(save_as, rows)}")
     return value
+
+
+def no_value_reason(save_as: SaveAs, rows: list[object]) -> str:
+    """Only row 0 is read without ``where``, so say so rather than blame every row."""
+    if save_as.where:
+        return f"none of {len(rows)} rows has {save_as.field!r} where {save_as.where!r}"
+    return f"row 0 of {len(rows)} rows has no {save_as.field!r}"
 
 
 def row_matches(row: object, where: dict[str, object]) -> bool:
@@ -45,7 +48,8 @@ def save_result(step: Step, result: ActionResult, data: FlowData) -> ActionResul
     if not isinstance(result, ParsedResult):
         return result
     rows = step_output(step, result)
-    assert isinstance(rows, list)
+    if not isinstance(rows, list):
+        return result
     try:
         value = saved_value(step.save_as, rows)
     except ValueError as exc:
@@ -76,11 +80,25 @@ def names_used(step: Step) -> set[str]:
     return used
 
 
+def pass_bindings(step: Step) -> set[str]:
+    if step.repeat is None:
+        return set()
+    return {step.repeat.bind, f"{step.repeat.bind}_index"}
+
+
 def names_bound(step: RunFlowStep) -> set[str]:
-    bound = set(step.data)
-    if step.repeat is not None:
-        bound |= {step.repeat.bind, f"{step.repeat.bind}_index"}
-    return bound
+    return set(step.data) | pass_bindings(step)
+
+
+def saved_names_in_paths(step: Step, saves: set[str]) -> set[str]:
+    """Saved names a ``path:`` under ``step`` reads — a sub-flow's own bindings
+    shadow the parent saves they rename, so those do not count."""
+    found = template_names(getattr(step, "path", None) or "") & saves
+    if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+        inherited = saves - names_bound(step)
+        for child in step.flow.steps:
+            found |= saved_names_in_paths(child, inherited)
+    return found
 
 
 def reject_shadowing(saves: list[str], taken: set[str], where: str) -> None:
@@ -112,3 +130,25 @@ def check_saved_names(flow: Flow) -> None:
                 f"step {step.name!r} uses {early!r} before the step that saves it"
             )
         pending -= set(save_names([step]))
+    reject_binding_over_saves(flow, set(saves))
+    reject_saves_in_paths(flow, set(saves))
+
+
+def reject_binding_over_saves(flow: Flow, saves: set[str]) -> None:
+    for step in flow.steps:
+        clash = sorted(pass_bindings(step) & saves)
+        if clash:
+            raise ValueError(
+                f"step {step.name!r} binds {clash!r} as its repeat item, "
+                "shadowing a save_as of the same name"
+            )
+
+
+def reject_saves_in_paths(flow: Flow, saves: set[str]) -> None:
+    for step in flow.steps:
+        named = sorted(saved_names_in_paths(step, saves))
+        if named:
+            raise ValueError(
+                f"step {step.name!r} names {named!r} in a path:; the CLI names "
+                "files after the run, when a save_as value is gone"
+            )

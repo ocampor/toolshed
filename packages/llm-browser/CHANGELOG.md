@@ -2,21 +2,32 @@
 
 ## 0.20.0 — 2026-09-19
 
+### Breaking
+
+- `flow_passes.repeat_data_error` is renamed `flow_passes.data_error`.
+- Templates resolve dotted paths (`{{ book.href }}`, `{{ books.0.href }}`), from
+  yaml-engine 0.2.0: a `{{ a.b }}` that used to render literally now fails its
+  step as a `FlowError`.
+
+Migration:
+
+- `flow_passes.repeat_data_error(...)` → `flow_passes.data_error(...)`.
+- A step value that must keep a literal `{{ a.b }}` needs a dotless placeholder
+  name, or `a` in flow data with a `b` member.
+
 ### Added
 
 - `save_as` on a `read` step (`models.SaveAs`): `save_as: <name>` keeps the row
   list as flow data; `{ name, field }` keeps one scalar from row 0, and `where:`
   picks the first row whose fields equal its values (ocampor/toolshed#61).
 - Saved values feed later templates, `when:`, `repeat.over` and `run-flow` `data:`.
-- Templates accept dotted paths (`{{ book.href }}`, `{{ books.0.href }}`), from
-  yaml-engine 0.2.0; one that resolves to nothing fails its step as a `FlowError`.
 - Load-time rejections: a `save_as` name shadowing a param, another `save_as` or
-  a sub-flow binding; a saved name used before its step; `field`/`where` keys
-  outside `extract`; `save_as` with `repeat`.
+  a sub-flow binding; a `repeat` binding shadowing a `save_as`; a `path:` naming
+  a saved value; a saved name used before its step; `field`/`where` keys outside
+  `extract`; `save_as` with `repeat`.
 
 ### Changed
 
-- `flow_passes.repeat_data_error` is `flow_passes.data_error`.
 - `cli.declared_paths` templates only `path:` and `run-flow` `data:`, not the
   whole step.
 - Requires `yaml-engine>=0.2.0`.
