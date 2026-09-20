@@ -29,7 +29,7 @@ from llm_browser.constants import (
 from llm_browser.html import SanitizeLevel
 from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
-from llm_browser.repeat import Repeat, check_scope, desugar_step
+from llm_browser.repeat import Repeat, RepeatBlock, check_scope
 from llm_browser.results import PayloadBytes
 from llm_browser.selectors import Selector
 
@@ -458,7 +458,13 @@ class Flow(BaseModel):
     def _desugar_repeat_blocks(cls, data: Any) -> Any:
         if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
             return data
-        return {**data, "steps": [desugar_step(step) for step in data["steps"]]}
+        steps = [
+            RepeatBlock.model_validate(step).desugared()
+            if isinstance(step, dict) and step.get("action") == "repeat"
+            else step
+            for step in data["steps"]
+        ]
+        return {**data, "steps": steps}
 
     @model_validator(mode="after")
     def _enforce_step_scopes(self) -> Flow:

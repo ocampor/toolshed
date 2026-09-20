@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from llm_browser.constants import ELEMENT_SNIPPET_MAX_CHARS, OUTPUT_ACTIONS
+from llm_browser.constants import OUTPUT_ACTIONS
 from llm_browser.iterations import IterationReport
 from llm_browser.models import (
     FlowData,
@@ -18,7 +18,7 @@ from llm_browser.models import (
     Step,
 )
 from llm_browser.parse import parse_extract_spec
-from llm_browser.repeat import ElementScope, Repeat
+from llm_browser.repeat import ElementScope
 from llm_browser.results import (
     ActionResult,
     BytesResult,
@@ -28,14 +28,12 @@ from llm_browser.results import (
     TextResult,
 )
 from llm_browser.selector_map import SelectorMap, resolve_ref
-from llm_browser.selectors import PlainSelector, RefSelector, ScopedSelector, Selector
+from llm_browser.selectors import PlainSelector, RefSelector, ScopedSelector
 from llm_browser.session import BrowserSession
 
 
 @dataclass
 class RunState:
-    """What one flow run has collected so far."""
-
     outputs: dict[str, object] = field(default_factory=dict)
     skipped: list[SkippedStep] = field(default_factory=list)
     iterations: dict[str, IterationReport] = field(default_factory=dict)
@@ -83,8 +81,6 @@ INDEXED_NAME = re.compile(r"(?P<name>.*)\[(?P<index>\d+)\]")
 
 @dataclass(frozen=True)
 class Pass:
-    """One pass of a step: which item it runs for and what it addresses."""
-
     index: int | None
     data: FlowData
     item: object = None
@@ -104,20 +100,25 @@ def repeat_passes(
     ``<bind>_index``, so a step can name either. ``only`` keeps just the passes
     whose index it names for this step; the indices are the original ones.
     """
-    if step.repeat is None:
+    repeat = step.repeat
+    if repeat is None:
         return [Pass(None, data)]
     items, root = repeat_source(session, step, data, selector_map)
     wanted = None if only is None else only.get(step.qualified_name)
-    return [
-        Pass(
-            index,
-            bound_data(data, step.repeat, index, item),
-            item,
-            None if root is None else ElementScope(root, index),
+    passes = []
+    for index, item in enumerate(items):
+        if wanted is not None and index not in wanted:
+            continue
+        bound = {**data.model_dump(), repeat.bind: item, f"{repeat.bind}_index": index}
+        passes.append(
+            Pass(
+                index,
+                FlowData.model_validate(bound),
+                item,
+                None if root is None else ElementScope(root, index),
+            )
         )
-        for index, item in enumerate(items)
-        if wanted is None or index in wanted
-    ]
+    return passes
 
 
 def repeat_source(
@@ -138,7 +139,10 @@ def repeat_source(
         root = resolve_ref(repeat.over_selector, selector_map)
         if isinstance(root, (RefSelector, ScopedSelector)):
             raise ValueError(f"repeat over_selector {root!r} names no element")
-        return list(element_snippets(session, root)), root
+        # Counted once, and no handle is kept: a pass re-resolves the root and
+        # its index when it addresses the element, binding this much of its text.
+        rows = session.parse_elements(root, parse_extract_spec(None))
+        return [" ".join((row.get("text") or "").split())[:80] for row in rows], root
     if isinstance(repeat.over, list):
         return list(repeat.over), None
     items = data.to_template_dict().get(str(repeat.over))
@@ -150,30 +154,6 @@ def repeat_source(
             f"{type(items).__name__}, not a list"
         )
     return items, None
-
-
-def element_snippets(session: BrowserSession, selector: Selector) -> list[str]:
-    """One short text snippet per match, counted once: what each pass binds.
-
-    No element handle is kept — a pass re-resolves the root and its index when
-    it addresses the element.
-    """
-    rows = session.parse_elements(selector, parse_extract_spec(None))
-    return [snippet(row.get("text")) for row in rows]
-
-
-def snippet(text: str | None) -> str:
-    return " ".join((text or "").split())[:ELEMENT_SNIPPET_MAX_CHARS]
-
-
-def bound_data(data: FlowData, repeat: Repeat, index: int, item: object) -> FlowData:
-    return FlowData.model_validate(
-        {
-            **data.model_dump(),
-            repeat.bind: item,
-            f"{repeat.bind}_index": index,
-        }
-    )
 
 
 def repeat_data_error(step: Step, exc: ValueError, state: RunState) -> FlowError:

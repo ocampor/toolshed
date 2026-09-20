@@ -13,13 +13,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from llm_browser.constants import REPEAT_BODY_REJECTED
 from llm_browser.selectors import PlainSelector, Selector
 
 
 class OnError(enum.StrEnum):
-    """What a failing pass does to the rest of the loop."""
-
     stop = "stop"
     skip = "skip"
 
@@ -29,8 +26,6 @@ RepeatItem = str | int | float | bool
 
 @dataclass(frozen=True)
 class ElementScope:
-    """The element one pass is on: a selector and the pass's position in it."""
-
     root: PlainSelector
     index: int
 
@@ -53,7 +48,6 @@ class Repeat(BaseModel):
 
     @property
     def param(self) -> str | None:
-        """The list param this repeats over — ``None`` for any other source."""
         return self.over if isinstance(self.over, str) else None
 
     @model_validator(mode="after")
@@ -83,8 +77,13 @@ class RepeatBlock(BaseModel):
 
     @model_validator(mode="after")
     def _check_body(self) -> RepeatBlock:
+        # A repeat body is flat: nothing in it may open a loop or a sub-flow.
         for step in self.steps:
-            check_body_step(step)
+            if step.get("action") in {"run-flow", "repeat"} or "repeat" in step:
+                raise ValueError(
+                    f"repeat body step {step.get('name', 'unnamed')!r} may not be "
+                    "a `run-flow`, a nested `repeat`, or carry a `repeat:` modifier"
+                )
         return self
 
     def desugared(self) -> dict[str, Any]:
@@ -100,22 +99,6 @@ class RepeatBlock(BaseModel):
             },
             "flow": {"steps": self.steps},
         }
-
-
-def check_body_step(step: dict[str, Any]) -> None:
-    """A repeat body is flat: nothing in it may open a loop or a sub-flow."""
-    if step.get("action") in REPEAT_BODY_REJECTED or "repeat" in step:
-        raise ValueError(
-            f"repeat body step {step.get('name', 'unnamed')!r} may not be a "
-            "`run-flow`, a nested `repeat`, or carry a `repeat:` modifier"
-        )
-
-
-def desugar_step(raw: Any) -> Any:
-    """``action: repeat`` rewritten; anything else handed back untouched."""
-    if isinstance(raw, dict) and raw.get("action") == "repeat":
-        return RepeatBlock.model_validate(raw).desugared()
-    return raw
 
 
 def check_scope(step: Any, repeat: Repeat | None) -> None:

@@ -20,6 +20,7 @@ def mock_session(tmp_path: Path) -> MagicMock:
     session.behavior = Behavior.off()
     session.capture = "screenshot"
     session.driver = MagicMock()
+    session.current_url.return_value = "https://example.test/page"
     session.get_page.return_value = MagicMock()
     session.screenshot_bytes.return_value = PNG
     session.dom_snapshot.return_value = "<html><body>hi</body></html>"
@@ -27,7 +28,6 @@ def mock_session(tmp_path: Path) -> MagicMock:
         name="download.bin", content=b"payload"
     )
     session.element_exists.return_value = True
-    session.current_url.return_value = "https://example.test/page"
     session.click.return_value = None  # a double hit-tests nothing
     session.probe.return_value = PageProbe()
     locator = MagicMock()

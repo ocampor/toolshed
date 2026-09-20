@@ -4,44 +4,24 @@
 
 ### Added
 
-- `action: repeat` with a `steps:` body loops several steps; it desugars at load
-  into today's `repeat:` modifier on an inline `run-flow`, so both spellings
-  share one engine (ocampor/toolshed#60).
+- `action: repeat` with a `steps:` body loops several steps, desugared at load into the `repeat:` modifier on an inline `run-flow` (ocampor/toolshed#60).
 - `Repeat.over` takes an inline list as well as a list param's name.
-- `Repeat.over_selector` repeats over matched elements: the count is snapshotted
-  at step start and each pass binds the element's text snippet plus `<as>_index`.
-- `in: <as>` on a body step scopes its selector to that pass's element via
-  `selectors.ScopedSelector`, re-resolved every pass.
-- `Repeat.on_error` (`repeat.OnError`): `stop` (default) or `skip`, which keeps a
-  failed pass's partial outputs, names it in `skipped`, and runs the rest.
-- `FlowSuccess.iterations` / `FlowError.iterations`: one `iterations.IterationReport`
-  per repeating step, keyed by qualified name, with `total`, `ok`, `not_run` and
-  `failed[]` (`iterations.FailedPass` carries index, item, step, error, message,
-  selector, hint, url, screenshot).
-- `FlowSuccess.retry_hint` and `RetryHint.only`: the passes a run did not finish
-  — the failed ones plus the ones `stop` never reached — come back as items in
-  `data` for a list param, as indices for any other source.
-- `run_flow(..., only={step: [i, j]})` and `llm-browser run --only STEP=I,J` run
-  only those passes of a repeating step, under their original indices.
-- `session.BrowserSession.current_url()`, the page's url as a string.
-- `selector_map.resolve_ref`, one selector's ref swapped for the map's.
-- `docs/FLOWS.md` documents the block form, the sources, `in:`, `on_error`, the
-  report, the rerun path, and what `when:` really does.
+- `Repeat.over_selector` repeats over matched elements, count snapshotted at step start, each pass binding the element's text snippet plus `<as>_index`.
+- `in: <as>` scopes a step's selector to that pass's element (`selectors.ScopedSelector`), re-resolved every pass.
+- `Repeat.on_error`: `stop` (default), or `skip` to keep a failed pass's outputs, name it in `skipped` and run the rest.
+- `FlowSuccess.iterations` / `FlowError.iterations`: an `iterations.IterationReport` per repeating step — `total`, `ok`, `not_run`, and `failed[]` with everything a pass failed on.
+- `FlowSuccess.retry_hint` and `RetryHint.only`: the passes a run did not finish come back as items in `data` for a list param, as indices for any other source.
+- `run_flow(..., only={step: [i, j]})` and `llm-browser run --only STEP=I,J` rerun just those passes, under their original indices.
 
 ### Changed
 
-- The step loop moved to `llm_browser.flow_runner` (`run_loaded_flow`,
-  `run_subflow`, `child_data`), which `llm_browser.flows` re-exports — every
-  existing import keeps working.
+- The step loop moved out of `llm_browser.flows` into `llm_browser.flow_runner` (`run_loaded_flow`, `run_subflow`), and `child_data` into `llm_browser.flow_passes`.
 
 ### Fixed
 
-- `llm-browser validate` no longer counts a desugared `repeat` block as a
-  sub-flow: `subflow_count` counts the `run-flow` steps the author wrote.
-- A `read` under `in:` that matches nothing fails its pass instead of returning
-  an empty row list (ocampor/toolshed#62 will generalize it as `expect`).
-- `flows.with_flow_path` fills `retry_hint.flow_path` on any result that carries
-  a hint, not only on a `FlowError`.
+- `llm-browser validate` counts the `run-flow` steps the author wrote, so a desugared `repeat` block no longer inflates `subflow_count`.
+- A `read` under `in:` that matches nothing fails its pass instead of returning an empty row list (ocampor/toolshed#62 generalizes it as `expect`).
+- `flows.with_flow_path` fills `retry_hint.flow_path` on any result that carries a hint, not only on a `FlowError`.
 
 ## 0.19.0 — 2026-09-17
 

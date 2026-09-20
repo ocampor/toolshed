@@ -49,8 +49,6 @@ def select_steps(steps: list[Step], from_step: str | None) -> list[Step]:
 
 
 class RunContext(NamedTuple):
-    """Everything a step's passes need besides the step and its data."""
-
     session: BrowserSession
     behavior: Behavior | None = None
     selector_map: SelectorMap | None = None

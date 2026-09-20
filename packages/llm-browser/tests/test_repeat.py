@@ -41,15 +41,6 @@ def block(**extra: Any) -> dict[str, Any]:
 # --- block form ---
 
 
-def test_the_block_form_runs_the_body_once_per_item(
-    tmp_path: Path, mock_session: MagicMock
-) -> None:
-    path = write_flow(tmp_path, [block(over="codes")], params=["codes"])
-    result = run_flow_file(mock_session, path, {"codes": ["a", "b"]})
-    assert isinstance(result, FlowSuccess)
-    assert list(result.outputs) == ["each/grab[0]", "each/grab[1]"]
-
-
 def test_the_block_form_is_the_modifier_form(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
@@ -73,6 +64,7 @@ def test_the_block_form_is_the_modifier_form(
     from_modifier = run_flow_file(mock_session, hand_written, data)
     assert isinstance(from_block, FlowSuccess)
     assert isinstance(from_modifier, FlowSuccess)
+    assert list(from_block.outputs) == ["each/grab[0]", "each/grab[1]"]
     assert from_block.outputs == from_modifier.outputs
     assert from_block.iterations == from_modifier.iterations
 
@@ -129,16 +121,12 @@ def test_an_inline_list_needs_no_param(tmp_path: Path, mock_session: MagicMock) 
             ),
             "names no selector",
         ),
+        (grab(**{"in": "row"}), "not inside a repeat"),
     ],
 )
-def test_the_block_form_is_rejected_at_load(step: dict[str, Any], message: str) -> None:
+def test_a_repeat_is_rejected_at_load(step: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         Flow.model_validate({"params": ["codes"], "steps": [step]})
-
-
-def test_in_outside_a_repeat_is_rejected() -> None:
-    with pytest.raises(ValueError, match="not inside a repeat"):
-        Flow.model_validate({"steps": [grab(**{"in": "row"})]})
 
 
 # --- on_error and the report ---
@@ -294,56 +282,43 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
 # --- rerun ---
 
 
-def test_a_list_param_gets_its_failed_items_back(
-    tmp_path: Path, mock_session: MagicMock
+@pytest.mark.parametrize(
+    ("step", "data", "items", "only", "not_run"),
+    [
+        # A list param reruns by data; `skip` runs every pass, so none is left.
+        (block(over="codes", on_error="skip"), {"codes": ["a", "b"]}, ["b"], {}, []),
+        # `stop` never reached c and d, and they belong to the rerun too.
+        (
+            block(over="codes"),
+            {"codes": ["a", "b", "c", "d"]},
+            ["b", "c", "d"],
+            {},
+            [2, 3],
+        ),
+        # Only an index addresses an inline list entry.
+        (block(over=["a", "b"], on_error="skip"), {}, None, {"each": [1]}, []),
+        (block(over=["a", "b", "c", "d"]), {}, None, {"each": [1, 2, 3]}, [2, 3]),
+    ],
+)
+def test_the_rerun_hint_names_every_unfinished_pass(
+    tmp_path: Path,
+    mock_session: MagicMock,
+    step: dict[str, Any],
+    data: dict[str, object],
+    items: list[str] | None,
+    only: dict[str, list[int]],
+    not_run: list[int],
 ) -> None:
     mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
-    path = write_flow(
-        tmp_path, [block(over="codes", on_error="skip")], params=["codes"]
-    )
-    result = run_flow_file(mock_session, path, {"codes": ["a", "b"]})
-    assert isinstance(result, FlowSuccess)
+    path = write_flow(tmp_path, [step], params=list(data))
+    result = run_flow_file(mock_session, path, data)
     assert result.retry_hint is not None
-    assert result.retry_hint.data["codes"] == ["b"]
-    assert result.retry_hint.only == {}
+    assert result.retry_hint.only == only
     assert result.retry_hint.failed_step == "each"
-    # `skip` runs every pass, so none is left over.
-    assert result.iterations["each"].not_run == []
-
-
-def test_stopping_leaves_the_passes_after_the_failure_to_the_rerun(
-    tmp_path: Path, mock_session: MagicMock
-) -> None:
-    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
-    path = write_flow(tmp_path, [block(over="codes")], params=["codes"])
-    result = run_flow_file(mock_session, path, {"codes": ["a", "b", "c", "d"]})
-    assert isinstance(result, FlowError)
-    assert result.iterations["each"].not_run == [2, 3]
-    assert result.retry_hint is not None
-    assert result.retry_hint.data["codes"] == ["b", "c", "d"]
-
-
-def test_stopping_over_an_indexed_source_leaves_their_indices(
-    tmp_path: Path, mock_session: MagicMock
-) -> None:
-    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
-    path = write_flow(tmp_path, [block(over=["a", "b", "c", "d"])])
-    result = run_flow_file(mock_session, path, {})
-    assert isinstance(result, FlowError)
-    assert result.retry_hint is not None
-    assert result.retry_hint.only == {"each": [1, 2, 3]}
-
-
-def test_an_indexed_source_gets_its_failed_indices(
-    tmp_path: Path, mock_session: MagicMock
-) -> None:
-    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
-    path = write_flow(tmp_path, [block(over=["a", "b"], on_error="skip")])
-    result = run_flow_file(mock_session, path, {})
-    assert isinstance(result, FlowSuccess)
-    assert result.retry_hint is not None
-    assert result.retry_hint.only == {"each": [1]}
     assert result.retry_hint.flow_path == str(path.resolve())
+    assert result.iterations["each"].not_run == not_run
+    if items is not None:
+        assert result.retry_hint.data["codes"] == items
 
 
 def test_a_clean_run_carries_no_retry_hint(

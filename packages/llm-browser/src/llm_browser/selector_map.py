@@ -91,7 +91,6 @@ def resolve_step_refs(step: Step, selector_map: SelectorMap | None) -> None:
 
 
 def resolve_ref(selector: Selector, selector_map: SelectorMap | None) -> Selector:
-    """One selector with its ref swapped for the map's; anything else as-is."""
     if not isinstance(selector, RefSelector):
         return selector
     available = selector_map or {}

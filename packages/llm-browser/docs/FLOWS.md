@@ -271,15 +271,12 @@ fallback selector (`primary` / `fallback`) cannot be scoped; name one selector.
 #### The report
 
 Every repeating step that ran is reported under `iterations`, on `FlowSuccess`
-and `FlowError` alike, keyed by step name — `total: 0` included.
-
-| Field | Meaning |
-|---|---|
-| `total` | passes that ran (after `only`) |
-| `ok` | passes that succeeded |
-| `over` | the list param the items came from, else `null` |
-| `failed[]` | `index`, `item`, `step` (the inner step, indexed), `error`, `message`, `selector`, `hint`, `url`, `screenshot` |
-| `not_run` | indices `stop` never reached, empty under `skip` |
+and `FlowError` alike, keyed by step name — a step that matched nothing reports
+`total: 0` rather than nothing at all. `total` counts the passes that ran (after
+`only`), `ok` those that succeeded, and `not_run` names the ones `stop` never
+reached. Each entry of `failed[]` is one pass with what it takes to heal it: the
+index and item it ran for, the inner step that failed, the error, message,
+selector and hint, and the page's url and screenshot at that moment.
 
 Under `stop` the report still carries the one failure that ended the run. A
 repeating step written as a `repeat:` modifier inside a `run-flow` is reported

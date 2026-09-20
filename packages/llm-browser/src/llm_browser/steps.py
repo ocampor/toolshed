@@ -98,19 +98,13 @@ def resolve_step(
     :class:`~llm_browser.selector_map.MissingSelectorsError`."""
     resolved = resolve_step_templates(step, data)
     resolve_step_refs(resolved, selector_map)
-    return scoped_step(resolved, scope)
-
-
-def scoped_step(step: Step, scope: ElementScope | None) -> Step:
-    """``in:`` narrows the step's selector to the pass's element — after refs,
-    so a ``ref:`` scopes like anything else. ``step`` is already a fresh copy."""
-    if step.scope is None or scope is None:
-        return step
-    target = cast(Any, step)
-    target.selector = ScopedSelector(
-        root=scope.root, index=scope.index, inner=target.selector
-    )
-    return step
+    if resolved.scope is not None and scope is not None:
+        # After the refs, so a `ref:` selector scopes like anything else.
+        target = cast(Any, resolved)
+        target.selector = ScopedSelector(
+            root=scope.root, index=scope.index, inner=target.selector
+        )
+    return resolved
 
 
 def page_needs_human(session: BrowserSession) -> bool:
