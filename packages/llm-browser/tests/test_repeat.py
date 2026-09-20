@@ -282,12 +282,28 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
 # --- rerun ---
 
 
+def saved_codes_steps() -> list[dict[str, Any]]:
+    """A read that saves the list the repeat then loops over: `over` names flow
+    data the caller never passed in."""
+    return [
+        {
+            "name": "rows",
+            "action": "read",
+            "selector": "h3 a",
+            "extract": {"href": "@href"},
+            "save_as": "codes",
+        },
+        block(over="codes", steps=[grab(selector="#p-{{ code.href }}")]),
+    ]
+
+
 @pytest.mark.parametrize(
-    ("step", "data", "items", "only", "not_run", "expected_type"),
+    ("steps", "params", "data", "items", "only", "not_run", "expected_type"),
     [
         # A list param reruns by data; `skip` runs every pass, so none is left.
         (
-            block(over="codes", on_error="skip"),
+            [block(over="codes", on_error="skip")],
+            ["codes"],
             {"codes": ["a", "b"]},
             ["b"],
             {},
@@ -296,7 +312,8 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
         ),
         # `stop` never reached c and d, and they belong to the rerun too.
         (
-            block(over="codes"),
+            [block(over="codes")],
+            ["codes"],
             {"codes": ["a", "b", "c", "d"]},
             ["b", "c", "d"],
             {},
@@ -305,7 +322,8 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
         ),
         # Only an index addresses an inline list entry.
         (
-            block(over=["a", "b"], on_error="skip"),
+            [block(over=["a", "b"], on_error="skip")],
+            [],
             {},
             None,
             {"each": [1]},
@@ -313,7 +331,28 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
             FlowSuccess,
         ),
         (
-            block(over=["a", "b", "c", "d"]),
+            [block(over=["a", "b", "c", "d"])],
+            [],
+            {},
+            None,
+            {"each": [1, 2, 3]},
+            [2, 3],
+            FlowError,
+        ),
+        # A saved list is not in the caller's data, so an index is all there is.
+        (
+            saved_codes_steps(),
+            [],
+            {},
+            None,
+            {"each": [1, 2, 3]},
+            [2, 3],
+            FlowError,
+        ),
+        # Nor is a param the caller left to its default.
+        (
+            [block(over="codes")],
+            [{"codes": {"required": False, "default": ["a", "b", "c", "d"]}}],
             {},
             None,
             {"each": [1, 2, 3]},
@@ -325,7 +364,8 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
 def test_the_rerun_hint_names_every_unfinished_pass(
     tmp_path: Path,
     mock_session: MagicMock,
-    step: dict[str, Any],
+    steps: list[dict[str, Any]],
+    params: list[Any],
     data: dict[str, object],
     items: list[str] | None,
     only: dict[str, list[int]],
@@ -333,7 +373,8 @@ def test_the_rerun_hint_names_every_unfinished_pass(
     expected_type: type,
 ) -> None:
     mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
-    path = write_flow(tmp_path, [step], params=list(data))
+    mock_session.parse_elements.return_value = [{"href": c} for c in "abcd"]
+    path = write_flow(tmp_path, steps, params=params)
     result = run_flow_file(mock_session, path, data)
     assert isinstance(result, expected_type)
     assert result.retry_hint is not None
@@ -343,6 +384,29 @@ def test_the_rerun_hint_names_every_unfinished_pass(
     assert result.iterations["each"].not_run == not_run
     if items is not None:
         assert result.retry_hint.data["codes"] == items
+
+
+def test_replaying_a_saved_over_hint_skips_the_finished_passes(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
+    mock_session.parse_elements.return_value = [{"href": c} for c in "abcd"]
+    path = write_flow(tmp_path, saved_codes_steps())
+    failed = run_flow_file(mock_session, path, {})
+    assert isinstance(failed, FlowError)
+    assert failed.retry_hint is not None
+    mock_session.dom.side_effect = None
+    mock_session.dom.reset_mock()
+    flow = Flow.model_validate(yaml.safe_load(path.read_text()))
+    replayed = run_flow(
+        mock_session, flow, failed.retry_hint.data, only=failed.retry_hint.only
+    )
+    assert isinstance(replayed, FlowSuccess)
+    assert [call.args[0] for call in mock_session.dom.call_args_list] == [
+        "#p-b",
+        "#p-c",
+        "#p-d",
+    ]
 
 
 def test_a_clean_run_carries_no_retry_hint(

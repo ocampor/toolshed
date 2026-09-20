@@ -289,9 +289,10 @@ too, under its qualified name (`outer/grab`).
 
 When any pass failed, the result carries a `retry_hint` — on `FlowSuccess` too,
 for an `on_error: skip` run. The rerun set is the failed passes **plus** the
-ones `stop` never reached, in their original order. A repeat over a list
-**param** gets those items back in `retry_hint.data[<over>]`; rerunning
-renumbers them from zero. An inline list or an `over_selector` gets
+ones `stop` never reached, in their original order. A repeat over a list **the
+caller passed in** gets those items back in `retry_hint.data[<over>]`; rerunning
+renumbers them from zero. Every other source — an inline list, an
+`over_selector`, or a list the run saved or defaulted for itself — gets
 `retry_hint.only = { <step>: [i, j] }` instead, which `run_flow(only=…)` and
 `llm-browser run --only STEP=I,J` take — those passes run again under their
 original indices, so the outputs line up with the first run's.
