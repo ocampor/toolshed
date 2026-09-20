@@ -12,6 +12,20 @@ Migration:
 
 ### Added
 
+- `expect:` and `pick:` on every step that targets elements (`models.MatchFields`):
+  `expect` is `1`, a count, or `many`; `pick` is `first`, `last` or an index, and
+  is what lets a step act on one of several matches (ocampor/toolshed#62).
+- `selectors.MatchError` (a `ValueError`) with `found`, `samples` and `hint`, and
+  its two subclasses: `MatchCountError` (adds `expected`, hinting too many or too
+  few) and `PickRangeError` (`pick: 9 needs at least 10 matches for '…', found 7`,
+  no `expected`); `results.ErrorResult` reports all four fields.
+- `models.MatchWarning` (a `results.AcceptedMatch` naming its step) on
+  `FlowSuccess.warnings` and `FlowError.warnings`: every step whose `pick` took a
+  count its `expect` did not ask for, keyed like `skipped`, failed and skipped
+  steps included.
+- `results.AcceptedMatch` on `ActionResult.accepted`, and
+  `BrowserSession.matching(rule)`, the context manager that runs one step under
+  a `selectors.MatchRule`.
 - `save_as` on a `read` step (`models.SaveAs`): saves rows, or one scalar via `field`/`where` (ocampor/toolshed#61).
 - Saved values feed later templates, `when:`, `repeat.over`, and `run-flow` `data:`.
 - Load-time checks reject same-flow name shadowing, use-before-save, `extract`-field mismatches, and a `path:` naming a save.
@@ -26,6 +40,16 @@ Migration:
 
 ### Changed
 
+- `selectors.expect_single` is gone, generalised into `selectors.match_elements`,
+  which takes a `MatchRule` and returns the (possibly picked) locator: an
+  ambiguity now reads `expected 1 element for 'p.price_color', found 7`.
+- An explicit `expect: 1` on `read` or `parse` fails on zero matches; the default
+  `expect: many` keeps returning zero rows.
+- `read` and `parse` wait for a count they state within the step's `timeout`
+  (`BrowserSession.parse_elements` takes a `timeout`) and fail an expired wait
+  with `MatchCountError found 0`; `expect: many` still reads without waiting.
+- `expect:`/`pick:` are rejected at flow load where they could only be ignored:
+  on `wait_for`, and on a `press` or `screenshot` with no selector.
 - `cli.declared_paths` templates only `path:` and `run-flow` `data:`, not the whole step.
 - Requires `yaml-engine>=0.2.0`.
 - The step loop moved out of `llm_browser.flows` into `llm_browser.flow_runner` (`run_loaded_flow`, `run_subflow`), and `child_data` into `llm_browser.flow_passes`.

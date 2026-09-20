@@ -10,7 +10,7 @@ import yaml
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.session import BrowserSession
 from tests.conftest import PNG
-from tests.flow_helpers import run_flow_file
+from tests.flow_helpers import run_flow_file, stub_matching
 
 
 DOM = "<html><body>captured</body></html>"
@@ -89,7 +89,7 @@ def failing_flow(tmp_path: Path) -> Path:
 def _mock_failing_session(tmp_path: Path, capture: str) -> MagicMock:
     from llm_browser.behavior import Behavior
 
-    session = MagicMock(spec=BrowserSession)
+    session = stub_matching(MagicMock(spec=BrowserSession))
     session.session_dir = tmp_path
     session.behavior = Behavior.off()
     session.capture = capture

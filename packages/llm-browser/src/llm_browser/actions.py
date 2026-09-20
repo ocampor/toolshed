@@ -195,7 +195,9 @@ def action_screenshot(
 def action_read(
     session: BrowserSession, step: ReadStep, behavior: Behavior
 ) -> ParsedResult:
-    raw = session.parse_elements(step.selector, step.extract, step.exclude)
+    raw = session.parse_elements(
+        step.selector, step.extract, step.exclude, step.timeout
+    )
     # debt: merge with #62 expect
     if not raw and isinstance(step.selector, ScopedSelector):
         raise ValueError(
@@ -215,7 +217,7 @@ def action_parse(
 ) -> ParsedResult:
     # Schema path is CWD-relative or absolute.
     Model = build_model(step.schema_path)  # type: ignore[no-untyped-call]
-    raw = session.parse_elements(step.selector, Model._spec())
+    raw = session.parse_elements(step.selector, Model._spec(), timeout=step.timeout)
     rows: list[BaseModel | None] = [
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw

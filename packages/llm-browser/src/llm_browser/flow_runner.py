@@ -84,6 +84,7 @@ def run_loaded_flow(
         step=last_name,
         outputs=state.outputs,
         skipped=state.skipped,
+        warnings=state.warnings,
         iterations=state.iterations,
     )
 
@@ -198,6 +199,13 @@ def stopped_at(failure: FlowError, index: int | None, state: RunState) -> FlowEr
                     for s in failure.skipped
                 ),
             ],
+            "warnings": [
+                *state.warnings,
+                *(
+                    w.model_copy(update={"step": indexed(w.step, index)})
+                    for w in failure.warnings
+                ),
+            ],
             "iterations": {
                 **state.iterations,
                 **{indexed(k, index): v for k, v in failure.iterations.items()},
@@ -213,6 +221,7 @@ def folded_failure(name: str, failure: FlowError, reason: str) -> FlowSuccess:
         step=name,
         outputs=failure.outputs,
         skipped=[*failure.skipped, SkippedStep(name=name, reason=reason)],
+        warnings=failure.warnings,
         iterations=failure.iterations,
     )
 

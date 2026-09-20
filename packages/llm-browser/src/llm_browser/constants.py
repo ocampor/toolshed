@@ -44,6 +44,21 @@ REDACTED = "***"
 # Why a step a ``when:`` predicate gated shows up in ``FlowSuccess.skipped``.
 WHEN_SKIP_REASON = "when condition not satisfied"
 
+# How many matches a count failure quotes back, so the message shows what the
+# selector actually hit without dumping the page.
+MATCH_SAMPLES = 3
+
+MATCH_TOO_MANY_HINT = (
+    "tighten the selector, or add pick: first if the first match is the right one"
+)
+
+MATCH_TOO_FEW_HINT = (
+    "the selector matches fewer elements than expect states; they may be missing, "
+    "or not rendered yet"
+)
+
+PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"
+
 # Every action whose result the flow runner keeps in ``outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 

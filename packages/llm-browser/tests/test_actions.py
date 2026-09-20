@@ -604,7 +604,7 @@ def test_optional_swallows_value_error(session: BrowserSession) -> None:
     from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.count.return_value = 3  # triggers expect_single ValueError
+    locator.count.return_value = 3  # triggers MatchCountError
     step = ClickStep(name="s", action="click", selector=".ambiguous", optional=True)
     result = execute_action(session, step)
     assert isinstance(result, SkippedResult)

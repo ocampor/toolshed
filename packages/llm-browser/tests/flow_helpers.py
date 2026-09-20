@@ -28,3 +28,10 @@ def run_flow_file(
     flow = load_flow_file(path)
     result = run_flow(session, flow, data, from_step=from_step, redact=redact)
     return with_flow_path(result, str(Path(path).resolve()))
+
+
+def stub_matching(session: MagicMock) -> MagicMock:
+    """``BrowserSession.matching`` is a context manager yielding the mismatches
+    a step accepted; a bare mock yields a truthy mock instead of a list."""
+    session.matching.return_value.__enter__.return_value = []
+    return session

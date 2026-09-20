@@ -1,10 +1,18 @@
-"""Selector abstraction: Pydantic models for CSS, XPath, ID, and fallback selectors."""
+"""Selector abstraction: Pydantic models for CSS, XPath, ID, and fallback
+selectors, plus the match-count rule a step's ``expect``/``pick`` states."""
 
-from typing import Any
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
 
+from llm_browser.constants import (
+    MATCH_SAMPLES,
+    MATCH_TOO_FEW_HINT,
+    MATCH_TOO_MANY_HINT,
+    PICK_RANGE_HINT,
+)
 from llm_browser.drivers.base import Driver
+from llm_browser.results import AcceptedMatch, PickSpec
 
 
 class CssSelector(BaseModel):
@@ -163,12 +171,158 @@ def _resolve_scoped(driver: Driver, page: Any, selector: ScopedSelector) -> Any:
     return driver.child(element, _selector_string(selector.inner))
 
 
-def expect_single(driver: Driver, locator: Any, selector: Selector) -> Any:
-    """Validate that a locator matches exactly one element, return it."""
-    count = driver.count(locator)
-    if count > 1:
-        raise ValueError(f"Expected 1 element for {selector!r}, found {count}")
-    return driver.first(locator)
+class MatchRule(NamedTuple):
+    """How many elements a step's selector should match (``expect``), and which
+    of them it acts on when there are more (``pick``)."""
+
+    expect: int | Literal["many"] = 1
+    pick: PickSpec | None = None
+
+
+SINGLE = MatchRule(expect=1)
+MANY = MatchRule(expect="many")
+
+
+class Match(NamedTuple):
+    """``locator`` is narrowed to the pick when there was one; ``nth`` says
+    which match that was, and ``accepted`` the mismatch the pick took."""
+
+    locator: Any
+    nth: int | None = None
+    accepted: AcceptedMatch | None = None
+
+
+class MatchError(ValueError):
+    """Base for both match failures, so ``failure_result`` reports ``found``,
+    ``samples`` and ``hint`` without knowing which one it has."""
+
+    def __init__(self, message: str, found: int, samples: list[str], hint: str) -> None:
+        self.found = found
+        self.samples = samples
+        self.hint = hint
+        self.expected: int | Literal["many"] | None = None
+        super().__init__(message)
+
+
+class MatchCountError(MatchError):
+    """A selector matched a number of elements the step's ``expect`` rules out."""
+
+    def __init__(
+        self,
+        expected: int | Literal["many"],
+        found: int,
+        samples: list[str],
+        selector: Selector,
+    ) -> None:
+        plural = "" if expected == 1 else "s"
+        too_many = isinstance(expected, int) and found > expected
+        super().__init__(
+            f"expected {expected} element{plural} for "
+            f"'{describe_selector(selector)}', found {found}",
+            found,
+            samples,
+            MATCH_TOO_MANY_HINT if too_many else MATCH_TOO_FEW_HINT,
+        )
+        self.expected = expected
+
+
+class PickRangeError(MatchError):
+    """A step's ``pick`` names a match the page does not have."""
+
+    def __init__(
+        self,
+        pick: PickSpec,
+        found: int,
+        samples: list[str],
+        selector: Selector,
+    ) -> None:
+        needed = pick + 1 if isinstance(pick, int) else 1
+        plural = "" if needed == 1 else "es"
+        super().__init__(
+            f"pick: {pick} needs at least {needed} match{plural} for "
+            f"'{describe_selector(selector)}', found {found}",
+            found,
+            samples,
+            PICK_RANGE_HINT,
+        )
+
+
+def pick_index(pick: PickSpec, found: int) -> int:
+    if isinstance(pick, int):
+        return pick
+    return 0 if pick == "first" else found - 1
+
+
+def match_samples(driver: Driver, locator: Any, found: int) -> list[str]:
+    samples = []
+    for index in range(min(found, MATCH_SAMPLES)):
+        try:
+            # A sample is diagnostic: one that cannot be read must never
+            # replace the failure it is being collected for.
+            samples.append(
+                (driver.text_content(driver.nth(locator, index)) or "").strip()
+            )
+        except Exception:
+            samples.append("")
+    return samples
+
+
+def check_count(
+    driver: Driver,
+    locator: Any,
+    selector: Selector,
+    rule: MatchRule,
+    found: int,
+    waiting: bool,
+) -> None:
+    # ``waiting`` is the check that runs before a wait, where too few matches is
+    # what the wait is for and only an ambiguity nothing picks from can fail.
+    if isinstance(rule.expect, int) and (
+        (found > rule.expect and rule.pick is None)
+        or (found < rule.expect and not waiting)
+    ):
+        raise MatchCountError(
+            rule.expect, found, match_samples(driver, locator, found), selector
+        )
+    if waiting or rule.pick is None:
+        return
+    if not 0 <= pick_index(rule.pick, found) < found:
+        raise PickRangeError(
+            rule.pick, found, match_samples(driver, locator, found), selector
+        )
+
+
+def narrowed(driver: Driver, locator: Any, rule: MatchRule, found: int) -> Match:
+    if rule.pick is None:
+        return Match(driver.first(locator) if rule.expect == 1 else locator)
+    index = pick_index(rule.pick, found)
+    mismatched = isinstance(rule.expect, int) and found != rule.expect
+    return Match(
+        driver.nth(locator, index),
+        index,
+        AcceptedMatch(expected=rule.expect, found=found, picked=rule.pick)
+        if mismatched
+        else None,
+    )
+
+
+def match_elements(
+    driver: Driver,
+    locator: Any,
+    selector: Selector,
+    rule: MatchRule = SINGLE,
+    *,
+    waiting: bool = False,
+) -> Match:
+    """``expect: many`` without a pick asks nothing of the count, so it never
+    even counts."""
+    if rule.expect == "many" and rule.pick is None:
+        return Match(locator)
+    found = driver.count(locator)
+    check_count(driver, locator, selector, rule, found, waiting)
+    if waiting:
+        return Match(locator)
+    return narrowed(driver, locator, rule, found)
 
 
 def _resolve_with_fallback(

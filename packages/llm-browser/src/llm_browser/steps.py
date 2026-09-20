@@ -12,7 +12,13 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior
 from llm_browser.results import ActionResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME, WHEN_SKIP_REASON
-from llm_browser.models import FlowData, FlowError, Step, validate_step
+from llm_browser.models import (
+    FlowData,
+    FlowError,
+    Step,
+    match_warning,
+    validate_step,
+)
 from llm_browser.probe import human_needed
 from llm_browser.repeat import ElementScope
 from llm_browser.save_as import save_result
@@ -152,6 +158,13 @@ def execute_step(
             ),
             dom=session.dom_snapshot() if capture in ("dom", "both") else None,
             human_needed=page_needs_human(session),
+            # A step that failed after its pick accepted a mismatch still ran
+            # on that mismatch, so the run reports it.
+            warnings=(
+                []
+                if action_result.accepted is None
+                else [match_warning(resolved.qualified_name, action_result.accepted)]
+            ),
         )
     if resolved.eval:
         session.evaluate(session.get_page(), resolved.eval)

@@ -14,8 +14,10 @@ from llm_browser.models import (
     FlowData,
     FlowError,
     FlowSuccess,
+    MatchWarning,
     SkippedStep,
     Step,
+    match_warning,
 )
 from llm_browser.parse import parse_extract_spec
 from llm_browser.repeat import ElementScope
@@ -37,6 +39,7 @@ class RunState:
     outputs: dict[str, object] = field(default_factory=dict)
     skipped: list[SkippedStep] = field(default_factory=list)
     iterations: dict[str, IterationReport] = field(default_factory=dict)
+    warnings: list[MatchWarning] = field(default_factory=list)
 
 
 def step_output(step: Step, result: ActionResult) -> object | None:
@@ -170,6 +173,7 @@ def repeat_data_error(step: Step, exc: ValueError, state: RunState) -> FlowError
         ),
         outputs=dict(state.outputs),
         skipped=list(state.skipped),
+        warnings=list(state.warnings),
         iterations=dict(state.iterations),
     )
 
@@ -180,7 +184,12 @@ def record_outcome(
     index: int | None,
     state: RunState,
 ) -> None:
-    """Fold one pass's result into the run's outputs, skips and reports."""
+    """Fold one pass's result into the run's outputs, skips, warnings and
+    reports."""
+    if isinstance(outcome, ActionResult) and outcome.accepted is not None:
+        state.warnings.append(
+            match_warning(indexed(step.qualified_name, index), outcome.accepted)
+        )
     match outcome:
         case FlowSuccess():
             state.outputs.update(
@@ -189,6 +198,10 @@ def record_outcome(
             state.skipped.extend(
                 s.model_copy(update={"name": indexed(s.name, index)})
                 for s in outcome.skipped
+            )
+            state.warnings.extend(
+                w.model_copy(update={"step": indexed(w.step, index)})
+                for w in outcome.warnings
             )
             state.iterations.update(
                 {indexed(k, index): v for k, v in outcome.iterations.items()}

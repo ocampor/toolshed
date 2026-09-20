@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from llm_browser.cli import declared_paths, main
 from llm_browser.flows import load_flow_document
+from tests.flow_helpers import stub_matching
 from llm_browser.models import FlowError, FlowResult, FlowSuccess
 from llm_browser.results import BytesResult, ErrorResult
 
@@ -64,7 +65,7 @@ def _stub_session(**kwargs: object) -> Any:
 
     session = MagicMock(spec=BrowserSession)
     session.session_dir = Path("session")
-    return session
+    return stub_matching(session)
 
 
 def payload(outcome: Any) -> dict[str, Any]:

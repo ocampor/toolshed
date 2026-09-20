@@ -11,6 +11,7 @@ from click.testing import CliRunner
 from llm_browser.behavior import Behavior
 from llm_browser.cli import main, resolve_behavior
 from llm_browser.session import BrowserSession
+from tests.flow_helpers import stub_matching
 
 CLICK_FLOW = yaml.dump(
     {"steps": [{"name": "s1", "action": "click", "selector": "#btn"}]}
@@ -19,7 +20,7 @@ CLICK_FLOW = yaml.dump(
 
 @pytest.fixture
 def session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    mock = MagicMock(spec=BrowserSession)
+    mock = stub_matching(MagicMock(spec=BrowserSession))
     mock.session_dir = tmp_path
     mock.behavior = Behavior.human()
     mock.capture = "screenshot"

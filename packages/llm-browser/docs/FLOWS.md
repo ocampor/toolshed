@@ -439,7 +439,7 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | Explicit CSS | `selector: { css: ".my-class" }` |
 | XPath | `selector: { xpath: "//input[@name='q']" }` |
 
-A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
+A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `expected 1 element for '<selector>', found N` as soon as two arms match — unless the step's `pick` names which one to take ([below](#match-count-expect-and-pick)). The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
 
 ## Template variables
 
@@ -474,17 +474,69 @@ that pass's bindings — and on a `run-flow` step before the child is loaded.
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
+| `expect` / `pick` | count / choice | How many elements the selector should match, and which one to use ([below](#match-count-expect-and-pick)) |
 | `repeat` | `{ over \| over_selector, as, on_error }` | Run the step once per item of a list in flow data, or once per matched element ([above](#repetition)) |
 | `in` | string | Scope this step's selector to the enclosing repeat's current element ([above](#addressing-one-element-in)) |
 | `save_as` | string or `{ name, field, where }` | `read` only: keep the rows, or one scalar, as flow data ([above](#saving-a-read-save_as)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
 
+### Match count: `expect` and `pick`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `expect` | `1`, a count, or `many` | `1`; `many` on `read`, `parse`, `dom`, `pick` | How many elements the selector should match |
+| `pick` | `first`, `last`, or an index | none, so a mismatch fails | Which match the step uses when more are found |
+
+| `expect` | `pick` | Page has 1 | Page has 7 | Page has 0 |
+|----------|--------|------------|------------|------------|
+| `1` | none | runs | fails with the count | fails |
+| `1` | `first` | runs | runs on the first match, warns | fails |
+| `many` | none | runs | runs on every match | runs, zero rows |
+| `many` | `last` | runs | runs on the last match | fails, `PickRangeError` |
+| `many` | `9` | fails, `PickRangeError` | fails, `PickRangeError` | fails, `PickRangeError` |
+
+An acting step (`click`, `fill`, …) drives one element, so an `expect` other
+than `1` on it needs a `pick`. Both fields are rejected at flow load where they
+could only be ignored: on `wait_for`, which waits for a state and not a count,
+and on a `press` or `screenshot` with no selector, which matches nothing to
+count. A failed count is a step error, under the run result's `data`:
+
+```json
+{
+  "ok": false,
+  "error": "MatchCountError",
+  "message": "expected 1 element for 'p.price_color', found 7",
+  "step_name": "price",
+  "selector": "'p.price_color'",
+  "hint": "tighten the selector, or add pick: first if the first match is the right one",
+  "expected": 1, "found": 7,
+  "samples": ["£45.17", "£51.33", "£37.59"]
+}
+```
+
+A `pick` reaching past the matches is a `PickRangeError` instead — same shape,
+no `expected`, and a message naming what the pick needed:
+`pick: 9 needs at least 10 matches for 'p.price_color', found 7`.
+
+A `pick` that took a count `expect` did not ask for runs, and says so in the
+run's `warnings`:
+
+```json
+{
+  "outputs": {"price": [{"text": "£45.17"}]},
+  "warnings": [{"step": "price", "expected": 1, "found": 7, "picked": "first"}]
+}
+```
+
 ### What `timeout` bounds
 
 `timeout` is the element wait only — how long the step looks for its target
-before failing — not a ceiling on the step as a whole. A `type` step then costs
-roughly `len(value) × delay` on top of it, so a 2000-character value typed at
-`delay: 30` spends a minute *after* the wait succeeded. Nothing in the library
+before failing — not a ceiling on the step as a whole. It bounds a `read` or
+`parse` wait too, but only when the step states a count (`expect:` an int, or
+any `pick:`); a default `read` counts nothing and so waits for nothing. A
+`type` step then costs roughly `len(value) × delay` on top of it, so a
+2000-character value typed at `delay: 30` spends a minute *after* the wait
+succeeded. Nothing in the library
 cuts that short; an embedding server with its own per-call deadline (the MCP
 tool timeout, a request handler) has to be given a budget that covers it, or
 split the value across several steps.

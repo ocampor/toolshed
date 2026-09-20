@@ -10,8 +10,9 @@ from typing import Callable
 from yaml_engine.registry import Registry
 
 from llm_browser.behavior import Behavior, paced
-from llm_browser.models import Step
+from llm_browser.models import Step, match_rule_of
 from llm_browser.results import (
+    AcceptedMatch,
     ActionResult,
     ErrorResult,
     SkippedResult,
@@ -19,6 +20,7 @@ from llm_browser.results import (
     is_step_failure,
     is_timeout,
 )
+from llm_browser.selectors import MatchError
 from llm_browser.session import BrowserSession
 from llm_browser.session_input import behavior_for, with_driver_opt_outs
 
@@ -56,25 +58,48 @@ def execute_action(
     if step.action is None:
         return VoidResult()
     resolved = step_behavior(session, step, behavior)
+    # Bound before the action runs so a failing step still reports the mismatch
+    # its pick accepted on the way in.
+    accepted: list[AcceptedMatch] = []
     try:
-        with paced(resolved):
-            return get_registry().get(step.action)(session, step, resolved)
+        with paced(resolved), session.matching(match_rule_of(step)) as accepted:
+            result = get_registry().get(step.action)(session, step, resolved)
+        # One action, one warning: a step that found its element twice
+        # accepted the same mismatch twice.
+        return (
+            result.model_copy(update={"accepted": accepted[0]}) if accepted else result
+        )
     except Exception as exc:
         if not is_step_failure(exc):
             raise
+        first = accepted[0] if accepted else None
         if step.optional:
-            return SkippedResult(reason=f"{type(exc).__name__}: {str(exc)[:200]}")
-        selector = getattr(step, "selector", None)
-        return ErrorResult(
-            error=type(exc).__name__,
-            # Collapse whitespace so multi-line errors (Pydantic ValidationError,
-            # patchright tracebacks) survive the 300-char cap meaningfully.
-            message=" ".join(str(exc).split())[:300],
-            step_name=step.name,
-            selector=repr(selector) if selector is not None else None,
-            hint=(
-                "element hidden, missing, or slow to render"
-                if is_timeout(exc)
-                else None
-            ),
-        )
+            return SkippedResult(
+                reason=f"{type(exc).__name__}: {str(exc)[:200]}", accepted=first
+            )
+        return failure_result(step, exc, first)
+
+
+def failure_result(
+    step: Step, exc: BaseException, accepted: AcceptedMatch | None = None
+) -> ErrorResult:
+    selector = getattr(step, "selector", None)
+    matched = exc if isinstance(exc, MatchError) else None
+    hint = None
+    if matched is not None:
+        hint = matched.hint
+    elif is_timeout(exc):
+        hint = "element hidden, missing, or slow to render"
+    return ErrorResult(
+        error=type(exc).__name__,
+        # Collapse whitespace so multi-line errors (Pydantic ValidationError,
+        # patchright tracebacks) survive the 300-char cap meaningfully.
+        message=" ".join(str(exc).split())[:300],
+        step_name=step.name,
+        selector=repr(selector) if selector is not None else None,
+        hint=hint,
+        expected=matched.expected if matched else None,
+        found=matched.found if matched else None,
+        samples=matched.samples if matched else None,
+        accepted=accepted,
+    )
