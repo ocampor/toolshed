@@ -276,7 +276,9 @@ and `FlowError` alike, keyed by step name — a step that matched nothing report
 `only`), `ok` those that succeeded, and `not_run` names the ones `stop` never
 reached. Each entry of `failed[]` is one pass with what it takes to heal it: the
 index and item it ran for, the inner step that failed, the error, message,
-selector and hint, and the page's url and screenshot at that moment.
+selector and hint, and the page's url and screenshot at that moment. `over`
+names the list param the passes came from, and is `None` for an inline list
+or an `over_selector`.
 
 Under `stop` the report still carries the one failure that ended the run. A
 repeating step written as a `repeat:` modifier inside a `run-flow` is reported

@@ -283,10 +283,17 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
 
 
 @pytest.mark.parametrize(
-    ("step", "data", "items", "only", "not_run"),
+    ("step", "data", "items", "only", "not_run", "expected_type"),
     [
         # A list param reruns by data; `skip` runs every pass, so none is left.
-        (block(over="codes", on_error="skip"), {"codes": ["a", "b"]}, ["b"], {}, []),
+        (
+            block(over="codes", on_error="skip"),
+            {"codes": ["a", "b"]},
+            ["b"],
+            {},
+            [],
+            FlowSuccess,
+        ),
         # `stop` never reached c and d, and they belong to the rerun too.
         (
             block(over="codes"),
@@ -294,10 +301,25 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
             ["b", "c", "d"],
             {},
             [2, 3],
+            FlowError,
         ),
         # Only an index addresses an inline list entry.
-        (block(over=["a", "b"], on_error="skip"), {}, None, {"each": [1]}, []),
-        (block(over=["a", "b", "c", "d"]), {}, None, {"each": [1, 2, 3]}, [2, 3]),
+        (
+            block(over=["a", "b"], on_error="skip"),
+            {},
+            None,
+            {"each": [1]},
+            [],
+            FlowSuccess,
+        ),
+        (
+            block(over=["a", "b", "c", "d"]),
+            {},
+            None,
+            {"each": [1, 2, 3]},
+            [2, 3],
+            FlowError,
+        ),
     ],
 )
 def test_the_rerun_hint_names_every_unfinished_pass(
@@ -308,10 +330,12 @@ def test_the_rerun_hint_names_every_unfinished_pass(
     items: list[str] | None,
     only: dict[str, list[int]],
     not_run: list[int],
+    expected_type: type,
 ) -> None:
     mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
     path = write_flow(tmp_path, [step], params=list(data))
     result = run_flow_file(mock_session, path, data)
+    assert isinstance(result, expected_type)
     assert result.retry_hint is not None
     assert result.retry_hint.only == only
     assert result.retry_hint.failed_step == "each"
