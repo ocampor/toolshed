@@ -60,9 +60,7 @@ from llm_browser.selectors import (
     Selector,
     css_string,
     match_elements,
-    picked_element,
     resolve_selector,
-    states_minimum,
 )
 from llm_browser.survey_models import Survey
 
@@ -503,12 +501,11 @@ class BrowserSession:
     def matched_rows(self, selector: Selector, rule: MatchRule, timeout: int) -> Match:
         """The matches a ``read`` or ``parse`` reads from.
 
-        A rule naming a count waits for it, and a wait that expired reports the
-        count instead: the flow stated how many rows it wanted, so "found 0" is
-        the failure it is looking for. The default ``expect: many`` asks nothing
-        of the count and so reads straight away.
+        A wait that expired reports the count instead: the flow stated how many
+        rows it wanted, so "found 0" is the failure it is looking for.
         """
-        if not states_minimum(rule):
+        # A rule naming no count has nothing to wait for.
+        if not isinstance(rule.expect, int) and rule.pick is None:
             return self.matched(selector, rule)
         try:
             return self.matched_after_wait(selector, rule, "attached", timeout)
@@ -855,7 +852,10 @@ class BrowserSession:
         # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 
-        element = picked_element(self.driver, self.match_all(selector, state="visible"))
+        match = self.match_all(selector, state="visible")
+        element = (
+            match.locator if match.nth is not None else self.driver.first(match.locator)
+        )
         raw: str = self.driver.evaluate(element, "el => el.outerHTML")
         return sanitize_html_fragment(raw, max_depth, level)
 

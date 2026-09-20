@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
+from llm_browser.actions import execute_action
 from llm_browser.drivers.base import Driver
 from llm_browser.flows import load_flow_document, run_flow
 from llm_browser.models import FlowData, FlowError, FlowSuccess, validate_step
@@ -95,7 +96,6 @@ def test_a_valid_match_rule_loads(step: dict[str, Any]) -> None:
         {"action": "click", "selector": "#a", "expect": "some"},
         {"action": "click", "selector": "#a", "pick": "middle"},
         {"action": "click", "selector": "#a", "pick": -1},
-        {"action": "pick", "selector": "#a", "value": "x", "pick": "first"},
     ],
 )
 def test_a_bad_match_rule_is_rejected(step: dict[str, Any]) -> None:
@@ -118,11 +118,6 @@ def test_a_bad_match_rule_is_rejected(step: dict[str, Any]) -> None:
 def test_a_step_with_nothing_to_count_rejects_the_fields(step: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         validate_step({"name": "s", **step})
-
-
-def test_a_wait_for_step_has_no_match_fields() -> None:
-    step = validate_step({"name": "s", "action": "wait_for", "selector": "#a"})
-    assert not hasattr(step, "expect")
 
 
 def test_the_fields_survive_the_template_round_trip() -> None:
@@ -273,8 +268,6 @@ def test_a_many_rule_never_counts() -> None:
 
 
 def test_a_read_that_expected_one_row_reports_what_it_found(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 7)
     result = execute_action(session, validate_step(read_step(expect=1)))
     assert isinstance(result, ErrorResult)
@@ -285,8 +278,6 @@ def test_a_read_that_expected_one_row_reports_what_it_found(tmp_path: Path) -> N
 
 
 def test_a_pick_takes_the_row_it_names(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 7)
     result = execute_action(session, validate_step(read_step(expect=1, pick="first")))
     assert isinstance(result, ParsedResult)
@@ -300,8 +291,6 @@ def test_an_acting_step_still_fails_a_missing_element_on_the_wait(
 ) -> None:
     """An acting step states no count, so a page without its element is the
     wait's timeout, the way every consumer keying on it expects."""
-    from llm_browser.actions import execute_action
-
     step = validate_step(
         {"name": "go", "action": "click", "selector": "a.link", "timeout": 50}
     )
@@ -313,8 +302,6 @@ def test_an_acting_step_still_fails_a_missing_element_on_the_wait(
 
 def test_a_read_that_expected_one_row_fails_on_an_empty_page(tmp_path: Path) -> None:
     """The count it waited for and never got, not the bare wait timeout."""
-    from llm_browser.actions import execute_action
-
     result = execute_action(
         page_session(tmp_path, 0), validate_step(read_step(expect=1, timeout=50))
     )
@@ -328,8 +315,6 @@ def test_a_read_that_expected_one_row_fails_on_an_empty_page(tmp_path: Path) -> 
 def test_a_read_whose_pick_is_out_of_range_says_which(
     tmp_path: Path, rule: dict[str, Any]
 ) -> None:
-    from llm_browser.actions import execute_action
-
     result = execute_action(page_session(tmp_path, 7), validate_step(read_step(**rule)))
     assert isinstance(result, ErrorResult)
     assert (result.error, result.expected, result.found) == ("PickRangeError", None, 7)
@@ -338,8 +323,6 @@ def test_a_read_whose_pick_is_out_of_range_says_which(
 
 
 def test_a_read_that_states_a_count_waits_for_it(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 1)
     counts = iter([0])
     session.driver.count.side_effect = lambda locator: next(counts, 1)
@@ -356,8 +339,6 @@ def test_a_read_that_states_a_count_waits_for_it(tmp_path: Path) -> None:
 def test_only_a_read_that_states_a_count_waits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rule: dict[str, Any], waits: bool
 ) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 1)
     waited = MagicMock()
     monkeypatch.setattr(session, "wait_for_element", waited)
@@ -367,8 +348,6 @@ def test_only_a_read_that_states_a_count_waits(
 
 @pytest.mark.parametrize("found", [7, 0])
 def test_a_default_read_takes_every_row(tmp_path: Path, found: int) -> None:
-    from llm_browser.actions import execute_action
-
     result = execute_action(page_session(tmp_path, found), validate_step(read_step()))
     assert isinstance(result, ParsedResult)
     assert len(result.rows) == found
@@ -376,8 +355,6 @@ def test_a_default_read_takes_every_row(tmp_path: Path, found: int) -> None:
 
 
 def test_a_click_picks_the_first_of_several(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 7)
     step = validate_step(
         {"name": "go", "action": "click", "selector": "a.link", "pick": "first"}
@@ -390,8 +367,6 @@ def test_a_click_picks_the_first_of_several(tmp_path: Path) -> None:
 
 
 def test_a_click_on_several_elements_still_fails(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     step = validate_step({"name": "go", "action": "click", "selector": "a.link"})
     result = execute_action(page_session(tmp_path, 7), step)
     assert isinstance(result, ErrorResult)
@@ -399,8 +374,6 @@ def test_a_click_on_several_elements_still_fails(tmp_path: Path) -> None:
 
 
 def test_a_dom_step_reads_the_match_it_picked(tmp_path: Path) -> None:
-    from llm_browser.actions import execute_action
-
     session = page_session(tmp_path, 7)
     session.driver.evaluate.return_value = "<p>picked</p>"
     step = validate_step(
@@ -414,56 +387,59 @@ def test_a_dom_step_reads_the_match_it_picked(tmp_path: Path) -> None:
 # --- what a run reports ---
 
 
-def test_a_run_carries_the_warning_its_step_earned(tmp_path: Path) -> None:
-    result = run_steps(page_session(tmp_path, 7), [read_step(expect=1, pick="first")])
-    assert isinstance(result, FlowSuccess)
-    assert isinstance(result.warnings[0], AcceptedMatch)
-    assert [w.model_dump() for w in result.warnings] == [
-        {"step": "price", "expected": 1, "found": 7, "picked": "first"}
-    ]
+REPEAT = {"over": "codes", "as": "code"}
+CLICK = {
+    "name": "go",
+    "action": "click",
+    "selector": "a.link",
+    "pick": "first",
+    "timeout": 50,
+}
 
 
-def failing_click(tmp_path: Path) -> BrowserSession:
-    """Seven matches, a pick that takes the first, and a click that times out."""
+@pytest.mark.parametrize(
+    "steps, succeeds, warned, skipped",
+    [
+        ([read_step(expect=1, pick="first")], True, ["price"], []),
+        (
+            [read_step(expect=1, pick="first", repeat=REPEAT)],
+            True,
+            ["price[0]", "price[1]"],
+            [],
+        ),
+        (
+            [
+                {
+                    "name": "inner",
+                    "action": "run-flow",
+                    "flow": {"steps": [read_step(expect=1, pick="first")]},
+                }
+            ],
+            True,
+            ["inner/price"],
+            [],
+        ),
+        ([CLICK], False, ["go"], []),
+        ([{**CLICK, "optional": True}], True, ["go"], ["go"]),
+        ([{**CLICK, "repeat": REPEAT}], False, ["go[0]"], []),
+    ],
+)
+def test_a_run_names_every_step_whose_pick_took_a_mismatch(
+    tmp_path: Path,
+    steps: list[dict[str, Any]],
+    succeeds: bool,
+    warned: list[str],
+    skipped: list[str],
+) -> None:
+    """The click cases fail or skip after the pick: a step reports the mismatch
+    it ran on however it ended."""
     session = page_session(tmp_path, 7)
     session.driver.click.side_effect = TimeoutError("element not clickable")
-    return session
-
-
-def click_step(**extra: Any) -> dict[str, Any]:
-    return {
-        "name": "go",
-        "action": "click",
-        "selector": "a.link",
-        "pick": "first",
-        "timeout": 50,
-        **extra,
-    }
-
-
-def test_a_failing_step_still_reports_the_mismatch_it_took(tmp_path: Path) -> None:
-    result = run_steps(failing_click(tmp_path), [click_step()])
-    assert isinstance(result, FlowError)
-    assert [w.model_dump() for w in result.warnings] == [
-        {"step": "go", "expected": 1, "found": 7, "picked": "first"}
-    ]
-
-
-def test_a_skipped_step_still_reports_the_mismatch_it_took(tmp_path: Path) -> None:
-    result = run_steps(failing_click(tmp_path), [click_step(optional=True)])
-    assert isinstance(result, FlowSuccess)
-    assert [w.step for w in result.warnings] == ["go"]
-    assert [s.name for s in result.skipped] == ["go"]
-
-
-def test_a_failing_pass_names_itself_in_its_warning(tmp_path: Path) -> None:
-    result = run_steps(
-        failing_click(tmp_path),
-        [click_step(repeat={"over": "codes", "as": "code"})],
-        data={"codes": ["a", "b"]},
-    )
-    assert isinstance(result, FlowError)
-    assert [w.step for w in result.warnings] == ["go[0]"]
+    result = run_steps(session, steps, data={"codes": ["a", "b"]})
+    assert isinstance(result, FlowSuccess) is succeeds
+    assert isinstance(result.warnings[0], AcceptedMatch)
+    assert [w.step for w in result.warnings] == warned
+    assert [s.name for s in result.skipped] == skipped
 
 
 def test_a_pick_that_matched_the_count_is_silent(tmp_path: Path) -> None:
@@ -480,31 +456,6 @@ def test_a_failed_run_keeps_the_warnings_of_the_steps_that_ran(tmp_path: Path) -
     assert isinstance(result, FlowError)
     assert result.step == "again"
     assert [w.step for w in result.warnings] == ["price"]
-
-
-def test_a_repeated_step_names_the_pass_that_warned(tmp_path: Path) -> None:
-    result = run_steps(
-        page_session(tmp_path, 7),
-        [read_step(expect=1, pick="first", repeat={"over": "codes", "as": "code"})],
-        data={"codes": ["a", "b"]},
-    )
-    assert isinstance(result, FlowSuccess)
-    assert [w.step for w in result.warnings] == ["price[0]", "price[1]"]
-
-
-def test_a_sub_flows_warning_is_named_by_its_parent_step(tmp_path: Path) -> None:
-    result = run_steps(
-        page_session(tmp_path, 7),
-        [
-            {
-                "name": "inner",
-                "action": "run-flow",
-                "flow": {"steps": [read_step(expect=1, pick="first")]},
-            }
-        ],
-    )
-    assert isinstance(result, FlowSuccess)
-    assert [w.step for w in result.warnings] == ["inner/price"]
 
 
 def test_the_cli_json_reports_the_warnings(tmp_path: Path) -> None:

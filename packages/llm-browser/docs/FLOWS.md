@@ -359,13 +359,6 @@ Skip a step unless every condition holds (AND'ed).
 | `many` | `last` | runs | runs on the last match | fails, `PickRangeError` |
 | `many` | `9` | fails, `PickRangeError` | fails, `PickRangeError` | fails, `PickRangeError` |
 
-A step that states a count waits for it: `read` and `parse` poll for the
-element inside the step's `timeout` before counting, so a panel that renders
-late is waited for rather than read as zero, and a wait that runs out fails
-them with the count (`found: 0`) the flow stated. An acting step fails a
-missing element with its `TimeoutError`, and the default `expect: many` asks
-nothing of the count, so it reads straight away.
-
 An acting step (`click`, `fill`, …) drives one element, so an `expect` other
 than `1` on it needs a `pick`. Both fields are rejected at flow load where they
 could only be ignored: on `wait_for`, which waits for a state and not a count,

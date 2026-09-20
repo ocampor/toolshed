@@ -83,9 +83,13 @@ def execute_action(
 def failure_result(
     step: Step, exc: BaseException, accepted: AcceptedMatch | None = None
 ) -> ErrorResult:
-    """What a step failure reads as: the error, and what would fix it."""
     selector = getattr(step, "selector", None)
     matched = exc if isinstance(exc, MatchError) else None
+    hint = None
+    if matched is not None:
+        hint = matched.hint
+    elif is_timeout(exc):
+        hint = "element hidden, missing, or slow to render"
     return ErrorResult(
         error=type(exc).__name__,
         # Collapse whitespace so multi-line errors (Pydantic ValidationError,
@@ -93,17 +97,9 @@ def failure_result(
         message=" ".join(str(exc).split())[:300],
         step_name=step.name,
         selector=repr(selector) if selector is not None else None,
-        hint=failure_hint(exc),
+        hint=hint,
         expected=matched.expected if matched else None,
         found=matched.found if matched else None,
         samples=matched.samples if matched else None,
         accepted=accepted,
     )
-
-
-def failure_hint(exc: BaseException) -> str | None:
-    if isinstance(exc, MatchError):
-        return exc.hint
-    if is_timeout(exc):
-        return "element hidden, missing, or slow to render"
-    return None

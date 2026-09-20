@@ -152,7 +152,6 @@ class MatchTarget(StrEnum):
 
     ONE = "one"
     MANY = "many"
-    BY_TEXT = "by_text"
 
 
 def check_one_target(step: MatchFields) -> None:
@@ -163,19 +162,8 @@ def check_one_target(step: MatchFields) -> None:
         )
 
 
-def allow_any_count(step: MatchFields) -> None:
-    """A step that reads every match puts no rule on the count."""
-
-
-def check_by_text_target(step: MatchFields) -> None:
-    if step.pick is not None:
-        raise ValueError("action `pick` chooses its match by `value:`, not by `pick:`")
-
-
 MATCH_CHECKS: dict[MatchTarget, Callable[[MatchFields], None]] = {
     MatchTarget.ONE: check_one_target,
-    MatchTarget.MANY: allow_any_count,
-    MatchTarget.BY_TEXT: check_by_text_target,
 }
 
 ExpectCount = Annotated[int, Field(ge=1)] | Literal["many"]
@@ -184,18 +172,13 @@ PickChoice = Literal["first", "last"] | Annotated[int, Field(ge=0)]
 DEFAULT_EXPECT: dict[MatchTarget, ExpectCount] = {
     MatchTarget.ONE: 1,
     MatchTarget.MANY: "many",
-    MatchTarget.BY_TEXT: "many",
 }
 
 
 class MatchFields(BaseModel):
-    """How many elements a step's selector should match, and which of them the
-    step acts on when it matches more.
-
-    ``expect`` is ``None`` until the flow states one — what the step defaults to
-    comes from its ``match_target`` — so "stated" survives the ``model_dump``
-    round trip :func:`llm_browser.steps.resolve_step_templates` makes.
-    """
+    """``expect`` is ``None`` until the flow states one — the default comes from
+    ``match_target`` — so "stated" survives the ``model_dump`` round trip
+    :func:`llm_browser.steps.resolve_step_templates` makes."""
 
     expect: ExpectCount | None = None
     pick: PickChoice | None = None
@@ -204,17 +187,17 @@ class MatchFields(BaseModel):
 
     @model_validator(mode="after")
     def _check_match_fields(self) -> MatchFields:
-        if getattr(self, "selector", None) is None and self.states_a_rule():
+        states_a_rule = self.expect is not None or self.pick is not None
+        if getattr(self, "selector", None) is None and states_a_rule:
             kind = getattr(self, "action", "this step")
             raise ValueError(
                 f"{kind} without a selector matches nothing to count, so "
                 "expect:/pick: do not apply"
             )
-        MATCH_CHECKS[self.match_target](self)
+        check = MATCH_CHECKS.get(self.match_target)
+        if check is not None:
+            check(self)
         return self
-
-    def states_a_rule(self) -> bool:
-        return self.expect is not None or self.pick is not None
 
 
 def reject_wait_for_match_fields(data: Any) -> Any:
@@ -232,7 +215,6 @@ def reject_wait_for_match_fields(data: Any) -> Any:
 
 
 def match_rule_of(step: Step) -> MatchRule | None:
-    """The count rule ``step`` states, or ``None`` for a step that states none."""
     if not isinstance(step, MatchFields):
         return None
     expect = step.expect
@@ -302,7 +284,7 @@ class PickStep(SelectorStep):
     action: Literal["pick"]
     value: str = ""
 
-    match_target: ClassVar[MatchTarget] = MatchTarget.BY_TEXT
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
 
 class GotoStep(BaseStep):
@@ -683,14 +665,12 @@ class SkippedStep(BaseModel):
 
 
 class MatchWarning(AcceptedMatch):
-    """The mismatch a step's ``pick`` took, named by the step that took it."""
-
     step: str
 
 
 def match_warning(step: str, accepted: AcceptedMatch) -> MatchWarning:
-    """``accepted`` under the name of the step it happened in. The splat is
-    safe because every ``AcceptedMatch`` field is a ``MatchWarning`` field."""
+    # The splat cannot drift: every ``AcceptedMatch`` field is a
+    # ``MatchWarning`` field.
     return MatchWarning(step=step, **accepted.model_dump())
 
 

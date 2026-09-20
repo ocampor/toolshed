@@ -7,17 +7,14 @@
 - `expect:` and `pick:` on every step that targets elements (`models.MatchFields`):
   `expect` is `1`, a count, or `many`; `pick` is `first`, `last` or an index, and
   is what lets a step act on one of several matches (ocampor/toolshed#62).
-- `selectors.MatchError` (a `ValueError`) carries `found`, up to
-  `constants.MATCH_SAMPLES` match texts and the `hint` that fixes it;
-  `results.ErrorResult` reports them as `found`, `samples`, `hint`.
-- `selectors.MatchCountError` adds `expected` to that: the count the step asked
-  for. Its hint points the way the count went — too many, or too few.
-- `selectors.PickRangeError`: a `pick` naming a match the page does not have
-  (`pick: 9 needs at least 10 matches for '…', found 7`), with no `expected`.
+- `selectors.MatchError` (a `ValueError`) with `found`, `samples` and `hint`, and
+  its two subclasses: `MatchCountError` (adds `expected`, hinting too many or too
+  few) and `PickRangeError` (`pick: 9 needs at least 10 matches for '…', found 7`,
+  no `expected`); `results.ErrorResult` reports all four fields.
 - `models.MatchWarning` (a `results.AcceptedMatch` naming its step) on
-  `FlowSuccess.warnings` and `FlowError.warnings`: every step whose `pick` took
-  a count its `expect` did not ask for, keyed like `skipped` (`step[0]`,
-  `parent/step`), including a step that then failed or was skipped.
+  `FlowSuccess.warnings` and `FlowError.warnings`: every step whose `pick` took a
+  count its `expect` did not ask for, keyed like `skipped`, failed and skipped
+  steps included.
 - `results.AcceptedMatch` on `ActionResult.accepted`, and
   `BrowserSession.matching(rule)`, the context manager that runs one step under
   a `selectors.MatchRule`.
@@ -30,10 +27,8 @@
 - An explicit `expect: 1` on `read` or `parse` fails on zero matches; the default
   `expect: many` keeps returning zero rows.
 - `read` and `parse` wait for a count they state within the step's `timeout`
-  before counting (`BrowserSession.parse_elements` takes a `timeout`), and a
-  wait that expires fails them with `MatchCountError found 0` rather than the
-  timeout; a default `expect: many` still reads without waiting. Acting steps
-  keep failing a missing element with `TimeoutError`.
+  (`BrowserSession.parse_elements` takes a `timeout`) and fail an expired wait
+  with `MatchCountError found 0`; `expect: many` still reads without waiting.
 - `expect:`/`pick:` are rejected at flow load where they could only be ignored:
   on `wait_for`, and on a `press` or `screenshot` with no selector.
 

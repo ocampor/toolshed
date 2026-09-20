@@ -1,7 +1,6 @@
 """Selector abstraction: Pydantic models for CSS, XPath, ID, and fallback
 selectors, plus the match-count rule a step's ``expect``/``pick`` states."""
 
-from collections.abc import Callable
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
@@ -147,8 +146,8 @@ class Match(NamedTuple):
 
 
 class MatchError(ValueError):
-    """A selector matched elements the step's rule rules out: what it found,
-    the text of the first few, and what would fix it."""
+    """Base for both match failures, so ``failure_result`` reports ``found``,
+    ``samples`` and ``hint`` without knowing which one it has."""
 
     def __init__(self, message: str, found: int, samples: list[str], hint: str) -> None:
         self.found = found
@@ -201,49 +200,24 @@ class PickRangeError(MatchError):
         )
 
 
-PICK_INDEX: dict[str, Callable[[int], int]] = {
-    "first": lambda found: 0,
-    "last": lambda found: found - 1,
-}
-
-
 def pick_index(pick: PickSpec, found: int) -> int:
-    """Which of ``found`` matches ``pick`` names."""
     if isinstance(pick, int):
         return pick
-    return PICK_INDEX[pick](found)
-
-
-def sample_text(driver: Driver, locator: Any, index: int) -> str:
-    """A sample is diagnostic, so one that cannot be read reads as empty rather
-    than replacing the match failure it is being collected for."""
-    try:
-        return (driver.text_content(driver.nth(locator, index)) or "").strip()
-    except Exception:
-        return ""
+    return 0 if pick == "first" else found - 1
 
 
 def match_samples(driver: Driver, locator: Any, found: int) -> list[str]:
-    return [sample_text(driver, locator, i) for i in range(min(found, MATCH_SAMPLES))]
-
-
-def states_minimum(rule: MatchRule) -> bool:
-    """Whether ``rule`` names a count the page has to reach, so a step running
-    under it has something to wait for."""
-    return isinstance(rule.expect, int) or rule.pick is not None
-
-
-def count_mismatch(rule: MatchRule, found: int, waiting: bool) -> bool:
-    """Whether ``found`` breaks ``rule``'s ``expect``.
-
-    ``waiting`` is the check that runs before a wait, where too few matches is
-    what the wait is for and only an ambiguity nothing picks from can fail.
-    """
-    if not isinstance(rule.expect, int):
-        return False
-    if found > rule.expect and rule.pick is None:
-        return True
-    return found < rule.expect and not waiting
+    samples = []
+    for index in range(min(found, MATCH_SAMPLES)):
+        try:
+            # A sample is diagnostic: one that cannot be read must never
+            # replace the failure it is being collected for.
+            samples.append(
+                (driver.text_content(driver.nth(locator, index)) or "").strip()
+            )
+        except Exception:
+            samples.append("")
+    return samples
 
 
 def check_count(
@@ -254,8 +228,12 @@ def check_count(
     found: int,
     waiting: bool,
 ) -> None:
-    """Raise what ``found`` breaks in ``rule``: the count, or the pick's reach."""
-    if count_mismatch(rule, found, waiting):
+    # ``waiting`` is the check that runs before a wait, where too few matches is
+    # what the wait is for and only an ambiguity nothing picks from can fail.
+    if isinstance(rule.expect, int) and (
+        (found > rule.expect and rule.pick is None)
+        or (found < rule.expect and not waiting)
+    ):
         raise MatchCountError(
             rule.expect, found, match_samples(driver, locator, found), selector
         )
@@ -289,11 +267,8 @@ def match_elements(
     *,
     waiting: bool = False,
 ) -> Match:
-    """Check what ``locator`` matches against ``rule``, narrowed to its pick.
-
-    ``expect: many`` without a pick asks nothing of the count, so it never
-    even counts.
-    """
+    """``expect: many`` without a pick asks nothing of the count, so it never
+    even counts."""
     if rule.expect == "many" and rule.pick is None:
         return Match(locator)
     found = driver.count(locator)
@@ -301,11 +276,6 @@ def match_elements(
     if waiting:
         return Match(locator)
     return narrowed(driver, locator, rule, found)
-
-
-def picked_element(driver: Driver, match: Match) -> Any:
-    """The one element a many-match step acts on: its pick, or the first match."""
-    return match.locator if match.nth is not None else driver.first(match.locator)
 
 
 def _resolve_with_fallback(
