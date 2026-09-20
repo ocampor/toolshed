@@ -505,3 +505,18 @@ def test_redaction_keeps_the_warnings(tmp_path: Path) -> None:
     assert isinstance(result, FlowSuccess)
     assert [w.found for w in result.warnings] == [7]
     assert result.outputs == {"price": [{"text": "***"}]}
+
+
+def test_save_as_stores_the_picked_row(tmp_path: Path) -> None:
+    session = page_session(tmp_path, 7)
+    result = run_steps(
+        session,
+        [
+            read_step(
+                expect=7, pick="last", save_as={"name": "price", "field": "text"}
+            ),
+            {"name": "open", "action": "goto", "url": "https://x/{{ price }}"},
+        ],
+    )
+    assert isinstance(result, FlowSuccess)
+    assert session.driver.goto.call_args.args[1] == f"https://x/{PRICES[6]}"
