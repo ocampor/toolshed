@@ -198,7 +198,8 @@ def action_read(
     raw = session.parse_elements(
         step.selector, step.extract, step.exclude, step.timeout
     )
-    # debt: merge with #62 expect
+    # debt: `expect: 1` already states this; the match rule should raise it,
+    # with the samples and hint a bare ValueError cannot carry.
     if not raw and isinstance(step.selector, ScopedSelector):
         raise ValueError(
             f"read found nothing at {describe_selector(step.selector)}; "

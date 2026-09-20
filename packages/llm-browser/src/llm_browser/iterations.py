@@ -27,10 +27,10 @@ class FailedPass(BaseModel):
 class IterationReport(BaseModel):
     """One repeating step's passes. ``total: 0`` is reported, never silent.
 
-    ``over`` names the list param the passes came from, so a rerun knows to
-    resend data rather than indices; it is ``None`` for an inline list or an
-    ``over_selector``. ``not_run`` holds the passes a stopped loop never
-    reached, which a rerun wants alongside the failed one.
+    ``over`` names the flow-data list the passes came from, so a rerun can
+    resend those items when the caller passed that list in; it is ``None`` for
+    an inline list or an ``over_selector``. ``not_run`` holds the passes a
+    stopped loop never reached, which a rerun wants alongside the failed one.
     """
 
     total: int = 0
