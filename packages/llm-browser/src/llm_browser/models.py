@@ -92,6 +92,29 @@ class Repeat(BaseModel):
         return self
 
 
+class SaveAs(BaseModel, extra="forbid"):
+    """Where a ``read`` step's rows land in flow data.
+
+    A bare name saves the whole row list. With ``field`` it saves that one
+    scalar from the first row ``where`` admits — row 0 when ``where`` is empty.
+    """
+
+    name: str = Field(..., pattern=r"^[A-Za-z_]\w*$")
+    field: str | None = None
+    where: dict[str, Any] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _name_shorthand(cls, data: Any) -> Any:
+        return {"name": data} if isinstance(data, str) else data
+
+    @model_validator(mode="after")
+    def _where_needs_a_field(self) -> SaveAs:
+        if self.where and self.field is None:
+            raise ValueError("save_as `where` picks a row for `field`; name one")
+        return self
+
+
 def selector_ref_shorthand(data: Any) -> Any:
     """``ref: name`` is the compact way to name a selector by ref, and means
     exactly ``selector: {ref: name}`` — at step level and inside ``fields:``
@@ -329,6 +352,29 @@ class ReadStep(SelectorStep):
     exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
+    save_as: SaveAs | None = None
+
+    @model_validator(mode="after")
+    def _check_save_as(self) -> ReadStep:
+        if self.save_as is None:
+            return self
+        if self.repeat is not None:
+            # Each pass keeps its saves to itself, and a lone step has no
+            # later step in its pass to read one.
+            raise ValueError(
+                "save_as on a repeated step is never visible; "
+                "repeat a run-flow and save inside it"
+            )
+        named = set(self.save_as.where)
+        if self.save_as.field is not None:
+            named.add(self.save_as.field)
+        unknown = sorted(named - set(self.extract))
+        if unknown:
+            raise ValueError(
+                f"save_as names {unknown!r}, not among the extracted fields "
+                f"{sorted(self.extract)!r}"
+            )
+        return self
 
     @field_validator("extract", mode="before")
     @classmethod
@@ -565,6 +611,13 @@ class Flow(BaseModel):
                 f"duplicate step names {duplicates!r}; "
                 "names must be unique within a flow."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_saved_names(self) -> Flow:
+        from llm_browser.save_as import check_saved_names
+
+        check_saved_names(self)
         return self
 
     def validate_data(self, data: dict[str, object]) -> FlowData:

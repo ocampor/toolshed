@@ -19,6 +19,7 @@ from llm_browser.models import (
     validate_step,
 )
 from llm_browser.probe import human_needed
+from llm_browser.save_as import save_result
 from llm_browser.selector_map import SelectorMap, resolve_step_refs
 from llm_browser.selectors import parse_selector
 from llm_browser.session import BrowserSession
@@ -128,7 +129,10 @@ def execute_step(
     resolved = resolve_step(step, data, selector_map)
     if should_skip(session, resolved, data):
         return SkippedResult(reason=WHEN_SKIP_REASON)
-    action_result = execute_action(session, resolved, behavior)
+    # A save lands in the caller's ``data``: that is how later steps see it.
+    action_result = save_result(
+        resolved, execute_action(session, resolved, behavior), data
+    )
     if not action_result.ok:
         capture = session.capture
         return FlowError(
