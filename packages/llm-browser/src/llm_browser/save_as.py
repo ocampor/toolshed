@@ -83,8 +83,10 @@ def names_used(step: Step) -> set[str]:
         fields.pop("flow", None)
     used = template_names(fields)
     used |= {str(cond["field"]) for cond in step.when if "field" in cond}
-    if step.repeat is not None:
-        used.add(step.repeat.over)
+    # Only a repeat over a *param* names flow data; an inline list or an
+    # `over_selector` reads nothing a step could have saved.
+    if step.repeat is not None and step.repeat.param is not None:
+        used.add(step.repeat.param)
     if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
         inner: set[str] = set()
         for child in step.flow.steps:

@@ -29,7 +29,9 @@ from llm_browser.constants import (
     DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
+from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
+from llm_browser.repeat import Repeat, RepeatBlock, check_scope
 from llm_browser.results import AcceptedMatch, PayloadBytes
 from llm_browser.selectors import MatchRule, Selector
 
@@ -68,28 +70,6 @@ def check_text_wanted(text: str) -> str:
     if not text:
         raise ValueError("a text wait needs text to look for")
     return text
-
-
-class Repeat(BaseModel):
-    """Run one step once per item of a list param.
-
-    ``over`` names the param holding the list; ``as`` (the field is ``bind``,
-    because ``as`` is a keyword) names the variable each item is bound to for
-    that pass, alongside ``<as>_index``.
-    """
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    over: str = Field(..., min_length=1)
-    bind: str = Field(..., min_length=1, alias="as")
-
-    @model_validator(mode="after")
-    def _reject_self_shadowing(self) -> Repeat:
-        # Binding the item to the list's own name would leave the rest of the
-        # step unable to reach either.
-        if self.bind == self.over:
-            raise ValueError(f"repeat `as` must differ from `over` ({self.over!r})")
-        return self
 
 
 class SaveAs(BaseModel, extra="forbid"):
@@ -143,9 +123,16 @@ class BaseStep(BaseModel):
     No ``selector`` here — see ``SelectorStep`` for steps that target a DOM
     element. Goto / wait / screenshot / think / eval-only steps inherit
     ``BaseStep`` directly.
+
+    ``scope`` is written ``in:`` in a flow (``in`` is a keyword): it names the
+    enclosing repeat's ``as`` and scopes this step's selector to that pass's
+    element, descendants only.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = "unnamed"
+    scope: str | None = Field(None, alias="in", min_length=1)
     fields: list[TargetSpec] = []
     read: dict[str, TargetSpec] = {}
     when: list[dict[str, Any]] = []
@@ -533,6 +520,7 @@ class RunFlowStep(BaseStep):
         # know which run-flow step it came from.
         for child in self.flow.steps:
             child._parent = self.name
+            check_scope(child, self.repeat)
         return self
 
 
@@ -595,8 +583,32 @@ class FlowData(BaseModel, extra="allow"):
 class Flow(BaseModel):
     """A complete YAML flow definition."""
 
+    # A sub-flow's steps are checked by the ``run-flow`` step that owns them:
+    # the repeat they sit in is that step's, which they cannot see from here.
+    checks_scopes: ClassVar[bool] = True
+
     params: list[str | dict[str, Any]] = []
     steps: list[Step]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _desugar_repeat_blocks(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
+            return data
+        steps = [
+            RepeatBlock.model_validate(step).desugared()
+            if isinstance(step, dict) and step.get("action") == "repeat"
+            else step
+            for step in data["steps"]
+        ]
+        return {**data, "steps": steps}
+
+    @model_validator(mode="after")
+    def _enforce_step_scopes(self) -> Flow:
+        if self.checks_scopes:
+            for step in self.steps:
+                check_scope(step, step.repeat)
+        return self
 
     @model_validator(mode="after")
     def _enforce_unique_step_names(self) -> Flow:
@@ -638,6 +650,8 @@ class SubFlow(Flow):
     this at parse time, which means linters/CI can catch malformed
     children without running the browser.
     """
+
+    checks_scopes: ClassVar[bool] = False
 
     @model_validator(mode="after")
     def _enforce_subflow_constraints(self) -> SubFlow:
@@ -697,12 +711,18 @@ class RetryHint(BaseModel):
     what data to pass and which step to resume at via ``--from``.
 
     ``flow_path`` is empty unless ``run_flow_file`` filled it in.
+
+    ``only`` restricts a repeating step to the passes that failed, keyed by
+    step name — what ``run_flow(only=…)`` and ``run --only`` take. A repeat
+    over a list *param* gets the failed items back in ``data`` instead, since
+    a rerun renumbers them from zero.
     """
 
     flow_path: str = ""
     data: dict[str, object]
     failed_step: str
     error: str
+    only: dict[str, list[int]] = {}
 
 
 class SkippedStep(BaseModel):
@@ -745,6 +765,10 @@ class FlowSuccess(BaseModel):
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
     result, which the parent run stamps on its way out.
+
+    ``iterations`` reports every repeating step that ran, keyed by step name;
+    ``retry_hint`` is set only when a pass failed and ``on_error: skip`` kept
+    the run going.
     """
 
     step: str
@@ -752,6 +776,8 @@ class FlowSuccess(BaseModel):
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
+    iterations: dict[str, IterationReport] = {}
+    retry_hint: RetryHint | None = None
 
 
 class FlowError(BaseModel):
@@ -787,6 +813,7 @@ class FlowError(BaseModel):
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
+    iterations: dict[str, IterationReport] = {}
 
 
 # Public type alias: callers that don't care which arm they got can use

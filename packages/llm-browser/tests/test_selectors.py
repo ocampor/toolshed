@@ -8,7 +8,9 @@ from llm_browser.selectors import (
     CssSelector,
     FallbackSelector,
     IdSelector,
+    ScopedSelector,
     XpathSelector,
+    describe_selector,
     parse_selector,
     resolve_selector,
 )
@@ -144,3 +146,52 @@ def test_fallback_probe_never_waits_inside_the_driver(
     resolve_selector(driver, page, selector)
 
     driver.count.assert_called_once()
+
+
+# --- scoped selectors (`in:`) ---
+
+
+def test_a_scoped_selector_looks_inside_the_nth_match(
+    driver: MagicMock, page: MagicMock
+) -> None:
+    page.locator.return_value.count.return_value = 3
+    driver.nth.side_effect = lambda loc, index: f"row-{index}"
+    driver.child.side_effect = lambda element, sel: f"{element} {sel}"
+
+    found = resolve_selector(
+        driver, page, ScopedSelector(root="tr.athing", index=1, inner=".title a")
+    )
+
+    page.locator.assert_called_once_with("tr.athing")
+    assert found == "row-1 .title a"
+
+
+def test_a_scoped_selector_says_so_when_the_row_is_gone(
+    driver: MagicMock, page: MagicMock
+) -> None:
+    """A page that dropped rows mid-loop fails the pass with what happened."""
+    page.locator.return_value.count.return_value = 1
+
+    with pytest.raises(
+        ValueError, match="matches 1 elements now, so element 2 is gone"
+    ):
+        resolve_selector(
+            driver, page, ScopedSelector(root="tr.athing", index=2, inner="a")
+        )
+
+
+def test_a_fallback_cannot_be_scoped(driver: MagicMock, page: MagicMock) -> None:
+    inner = FallbackSelector(
+        primary=CssSelector(css="#a"), fallback=CssSelector(css="#b")
+    )
+    scoped = ScopedSelector(root="tr", index=0, inner=inner)
+
+    with pytest.raises(ValueError, match="fallback selector cannot be scoped"):
+        resolve_selector(driver, page, scoped)
+
+
+def test_a_scoped_selector_describes_itself() -> None:
+    scoped = ScopedSelector(
+        root="tr.athing", index=2, inner=XpathSelector(xpath="./td")
+    )
+    assert describe_selector(scoped) == "tr.athing[2] xpath=./td"

@@ -43,6 +43,7 @@ from llm_browser.results import (
     VoidResult,
     is_step_failure,
 )
+from llm_browser.selectors import ScopedSelector, describe_selector
 from llm_browser.session import BrowserSession
 
 __all__ = [
@@ -197,6 +198,12 @@ def action_read(
     raw = session.parse_elements(
         step.selector, step.extract, step.exclude, step.timeout
     )
+    # debt: merge with #62 expect
+    if not raw and isinstance(step.selector, ScopedSelector):
+        raise ValueError(
+            f"read found nothing at {describe_selector(step.selector)}; "
+            "the element does not carry it"
+        )
     rows: list[BaseModel | None] = [
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw

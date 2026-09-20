@@ -401,6 +401,7 @@ def test_a_dom_step_reads_the_match_it_picked(tmp_path: Path) -> None:
 
 
 REPEAT = {"over": "codes", "as": "code"}
+REPEAT_BLOCK = {"name": "loop", "action": "repeat", **REPEAT}
 CLICK = {
     "name": "go",
     "action": "click",
@@ -408,6 +409,10 @@ CLICK = {
     "pick": "first",
     "timeout": 50,
 }
+
+
+def repeat_block(step: dict[str, Any]) -> dict[str, Any]:
+    return {**REPEAT_BLOCK, "steps": [step]}
 
 
 @pytest.mark.parametrize(
@@ -435,6 +440,13 @@ CLICK = {
         ([CLICK], False, ["go"], []),
         ([{**CLICK, "optional": True}], True, ["go"], ["go"]),
         ([{**CLICK, "repeat": REPEAT}], False, ["go[0]"], []),
+        (
+            [repeat_block(read_step(expect=1, pick="first"))],
+            True,
+            ["loop/price[0]", "loop/price[1]"],
+            [],
+        ),
+        ([repeat_block(CLICK)], False, ["loop/go[0]"], []),
     ],
 )
 def test_a_run_names_every_step_whose_pick_took_a_mismatch(

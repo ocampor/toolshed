@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from llm_browser import actions, flows, steps
+from llm_browser import actions, flow_runner, flows, steps
 from llm_browser import session as session_module
 from llm_browser.actions import execute_action
 from llm_browser.results import BytesResult, ParsedResult, TextResult
@@ -604,7 +604,7 @@ def test_optional_swallows_value_error(session: BrowserSession) -> None:
     from llm_browser.results import SkippedResult
 
     locator = session._page.locator.return_value  # type: ignore[union-attr]
-    locator.count.return_value = 3  # triggers expect_single ValueError
+    locator.count.return_value = 3  # triggers MatchCountError
     step = ClickStep(name="s", action="click", selector=".ambiguous", optional=True)
     result = execute_action(session, step)
     assert isinstance(result, SkippedResult)
@@ -718,7 +718,7 @@ def driver_attributes(module: object) -> list[ast.Attribute]:
     ]
 
 
-@pytest.mark.parametrize("module", [actions, steps, flows])
+@pytest.mark.parametrize("module", [actions, steps, flows, flow_runner])
 def test_the_layers_above_the_session_never_touch_the_driver(module: object) -> None:
     """steps -> actions -> session -> driver. An action that reaches for
     ``session.driver`` skips the session's pacing and humanization, so the
