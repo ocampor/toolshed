@@ -385,6 +385,41 @@ def nested_repeat_flow(on_error: str = "skip") -> dict[str, Any]:
     }
 
 
+def test_a_repeat_loops_a_saved_read(tmp_path: Path, mock_session: MagicMock) -> None:
+    """`save_as` (#61) feeds `over` (#60): any list in flow data loops."""
+    mock_session.parse_elements.return_value = [{"href": "a.html"}, {"href": "b.html"}]
+    path = write_flow(
+        tmp_path,
+        [
+            {
+                "name": "books",
+                "action": "read",
+                "selector": "h3 a",
+                "extract": {"href": "@href"},
+                "save_as": "books",
+            },
+            block(
+                over="books",
+                as_="book",
+                steps=[
+                    {
+                        "name": "open",
+                        "action": "goto",
+                        "url": "https://x/{{ book.href }}",
+                    }
+                ],
+            ),
+        ],
+    )
+    result = run_flow_file(mock_session, path, {})
+    assert isinstance(result, FlowSuccess)
+    assert [call.args[0] for call in mock_session.goto.call_args_list] == [
+        "https://x/a.html",
+        "https://x/b.html",
+    ]
+    assert result.iterations["each"].total == 2
+
+
 def test_a_repeating_step_inside_a_subflow_reports_and_hints(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:

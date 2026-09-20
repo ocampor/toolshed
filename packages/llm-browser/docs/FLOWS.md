@@ -194,9 +194,10 @@ One engine, two spellings: `repeat:` on a step is the modifier form below, and
 several steps. Both take the same sources (`over`, `over_selector`), the same
 `on_error`, and both fill the same [report](#the-report).
 
-`repeat: { over: <param>, as: <name> }` runs one step — any step, `run-flow`
-included — once per item of a list param. Each pass binds the item under
-`<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
+`repeat: { over: <list>, as: <name> }` runs one step — any step, `run-flow`
+included — once per item of a list in flow data: a param, a
+[`save_as`](#saving-a-read-save_as), or the list written inline. Each pass binds
+the item under `<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
 in the step, and keys its outputs `<step name>[<index>]` so passes never
 overwrite one another. A step that writes a file (`screenshot`, `download`, or
 any `path:`) gets the same index in its filename — `path: shots/page.png`
@@ -246,7 +247,7 @@ steps:
 
 | Field | Meaning |
 |---|---|
-| `over` | the name of a list param, or the list itself (`[a, b, c]`) |
+| `over` | the name of a list in flow data — a param or a [`save_as`](#saving-a-read-save_as) — or the list itself (`[a, b, c]`) |
 | `over_selector` | a selector (`ref:` included); its match count is snapshotted when the step starts, without waiting — put a `wait_for` before the repeat when the rows load late, or it runs zero passes |
 | `as` | what each pass binds: the item, or an element's text snippet (whitespace-collapsed, 80 chars max), plus `<as>_index` |
 | `on_error` | `stop` (default) ends the run at the failing pass; `skip` keeps its partial outputs, names it in `skipped`, and goes on |
@@ -301,6 +302,54 @@ step, not one of its passes.
 `--only outer/grab=1` reaches a repeating step inside a `run-flow`. When that
 `run-flow` itself repeats, the key carries no outer index and so applies to
 every pass of the outer loop.
+
+### Saving a read (`save_as`)
+
+`save_as` on a `read` step puts what it read into flow data: reachable in
+`{{ }}`, `when:`, `repeat.over`, and a `run-flow` step's `data:`.
+
+| Form | Saves | Fails when |
+|------|-------|------------|
+| `save_as: books` | Whole row list, as in `outputs` | Never — no rows saves `[]` |
+| `{ name, field }` | `field` of row 0 | No row 0, or its `field` is null |
+| `{ name, field, where }` | `field` of first row matching `where` | No row matches |
+
+`where` is equality on extracted fields, compared as read — every extracted
+value is a string, so quote numbers. A saved list with zero rows runs zero
+`repeat` passes.
+
+A save is local to the flow run that made it: a sub-flow sees its parent's
+saves, but a save made inside a sub-flow never flows back to the parent. The
+innermost binding wins — a `repeat` item, a `run-flow` `data:` key or a
+sub-flow's own save hides an outer name of the same name inside its scope
+only, leaving the outer value untouched. A skipped or `optional`-swallowed
+read saves nothing, and `--from` past the read starts without it.
+
+Rejected at flow load:
+
+- a `save_as` name that is a declared param or another `save_as` of the same
+  flow;
+- a `path:` (the CLI names files after the run) naming a `save_as` of its own
+  flow, or — inside a sub-flow — one of the parent's saves the `run-flow` step
+  does not rebind;
+- a step that uses a saved name before the step that saves it;
+- `field` or a `where` key outside the step's `extract` fields;
+- `where` without `field`;
+- `save_as` on a step that also has `repeat`.
+
+```yaml
+steps:
+  - { name: open category, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html" }
+  - { name: books, action: read, selector: "article.product_pod h3 a", extract: { href: { attribute: href } }, save_as: books }
+  - name: each book
+    action: run-flow
+    repeat: { over: books, as: book }
+    flow:
+      steps:
+        - { name: open, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/{{ book.href }}" }
+```
+
+`attribute: href` reads the attribute raw, often relative; prefix the base URL in the flow's `url:`.
 
 ## Loading flows
 
@@ -394,7 +443,9 @@ A CSS group (`main, article`) is handed to the browser as written: it matches ev
 
 ## Template variables
 
-`{{ param_name }}` in any string value, resolved from flow params at runtime: `value: "{{ rfc }}"` with `params: [rfc]`.
+`{{ param_name }}` in any string value, resolved from flow data at runtime: `value: "{{ rfc }}"` with `params: [rfc]`. A missing name is left as written.
+
+A dotted path indexes in — `{{ book.href }}`, `{{ books.0.href }}` — and fails the step if it resolves to nothing. Paths only, no expressions.
 
 ## Conditions
 
@@ -423,8 +474,9 @@ that pass's bindings — and on a `run-flow` step before the child is loaded.
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
-| `repeat` | `{ over \| over_selector, as, on_error }` | Run the step once per item, or once per matched element ([below](#repetition)) |
-| `in` | string | Scope this step's selector to the enclosing repeat's current element ([below](#addressing-one-element-in)) |
+| `repeat` | `{ over \| over_selector, as, on_error }` | Run the step once per item of a list in flow data, or once per matched element ([above](#repetition)) |
+| `in` | string | Scope this step's selector to the enclosing repeat's current element ([above](#addressing-one-element-in)) |
+| `save_as` | string or `{ name, field, where }` | `read` only: keep the rows, or one scalar, as flow data ([above](#saving-a-read-save_as)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
 
 ### What `timeout` bounds

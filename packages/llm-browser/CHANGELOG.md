@@ -2,10 +2,21 @@
 
 ## 0.20.0 — 2026-09-19
 
+### Breaking
+
+- Templates resolve dotted paths (`{{ a.b }}`); an unresolved one now fails its step as a `FlowError`, not a literal.
+
+Migration:
+
+- A literal `{{ a.b }}` needs a dotless placeholder name, or `a.b` present in flow data.
+
 ### Added
 
+- `save_as` on a `read` step (`models.SaveAs`): saves rows, or one scalar via `field`/`where` (ocampor/toolshed#61).
+- Saved values feed later templates, `when:`, `repeat.over`, and `run-flow` `data:`.
+- Load-time checks reject same-flow name shadowing, use-before-save, `extract`-field mismatches, and a `path:` naming a save.
 - `action: repeat` with a `steps:` body loops several steps, desugared at load into the `repeat:` modifier on an inline `run-flow` (ocampor/toolshed#60).
-- `Repeat.over` takes an inline list as well as a list param's name.
+- `Repeat.over` takes an inline list as well as the name of a list in flow data, a `save_as` included.
 - `Repeat.over_selector` repeats over matched elements, count snapshotted at step start, each pass binding the element's text snippet plus `<as>_index`.
 - `in: <as>` scopes a step's selector to that pass's element (`selectors.ScopedSelector`), re-resolved every pass.
 - `Repeat.on_error`: `stop` (default), or `skip` to keep a failed pass's outputs, name it in `skipped` and run the rest.
@@ -15,6 +26,8 @@
 
 ### Changed
 
+- `cli.declared_paths` templates only `path:` and `run-flow` `data:`, not the whole step.
+- Requires `yaml-engine>=0.2.0`.
 - The step loop moved out of `llm_browser.flows` into `llm_browser.flow_runner` (`run_loaded_flow`, `run_subflow`), and `child_data` into `llm_browser.flow_passes`.
 
 ### Fixed

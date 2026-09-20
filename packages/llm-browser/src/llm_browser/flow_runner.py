@@ -6,6 +6,8 @@ underneath it — one step's passes at a time, sub-flows included.
 
 from typing import NamedTuple
 
+from yaml_engine.template import TemplatePathError
+
 from llm_browser.behavior import Behavior
 from llm_browser.constants import WHEN_SKIP_REASON
 from llm_browser.flow_passes import (
@@ -145,19 +147,28 @@ def run_pass(
     step: Step, one: Pass, context: RunContext
 ) -> ActionResult | FlowSuccess | FlowError:
     scope = one.scope if one.scope is not None else context.scope
-    if isinstance(step, RunFlowStep):
-        return run_subflow(
+    try:
+        if isinstance(step, RunFlowStep):
+            return run_subflow(
+                context.session,
+                step,
+                one.data,
+                context.behavior,
+                context.selector_map,
+                scope,
+                context.only,
+            )
+        return execute_step(
             context.session,
             step,
             one.data,
             context.behavior,
             context.selector_map,
             scope,
-            context.only,
         )
-    return execute_step(
-        context.session, step, one.data, context.behavior, context.selector_map, scope
-    )
+    except TemplatePathError as exc:
+        # This pass's own failure: the run's outputs are the caller's to merge.
+        return repeat_data_error(step, exc, RunState())
 
 
 def start_report(step: Step, total: int, state: RunState) -> IterationReport | None:

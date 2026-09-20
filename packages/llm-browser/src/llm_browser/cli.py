@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterator, NamedTuple, cast, get_args
 
 import click
+from yaml_engine.template import TemplatePathError, resolve_templates_in_dict
 from pydantic import ValidationError
 from pydantic_core import to_json
 
@@ -29,6 +30,7 @@ from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
+    FlowData,
     FlowError,
     FlowResult,
     RunFlowStep,
@@ -44,7 +46,6 @@ from llm_browser.selector_map import (
     selector_refs,
 )
 from llm_browser.session import BrowserSession
-from llm_browser.steps import resolve_step_templates
 
 
 class CliFlow(NamedTuple):
@@ -521,16 +522,29 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
     paths: dict[str, str] = {}
     flow_data = flow.validate_data(data)
     for step in flow.steps:
-        resolved = resolve_step_templates(step, flow_data)
-        if isinstance(resolved, RunFlowStep) and isinstance(resolved.flow, SubFlow):
-            paths.update(
-                declared_paths(resolved.flow, child_data(flow_data, resolved.data))
-            )
+        if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+            bindings = resolve_after_run(step.data, flow_data)
+            paths.update(declared_paths(step.flow, child_data(flow_data, bindings)))
             continue
-        path = getattr(resolved, "path", None)
+        path = getattr(step, "path", None)
         if path:
-            paths[step.qualified_name] = str(path)
+            named = resolve_after_run({"path": path}, flow_data)
+            paths[step.qualified_name] = str(named["path"])
     return paths
+
+
+def resolve_after_run(raw: dict[str, Any], data: FlowData) -> dict[str, Any]:
+    """``raw`` templated once the run is over, when a pass's item and every
+    ``save_as`` value are gone: only the key whose value reaches into one stays
+    as written, so its siblings still resolve."""
+    template_data = data.to_template_dict()
+    resolved: dict[str, Any] = {}
+    for key, value in raw.items():
+        try:
+            resolved[key] = resolve_templates_in_dict({key: value}, template_data)[key]
+        except TemplatePathError:
+            resolved[key] = value
+    return resolved
 
 
 def as_text(output: object) -> str:
