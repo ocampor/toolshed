@@ -408,3 +408,59 @@ def test_declared_paths_names_the_file_of_a_step_whose_selector_is_a_ref() -> No
     )
 
     assert declared_paths(flow, {}) == {"shot": "out/panel.png"}
+
+
+def test_declared_paths_survives_a_template_only_a_pass_could_resolve() -> None:
+    """Paths are named after the run, when a pass's item and every saved
+    value are gone; a dotted path into one must not cost the run its files."""
+    page = {
+        "name": "page",
+        "action": "dom",
+        "selector": "#{{ row.text }}",
+        "path": "out/{{ id }}.html",
+    }
+    flow = load_flow_document(
+        {
+            "params": ["id"],
+            "steps": [
+                {"name": "rows", "action": "read", "selector": "a", "save_as": "rows"},
+                {
+                    "name": "each",
+                    "action": "run-flow",
+                    "repeat": {"over": "rows", "as": "row"},
+                    "data": {"label": "{{ row.text }}"},
+                    "flow": {"steps": [page]},
+                },
+            ],
+        }
+    )
+
+    assert declared_paths(flow, {"id": "7"}) == {"each/page": "out/7.html"}
+
+
+def test_declared_paths_resolves_the_siblings_of_an_unresolvable_binding() -> None:
+    """One `data:` key a pass alone could resolve must not cost its siblings
+    theirs — the child's `path:` still names the file the flow meant."""
+    page = {
+        "name": "page",
+        "action": "dom",
+        "selector": "#main",
+        "path": "out/{{ file_id }}.html",
+    }
+    flow = load_flow_document(
+        {
+            "params": ["id"],
+            "steps": [
+                {"name": "rows", "action": "read", "selector": "a", "save_as": "rows"},
+                {
+                    "name": "each",
+                    "action": "run-flow",
+                    "repeat": {"over": "rows", "as": "row"},
+                    "data": {"label": "{{ row.text }}", "file_id": "{{ id }}"},
+                    "flow": {"steps": [page]},
+                },
+            ],
+        }
+    )
+
+    assert declared_paths(flow, {"id": "7"}) == {"each/page": "out/7.html"}

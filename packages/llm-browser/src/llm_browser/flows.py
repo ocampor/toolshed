@@ -5,6 +5,8 @@ out) and stage three (run it). Neither stage touches the filesystem — every
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from yaml_engine.template import TemplatePathError
+
 from llm_browser.behavior import Behavior, profile
 from llm_browser.results import ActionResult
 from llm_browser.constants import WHEN_SKIP_REASON
@@ -145,11 +147,7 @@ def run_loaded_flow(
         except ValueError as exc:
             return repeat_data_error(step, exc, outputs, skipped)
         for index, pass_data in passes:
-            outcome: ActionResult | FlowSuccess | FlowError = (
-                run_subflow(session, step, pass_data, behavior, selector_map)
-                if isinstance(step, RunFlowStep)
-                else execute_step(session, step, pass_data, behavior, selector_map)
-            )
+            outcome = run_pass(session, step, pass_data, behavior, selector_map)
             if isinstance(outcome, FlowError):
                 # A sub-flow failure already carries the child's outputs;
                 # keep both sides, qualified names keep the keys distinct, and
@@ -175,6 +173,21 @@ def run_loaded_flow(
             record_outcome(step, outcome, index, outputs, skipped)
     last_name = flow.steps[-1].name if flow.steps else "end"
     return FlowSuccess(step=last_name, outputs=outputs, skipped=skipped)
+
+
+def run_pass(
+    session: BrowserSession,
+    step: Step,
+    pass_data: FlowData,
+    behavior: Behavior | None,
+    selector_map: SelectorMap | None,
+) -> ActionResult | FlowSuccess | FlowError:
+    try:
+        if isinstance(step, RunFlowStep):
+            return run_subflow(session, step, pass_data, behavior, selector_map)
+        return execute_step(session, step, pass_data, behavior, selector_map)
+    except TemplatePathError as exc:
+        return repeat_data_error(step, exc, {}, [])
 
 
 def run_subflow(

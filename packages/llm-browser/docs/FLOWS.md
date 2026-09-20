@@ -222,6 +222,54 @@ With `codes: [a, b]` that leaves `outputs` keyed `row[0]` and `row[1]`. A
 repeated `run-flow` indexes the child's qualified keys the same way:
 `each/row[0]`, `each/row[1]`.
 
+### Saving a read (`save_as`)
+
+`save_as` on a `read` step puts what it read into flow data: reachable in
+`{{ }}`, `when:`, `repeat.over`, and a `run-flow` step's `data:`.
+
+| Form | Saves | Fails when |
+|------|-------|------------|
+| `save_as: books` | Whole row list, as in `outputs` | Never — no rows saves `[]` |
+| `{ name, field }` | `field` of row 0 | No row 0, or its `field` is null |
+| `{ name, field, where }` | `field` of first row matching `where` | No row matches |
+
+`where` is equality on extracted fields, compared as read — every extracted
+value is a string, so quote numbers. A saved list with zero rows runs zero
+`repeat` passes.
+
+A save is local to the flow run that made it: a sub-flow sees its parent's
+saves, but a save made inside a sub-flow never flows back to the parent. The
+innermost binding wins — a `repeat` item, a `run-flow` `data:` key or a
+sub-flow's own save hides an outer name of the same name inside its scope
+only, leaving the outer value untouched. A skipped or `optional`-swallowed
+read saves nothing, and `--from` past the read starts without it.
+
+Rejected at flow load:
+
+- a `save_as` name that is a declared param or another `save_as` of the same
+  flow;
+- a `path:` (the CLI names files after the run) naming a `save_as` of its own
+  flow, or — inside a sub-flow — one of the parent's saves the `run-flow` step
+  does not rebind;
+- a step that uses a saved name before the step that saves it;
+- `field` or a `where` key outside the step's `extract` fields;
+- `where` without `field`;
+- `save_as` on a step that also has `repeat`.
+
+```yaml
+steps:
+  - { name: open category, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html" }
+  - { name: books, action: read, selector: "article.product_pod h3 a", extract: { href: { attribute: href } }, save_as: books }
+  - name: each book
+    action: run-flow
+    repeat: { over: books, as: book }
+    flow:
+      steps:
+        - { name: open, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/{{ book.href }}" }
+```
+
+`attribute: href` reads the attribute raw, often relative; prefix the base URL in the flow's `url:`.
+
 ## Loading flows
 
 Getting from flow text to a result is three explicit stages; the repository is the only piece that differs between consumers:
@@ -314,7 +362,9 @@ A CSS group (`main, article`) is handed to the browser as written: it matches ev
 
 ## Template variables
 
-`{{ param_name }}` in any string value, resolved from flow params at runtime: `value: "{{ rfc }}"` with `params: [rfc]`.
+`{{ param_name }}` in any string value, resolved from flow data at runtime: `value: "{{ rfc }}"` with `params: [rfc]`. A missing name is left as written.
+
+A dotted path indexes in — `{{ book.href }}`, `{{ books.0.href }}` — and fails the step if it resolves to nothing. Paths only, no expressions.
 
 ## Conditions
 
@@ -340,7 +390,8 @@ Skip a step unless every condition holds (AND'ed).
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
-| `repeat` | `{ over, as }` | Run the step once per item of a list param ([below](#repetition)) |
+| `repeat` | `{ over, as }` | Run the step once per item of a list in flow data ([above](#repetition)) |
+| `save_as` | string or `{ name, field, where }` | `read` only: keep the rows, or one scalar, as flow data ([above](#saving-a-read-save_as)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
 
 ### What `timeout` bounds

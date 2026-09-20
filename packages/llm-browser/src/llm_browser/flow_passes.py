@@ -103,7 +103,8 @@ def repeat_data_error(
     outputs: dict[str, object],
     skipped: list[SkippedStep],
 ) -> FlowError:
-    """A ``repeat`` over something that is not a list fails like any other step.
+    """Flow data a step cannot run on — a ``repeat`` over a non-list, a dotted
+    template path to nothing — fails like any other step.
 
     Raising instead would cost the caller the whole run: the steps before this
     one already ran, and their outputs only reach anyone through the result.

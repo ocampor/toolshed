@@ -1,0 +1,136 @@
+"""``save_as``: a read's rows become flow data for the steps after it."""
+
+from collections.abc import Iterable
+
+from yaml_engine.template import template_names
+
+from llm_browser.flow_passes import step_output
+from llm_browser.models import (
+    Flow,
+    FlowData,
+    ReadStep,
+    RunFlowStep,
+    SaveAs,
+    Step,
+    SubFlow,
+)
+from llm_browser.params import resolve_params
+from llm_browser.results import ActionResult, ErrorResult, ParsedResult
+
+
+def saved_value(save_as: SaveAs, rows: list[object]) -> object:
+    if save_as.field is None:
+        return rows
+    row = next((row for row in rows if row_matches(row, save_as.where)), None)
+    value = row.get(save_as.field) if isinstance(row, dict) else None
+    if value is None:
+        raise ValueError(f"save_as {save_as.name!r}: {no_value_reason(save_as, rows)}")
+    return value
+
+
+def no_value_reason(save_as: SaveAs, rows: list[object]) -> str:
+    """Only row 0 is read without ``where``, so say so rather than blame every row."""
+    if save_as.where:
+        return f"none of {len(rows)} rows has {save_as.field!r} where {save_as.where!r}"
+    return f"row 0 of {len(rows)} rows has no {save_as.field!r}"
+
+
+def row_matches(row: object, where: dict[str, object]) -> bool:
+    if not where:
+        return True
+    return isinstance(row, dict) and all(row.get(k) == v for k, v in where.items())
+
+
+def save_result(step: Step, result: ActionResult, data: FlowData) -> ActionResult:
+    """Bind ``result``'s rows into ``data``; a scalar no row yields fails the step."""
+    if not isinstance(step, ReadStep) or step.save_as is None:
+        return result
+    if not isinstance(result, ParsedResult):
+        return result
+    rows = step_output(step, result)
+    if not isinstance(rows, list):
+        return result
+    try:
+        value = saved_value(step.save_as, rows)
+    except ValueError as exc:
+        return ErrorResult(
+            error="ValueError", message=str(exc), step_name=step.qualified_name
+        )
+    setattr(data, step.save_as.name, value)
+    return result
+
+
+def save_names(steps: Iterable[Step]) -> list[str]:
+    return [
+        step.save_as.name
+        for step in steps
+        if isinstance(step, ReadStep) and step.save_as is not None
+    ]
+
+
+def names_bound(step: RunFlowStep) -> set[str]:
+    bound = set(step.data)
+    if step.repeat is not None:
+        bound |= {step.repeat.bind, f"{step.repeat.bind}_index"}
+    return bound
+
+
+def names_used(step: Step) -> set[str]:
+    """Flow-data names ``step`` reads from its own scope: a sub-flow's uses of
+    the names that sub-flow scope defines are the sub-flow's own concern."""
+    fields = step.model_dump(exclude_none=True)
+    if isinstance(step, RunFlowStep):
+        fields.pop("flow", None)
+    used = template_names(fields)
+    used |= {str(cond["field"]) for cond in step.when if "field" in cond}
+    if step.repeat is not None:
+        used.add(step.repeat.over)
+    if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+        inner: set[str] = set()
+        for child in step.flow.steps:
+            inner |= names_used(child)
+        used |= inner - names_bound(step) - set(save_names(step.flow.steps))
+    return used
+
+
+def saved_names_in_paths(step: Step, saves: set[str]) -> set[str]:
+    """Saved names a ``path:`` under ``step`` reads — a sub-flow's own bindings
+    shadow the parent saves they rename, so those do not count."""
+    found = template_names(getattr(step, "path", None) or "") & saves
+    if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+        inherited = saves - names_bound(step)
+        for child in step.flow.steps:
+            found |= saved_names_in_paths(child, inherited)
+    return found
+
+
+def reject_shadowing(saves: list[str], taken: set[str]) -> None:
+    seen = set(taken)
+    for name in saves:
+        if name in seen:
+            raise ValueError(f"save_as {name!r} shadows a param or another save_as")
+        seen.add(name)
+
+
+def check_saved_names(flow: Flow) -> None:
+    saves = save_names(flow.steps)
+    reject_shadowing(saves, set(resolve_params(flow.params)))
+    pending = set(saves)
+    for step in flow.steps:
+        early = sorted(names_used(step) & pending)
+        if early:
+            raise ValueError(
+                f"step {step.name!r} uses {early!r} before the step that saves it"
+            )
+        pending -= set(save_names([step]))
+    reject_saves_in_paths(flow, set(saves))
+
+
+def reject_saves_in_paths(flow: Flow, saves: set[str]) -> None:
+    for step in flow.steps:
+        named = sorted(saved_names_in_paths(step, saves))
+        if named:
+            raise ValueError(
+                f"step {step.name!r} names {named!r} in a path:; the CLI names "
+                "files after the run, when a save_as value is gone"
+            )

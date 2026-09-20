@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.20.0 — 2026-09-19
+
+### Breaking
+
+- Templates resolve dotted paths (`{{ a.b }}`); an unresolved one now fails its step as a `FlowError`, not a literal.
+
+Migration:
+
+- A literal `{{ a.b }}` needs a dotless placeholder name, or `a.b` present in flow data.
+
+### Added
+
+- `save_as` on a `read` step (`models.SaveAs`): saves rows, or one scalar via `field`/`where` (ocampor/toolshed#61).
+- Saved values feed later templates, `when:`, `repeat.over`, and `run-flow` `data:`.
+- Load-time checks reject same-flow name shadowing, use-before-save, `extract`-field mismatches, and a `path:` naming a save.
+
+### Changed
+
+- `cli.declared_paths` templates only `path:` and `run-flow` `data:`, not the whole step.
+- Requires `yaml-engine>=0.2.0`.
+
 ## 0.19.0 — 2026-09-17
 
 ### Breaking
