@@ -130,13 +130,14 @@ def rerun_hint(
     failed_step: str = "",
     error: str = "",
 ) -> RetryHint | None:
-    """How to run the failed passes again, or ``None`` when none failed.
+    """How to run the unfinished passes again, or ``None`` when none failed.
 
-    A repeat over a list param gets its failed items back in ``data``; every
-    other source gets its failed indices in ``only``, since only an index
-    addresses an inline list entry or a matched element. A run that survived
-    its failures names no step or error of its own, so the first failing step
-    stands in for both.
+    A stopped loop leaves the passes after the failing one unrun, and they
+    belong to the rerun as much as the failure does. A repeat over a list param
+    gets those items back in ``data``; every other source gets their indices in
+    ``only``, since only an index addresses an inline list entry or a matched
+    element. A run that survived its failures names no step or error of its
+    own, so the first failing step stands in for both.
     """
     failing = {name: report for name, report in iterations.items() if report.failed}
     if not failing:
@@ -145,13 +146,28 @@ def rerun_hint(
     only: dict[str, list[int]] = {}
     for name, report in failing.items():
         if report.over is None:
-            only[name] = [failure.index for failure in report.failed]
+            only[name] = rerun_indices(report)
         else:
-            retry_data[report.over] = [failure.item for failure in report.failed]
+            retry_data[report.over] = rerun_items(report, data)
     first_name, first_report = next(iter(failing.items()))
     return RetryHint(
         data=retry_data,
-        failed_step=failed_step or first_name,
+        failed_step=failed_step or unindexed(first_name.split("/", 1)[0])[0],
         error=error or first_report.failed[0].message,
         only=only,
     )
+
+
+def rerun_indices(report: IterationReport) -> list[int]:
+    """Every pass the run did not finish, in the order it would run them."""
+    return sorted([failure.index for failure in report.failed] + report.not_run)
+
+
+def rerun_items(report: IterationReport, data: dict[str, object]) -> list[object]:
+    """The same passes as items. An unrun pass left no record of its item, so
+    it is read back out of the list the run was given, which its index keys."""
+    items = {failure.index: failure.item for failure in report.failed}
+    source = data.get(str(report.over))
+    if isinstance(source, list):
+        items |= {i: source[i] for i in report.not_run if i < len(source)}
+    return [items[index] for index in sorted(items)]

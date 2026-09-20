@@ -99,11 +99,12 @@ def run_step(
     except ValueError as exc:
         return repeat_data_error(step, exc, state)
     report = start_report(step, len(passes), state)
-    for one in passes:
+    for position, one in enumerate(passes):
         outcome = run_pass(step, one, context)
         if isinstance(outcome, FlowError):
             record_failure(one, outcome, report, context)
             if step.repeat is None or step.repeat.on_error is OnError.stop:
+                record_unrun(passes[position + 1 :], report)
                 return stopped_at(outcome, one.index, state)
             outcome = folded_failure(
                 step.qualified_name, outcome, f"pass failed at {outcome.step}"
@@ -135,6 +136,13 @@ def record_failure(
     )
 
 
+def record_unrun(passes: list[Pass], report: IterationReport | None) -> None:
+    """The passes a stopped loop left behind, in the order they would have run
+    — already narrowed by ``only``, since that is what built ``passes``."""
+    if report is not None:
+        report.not_run = [one.index for one in passes if one.index is not None]
+
+
 def run_pass(
     step: Step, one: Pass, context: RunContext
 ) -> ActionResult | FlowSuccess | FlowError:
@@ -147,6 +155,7 @@ def run_pass(
             context.behavior,
             context.selector_map,
             scope,
+            context.only,
         )
     return execute_step(
         context.session, step, one.data, context.behavior, context.selector_map, scope
@@ -180,7 +189,10 @@ def stopped_at(failure: FlowError, index: int | None, state: RunState) -> FlowEr
                     for s in failure.skipped
                 ),
             ],
-            "iterations": dict(state.iterations),
+            "iterations": {
+                **state.iterations,
+                **{indexed(k, index): v for k, v in failure.iterations.items()},
+            },
         }
     )
 
@@ -192,6 +204,7 @@ def folded_failure(name: str, failure: FlowError, reason: str) -> FlowSuccess:
         step=name,
         outputs=failure.outputs,
         skipped=[*failure.skipped, SkippedStep(name=name, reason=reason)],
+        iterations=failure.iterations,
     )
 
 
@@ -211,6 +224,7 @@ def run_subflow(
     behavior: Behavior | None = None,
     selector_map: SelectorMap | None = None,
     scope: ElementScope | None = None,
+    only: dict[str, list[int]] | None = None,
 ) -> FlowSuccess | FlowError:
     """A skipped step comes back as an empty success; a swallowed
     ``optional:`` failure comes back as a success carrying the child's
@@ -232,6 +246,7 @@ def run_subflow(
         child_data(flow_data, resolved.data),
         behavior=behavior,
         selector_map=selector_map,
+        only=only,
         scope=scope,
     )
     if isinstance(result, FlowError) and resolved.optional:

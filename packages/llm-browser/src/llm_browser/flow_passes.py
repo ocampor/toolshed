@@ -199,7 +199,7 @@ def record_outcome(
     index: int | None,
     state: RunState,
 ) -> None:
-    """Fold one pass's result into the run's outputs and skip list."""
+    """Fold one pass's result into the run's outputs, skips and reports."""
     match outcome:
         case FlowSuccess():
             state.outputs.update(
@@ -208,6 +208,9 @@ def record_outcome(
             state.skipped.extend(
                 s.model_copy(update={"name": indexed(s.name, index)})
                 for s in outcome.skipped
+            )
+            state.iterations.update(
+                {indexed(k, index): v for k, v in outcome.iterations.items()}
             )
         case SkippedResult():
             state.skipped.append(

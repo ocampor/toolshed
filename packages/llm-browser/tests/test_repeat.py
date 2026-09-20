@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from llm_browser.cli import parse_only
+from llm_browser.cli import authored_subflows, parse_only
 from llm_browser.flows import run_flow
 from llm_browser.models import Flow, FlowError, FlowSuccess
 from llm_browser.selectors import ScopedSelector
@@ -307,6 +307,31 @@ def test_a_list_param_gets_its_failed_items_back(
     assert result.retry_hint.data["codes"] == ["b"]
     assert result.retry_hint.only == {}
     assert result.retry_hint.failed_step == "each"
+    # `skip` runs every pass, so none is left over.
+    assert result.iterations["each"].not_run == []
+
+
+def test_stopping_leaves_the_passes_after_the_failure_to_the_rerun(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
+    path = write_flow(tmp_path, [block(over="codes")], params=["codes"])
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b", "c", "d"]})
+    assert isinstance(result, FlowError)
+    assert result.iterations["each"].not_run == [2, 3]
+    assert result.retry_hint is not None
+    assert result.retry_hint.data["codes"] == ["b", "c", "d"]
+
+
+def test_stopping_over_an_indexed_source_leaves_their_indices(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
+    path = write_flow(tmp_path, [block(over=["a", "b", "c", "d"])])
+    result = run_flow_file(mock_session, path, {})
+    assert isinstance(result, FlowError)
+    assert result.retry_hint is not None
+    assert result.retry_hint.only == {"each": [1, 2, 3]}
 
 
 def test_an_indexed_source_gets_its_failed_indices(
@@ -342,6 +367,72 @@ def test_only_runs_the_passes_it_names(tmp_path: Path, mock_session: MagicMock) 
         "#p-b",
         "#p-c",
     ]
+
+
+def nested_repeat_flow(on_error: str = "skip") -> dict[str, Any]:
+    """A repeating step inside a hand-written `run-flow` — the one nesting the
+    block form rejects, and the one whose report has to reach the parent."""
+    return {
+        "name": "outer",
+        "action": "run-flow",
+        "flow": {
+            "steps": [
+                grab(
+                    selector="#p-{{ code }}",
+                    repeat={"over": "codes", "as": "code", "on_error": on_error},
+                )
+            ]
+        },
+    }
+
+
+def test_a_repeating_step_inside_a_subflow_reports_and_hints(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["one", TimeoutError("never rendered"), "three"]
+    path = write_flow(tmp_path, [nested_repeat_flow()], params=["codes"])
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b", "c"]})
+    assert isinstance(result, FlowSuccess)
+    report = result.iterations["outer/grab"]
+    assert (report.total, report.ok) == (3, 2)
+    [failure] = report.failed
+    assert (failure.index, failure.item, failure.step) == (1, "b", "outer/grab[1]")
+    assert failure.message == "never rendered"
+    assert result.retry_hint is not None
+    assert result.retry_hint.data["codes"] == ["b"]
+    # `--from` resumes the top-level step, not the child that failed.
+    assert result.retry_hint.failed_step == "outer"
+
+
+def test_only_reaches_a_repeating_step_inside_a_subflow(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    """`only` is keyed the way a report is: the step's qualified name."""
+    path = write_flow(tmp_path, [nested_repeat_flow()], params=["codes"])
+    flow = Flow.model_validate(yaml.safe_load(path.read_text()))
+    result = run_flow(
+        mock_session, flow, {"codes": ["a", "b", "c"]}, only={"outer/grab": [2]}
+    )
+    assert isinstance(result, FlowSuccess)
+    assert list(result.outputs) == ["outer/grab[2]"]
+    assert result.iterations["outer/grab"].total == 1
+
+
+def test_a_stopped_subflow_still_hands_its_report_up(
+    tmp_path: Path, mock_session: MagicMock
+) -> None:
+    mock_session.dom.side_effect = ["one", TimeoutError("never rendered")]
+    path = write_flow(tmp_path, [nested_repeat_flow(on_error="stop")], params=["codes"])
+    result = run_flow_file(mock_session, path, {"codes": ["a", "b", "c"]})
+    assert isinstance(result, FlowError)
+    report = result.iterations["outer/grab"]
+    assert [f.index for f in report.failed] == [1]
+    assert report.not_run == [2]
+
+
+def test_authored_subflows_does_not_count_a_desugared_block() -> None:
+    document = {"steps": [block(over=["a"]), {"action": "run-flow", "flow": {}}]}
+    assert authored_subflows(document) == 1
 
 
 @pytest.mark.parametrize(

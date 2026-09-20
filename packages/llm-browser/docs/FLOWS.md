@@ -247,7 +247,7 @@ steps:
 | Field | Meaning |
 |---|---|
 | `over` | the name of a list param, or the list itself (`[a, b, c]`) |
-| `over_selector` | a selector (`ref:` included); its match count is snapshotted when the step starts |
+| `over_selector` | a selector (`ref:` included); its match count is snapshotted when the step starts, without waiting — put a `wait_for` before the repeat when the rows load late, or it runs zero passes |
 | `as` | what each pass binds: the item, or an element's text snippet (whitespace-collapsed, 80 chars max), plus `<as>_index` |
 | `on_error` | `stop` (default) ends the run at the failing pass; `skip` keeps its partial outputs, names it in `skipped`, and goes on |
 | `steps` | the body, at least one step |
@@ -279,19 +279,29 @@ and `FlowError` alike, keyed by step name — `total: 0` included.
 | `ok` | passes that succeeded |
 | `over` | the list param the items came from, else `null` |
 | `failed[]` | `index`, `item`, `step` (the inner step, indexed), `error`, `message`, `selector`, `hint`, `url`, `screenshot` |
+| `not_run` | indices `stop` never reached, empty under `skip` |
 
-Under `stop` the report still carries the one failure that ended the run.
+Under `stop` the report still carries the one failure that ended the run. A
+repeating step written as a `repeat:` modifier inside a `run-flow` is reported
+too, under its qualified name (`outer/grab`).
 
-#### Running the failed passes again
+#### Running the unfinished passes again
 
 When any pass failed, the result carries a `retry_hint` — on `FlowSuccess` too,
-for an `on_error: skip` run. A repeat over a list **param** gets the failed
-items back in `retry_hint.data[<over>]`; rerunning renumbers them from zero. An
-inline list or an `over_selector` gets `retry_hint.only = { <step>: [i, j] }`
-instead, which `run_flow(only=…)` and `llm-browser run --only STEP=I,J` take —
-those passes run again under their original indices, so the outputs line up with
-the first run's. `retry_hint.failed_step` stays the top-level step name, since
-`--from` resumes a step, not one of its passes.
+for an `on_error: skip` run. The rerun set is the failed passes **plus** the
+ones `stop` never reached, in their original order. A repeat over a list
+**param** gets those items back in `retry_hint.data[<over>]`; rerunning
+renumbers them from zero. An inline list or an `over_selector` gets
+`retry_hint.only = { <step>: [i, j] }` instead, which `run_flow(only=…)` and
+`llm-browser run --only STEP=I,J` take — those passes run again under their
+original indices, so the outputs line up with the first run's.
+`retry_hint.failed_step` stays the top-level step name, since `--from` resumes a
+step, not one of its passes.
+
+`only` keys a step by its qualified name, the same way the report does, so
+`--only outer/grab=1` reaches a repeating step inside a `run-flow`. When that
+`run-flow` itself repeats, the key carries no outer index and so applies to
+every pass of the outer loop.
 
 ## Loading flows
 
@@ -392,10 +402,7 @@ A CSS group (`main, article`) is handed to the browser as written: it matches ev
 `when:` is a list of conditions, AND'ed: the step is skipped unless every one
 holds, and the skip is named in `skipped` with `when condition not satisfied`.
 They are checked when the step runs — once per pass inside a `repeat`, against
-that pass's bindings — and on a `run-flow` step before the child is loaded. The
-predicate keys below are read straight from the mapping, so a missing one
-(`field`, `op`, `value` for `eq`, `selector`, `text`) raises `KeyError` mid-run
-rather than failing the step or the load.
+that pass's bindings — and on a `run-flow` step before the child is loaded.
 
 | Condition | True when |
 |---|---|

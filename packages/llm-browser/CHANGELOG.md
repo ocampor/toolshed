@@ -15,10 +15,12 @@
 - `Repeat.on_error` (`repeat.OnError`): `stop` (default) or `skip`, which keeps a
   failed pass's partial outputs, names it in `skipped`, and runs the rest.
 - `FlowSuccess.iterations` / `FlowError.iterations`: one `iterations.IterationReport`
-  per repeating step, with `total`, `ok` and `failed[]` (`iterations.FailedPass`
-  carries index, item, step, error, message, selector, hint, url, screenshot).
-- `FlowSuccess.retry_hint` and `RetryHint.only`: the failed passes come back as
-  items in `data` for a list param, as indices for any other source.
+  per repeating step, keyed by qualified name, with `total`, `ok`, `not_run` and
+  `failed[]` (`iterations.FailedPass` carries index, item, step, error, message,
+  selector, hint, url, screenshot).
+- `FlowSuccess.retry_hint` and `RetryHint.only`: the passes a run did not finish
+  — the failed ones plus the ones `stop` never reached — come back as items in
+  `data` for a list param, as indices for any other source.
 - `run_flow(..., only={step: [i, j]})` and `llm-browser run --only STEP=I,J` run
   only those passes of a repeating step, under their original indices.
 - `session.BrowserSession.current_url()`, the page's url as a string.
@@ -34,6 +36,8 @@
 
 ### Fixed
 
+- `llm-browser validate` no longer counts a desugared `repeat` block as a
+  sub-flow: `subflow_count` counts the `run-flow` steps the author wrote.
 - A `read` under `in:` that matches nothing fails its pass instead of returning
   an empty row list (ocampor/toolshed#62 will generalize it as `expect`).
 - `flows.with_flow_path` fills `retry_hint.flow_path` on any result that carries

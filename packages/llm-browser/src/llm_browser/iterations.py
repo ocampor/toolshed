@@ -29,13 +29,15 @@ class IterationReport(BaseModel):
 
     ``over`` names the list param the passes came from, so a rerun knows to
     resend data rather than indices; it is ``None`` for an inline list or an
-    ``over_selector``.
+    ``over_selector``. ``not_run`` holds the passes a stopped loop never
+    reached, which a rerun wants alongside the failed one.
     """
 
     total: int = 0
     ok: int = 0
     over: str | None = None
     failed: list[FailedPass] = []
+    not_run: list[int] = []
 
 
 def failed_pass(

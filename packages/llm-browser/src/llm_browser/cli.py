@@ -774,6 +774,17 @@ def run_attached(
         session.close()
 
 
+def authored_subflows(document: dict[str, Any]) -> int:
+    """Counted off the document, not the flow: an `action: repeat` block is a
+    `run-flow` once loaded, but nobody wrote one."""
+    steps = document.get("steps")
+    if not isinstance(steps, list):
+        return 0
+    return sum(
+        1 for s in steps if isinstance(s, dict) and s.get("action") == "run-flow"
+    )
+
+
 @main.command()
 @click.option(
     "--flow",
@@ -837,13 +848,12 @@ def validate(
         )
         raise SystemExit(1) from exc
     fail_on_missing_selectors(label, missing)
-    subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
     output(
         {
             "ok": True,
             "flow": label,
             "step_count": len(flow.steps),
-            "subflow_count": subflow_count,
+            "subflow_count": authored_subflows(document),
             "missing_selectors": missing,
         }
     )
