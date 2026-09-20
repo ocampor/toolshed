@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from collections.abc import Callable
+from enum import StrEnum
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
     BaseModel,
@@ -27,9 +29,11 @@ from llm_browser.constants import (
     DELAY_SHAPE,
 )
 from llm_browser.html import SanitizeLevel
+from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
-from llm_browser.results import PayloadBytes
-from llm_browser.selectors import Selector
+from llm_browser.repeat import Repeat, RepeatBlock, check_scope
+from llm_browser.results import AcceptedMatch, PayloadBytes
+from llm_browser.selectors import MatchRule, Selector
 
 # --- Step types ---
 
@@ -68,25 +72,26 @@ def check_text_wanted(text: str) -> str:
     return text
 
 
-class Repeat(BaseModel):
-    """Run one step once per item of a list param.
+class SaveAs(BaseModel, extra="forbid"):
+    """Where a ``read`` step's rows land in flow data.
 
-    ``over`` names the param holding the list; ``as`` (the field is ``bind``,
-    because ``as`` is a keyword) names the variable each item is bound to for
-    that pass, alongside ``<as>_index``.
+    A bare name saves the whole row list. With ``field`` it saves that one
+    scalar from the first row ``where`` admits — row 0 when ``where`` is empty.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    name: str = Field(..., pattern=r"^[A-Za-z_]\w*$")
+    field: str | None = None
+    where: dict[str, Any] = {}
 
-    over: str = Field(..., min_length=1)
-    bind: str = Field(..., min_length=1, alias="as")
+    @model_validator(mode="before")
+    @classmethod
+    def _name_shorthand(cls, data: Any) -> Any:
+        return {"name": data} if isinstance(data, str) else data
 
     @model_validator(mode="after")
-    def _reject_self_shadowing(self) -> Repeat:
-        # Binding the item to the list's own name would leave the rest of the
-        # step unable to reach either.
-        if self.bind == self.over:
-            raise ValueError(f"repeat `as` must differ from `over` ({self.over!r})")
+    def _where_needs_a_field(self) -> SaveAs:
+        if self.where and self.field is None:
+            raise ValueError("save_as `where` picks a row for `field`; name one")
         return self
 
 
@@ -118,9 +123,16 @@ class BaseStep(BaseModel):
     No ``selector`` here — see ``SelectorStep`` for steps that target a DOM
     element. Goto / wait / screenshot / think / eval-only steps inherit
     ``BaseStep`` directly.
+
+    ``scope`` is written ``in:`` in a flow (``in`` is a keyword): it names the
+    enclosing repeat's ``as`` and scopes this step's selector to that pass's
+    element, descendants only.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = "unnamed"
+    scope: str | None = Field(None, alias="in", min_length=1)
     fields: list[TargetSpec] = []
     read: dict[str, TargetSpec] = {}
     when: list[dict[str, Any]] = []
@@ -145,7 +157,83 @@ class BaseStep(BaseModel):
         return f"{self._parent}/{self.name}" if self._parent else self.name
 
 
-class SelectorStep(BaseStep):
+class MatchTarget(StrEnum):
+    """What a step does with the elements its selector matches."""
+
+    ONE = "one"
+    MANY = "many"
+
+
+def check_one_target(step: MatchFields) -> None:
+    if step.expect not in (None, 1) and step.pick is None:
+        raise ValueError(
+            f"this action drives one element, so expect: {step.expect} needs a "
+            "pick: (first, last or an index)"
+        )
+
+
+MATCH_CHECKS: dict[MatchTarget, Callable[[MatchFields], None]] = {
+    MatchTarget.ONE: check_one_target,
+}
+
+ExpectCount = Annotated[int, Field(ge=1)] | Literal["many"]
+PickChoice = Literal["first", "last"] | Annotated[int, Field(ge=0)]
+
+DEFAULT_EXPECT: dict[MatchTarget, ExpectCount] = {
+    MatchTarget.ONE: 1,
+    MatchTarget.MANY: "many",
+}
+
+
+class MatchFields(BaseModel):
+    """``expect`` is ``None`` until the flow states one — the default comes from
+    ``match_target`` — so "stated" survives the ``model_dump`` round trip
+    :func:`llm_browser.steps.resolve_step_templates` makes."""
+
+    expect: ExpectCount | None = None
+    pick: PickChoice | None = None
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.ONE
+
+    @model_validator(mode="after")
+    def _check_match_fields(self) -> MatchFields:
+        states_a_rule = self.expect is not None or self.pick is not None
+        if getattr(self, "selector", None) is None and states_a_rule:
+            kind = getattr(self, "action", "this step")
+            raise ValueError(
+                f"{kind} without a selector matches nothing to count, so "
+                "expect:/pick: do not apply"
+            )
+        check = MATCH_CHECKS.get(self.match_target)
+        if check is not None:
+            check(self)
+        return self
+
+
+def reject_wait_for_match_fields(data: Any) -> Any:
+    """A step with no count to state: extra keys are ignored, so ``expect`` and
+    ``pick`` would otherwise load and do nothing."""
+    if not isinstance(data, dict):
+        return data
+    stated = [key for key in ("expect", "pick") if key in data]
+    if stated:
+        raise ValueError(
+            f"wait_for waits for a state, not a count, so {'/'.join(stated)}: "
+            "does not apply"
+        )
+    return data
+
+
+def match_rule_of(step: Step) -> MatchRule | None:
+    if not isinstance(step, MatchFields):
+        return None
+    expect = step.expect
+    if expect is None:
+        expect = DEFAULT_EXPECT[step.match_target]
+    return MatchRule(expect=expect, pick=step.pick)
+
+
+class SelectorStep(MatchFields, BaseStep):
     """Base for steps that operate on a DOM element. Selector is required."""
 
     selector: Selector
@@ -206,6 +294,8 @@ class PickStep(SelectorStep):
     action: Literal["pick"]
     value: str = ""
 
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
 
 class GotoStep(BaseStep):
     action: Literal["goto"]
@@ -213,7 +303,7 @@ class GotoStep(BaseStep):
     wait_until: str = "domcontentloaded"
 
 
-class ScreenshotStep(BaseStep):
+class ScreenshotStep(MatchFields, BaseStep):
     """``path`` is a CLI instruction, not a runner one.
 
     The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
@@ -238,6 +328,9 @@ class ReadStep(SelectorStep):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     action: Literal["read"]
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None)
     )
@@ -246,6 +339,29 @@ class ReadStep(SelectorStep):
     exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
     # CLI-only, like every other `path:` — see ScreenshotStep.
     path: str | None = None
+    save_as: SaveAs | None = None
+
+    @model_validator(mode="after")
+    def _check_save_as(self) -> ReadStep:
+        if self.save_as is None:
+            return self
+        if self.repeat is not None:
+            # Each pass keeps its saves to itself, and a lone step has no
+            # later step in its pass to read one.
+            raise ValueError(
+                "save_as on a repeated step is never visible; "
+                "repeat a run-flow and save inside it"
+            )
+        named = set(self.save_as.where)
+        if self.save_as.field is not None:
+            named.add(self.save_as.field)
+        unknown = sorted(named - set(self.extract))
+        if unknown:
+            raise ValueError(
+                f"save_as names {unknown!r}, not among the extracted fields "
+                f"{sorted(self.extract)!r}"
+            )
+        return self
 
     @field_validator("extract", mode="before")
     @classmethod
@@ -269,12 +385,18 @@ class ParseStep(SelectorStep):
     """
 
     action: Literal["parse"]
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     schema_path: str = Field(..., min_length=1)
     path: str | None = None
 
 
 class DomStep(SelectorStep):
     action: Literal["dom"]
+
+    match_target: ClassVar[MatchTarget] = MatchTarget.MANY
+
     max_depth: int = 0
     level: SanitizeLevel = SanitizeLevel.LOW
     # CLI-only, like every other `path:` — see ScreenshotStep.
@@ -306,7 +428,7 @@ class ScrollStep(BaseStep):
     pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
-class PressStep(BaseStep):
+class PressStep(MatchFields, BaseStep):
     action: Literal["press"]
     # Optional: when None, press the focused element via ``press_focused``.
     selector: Selector | None = None
@@ -353,6 +475,8 @@ class WaitForStep(BaseStep):
     interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
     settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
 
+    _no_match_fields = model_validator(mode="before")(reject_wait_for_match_fields)
+
     @model_validator(mode="after")
     def _check_target_and_budget(self) -> "WaitForStep":
         if self.selector is None and self.text is None:
@@ -396,6 +520,7 @@ class RunFlowStep(BaseStep):
         # know which run-flow step it came from.
         for child in self.flow.steps:
             child._parent = self.name
+            check_scope(child, self.repeat)
         return self
 
 
@@ -458,8 +583,32 @@ class FlowData(BaseModel, extra="allow"):
 class Flow(BaseModel):
     """A complete YAML flow definition."""
 
+    # A sub-flow's steps are checked by the ``run-flow`` step that owns them:
+    # the repeat they sit in is that step's, which they cannot see from here.
+    checks_scopes: ClassVar[bool] = True
+
     params: list[str | dict[str, Any]] = []
     steps: list[Step]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _desugar_repeat_blocks(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
+            return data
+        steps = [
+            RepeatBlock.model_validate(step).desugared()
+            if isinstance(step, dict) and step.get("action") == "repeat"
+            else step
+            for step in data["steps"]
+        ]
+        return {**data, "steps": steps}
+
+    @model_validator(mode="after")
+    def _enforce_step_scopes(self) -> Flow:
+        if self.checks_scopes:
+            for step in self.steps:
+                check_scope(step, step.repeat)
+        return self
 
     @model_validator(mode="after")
     def _enforce_unique_step_names(self) -> Flow:
@@ -474,6 +623,13 @@ class Flow(BaseModel):
                 f"duplicate step names {duplicates!r}; "
                 "names must be unique within a flow."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_saved_names(self) -> Flow:
+        from llm_browser.save_as import check_saved_names
+
+        check_saved_names(self)
         return self
 
     def validate_data(self, data: dict[str, object]) -> FlowData:
@@ -494,6 +650,8 @@ class SubFlow(Flow):
     this at parse time, which means linters/CI can catch malformed
     children without running the browser.
     """
+
+    checks_scopes: ClassVar[bool] = False
 
     @model_validator(mode="after")
     def _enforce_subflow_constraints(self) -> SubFlow:
@@ -553,12 +711,18 @@ class RetryHint(BaseModel):
     what data to pass and which step to resume at via ``--from``.
 
     ``flow_path`` is empty unless ``run_flow_file`` filled it in.
+
+    ``only`` restricts a repeating step to the passes that failed, keyed by
+    step name — what ``run_flow(only=…)`` and ``run --only`` take. A repeat
+    over a list *param* gets the failed items back in ``data`` instead, since
+    a rerun renumbers them from zero.
     """
 
     flow_path: str = ""
     data: dict[str, object]
     failed_step: str
     error: str
+    only: dict[str, list[int]] = {}
 
 
 class SkippedStep(BaseModel):
@@ -573,6 +737,16 @@ class SkippedStep(BaseModel):
     reason: str
 
 
+class MatchWarning(AcceptedMatch):
+    step: str
+
+
+def match_warning(step: str, accepted: AcceptedMatch) -> MatchWarning:
+    # The splat cannot drift: every ``AcceptedMatch`` field is a
+    # ``MatchWarning`` field.
+    return MatchWarning(step=step, **accepted.model_dump())
+
+
 class FlowSuccess(BaseModel):
     """Returned by ``run_flow`` when a flow ran to completion.
 
@@ -584,17 +758,26 @@ class FlowSuccess(BaseModel):
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
-    ``skipped`` names every step the run passed over, in the order it did.
+    ``skipped`` names every step the run passed over, in the order it did, and
+    ``warnings`` every step that ran on a match count its ``expect`` did not
+    ask for.
 
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
     result, which the parent run stamps on its way out.
+
+    ``iterations`` reports every repeating step that ran, keyed by step name;
+    ``retry_hint`` is set only when a pass failed and ``on_error: skip`` kept
+    the run going.
     """
 
     step: str
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
+    warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
+    iterations: dict[str, IterationReport] = {}
+    retry_hint: RetryHint | None = None
 
 
 class FlowError(BaseModel):
@@ -628,7 +811,9 @@ class FlowError(BaseModel):
     retry_hint: RetryHint | None = None
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
+    warnings: list[MatchWarning] = []
     behavior: BehaviorProfile | None = None
+    iterations: dict[str, IterationReport] = {}
 
 
 # Public type alias: callers that don't care which arm they got can use

@@ -1,37 +1,26 @@
 """Stage two of the flow pipeline (a resolved document in, a validated ``Flow``
-out) and stage three (run it). Neither stage touches the filesystem — every
-``run-flow`` reference is inlined by :mod:`llm_browser.flow_pipeline` first."""
+out) and the entry point to stage three: run it, redacted, with a retry hint.
+Neither stage touches the filesystem — every ``run-flow`` reference is inlined
+by :mod:`llm_browser.flow_pipeline` first."""
 
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 from llm_browser.behavior import Behavior, profile
-from llm_browser.results import ActionResult
-from llm_browser.constants import WHEN_SKIP_REASON
-from llm_browser.flow_passes import (
-    indexed,
-    record_outcome,
-    repeat_data_error,
-    repeat_passes,
-    unindexed,
-)
+from llm_browser.flow_passes import unindexed
 from llm_browser.flow_pipeline import parse_flow_yaml
+from llm_browser.flow_runner import run_loaded_flow
+from llm_browser.iterations import IterationReport
 from llm_browser.models import (
     Flow,
-    FlowData,
     FlowError,
     FlowResult,
     FlowSuccess,
     RetryHint,
-    RunFlowStep,
-    SkippedStep,
-    Step,
-    SubFlow,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
 from llm_browser.selector_map import SelectorMap
 from llm_browser.session import BrowserSession
-from llm_browser.steps import execute_step, resolve_step, should_skip
 
 
 def load_flow_text(text: str) -> Flow:
@@ -43,8 +32,9 @@ def load_flow_document(document: Mapping[str, Any]) -> Flow:
 
 
 def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:
-    """Fill ``retry_hint.flow_path`` for a flow that came from a file."""
-    if not isinstance(result, FlowError) or result.retry_hint is None:
+    """Fill ``retry_hint.flow_path`` for a flow that came from a file — an
+    ``on_error: skip`` run carries one on its success, too."""
+    if result.retry_hint is None:
         return result
     hint = result.retry_hint.model_copy(update={"flow_path": flow_path})
     return result.model_copy(update={"retry_hint": hint})
@@ -59,6 +49,7 @@ def run_flow(
     redact: Iterable[str] = (),
     behavior: Behavior | None = None,
     selector_map: SelectorMap | None = None,
+    only: dict[str, list[int]] | None = None,
 ) -> FlowResult:
     """``from_step`` does not propagate into sub-flows; children always run
     top-to-bottom. ``redact`` scrubs every text the result carries — outputs,
@@ -73,7 +64,11 @@ def run_flow(
     sub-flows' included, as each step runs; check with
     :func:`~llm_browser.selector_map.missing_selectors` first, because a ref
     the map lacks raises
-    :class:`~llm_browser.selector_map.MissingSelectorsError` mid-run."""
+    :class:`~llm_browser.selector_map.MissingSelectorsError` mid-run.
+
+    ``only`` restricts a repeating step to the passes whose indices it names,
+    keyed by step name — what a previous run's ``retry_hint.only`` carries.
+    Outputs keep the original indices."""
     secrets = clean_secrets(redact)
     with redacting_logs(secrets):
         result = run_loaded_flow(
@@ -83,145 +78,98 @@ def run_flow(
             from_step=from_step,
             behavior=behavior,
             selector_map=selector_map,
+            only=only,
         )
     ran_as = profile(behavior if behavior is not None else session.behavior)
+    iterations = redact_secrets(result.iterations, secrets)
+    clean_data = redact_secrets(data, secrets)
     if isinstance(result, FlowSuccess):
         return FlowSuccess(
             step=result.step,
             outputs=redact_secrets(result.outputs, secrets),
             skipped=redact_secrets(result.skipped, secrets),
+            warnings=redact_secrets(result.warnings, secrets),
             behavior=ran_as,
+            iterations=iterations,
+            retry_hint=rerun_hint(iterations, clean_data),
         )
     # `result.step` is qualified and names the failing `repeat` pass; the
     # first segment without its index is the top-level step name, which is
     # what ``--from`` operates on — a pass cannot be resumed on its own.
+    failed_step = unindexed(result.step.split("/", 1)[0])[0]
+    error = redact_secrets(str(result.data), secrets)
     return FlowError(
         step=result.step,
         data=redact_secrets(result.data, secrets),
         outputs=redact_secrets(result.outputs, secrets),
         skipped=redact_secrets(result.skipped, secrets),
+        warnings=redact_secrets(result.warnings, secrets),
         screenshot=result.screenshot,
         dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
-        retry_hint=RetryHint(
-            data=redact_secrets(data, secrets),
-            failed_step=unindexed(result.step.split("/", 1)[0])[0],
-            error=redact_secrets(str(result.data), secrets),
-        ),
+        retry_hint=rerun_hint(iterations, clean_data, failed_step, error)
+        or RetryHint(data=clean_data, failed_step=failed_step, error=error),
         behavior=ran_as,
+        iterations=iterations,
     )
 
 
-def select_steps(steps: list[Step], from_step: str | None) -> list[Step]:
-    if from_step is None:
-        return steps
-    try:
-        start = next(i for i, s in enumerate(steps) if s.name == from_step)
-    except StopIteration:
-        raise ValueError(
-            f"step {from_step!r} not found in flow; "
-            f"available: {[s.name for s in steps]}"
-        )
-    return steps[start:]
-
-
-def run_loaded_flow(
-    session: BrowserSession,
-    flow: Flow,
+def rerun_hint(
+    iterations: dict[str, IterationReport],
     data: dict[str, object],
-    *,
-    from_step: str | None = None,
-    behavior: Behavior | None = None,
-    selector_map: SelectorMap | None = None,
-) -> FlowSuccess | FlowError:
-    """``SubFlow``'s leaf-only constraint bounds the recursion at depth one.
-    ``behavior`` defaults every step of this flow and its sub-flows."""
-    flow_data = flow.validate_data(data)
-    outputs: dict[str, object] = {}
-    skipped: list[SkippedStep] = []
-    for step in select_steps(flow.steps, from_step):
-        try:
-            passes = list(repeat_passes(step, flow_data))
-        except ValueError as exc:
-            return repeat_data_error(step, exc, outputs, skipped)
-        for index, pass_data in passes:
-            outcome: ActionResult | FlowSuccess | FlowError = (
-                run_subflow(session, step, pass_data, behavior, selector_map)
-                if isinstance(step, RunFlowStep)
-                else execute_step(session, step, pass_data, behavior, selector_map)
-            )
-            if isinstance(outcome, FlowError):
-                # A sub-flow failure already carries the child's outputs;
-                # keep both sides, qualified names keep the keys distinct, and
-                # the pass's index keys them exactly as a success would.
-                return outcome.model_copy(
-                    update={
-                        "step": indexed(outcome.step, index),
-                        "outputs": {
-                            **outputs,
-                            **{
-                                indexed(k, index): v for k, v in outcome.outputs.items()
-                            },
-                        },
-                        "skipped": [
-                            *skipped,
-                            *(
-                                s.model_copy(update={"name": indexed(s.name, index)})
-                                for s in outcome.skipped
-                            ),
-                        ],
-                    }
-                )
-            record_outcome(step, outcome, index, outputs, skipped)
-    last_name = flow.steps[-1].name if flow.steps else "end"
-    return FlowSuccess(step=last_name, outputs=outputs, skipped=skipped)
+    failed_step: str = "",
+    error: str = "",
+) -> RetryHint | None:
+    """How to run the unfinished passes again, or ``None`` when none failed.
 
-
-def run_subflow(
-    session: BrowserSession,
-    step: RunFlowStep,
-    flow_data: FlowData,
-    behavior: Behavior | None = None,
-    selector_map: SelectorMap | None = None,
-) -> FlowSuccess | FlowError:
-    """A skipped step comes back as an empty success; a swallowed
-    ``optional:`` failure comes back as a success carrying the child's
-    partial outputs, so the parent advances without losing that work. Either
-    way the step is named in ``skipped``, child skips included."""
-    resolved = resolve_step(step, flow_data, selector_map)
-    if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
-        raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")
-    if should_skip(session, resolved, flow_data):
-        return FlowSuccess(
-            step=resolved.name,
-            skipped=[
-                SkippedStep(name=resolved.qualified_name, reason=WHEN_SKIP_REASON)
-            ],
-        )
-    result = run_loaded_flow(
-        session,
-        resolved.flow,
-        child_data(flow_data, resolved.data),
-        behavior=behavior,
-        selector_map=selector_map,
+    A stopped loop leaves the passes after the failing one unrun, and they
+    belong to the rerun as much as the failure does. A repeat over a list the
+    caller itself passed in gets those items back in ``data``; every other
+    source gets their indices in ``only``, since only an index addresses an
+    inline list entry, a matched element or a list the run made for itself. A
+    run that survived its failures names no step or error of its own, so the
+    first failing step stands in for both.
+    """
+    failing = {name: report for name, report in iterations.items() if report.failed}
+    if not failing:
+        return None
+    retry_data = dict(data)
+    only: dict[str, list[int]] = {}
+    for name, report in failing.items():
+        over, items = report.over, rerun_items(report, data)
+        if over is None or items is None:
+            only[name] = rerun_indices(report)
+        else:
+            retry_data[over] = items
+    first_name, first_report = next(iter(failing.items()))
+    return RetryHint(
+        data=retry_data,
+        failed_step=failed_step or unindexed(first_name.split("/", 1)[0])[0],
+        error=error or first_report.failed[0].message,
+        only=only,
     )
-    if isinstance(result, FlowError) and resolved.optional:
-        return FlowSuccess(
-            step=resolved.name,
-            outputs=result.outputs,
-            skipped=[
-                *result.skipped,
-                SkippedStep(
-                    name=resolved.qualified_name,
-                    reason=f"sub-flow failed at {result.step}",
-                ),
-            ],
-        )
-    return result
 
 
-def child_data(parent: FlowData, bindings: dict[str, Any]) -> dict[str, object]:
-    """A parent param the step does not bind stays visible to the child; one it
-    binds is overridden, so ``data: { x: "{{ y }}" }`` reaches the child as the
-    bound value even when the parent has its own ``x``."""
-    return {**parent.to_template_dict(), **bindings}
+def rerun_indices(report: IterationReport) -> list[int]:
+    """Every pass the run did not finish, in the order it would run them."""
+    return sorted([failure.index for failure in report.failed] + report.not_run)
+
+
+def rerun_items(
+    report: IterationReport, data: dict[str, object]
+) -> list[object] | None:
+    """The same passes as items, or ``None`` when the caller's own data does
+    not hold every one of them. An unrun pass left no record of its item, so it
+    is read back out of the list the run was given, which its index keys — and
+    a list the run saved or defaulted for itself was never in that data."""
+    if report.over is None:
+        return None
+    source = data.get(report.over)
+    if not isinstance(source, list):
+        return None
+    indices = rerun_indices(report)
+    if indices[-1] >= len(source):
+        return None
+    items = {failure.index: failure.item for failure in report.failed}
+    items |= {index: source[index] for index in report.not_run}
+    return [items[index] for index in indices]

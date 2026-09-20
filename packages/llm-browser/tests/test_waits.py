@@ -417,7 +417,7 @@ def test_find_rejects_an_ambiguous_selector_before_polling(
     """Two matches is a mistake, not a state to wait for: no budget is burned."""
     session = make_session(tmp_path, driver_with(counts=[2], visible=[False]))
 
-    with pytest.raises(ValueError, match="Expected 1 element"):
+    with pytest.raises(ValueError, match="expected 1 element for '#dup', found 2"):
         session.find("#dup", timeout=10_000)
 
     assert clock.sleeps == []

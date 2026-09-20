@@ -8,7 +8,7 @@ from typing import Any, NamedTuple
 import yaml
 
 from llm_browser.models import Flow, RunFlowStep, Step, SubFlow
-from llm_browser.selectors import RefSelector, parse_selector
+from llm_browser.selectors import RefSelector, Selector, parse_selector
 
 SelectorValue = str | dict[str, Any]
 SelectorMap = dict[str, SelectorValue]
@@ -38,20 +38,23 @@ class MissingSelectorsError(ValueError):
 
 
 class RefSite(NamedTuple):
-    """One model whose ``selector`` is a ref, and the name it asks for."""
+    """One model whose ``field`` holds a ref, and the name it asks for."""
 
     owner: Any
     ref: str
+    field: str = "selector"
 
 
 def step_ref_sites(step: Step) -> Iterator[RefSite]:
-    """Every ref site one step owns — its own selector and its ``fields:`` /
-    ``read:`` entries' — never an embedded sub-flow's: a child step resolves
-    its own refs when it runs."""
+    """Every ref site one step owns — its own selector, its ``fields:`` /
+    ``read:`` entries' and its ``repeat: { over_selector: }`` — never an
+    embedded sub-flow's: a child step resolves its own refs when it runs."""
     for owner in (step, *step.fields, *step.read.values()):
         selector = getattr(owner, "selector", None)
         if isinstance(selector, RefSelector):
             yield RefSite(owner, selector.ref)
+    if step.repeat is not None and isinstance(step.repeat.over_selector, RefSelector):
+        yield RefSite(step.repeat, step.repeat.over_selector.ref, "over_selector")
 
 
 def flow_ref_sites(flow: Flow) -> Iterator[RefSite]:
@@ -84,4 +87,13 @@ def resolve_step_refs(step: Step, selector_map: SelectorMap | None) -> None:
     if missing:
         raise MissingSelectorsError(missing, sorted(available))
     for site in sites:
-        site.owner.selector = parse_selector(available[site.ref])
+        setattr(site.owner, site.field, parse_selector(available[site.ref]))
+
+
+def resolve_ref(selector: Selector, selector_map: SelectorMap | None) -> Selector:
+    if not isinstance(selector, RefSelector):
+        return selector
+    available = selector_map or {}
+    if selector.ref not in available:
+        raise MissingSelectorsError([selector.ref], sorted(available))
+    return parse_selector(available[selector.ref])

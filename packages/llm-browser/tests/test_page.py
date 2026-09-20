@@ -62,7 +62,7 @@ def test_find_raises_on_multiple(session: BrowserSession, page: MagicMock) -> No
     locator = _single_locator()
     locator.count.return_value = 3
     page.locator.return_value = locator
-    with pytest.raises(ValueError, match="Expected 1 element"):
+    with pytest.raises(ValueError, match="expected 1 element for '#btn', found 3"):
         session.find("#btn")
 
 

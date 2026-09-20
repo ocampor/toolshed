@@ -9,17 +9,19 @@ from llm_browser.drivers.base import Driver
 from llm_browser.models import PageProbe
 from llm_browser.results import BytesResult
 from llm_browser.session import BrowserSession
+from tests.flow_helpers import stub_matching
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
 
 
 @pytest.fixture
 def mock_session(tmp_path: Path) -> MagicMock:
-    session = MagicMock(spec=BrowserSession)
+    session = stub_matching(MagicMock(spec=BrowserSession))
     session.session_dir = tmp_path
     session.behavior = Behavior.off()
     session.capture = "screenshot"
     session.driver = MagicMock()
+    session.current_url.return_value = "https://example.test/page"
     session.get_page.return_value = MagicMock()
     session.screenshot_bytes.return_value = PNG
     session.dom_snapshot.return_value = "<html><body>hi</body></html>"

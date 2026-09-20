@@ -3,7 +3,7 @@ output in memory and the caller decides whether any of it reaches disk."""
 
 import base64
 import mimetypes
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -65,6 +65,17 @@ def is_step_failure(exc: BaseException) -> bool:
     return is_timeout(exc) or isinstance(exc, ValueError)
 
 
+type PickSpec = Literal["first", "last"] | int
+
+
+class AcceptedMatch(BaseModel):
+    """A count mismatch a step's ``pick`` took instead of failing on."""
+
+    expected: int | Literal["many"]
+    found: int
+    picked: PickSpec
+
+
 class ActionResult(BaseModel):
     """Base for everything ``execute_action`` returns.
 
@@ -74,6 +85,7 @@ class ActionResult(BaseModel):
     """
 
     ok: bool = True
+    accepted: AcceptedMatch | None = None
 
 
 class VoidResult(ActionResult):
@@ -167,3 +179,9 @@ class ErrorResult(ActionResult):
     step_name: str
     selector: str | None = None
     hint: str | None = None
+    # Set for a ``selectors.MatchError`` only: what the step asked for (``None``
+    # when only its ``pick`` was out of reach), what the page had, and the text
+    # of the first few matches.
+    expected: int | Literal["many"] | None = None
+    found: int | None = None
+    samples: list[str] | None = None

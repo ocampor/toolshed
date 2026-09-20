@@ -2,6 +2,7 @@
 
 import logging
 import time
+from typing import Any, cast
 
 from yaml_engine.compile import compile_condition
 from yaml_engine.conditions import evaluate_condition
@@ -11,10 +12,18 @@ from llm_browser.actions import execute_action
 from llm_browser.behavior import Behavior
 from llm_browser.results import ActionResult, SkippedResult
 from llm_browser.constants import LOGGER_NAME, WHEN_SKIP_REASON
-from llm_browser.models import FlowData, FlowError, Step, validate_step
+from llm_browser.models import (
+    FlowData,
+    FlowError,
+    Step,
+    match_warning,
+    validate_step,
+)
 from llm_browser.probe import human_needed
+from llm_browser.repeat import ElementScope
+from llm_browser.save_as import save_result
 from llm_browser.selector_map import SelectorMap, resolve_step_refs
-from llm_browser.selectors import parse_selector
+from llm_browser.selectors import ScopedSelector, parse_selector
 from llm_browser.session import BrowserSession
 
 logger = logging.getLogger(LOGGER_NAME)
@@ -85,13 +94,23 @@ def resolve_step_templates(step: Step, data: FlowData) -> Step:
 
 
 def resolve_step(
-    step: Step, data: FlowData, selector_map: SelectorMap | None = None
+    step: Step,
+    data: FlowData,
+    selector_map: SelectorMap | None = None,
+    scope: ElementScope | None = None,
 ) -> Step:
-    """A step ready to execute: templates resolved and every ``ref:``
-    selector swapped for the one ``selector_map`` carries. A ref the map
-    lacks raises :class:`~llm_browser.selector_map.MissingSelectorsError`."""
+    """A step ready to execute: templates resolved, every ``ref:`` selector
+    swapped for the one ``selector_map`` carries, and an ``in:`` step's
+    selector scoped to ``scope``'s element. A ref the map lacks raises
+    :class:`~llm_browser.selector_map.MissingSelectorsError`."""
     resolved = resolve_step_templates(step, data)
     resolve_step_refs(resolved, selector_map)
+    if resolved.scope is not None and scope is not None:
+        # After the refs, so a `ref:` selector scopes like anything else.
+        target = cast(Any, resolved)
+        target.selector = ScopedSelector(
+            root=scope.root, index=scope.index, inner=target.selector
+        )
     return resolved
 
 
@@ -114,15 +133,19 @@ def execute_step(
     data: FlowData,
     behavior: Behavior | None = None,
     selector_map: SelectorMap | None = None,
+    scope: ElementScope | None = None,
 ) -> ActionResult | FlowError:
     """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
     ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it.
     ``behavior`` is the run's default, which the step's own ``humanize``
-    refines."""
-    resolved = resolve_step(step, data, selector_map)
+    refines; ``scope`` is the element an ``in:`` step is confined to."""
+    resolved = resolve_step(step, data, selector_map, scope)
     if should_skip(session, resolved, data):
         return SkippedResult(reason=WHEN_SKIP_REASON)
-    action_result = execute_action(session, resolved, behavior)
+    # A save lands in the caller's ``data``: that is how later steps see it.
+    action_result = save_result(
+        resolved, execute_action(session, resolved, behavior), data
+    )
     if not action_result.ok:
         capture = session.capture
         return FlowError(
@@ -135,6 +158,13 @@ def execute_step(
             ),
             dom=session.dom_snapshot() if capture in ("dom", "both") else None,
             human_needed=page_needs_human(session),
+            # A step that failed after its pick accepted a mismatch still ran
+            # on that mismatch, so the run reports it.
+            warnings=(
+                []
+                if action_result.accepted is None
+                else [match_warning(resolved.qualified_name, action_result.accepted)]
+            ),
         )
     if resolved.eval:
         session.evaluate(session.get_page(), resolved.eval)

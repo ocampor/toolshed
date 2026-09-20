@@ -43,6 +43,7 @@ from llm_browser.results import (
     VoidResult,
     is_step_failure,
 )
+from llm_browser.selectors import ScopedSelector, describe_selector
 from llm_browser.session import BrowserSession
 
 __all__ = [
@@ -194,7 +195,16 @@ def action_screenshot(
 def action_read(
     session: BrowserSession, step: ReadStep, behavior: Behavior
 ) -> ParsedResult:
-    raw = session.parse_elements(step.selector, step.extract, step.exclude)
+    raw = session.parse_elements(
+        step.selector, step.extract, step.exclude, step.timeout
+    )
+    # debt: `expect: 1` already states this; the match rule should raise it,
+    # with the samples and hint a bare ValueError cannot carry.
+    if not raw and isinstance(step.selector, ScopedSelector):
+        raise ValueError(
+            f"read found nothing at {describe_selector(step.selector)}; "
+            "the element does not carry it"
+        )
     rows: list[BaseModel | None] = [
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
@@ -208,7 +218,7 @@ def action_parse(
 ) -> ParsedResult:
     # Schema path is CWD-relative or absolute.
     Model = build_model(step.schema_path)  # type: ignore[no-untyped-call]
-    raw = session.parse_elements(step.selector, Model._spec())
+    raw = session.parse_elements(step.selector, Model._spec(), timeout=step.timeout)
     rows: list[BaseModel | None] = [
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw

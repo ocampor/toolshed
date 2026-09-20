@@ -189,9 +189,15 @@ steps:
 
 ### Repetition
 
-`repeat: { over: <param>, as: <name> }` runs one step — any step, `run-flow`
-included — once per item of a list param. Each pass binds the item under
-`<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
+One engine, two spellings: `repeat:` on a step is the modifier form below, and
+[`action: repeat`](#the-block-form) with a `steps:` body is the same thing over
+several steps. Both take the same sources (`over`, `over_selector`), the same
+`on_error`, and both fill the same [report](#the-report).
+
+`repeat: { over: <list>, as: <name> }` runs one step — any step, `run-flow`
+included — once per item of a list in flow data: a param, a
+[`save_as`](#saving-a-read-save_as), or the list written inline. Each pass binds
+the item under `<name>` and its position under `<name>_index`, both usable in `{{ }}` anywhere
 in the step, and keys its outputs `<step name>[<index>]` so passes never
 overwrite one another. A step that writes a file (`screenshot`, `download`, or
 any `path:`) gets the same index in its filename — `path: shots/page.png`
@@ -221,6 +227,130 @@ steps:
 With `codes: [a, b]` that leaves `outputs` keyed `row[0]` and `row[1]`. A
 repeated `run-flow` indexes the child's qualified keys the same way:
 `each/row[0]`, `each/row[1]`.
+
+#### The block form
+
+`action: repeat` with a `steps:` body loops several steps. It is sugar: at flow
+load it becomes exactly the modifier above on an inline `run-flow`, so both
+spellings produce the same outputs and the same report.
+
+```yaml
+steps:
+  - name: each
+    action: repeat
+    over_selector: tr.athing      # or: over: codes / over: [a, b, c]
+    as: row
+    on_error: skip                # default: stop
+    steps:
+      - { name: title, action: read, in: row, selector: .titleline a }
+```
+
+| Field | Meaning |
+|---|---|
+| `over` | the name of a list in flow data — a param or a [`save_as`](#saving-a-read-save_as) — or the list itself (`[a, b, c]`) |
+| `over_selector` | a selector (`ref:` included); its match count is snapshotted when the step starts, without waiting — put a `wait_for` before the repeat when the rows load late, or it runs zero passes |
+| `as` | what each pass binds: the item, or an element's text snippet (whitespace-collapsed, 80 chars max), plus `<as>_index` |
+| `on_error` | `stop` (default) ends the run at the failing pass; `skip` keeps its partial outputs, names it in `skipped`, and goes on |
+| `steps` | the body, at least one step |
+| `when` | conditions checked per pass, before the body runs |
+
+Rejected at flow load: both or neither of `over` / `over_selector`; an empty
+`steps:`; a body step that is a `run-flow`, another `action: repeat`, or carries
+a `repeat:` modifier; an `in:` that names anything but this repeat's `as`, sits
+in a repeat that is not over elements, or names a step with no selector.
+
+#### Addressing one element: `in:`
+
+`in: <as>` scopes a step's selector to the current pass's element, descendants
+only; a step without it addresses the page. The root selector is re-resolved and
+re-indexed every pass, so no element handle outlives its pass, and a page that
+dropped rows mid-loop fails that pass with `… matches N elements now, so element
+I is gone` rather than reading the wrong row. A `read` under `in:` that matches
+nothing fails its pass too — an empty row is a failure, not a clean pass. A
+fallback selector (`primary` / `fallback`) cannot be scoped; name one selector.
+
+#### The report
+
+Every repeating step that ran is reported under `iterations`, on `FlowSuccess`
+and `FlowError` alike, keyed by step name — a step that matched nothing reports
+`total: 0` rather than nothing at all. `total` counts the passes that ran (after
+`only`), `ok` those that succeeded, and `not_run` names the ones `stop` never
+reached. Each entry of `failed[]` is one pass with what it takes to heal it: the
+index and item it ran for, the inner step that failed, the error, message,
+selector and hint, and the page's url and screenshot at that moment. `over`
+names the list param the passes came from, and is `None` for an inline list
+or an `over_selector`.
+
+Under `stop` the report still carries the one failure that ended the run. A
+repeating step written as a `repeat:` modifier inside a `run-flow` is reported
+too, under its qualified name (`outer/grab`).
+
+#### Running the unfinished passes again
+
+When any pass failed, the result carries a `retry_hint` — on `FlowSuccess` too,
+for an `on_error: skip` run. The rerun set is the failed passes **plus** the
+ones `stop` never reached, in their original order. A repeat over a list **the
+caller passed in** gets those items back in `retry_hint.data[<over>]`; rerunning
+renumbers them from zero. Every other source — an inline list, an
+`over_selector`, or a list the run saved or defaulted for itself — gets
+`retry_hint.only = { <step>: [i, j] }` instead, which `run_flow(only=…)` and
+`llm-browser run --only STEP=I,J` take — those passes run again under their
+original indices, so the outputs line up with the first run's.
+`retry_hint.failed_step` stays the top-level step name, since `--from` resumes a
+step, not one of its passes.
+
+`only` keys a step by its qualified name, the same way the report does, so
+`--only outer/grab=1` reaches a repeating step inside a `run-flow`. When that
+`run-flow` itself repeats, the key carries no outer index and so applies to
+every pass of the outer loop.
+
+### Saving a read (`save_as`)
+
+`save_as` on a `read` step puts what it read into flow data: reachable in
+`{{ }}`, `when:`, `repeat.over`, and a `run-flow` step's `data:`.
+
+| Form | Saves | Fails when |
+|------|-------|------------|
+| `save_as: books` | Whole row list, as in `outputs` | Never — no rows saves `[]` |
+| `{ name, field }` | `field` of row 0 | No row 0, or its `field` is null |
+| `{ name, field, where }` | `field` of first row matching `where` | No row matches |
+
+`where` is equality on extracted fields, compared as read — every extracted
+value is a string, so quote numbers. A saved list with zero rows runs zero
+`repeat` passes.
+
+A save is local to the flow run that made it: a sub-flow sees its parent's
+saves, but a save made inside a sub-flow never flows back to the parent. The
+innermost binding wins — a `repeat` item, a `run-flow` `data:` key or a
+sub-flow's own save hides an outer name of the same name inside its scope
+only, leaving the outer value untouched. A skipped or `optional`-swallowed
+read saves nothing, and `--from` past the read starts without it.
+
+Rejected at flow load:
+
+- a `save_as` name that is a declared param or another `save_as` of the same
+  flow;
+- a `path:` (the CLI names files after the run) naming a `save_as` of its own
+  flow, or — inside a sub-flow — one of the parent's saves the `run-flow` step
+  does not rebind;
+- a step that uses a saved name before the step that saves it;
+- `field` or a `where` key outside the step's `extract` fields;
+- `where` without `field`;
+- `save_as` on a step that also has `repeat`.
+
+```yaml
+steps:
+  - { name: open category, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html" }
+  - { name: books, action: read, selector: "article.product_pod h3 a", extract: { href: { attribute: href } }, save_as: books }
+  - name: each book
+    action: run-flow
+    repeat: { over: books, as: book }
+    flow:
+      steps:
+        - { name: open, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/{{ book.href }}" }
+```
+
+`attribute: href` reads the attribute raw, often relative; prefix the base URL in the flow's `url:`.
 
 ## Loading flows
 
@@ -310,15 +440,20 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | Explicit CSS | `selector: { css: ".my-class" }` |
 | XPath | `selector: { xpath: "//input[@name='q']" }` |
 
-A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
+A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `expected 1 element for '<selector>', found N` as soon as two arms match — unless the step's `pick` names which one to take ([below](#match-count-expect-and-pick)). The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
 
 ## Template variables
 
-`{{ param_name }}` in any string value, resolved from flow params at runtime: `value: "{{ rfc }}"` with `params: [rfc]`.
+`{{ param_name }}` in any string value, resolved from flow data at runtime: `value: "{{ rfc }}"` with `params: [rfc]`. A missing name is left as written.
+
+A dotted path indexes in — `{{ book.href }}`, `{{ books.0.href }}` — and fails the step if it resolves to nothing. Paths only, no expressions.
 
 ## Conditions
 
-Skip a step unless every condition holds (AND'ed).
+`when:` is a list of conditions, AND'ed: the step is skipped unless every one
+holds, and the skip is named in `skipped` with `when condition not satisfied`.
+They are checked when the step runs — once per pass inside a `repeat`, against
+that pass's bindings — and on a `run-flow` step before the child is loaded.
 
 | Condition | True when |
 |---|---|
@@ -340,15 +475,69 @@ Skip a step unless every condition holds (AND'ed).
 | `when` | list | Conditions to evaluate before executing |
 | `wait_after` | int (ms) | Sleep after step completes |
 | `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
-| `repeat` | `{ over, as }` | Run the step once per item of a list param ([below](#repetition)) |
+| `expect` / `pick` | count / choice | How many elements the selector should match, and which one to use ([below](#match-count-expect-and-pick)) |
+| `repeat` | `{ over \| over_selector, as, on_error }` | Run the step once per item of a list in flow data, or once per matched element ([above](#repetition)) |
+| `in` | string | Scope this step's selector to the enclosing repeat's current element ([above](#addressing-one-element-in)) |
+| `save_as` | string or `{ name, field, where }` | `read` only: keep the rows, or one scalar, as flow data ([above](#saving-a-read-save_as)) |
 | `eval` | string | JavaScript to evaluate on page (independent of action) |
+
+### Match count: `expect` and `pick`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `expect` | `1`, a count, or `many` | `1`; `many` on `read`, `parse`, `dom`, `pick` | How many elements the selector should match |
+| `pick` | `first`, `last`, or an index | none, so a mismatch fails | Which match the step uses when more are found |
+
+| `expect` | `pick` | Page has 1 | Page has 7 | Page has 0 |
+|----------|--------|------------|------------|------------|
+| `1` | none | runs | fails with the count | fails |
+| `1` | `first` | runs | runs on the first match, warns | fails |
+| `many` | none | runs | runs on every match | runs, zero rows |
+| `many` | `last` | runs | runs on the last match | fails, `PickRangeError` |
+| `many` | `9` | fails, `PickRangeError` | fails, `PickRangeError` | fails, `PickRangeError` |
+
+An acting step (`click`, `fill`, …) drives one element, so an `expect` other
+than `1` on it needs a `pick`. Both fields are rejected at flow load where they
+could only be ignored: on `wait_for`, which waits for a state and not a count,
+and on a `press` or `screenshot` with no selector, which matches nothing to
+count. A failed count is a step error, under the run result's `data`:
+
+```json
+{
+  "ok": false,
+  "error": "MatchCountError",
+  "message": "expected 1 element for 'p.price_color', found 7",
+  "step_name": "price",
+  "selector": "'p.price_color'",
+  "hint": "tighten the selector, or add pick: first if the first match is the right one",
+  "expected": 1, "found": 7,
+  "samples": ["£45.17", "£51.33", "£37.59"]
+}
+```
+
+A `pick` reaching past the matches is a `PickRangeError` instead — same shape,
+no `expected`, and a message naming what the pick needed:
+`pick: 9 needs at least 10 matches for 'p.price_color', found 7`.
+
+A `pick` that took a count `expect` did not ask for runs, and says so in the
+run's `warnings`:
+
+```json
+{
+  "outputs": {"price": [{"text": "£45.17"}]},
+  "warnings": [{"step": "price", "expected": 1, "found": 7, "picked": "first"}]
+}
+```
 
 ### What `timeout` bounds
 
 `timeout` is the element wait only — how long the step looks for its target
-before failing — not a ceiling on the step as a whole. A `type` step then costs
-roughly `len(value) × delay` on top of it, so a 2000-character value typed at
-`delay: 30` spends a minute *after* the wait succeeded. Nothing in the library
+before failing — not a ceiling on the step as a whole. It bounds a `read` or
+`parse` wait too, but only when the step states a count (`expect:` an int, or
+any `pick:`); a default `read` counts nothing and so waits for nothing. A
+`type` step then costs roughly `len(value) × delay` on top of it, so a
+2000-character value typed at `delay: 30` spends a minute *after* the wait
+succeeded. Nothing in the library
 cuts that short; an embedding server with its own per-call deadline (the MCP
 tool timeout, a request handler) has to be given a budget that covers it, or
 split the value across several steps.
