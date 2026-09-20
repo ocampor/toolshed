@@ -4,19 +4,17 @@
 
 ### Breaking
 
-- `flow_passes.repeat_data_error` is renamed `flow_passes.data_error`.
 - Templates resolve dotted paths (`{{ a.b }}`); an unresolved one now fails its step as a `FlowError`, not a literal.
 
 Migration:
 
-- `flow_passes.repeat_data_error(...)` → `flow_passes.data_error(...)`.
 - A literal `{{ a.b }}` needs a dotless placeholder name, or `a.b` present in flow data.
 
 ### Added
 
 - `save_as` on a `read` step (`models.SaveAs`): saves rows, or one scalar via `field`/`where` (ocampor/toolshed#61).
 - Saved values feed later templates, `when:`, `repeat.over`, and `run-flow` `data:`.
-- Load-time checks reject name shadowing, use-before-save, and `extract`-field mismatches.
+- Load-time checks reject same-flow name shadowing, use-before-save, `extract`-field mismatches, and a `path:` naming a save.
 
 ### Changed
 

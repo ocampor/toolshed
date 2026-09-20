@@ -11,9 +11,9 @@ from llm_browser.behavior import Behavior, profile
 from llm_browser.results import ActionResult
 from llm_browser.constants import WHEN_SKIP_REASON
 from llm_browser.flow_passes import (
-    data_error,
     indexed,
     record_outcome,
+    repeat_data_error,
     repeat_passes,
     unindexed,
 )
@@ -145,7 +145,7 @@ def run_loaded_flow(
         try:
             passes = list(repeat_passes(step, flow_data))
         except ValueError as exc:
-            return data_error(step, exc, outputs, skipped)
+            return repeat_data_error(step, exc, outputs, skipped)
         for index, pass_data in passes:
             outcome = run_pass(session, step, pass_data, behavior, selector_map)
             if isinstance(outcome, FlowError):
@@ -187,7 +187,7 @@ def run_pass(
             return run_subflow(session, step, pass_data, behavior, selector_map)
         return execute_step(session, step, pass_data, behavior, selector_map)
     except TemplatePathError as exc:
-        return data_error(step, exc, {}, [])
+        return repeat_data_error(step, exc, {}, [])
 
 
 def run_subflow(

@@ -119,11 +119,13 @@ def test_a_skipped_read_saves_nothing(mock_session: MagicMock) -> None:
 # --- repeat over a saved list ---
 
 
-def _each(steps: list[dict[str, Any]], over: str = "links") -> dict[str, Any]:
+def _each(
+    steps: list[dict[str, Any]], over: str = "links", bind: str = "item"
+) -> dict[str, Any]:
     return {
         "name": "each",
         "action": "run-flow",
-        "repeat": {"over": over, "as": "item"},
+        "repeat": {"over": over, "as": bind},
         "flow": {"steps": steps},
     }
 
@@ -183,6 +185,57 @@ def test_a_dotted_path_to_nothing_fails_the_pass_it_is_in(
     assert list(result.outputs) == ["links"]
 
 
+# --- the innermost binding wins ---
+
+
+def _child(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"name": "child", "action": "run-flow", "flow": {"steps": steps}}
+
+
+def _after(template: str) -> dict[str, Any]:
+    return {**_goto(f"https://x/after/{template}"), "name": "after"}
+
+
+def test_a_repeat_item_hides_a_parent_save_inside_the_pass(
+    mock_session: MagicMock,
+) -> None:
+    steps = [
+        _read("links"),
+        _each([_goto("https://x/{{ links }}")], over="codes", bind="links"),
+        _after("{{ links.1.href }}"),
+    ]
+    result = _run(mock_session, steps, codes=["a", "b"])
+    assert isinstance(result, FlowSuccess)
+    assert _urls(mock_session) == [
+        "https://x/a",
+        "https://x/b",
+        "https://x/after/page-3.html",
+    ]
+
+
+def test_a_sub_flow_save_hides_the_parent_save_for_that_run(
+    mock_session: MagicMock,
+) -> None:
+    inner = {**_read({"name": "links", "field": "href"}), "name": "inner"}
+    steps = [
+        _read("links"),
+        _child([inner, _goto("https://x/{{ links }}")]),
+        _after("{{ links.1.href }}"),
+    ]
+    result = _run(mock_session, steps)
+    assert isinstance(result, FlowSuccess)
+    assert _urls(mock_session) == [
+        "https://x/page-1.html",
+        "https://x/after/page-3.html",
+    ]
+
+
+def test_a_sub_flow_may_use_a_name_its_parent_saves_later() -> None:
+    inner = {**_read({"name": "v", "field": "href"}), "name": "inner"}
+    later = {**_read({"name": "v", "field": "href"}), "name": "later"}
+    load_flow_document({"steps": [_child([inner, _goto("https://x/{{ v }}")]), later]})
+
+
 # --- load-time rejections ---
 
 
@@ -196,14 +249,6 @@ def test_a_dotted_path_to_nothing_fails_the_pass_it_is_in(
         (
             {"steps": [_read("links"), {**_read("links"), "name": "again"}]},
             "shadows a param or another save_as",
-        ),
-        (
-            {"steps": [_read("links"), _each([{**_read("links"), "name": "in"}])]},
-            "in sub-flow 'each' shadows",
-        ),
-        (
-            {"params": ["codes"], "steps": [_each([_read("item")], over="codes")]},
-            "in sub-flow 'each' shadows",
         ),
         (
             {"steps": [_goto("https://x/{{ links.0.href }}"), _read("links")]},
@@ -233,69 +278,6 @@ def test_a_dotted_path_to_nothing_fails_the_pass_it_is_in(
                 "steps": [_read("links", repeat={"over": "codes", "as": "code"})],
             },
             "save_as on a repeated step is never visible",
-        ),
-        (
-            {
-                "params": ["codes"],
-                "steps": [_read("item"), _each([_goto("https://x/a")], over="codes")],
-            },
-            "binds ['item'] as its repeat item",
-        ),
-        (
-            {
-                "params": ["codes"],
-                "steps": [
-                    _read("item_index"),
-                    _each([_goto("https://x/a")], over="codes"),
-                ],
-            },
-            "binds ['item_index'] as its repeat item",
-        ),
-        (
-            {
-                "params": ["codes"],
-                "steps": [
-                    _read("links"),
-                    _each(
-                        [
-                            {
-                                **_goto("https://x/a"),
-                                "repeat": {"over": "codes", "as": "links"},
-                            }
-                        ],
-                        over="codes",
-                    ),
-                ],
-            },
-            "binds ['links'] as its repeat item",
-        ),
-        (
-            {
-                "params": ["codes"],
-                "steps": [
-                    _read({"name": "x_index", "field": "href"}),
-                    _each(
-                        [
-                            {
-                                **_goto("https://x/a"),
-                                "repeat": {"over": "codes", "as": "x"},
-                            }
-                        ],
-                        over="codes",
-                    ),
-                ],
-            },
-            "binds ['x_index'] as its repeat item",
-        ),
-        (
-            {
-                "params": ["codes"],
-                "steps": [
-                    _read("item"),
-                    {**_goto("https://x/a"), "repeat": {"over": "codes", "as": "item"}},
-                ],
-            },
-            "binds ['item'] as its repeat item",
         ),
         (
             {"steps": [_read("links"), _dom("out/{{ links }}.html")]},

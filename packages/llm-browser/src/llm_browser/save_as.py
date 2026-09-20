@@ -68,26 +68,29 @@ def save_names(steps: Iterable[Step]) -> list[str]:
     ]
 
 
+def names_bound(step: RunFlowStep) -> set[str]:
+    bound = set(step.data)
+    if step.repeat is not None:
+        bound |= {step.repeat.bind, f"{step.repeat.bind}_index"}
+    return bound
+
+
 def names_used(step: Step) -> set[str]:
-    """Every flow-data name ``step`` reads, its sub-flow's steps included."""
-    used = template_names(step.model_dump(exclude_none=True))
+    """Flow-data names ``step`` reads from its own scope: a sub-flow's uses of
+    the names that sub-flow scope defines are the sub-flow's own concern."""
+    fields = step.model_dump(exclude_none=True)
+    if isinstance(step, RunFlowStep):
+        fields.pop("flow", None)
+    used = template_names(fields)
     used |= {str(cond["field"]) for cond in step.when if "field" in cond}
     if step.repeat is not None:
         used.add(step.repeat.over)
     if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+        inner: set[str] = set()
         for child in step.flow.steps:
-            used |= names_used(child)
+            inner |= names_used(child)
+        used |= inner - names_bound(step) - set(save_names(step.flow.steps))
     return used
-
-
-def pass_bindings(step: Step) -> set[str]:
-    if step.repeat is None:
-        return set()
-    return {step.repeat.bind, f"{step.repeat.bind}_index"}
-
-
-def names_bound(step: RunFlowStep) -> set[str]:
-    return set(step.data) | pass_bindings(step)
 
 
 def saved_names_in_paths(step: Step, saves: set[str]) -> set[str]:
@@ -101,27 +104,17 @@ def saved_names_in_paths(step: Step, saves: set[str]) -> set[str]:
     return found
 
 
-def reject_shadowing(saves: list[str], taken: set[str], where: str) -> None:
+def reject_shadowing(saves: list[str], taken: set[str]) -> None:
     seen = set(taken)
     for name in saves:
         if name in seen:
-            raise ValueError(
-                f"save_as {name!r}{where} shadows a param or another save_as"
-            )
+            raise ValueError(f"save_as {name!r} shadows a param or another save_as")
         seen.add(name)
 
 
 def check_saved_names(flow: Flow) -> None:
     saves = save_names(flow.steps)
-    taken = set(resolve_params(flow.params))
-    reject_shadowing(saves, taken, "")
-    for step in flow.steps:
-        if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
-            reject_shadowing(
-                save_names(step.flow.steps),
-                taken | set(saves) | names_bound(step),
-                f" in sub-flow {step.name!r}",
-            )
+    reject_shadowing(saves, set(resolve_params(flow.params)))
     pending = set(saves)
     for step in flow.steps:
         early = sorted(names_used(step) & pending)
@@ -130,29 +123,7 @@ def check_saved_names(flow: Flow) -> None:
                 f"step {step.name!r} uses {early!r} before the step that saves it"
             )
         pending -= set(save_names([step]))
-    reject_binding_over_saves(flow, set(saves))
     reject_saves_in_paths(flow, set(saves))
-
-
-def bound_names_shadowing_saves(step: Step, saves: set[str]) -> set[str]:
-    """Repeat bindings under ``step`` that shadow a save_as — a sub-flow's own
-    bindings shadow the parent saves they rebind, so those do not count."""
-    found = pass_bindings(step) & saves
-    if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
-        inherited = saves - names_bound(step)
-        for child in step.flow.steps:
-            found |= bound_names_shadowing_saves(child, inherited)
-    return found
-
-
-def reject_binding_over_saves(flow: Flow, saves: set[str]) -> None:
-    for step in flow.steps:
-        clash = sorted(bound_names_shadowing_saves(step, saves))
-        if clash:
-            raise ValueError(
-                f"step {step.name!r} binds {clash!r} as its repeat item, "
-                "shadowing a save_as of the same name"
-            )
 
 
 def reject_saves_in_paths(flow: Flow, saves: set[str]) -> None:

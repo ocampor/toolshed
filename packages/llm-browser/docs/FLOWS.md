@@ -238,17 +238,19 @@ value is a string, so quote numbers. A saved list with zero rows runs zero
 `repeat` passes.
 
 A save is local to the flow run that made it: a sub-flow sees its parent's
-saves, but a save made inside a sub-flow never flows back to the parent. A
-skipped or `optional`-swallowed read saves nothing, and `--from` past the
-read starts without it.
+saves, but a save made inside a sub-flow never flows back to the parent. The
+innermost binding wins — a `repeat` item, a `run-flow` `data:` key or a
+sub-flow's own save hides an outer name of the same name inside its scope
+only, leaving the outer value untouched. A skipped or `optional`-swallowed
+read saves nothing, and `--from` past the read starts without it.
 
 Rejected at flow load:
 
-- a `save_as` name that is a declared param, another `save_as`, or — in a
-  sub-flow — a name the `run-flow` step binds (`data:` keys, `repeat`'s `as`);
-- a `repeat` binding or `path:` (the CLI names files after the run) naming a
-  `save_as` of its own flow, or — inside a sub-flow — one of the parent's
-  saves the `run-flow` step does not rebind;
+- a `save_as` name that is a declared param or another `save_as` of the same
+  flow;
+- a `path:` (the CLI names files after the run) naming a `save_as` of its own
+  flow, or — inside a sub-flow — one of the parent's saves the `run-flow` step
+  does not rebind;
 - a step that uses a saved name before the step that saves it;
 - `field` or a `where` key outside the step's `extract` fields;
 - `where` without `field`;

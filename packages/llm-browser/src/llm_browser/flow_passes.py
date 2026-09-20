@@ -97,7 +97,7 @@ def repeat_passes(step: Step, data: FlowData) -> Iterator[tuple[int | None, Flow
         )
 
 
-def data_error(
+def repeat_data_error(
     step: Step,
     exc: ValueError,
     outputs: dict[str, object],
