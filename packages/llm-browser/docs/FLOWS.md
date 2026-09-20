@@ -224,61 +224,49 @@ repeated `run-flow` indexes the child's qualified keys the same way:
 
 ### Saving a read (`save_as`)
 
-`save_as` on a `read` step puts what it read into flow data, where later steps
-reach it like any param: in `{{ }}`, in `when:`, in `repeat.over`, in a
-`run-flow` step's `data:`.
+`save_as` on a `read` step puts what it read into flow data: reachable in
+`{{ }}`, `when:`, `repeat.over`, and a `run-flow` step's `data:`.
 
-| Form | Saves | Fails the step when |
-|------|-------|---------------------|
-| `save_as: books` | The whole row list, as it appears in `outputs` | never — no rows saves `[]` |
-| `save_as: { name: next_href, field: href }` | `href` of row 0 | there is no row 0, or its `href` is null |
-| `save_as: { name: next_href, field: href, where: { label: next } }` | `href` of the first row whose `label` equals `next` | no row matches |
+| Form | Saves | Fails when |
+|------|-------|------------|
+| `save_as: books` | Whole row list, as in `outputs` | Never — no rows saves `[]` |
+| `{ name, field }` | `field` of row 0 | No row 0, or its `field` is null |
+| `{ name, field, where }` | `field` of first row matching `where` | No row matches |
 
-- `where` is equality on extracted fields only. Values are compared as read, and
-  every extracted value is a string: quote numbers.
-- A saved list with zero rows runs zero `repeat` passes.
-- A save belongs to the flow that made it. A sub-flow sees its parent's saves;
-  a save made inside a sub-flow is visible to the later steps of that sub-flow
-  run only — repeated or not, and each `repeat` pass is its own run — never to
-  the parent.
-- A skipped or `optional`-swallowed read saves nothing, and `--from` past the
-  read starts without it: a plain `{{ name }}` then stays as written and a
-  dotted path fails its step.
-- The CLI names `path:` files after the run, so a `path:` cannot use a saved value.
+`where` is equality on extracted fields, compared as read — every extracted
+value is a string, so quote numbers. A saved list with zero rows runs zero
+`repeat` passes.
+
+A save is local to the flow run that made it: a sub-flow sees its parent's
+saves, but a save made inside a sub-flow never flows back to the parent. A
+skipped or `optional`-swallowed read saves nothing, and `--from` past the
+read starts without it.
 
 Rejected at flow load:
 
 - a `save_as` name that is a declared param, another `save_as`, or — in a
   sub-flow — a name the `run-flow` step binds (`data:` keys, `repeat`'s `as`);
-- a `repeat` binding (`as`, `<as>_index`) named after a `save_as` of the same
-  flow, or — inside a sub-flow — one of the parent's saves the `run-flow`
-  step does not rebind;
-- a `path:` naming a `save_as` of its own flow, or — inside a sub-flow — one of
-  the parent's saves the `run-flow` step does not rebind;
+- a `repeat` binding or `path:` (the CLI names files after the run) naming a
+  `save_as` of its own flow, or — inside a sub-flow — one of the parent's
+  saves the `run-flow` step does not rebind;
 - a step that uses a saved name before the step that saves it;
-- `field` or a `where` key that is not one of the step's `extract` fields;
+- `field` or a `where` key outside the step's `extract` fields;
 - `where` without `field`;
 - `save_as` on a step that also has `repeat`.
 
 ```yaml
 steps:
-  - name: books
-    action: read
-    selector: "article.product_pod h3 a"
-    extract:
-      href: { attribute: href }
-    save_as: books
+  - { name: open category, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/index.html" }
+  - { name: books, action: read, selector: "article.product_pod h3 a", extract: { href: { attribute: href } }, save_as: books }
   - name: each book
     action: run-flow
     repeat: { over: books, as: book }
     flow:
       steps:
         - { name: open, action: goto, url: "https://books.toscrape.com/catalogue/category/books/travel_2/{{ book.href }}" }
-        - { name: price, action: read, selector: "(//p[@class='price_color'])[1]" }
 ```
 
-`attribute: href` reads the attribute as the page wrote it, often relative; the
-flow prefixes the base URL.
+`attribute: href` reads the attribute raw, often relative; prefix the base URL in the flow's `url:`.
 
 ## Loading flows
 
@@ -372,11 +360,9 @@ A CSS group (`main, article`) is handed to the browser as written: it matches ev
 
 ## Template variables
 
-`{{ param_name }}` in any string value, resolved from flow data at runtime: `value: "{{ rfc }}"` with `params: [rfc]`. A name flow data lacks is left as written.
+`{{ param_name }}` in any string value, resolved from flow data at runtime: `value: "{{ rfc }}"` with `params: [rfc]`. A missing name is left as written.
 
-A dotted path reaches into a value: `{{ book.href }}` reads a key,
-`{{ books.0.href }}` indexes a list first. A dotted path that resolves to
-nothing fails the step. Paths only: no expressions, filters or arithmetic.
+A dotted path indexes in — `{{ book.href }}`, `{{ books.0.href }}` — and fails the step if it resolves to nothing. Paths only, no expressions.
 
 ## Conditions
 
