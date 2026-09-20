@@ -7,12 +7,17 @@
 - `expect:` and `pick:` on every step that targets elements (`models.MatchFields`):
   `expect` is `1`, a count, or `many`; `pick` is `first`, `last` or an index, and
   is what lets a step act on one of several matches (ocampor/toolshed#62).
-- `selectors.MatchCountError` (a `ValueError`) carries `expected`, `found` and up
-  to `constants.MATCH_SAMPLES` match texts; `results.ErrorResult` reports them as
-  `expected`, `found`, `samples` with a `hint` naming `pick: first`.
-- `models.MatchWarning` on `FlowSuccess.warnings` and `FlowError.warnings`: every
-  step whose `pick` took a count its `expect` did not ask for, keyed like
-  `skipped` (`step[0]`, `parent/step`).
+- `selectors.MatchError` (a `ValueError`) carries `found`, up to
+  `constants.MATCH_SAMPLES` match texts and the `hint` that fixes it;
+  `results.ErrorResult` reports them as `found`, `samples`, `hint`.
+- `selectors.MatchCountError` adds `expected` to that: the count the step asked
+  for. Its hint points the way the count went — too many, or too few.
+- `selectors.PickRangeError`: a `pick` naming a match the page does not have
+  (`pick: 9 needs at least 10 matches for '…', found 7`), with no `expected`.
+- `models.MatchWarning` (a `results.AcceptedMatch` naming its step) on
+  `FlowSuccess.warnings` and `FlowError.warnings`: every step whose `pick` took
+  a count its `expect` did not ask for, keyed like `skipped` (`step[0]`,
+  `parent/step`), including a step that then failed or was skipped.
 - `results.AcceptedMatch` on `ActionResult.accepted`, and
   `BrowserSession.matching(rule)`, the context manager that runs one step under
   a `selectors.MatchRule`.
@@ -24,6 +29,13 @@
   ambiguity now reads `expected 1 element for 'p.price_color', found 7`.
 - An explicit `expect: 1` on `read` or `parse` fails on zero matches; the default
   `expect: many` keeps returning zero rows.
+- `read` and `parse` wait for a count they state within the step's `timeout`
+  before counting (`BrowserSession.parse_elements` takes a `timeout`), and a
+  wait that expires fails them with `MatchCountError found 0` rather than the
+  timeout; a default `expect: many` still reads without waiting. Acting steps
+  keep failing a missing element with `TimeoutError`.
+- `expect:`/`pick:` are rejected at flow load where they could only be ignored:
+  on `wait_for`, and on a `press` or `screenshot` with no selector.
 
 ## 0.19.0 — 2026-09-17
 

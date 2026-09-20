@@ -15,6 +15,7 @@ from llm_browser.models import (
     MatchWarning,
     SkippedStep,
     Step,
+    match_warning,
 )
 from llm_browser.results import (
     ActionResult,
@@ -132,10 +133,7 @@ def record_outcome(
     """Fold one pass's result into the run's outputs, skips and warnings."""
     if isinstance(outcome, ActionResult) and outcome.accepted is not None:
         warnings.append(
-            MatchWarning(
-                step=indexed(step.qualified_name, index),
-                **outcome.accepted.model_dump(),
-            )
+            match_warning(indexed(step.qualified_name, index), outcome.accepted)
         )
     match outcome:
         case FlowSuccess():

@@ -602,7 +602,7 @@ def test_run_flow_when_skips_subflow(tmp_path: Path, mock_session: MagicMock) ->
 
 
 def _failing_click(session: MagicMock) -> ClickStep:
-    session.click.side_effect = ValueError("Expected 1 element for '#go', found 0")
+    session.click.side_effect = ValueError("expected 1 element for '#go', found 0")
     return ClickStep(action="click", name="go", selector="#go")
 
 

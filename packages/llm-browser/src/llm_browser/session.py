@@ -62,6 +62,7 @@ from llm_browser.selectors import (
     match_elements,
     picked_element,
     resolve_selector,
+    states_minimum,
 )
 from llm_browser.survey_models import Survey
 
@@ -477,22 +478,18 @@ class BrowserSession:
             self.accepted_matches.append(result.accepted)
         return result
 
-    def find(
-        self,
-        selector: Selector,
-        state: WaitState = "visible",
-        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
-    ) -> Any:
-        """Find the one element the step acts on — its ``pick`` when it names
-        one, the single match otherwise.
+    def matched_after_wait(
+        self, selector: Selector, rule: MatchRule, state: WaitState, timeout: int
+    ) -> Match:
+        """Wait for ``selector``, then check what it matches against ``rule``.
 
         Ambiguity is a mistake, not something to wait out, so it is checked
         before the poll — otherwise a selector matching two elements burns the
         whole budget and reports a misleading timeout. The full check runs
         again after, because the wait is what makes a match appear, and
-        counting never waits.
+        counting never waits. A wait that expired is the failure: an element
+        that never showed up is what the step was waiting for.
         """
-        rule = self.match_rule or SINGLE
         match_elements(
             self.driver,
             resolve_selector(self.driver, self.get_page(), selector),
@@ -501,7 +498,34 @@ class BrowserSession:
             waiting=True,
         )
         self.wait_for_element(selector, state=state, timeout=timeout)
-        return self.matched(selector, rule).locator
+        return self.matched(selector, rule)
+
+    def matched_rows(self, selector: Selector, rule: MatchRule, timeout: int) -> Match:
+        """The matches a ``read`` or ``parse`` reads from.
+
+        A rule naming a count waits for it, and a wait that expired reports the
+        count instead: the flow stated how many rows it wanted, so "found 0" is
+        the failure it is looking for. The default ``expect: many`` asks nothing
+        of the count and so reads straight away.
+        """
+        if not states_minimum(rule):
+            return self.matched(selector, rule)
+        try:
+            return self.matched_after_wait(selector, rule, "attached", timeout)
+        except TimeoutError:
+            self.matched(selector, rule)
+            raise
+
+    def find(
+        self,
+        selector: Selector,
+        state: WaitState = "visible",
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> Any:
+        """Find the one element the step acts on — its ``pick`` when it names
+        one, the single match otherwise."""
+        rule = self.match_rule or SINGLE
+        return self.matched_after_wait(selector, rule, state, timeout).locator
 
     def match_all(
         self,
@@ -743,6 +767,7 @@ class BrowserSession:
         selector: Selector,
         extract: dict[str, ExtractField],
         exclude: Sequence[str] = (),
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> list[dict[str, str | None]]:
         """Extract structured data from matching elements.
 
@@ -751,8 +776,11 @@ class BrowserSession:
         read. When ``child_selector`` is None the value is read off the row
         element itself. ``exclude``'s matches are dropped from the text a field
         reads, so a page's chrome can be left out of it.
+
+        ``timeout`` bounds the wait a stated count earns — see
+        :meth:`matched_rows`.
         """
-        match = self.matched(selector, self.match_rule or MANY)
+        match = self.matched_rows(selector, self.match_rule or MANY, timeout)
         locator = resolve_selector(self.driver, self.get_page(), selector)
         rows = self.driver.extract_rows(locator, row_spec(extract), exclude)
         if match.nth is None:

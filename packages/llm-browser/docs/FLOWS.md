@@ -310,7 +310,7 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | Explicit CSS | `selector: { css: ".my-class" }` |
 | XPath | `selector: { xpath: "//input[@name='q']" }` |
 
-A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `Expected 1 element for '<selector>', found N` as soon as two arms match. The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
+A CSS group (`main, article`) is handed to the browser as written: it matches every arm, in document order, never left to right. `read` and `parse` take the whole union — one row per match — `dom` reads the first match in document order, and every single-element step (`click`, `fill`, `screenshot: selector`) fails with `expected 1 element for '<selector>', found N` as soon as two arms match — unless the step's `pick` names which one to take ([below](#match-count-expect-and-pick)). The session API splits the same way: `find_all` returns the union, `find` raises on more than one match.
 
 ## Template variables
 
@@ -356,11 +356,21 @@ Skip a step unless every condition holds (AND'ed).
 | `1` | none | runs | fails with the count | fails |
 | `1` | `first` | runs | runs on the first match, warns | fails |
 | `many` | none | runs | runs on every match | runs, zero rows |
-| `many` | `last` | runs | runs on the last match | fails |
+| `many` | `last` | runs | runs on the last match | fails, `PickRangeError` |
+| `many` | `9` | fails, `PickRangeError` | fails, `PickRangeError` | fails, `PickRangeError` |
+
+A step that states a count waits for it: `read` and `parse` poll for the
+element inside the step's `timeout` before counting, so a panel that renders
+late is waited for rather than read as zero, and a wait that runs out fails
+them with the count (`found: 0`) the flow stated. An acting step fails a
+missing element with its `TimeoutError`, and the default `expect: many` asks
+nothing of the count, so it reads straight away.
 
 An acting step (`click`, `fill`, …) drives one element, so an `expect` other
-than `1` on it needs a `pick`. `wait_for` takes neither: it waits on a state,
-not on a count. A failed count is a step error, under the run result's `data`:
+than `1` on it needs a `pick`. Both fields are rejected at flow load where they
+could only be ignored: on `wait_for`, which waits for a state and not a count,
+and on a `press` or `screenshot` with no selector, which matches nothing to
+count. A failed count is a step error, under the run result's `data`:
 
 ```json
 {
@@ -375,6 +385,10 @@ not on a count. A failed count is a step error, under the run result's `data`:
 }
 ```
 
+A `pick` reaching past the matches is a `PickRangeError` instead — same shape,
+no `expected`, and a message naming what the pick needed:
+`pick: 9 needs at least 10 matches for 'p.price_color', found 7`.
+
 A `pick` that took a count `expect` did not ask for runs, and says so in the
 run's `warnings`:
 
@@ -388,9 +402,12 @@ run's `warnings`:
 ### What `timeout` bounds
 
 `timeout` is the element wait only — how long the step looks for its target
-before failing — not a ceiling on the step as a whole. A `type` step then costs
-roughly `len(value) × delay` on top of it, so a 2000-character value typed at
-`delay: 30` spends a minute *after* the wait succeeded. Nothing in the library
+before failing — not a ceiling on the step as a whole. It bounds a `read` or
+`parse` wait too, but only when the step states a count (`expect:` an int, or
+any `pick:`); a default `read` counts nothing and so waits for nothing. A
+`type` step then costs roughly `len(value) × delay` on top of it, so a
+2000-character value typed at `delay: 30` spends a minute *after* the wait
+succeeded. Nothing in the library
 cuts that short; an embedding server with its own per-call deadline (the MCP
 tool timeout, a request handler) has to be given a budget that covers it, or
 split the value across several steps.

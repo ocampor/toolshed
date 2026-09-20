@@ -30,7 +30,7 @@ from llm_browser.constants import (
 )
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField, parse_extract_spec
-from llm_browser.results import PayloadBytes, PickSpec
+from llm_browser.results import AcceptedMatch, PayloadBytes
 from llm_browser.selectors import MatchRule, Selector
 
 # --- Step types ---
@@ -156,7 +156,7 @@ class MatchTarget(StrEnum):
 
 
 def check_one_target(step: MatchFields) -> None:
-    if step.expect != 1 and step.pick is None:
+    if step.expect not in (None, 1) and step.pick is None:
         raise ValueError(
             f"this action drives one element, so expect: {step.expect} needs a "
             "pick: (first, last or an index)"
@@ -181,27 +181,64 @@ MATCH_CHECKS: dict[MatchTarget, Callable[[MatchFields], None]] = {
 ExpectCount = Annotated[int, Field(ge=1)] | Literal["many"]
 PickChoice = Literal["first", "last"] | Annotated[int, Field(ge=0)]
 
+DEFAULT_EXPECT: dict[MatchTarget, ExpectCount] = {
+    MatchTarget.ONE: 1,
+    MatchTarget.MANY: "many",
+    MatchTarget.BY_TEXT: "many",
+}
+
 
 class MatchFields(BaseModel):
     """How many elements a step's selector should match, and which of them the
-    step acts on when it matches more."""
+    step acts on when it matches more.
 
-    expect: ExpectCount = 1
+    ``expect`` is ``None`` until the flow states one — what the step defaults to
+    comes from its ``match_target`` — so "stated" survives the ``model_dump``
+    round trip :func:`llm_browser.steps.resolve_step_templates` makes.
+    """
+
+    expect: ExpectCount | None = None
     pick: PickChoice | None = None
 
     match_target: ClassVar[MatchTarget] = MatchTarget.ONE
 
     @model_validator(mode="after")
     def _check_match_fields(self) -> MatchFields:
+        if getattr(self, "selector", None) is None and self.states_a_rule():
+            kind = getattr(self, "action", "this step")
+            raise ValueError(
+                f"{kind} without a selector matches nothing to count, so "
+                "expect:/pick: do not apply"
+            )
         MATCH_CHECKS[self.match_target](self)
         return self
+
+    def states_a_rule(self) -> bool:
+        return self.expect is not None or self.pick is not None
+
+
+def reject_wait_for_match_fields(data: Any) -> Any:
+    """A step with no count to state: extra keys are ignored, so ``expect`` and
+    ``pick`` would otherwise load and do nothing."""
+    if not isinstance(data, dict):
+        return data
+    stated = [key for key in ("expect", "pick") if key in data]
+    if stated:
+        raise ValueError(
+            f"wait_for waits for a state, not a count, so {'/'.join(stated)}: "
+            "does not apply"
+        )
+    return data
 
 
 def match_rule_of(step: Step) -> MatchRule | None:
     """The count rule ``step`` states, or ``None`` for a step that states none."""
     if not isinstance(step, MatchFields):
         return None
-    return MatchRule(expect=step.expect, pick=step.pick)
+    expect = step.expect
+    if expect is None:
+        expect = DEFAULT_EXPECT[step.match_target]
+    return MatchRule(expect=expect, pick=step.pick)
 
 
 class SelectorStep(MatchFields, BaseStep):
@@ -264,7 +301,6 @@ class CheckStep(SelectorStep):
 class PickStep(SelectorStep):
     action: Literal["pick"]
     value: str = ""
-    expect: ExpectCount = "many"
 
     match_target: ClassVar[MatchTarget] = MatchTarget.BY_TEXT
 
@@ -300,7 +336,6 @@ class ReadStep(SelectorStep):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     action: Literal["read"]
-    expect: ExpectCount = "many"
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
@@ -335,7 +370,6 @@ class ParseStep(SelectorStep):
     """
 
     action: Literal["parse"]
-    expect: ExpectCount = "many"
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
@@ -345,7 +379,6 @@ class ParseStep(SelectorStep):
 
 class DomStep(SelectorStep):
     action: Literal["dom"]
-    expect: ExpectCount = "many"
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
@@ -426,6 +459,8 @@ class WaitForStep(BaseStep):
     # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
     interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
     settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+
+    _no_match_fields = model_validator(mode="before")(reject_wait_for_match_fields)
 
     @model_validator(mode="after")
     def _check_target_and_budget(self) -> "WaitForStep":
@@ -647,13 +682,16 @@ class SkippedStep(BaseModel):
     reason: str
 
 
-class MatchWarning(BaseModel):
-    """A step whose ``pick`` took a count its ``expect`` did not ask for."""
+class MatchWarning(AcceptedMatch):
+    """The mismatch a step's ``pick`` took, named by the step that took it."""
 
     step: str
-    expected: int | Literal["many"]
-    found: int
-    picked: PickSpec
+
+
+def match_warning(step: str, accepted: AcceptedMatch) -> MatchWarning:
+    """``accepted`` under the name of the step it happened in. The splat is
+    safe because every ``AcceptedMatch`` field is a ``MatchWarning`` field."""
+    return MatchWarning(step=step, **accepted.model_dump())
 
 
 class FlowSuccess(BaseModel):

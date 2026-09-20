@@ -179,8 +179,9 @@ class ErrorResult(ActionResult):
     step_name: str
     selector: str | None = None
     hint: str | None = None
-    # Set for a ``MatchCountError`` only: what the step asked for, what the
-    # page had, and the text of the first few matches.
+    # Set for a ``selectors.MatchError`` only: what the step asked for (``None``
+    # when only its ``pick`` was out of reach), what the page had, and the text
+    # of the first few matches.
     expected: int | Literal["many"] | None = None
     found: int | None = None
     samples: list[str] | None = None

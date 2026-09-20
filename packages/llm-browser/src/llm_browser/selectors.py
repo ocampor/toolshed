@@ -6,7 +6,12 @@ from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
 
-from llm_browser.constants import MATCH_SAMPLES
+from llm_browser.constants import (
+    MATCH_SAMPLES,
+    MATCH_TOO_FEW_HINT,
+    MATCH_TOO_MANY_HINT,
+    PICK_RANGE_HINT,
+)
 from llm_browser.drivers.base import Driver
 from llm_browser.results import AcceptedMatch, PickSpec
 
@@ -141,7 +146,19 @@ class Match(NamedTuple):
     accepted: AcceptedMatch | None = None
 
 
-class MatchCountError(ValueError):
+class MatchError(ValueError):
+    """A selector matched elements the step's rule rules out: what it found,
+    the text of the first few, and what would fix it."""
+
+    def __init__(self, message: str, found: int, samples: list[str], hint: str) -> None:
+        self.found = found
+        self.samples = samples
+        self.hint = hint
+        self.expected: int | Literal["many"] | None = None
+        super().__init__(message)
+
+
+class MatchCountError(MatchError):
     """A selector matched a number of elements the step's ``expect`` rules out."""
 
     def __init__(
@@ -151,13 +168,36 @@ class MatchCountError(ValueError):
         samples: list[str],
         selector: Selector,
     ) -> None:
-        self.expected = expected
-        self.found = found
-        self.samples = samples
         plural = "" if expected == 1 else "s"
+        too_many = isinstance(expected, int) and found > expected
         super().__init__(
             f"expected {expected} element{plural} for "
-            f"'{describe_selector(selector)}', found {found}"
+            f"'{describe_selector(selector)}', found {found}",
+            found,
+            samples,
+            MATCH_TOO_MANY_HINT if too_many else MATCH_TOO_FEW_HINT,
+        )
+        self.expected = expected
+
+
+class PickRangeError(MatchError):
+    """A step's ``pick`` names a match the page does not have."""
+
+    def __init__(
+        self,
+        pick: PickSpec,
+        found: int,
+        samples: list[str],
+        selector: Selector,
+    ) -> None:
+        needed = pick + 1 if isinstance(pick, int) else 1
+        plural = "" if needed == 1 else "es"
+        super().__init__(
+            f"pick: {pick} needs at least {needed} match{plural} for "
+            f"'{describe_selector(selector)}', found {found}",
+            found,
+            samples,
+            PICK_RANGE_HINT,
         )
 
 
@@ -174,27 +214,57 @@ def pick_index(pick: PickSpec, found: int) -> int:
     return PICK_INDEX[pick](found)
 
 
+def sample_text(driver: Driver, locator: Any, index: int) -> str:
+    """A sample is diagnostic, so one that cannot be read reads as empty rather
+    than replacing the match failure it is being collected for."""
+    try:
+        return (driver.text_content(driver.nth(locator, index)) or "").strip()
+    except Exception:
+        return ""
+
+
 def match_samples(driver: Driver, locator: Any, found: int) -> list[str]:
-    return [
-        (driver.text_content(driver.nth(locator, i)) or "").strip()
-        for i in range(min(found, MATCH_SAMPLES))
-    ]
+    return [sample_text(driver, locator, i) for i in range(min(found, MATCH_SAMPLES))]
+
+
+def states_minimum(rule: MatchRule) -> bool:
+    """Whether ``rule`` names a count the page has to reach, so a step running
+    under it has something to wait for."""
+    return isinstance(rule.expect, int) or rule.pick is not None
 
 
 def count_mismatch(rule: MatchRule, found: int, waiting: bool) -> bool:
-    """Whether ``found`` breaks ``rule``.
+    """Whether ``found`` breaks ``rule``'s ``expect``.
 
     ``waiting`` is the check that runs before a wait, where too few matches is
     what the wait is for and only an ambiguity nothing picks from can fail.
     """
-    if isinstance(rule.expect, int):
-        if found > rule.expect and rule.pick is None:
-            return True
-        if found < rule.expect and not waiting:
-            return True
-    if waiting or rule.pick is None:
+    if not isinstance(rule.expect, int):
         return False
-    return not 0 <= pick_index(rule.pick, found) < found
+    if found > rule.expect and rule.pick is None:
+        return True
+    return found < rule.expect and not waiting
+
+
+def check_count(
+    driver: Driver,
+    locator: Any,
+    selector: Selector,
+    rule: MatchRule,
+    found: int,
+    waiting: bool,
+) -> None:
+    """Raise what ``found`` breaks in ``rule``: the count, or the pick's reach."""
+    if count_mismatch(rule, found, waiting):
+        raise MatchCountError(
+            rule.expect, found, match_samples(driver, locator, found), selector
+        )
+    if waiting or rule.pick is None:
+        return
+    if not 0 <= pick_index(rule.pick, found) < found:
+        raise PickRangeError(
+            rule.pick, found, match_samples(driver, locator, found), selector
+        )
 
 
 def narrowed(driver: Driver, locator: Any, rule: MatchRule, found: int) -> Match:
@@ -227,10 +297,7 @@ def match_elements(
     if rule.expect == "many" and rule.pick is None:
         return Match(locator)
     found = driver.count(locator)
-    if count_mismatch(rule, found, waiting):
-        raise MatchCountError(
-            rule.expect, found, match_samples(driver, locator, found), selector
-        )
+    check_count(driver, locator, selector, rule, found, waiting)
     if waiting:
         return Match(locator)
     return narrowed(driver, locator, rule, found)
