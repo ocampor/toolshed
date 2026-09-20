@@ -255,6 +255,42 @@ def test_a_dotted_path_to_nothing_fails_the_pass_it_is_in(
             {
                 "params": ["codes"],
                 "steps": [
+                    _read("links"),
+                    _each(
+                        [
+                            {
+                                **_goto("https://x/a"),
+                                "repeat": {"over": "codes", "as": "links"},
+                            }
+                        ],
+                        over="codes",
+                    ),
+                ],
+            },
+            "binds ['links'] as its repeat item",
+        ),
+        (
+            {
+                "params": ["codes"],
+                "steps": [
+                    _read({"name": "x_index", "field": "href"}),
+                    _each(
+                        [
+                            {
+                                **_goto("https://x/a"),
+                                "repeat": {"over": "codes", "as": "x"},
+                            }
+                        ],
+                        over="codes",
+                    ),
+                ],
+            },
+            "binds ['x_index'] as its repeat item",
+        ),
+        (
+            {
+                "params": ["codes"],
+                "steps": [
                     _read("item"),
                     {**_goto("https://x/a"), "repeat": {"over": "codes", "as": "item"}},
                 ],

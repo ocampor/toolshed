@@ -250,7 +250,9 @@ Rejected at flow load:
 
 - a `save_as` name that is a declared param, another `save_as`, or — in a
   sub-flow — a name the `run-flow` step binds (`data:` keys, `repeat`'s `as`);
-- a `repeat` binding (`as`, `<as>_index`) named after a `save_as` of the same flow;
+- a `repeat` binding (`as`, `<as>_index`) named after a `save_as` of the same
+  flow, or — inside a sub-flow — one of the parent's saves the `run-flow`
+  step does not rebind;
 - a `path:` naming a `save_as` of its own flow, or — inside a sub-flow — one of
   the parent's saves the `run-flow` step does not rebind;
 - a step that uses a saved name before the step that saves it;

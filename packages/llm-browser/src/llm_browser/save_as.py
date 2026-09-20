@@ -134,9 +134,20 @@ def check_saved_names(flow: Flow) -> None:
     reject_saves_in_paths(flow, set(saves))
 
 
+def bound_names_shadowing_saves(step: Step, saves: set[str]) -> set[str]:
+    """Repeat bindings under ``step`` that shadow a save_as — a sub-flow's own
+    bindings shadow the parent saves they rebind, so those do not count."""
+    found = pass_bindings(step) & saves
+    if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
+        inherited = saves - names_bound(step)
+        for child in step.flow.steps:
+            found |= bound_names_shadowing_saves(child, inherited)
+    return found
+
+
 def reject_binding_over_saves(flow: Flow, saves: set[str]) -> None:
     for step in flow.steps:
-        clash = sorted(pass_bindings(step) & saves)
+        clash = sorted(bound_names_shadowing_saves(step, saves))
         if clash:
             raise ValueError(
                 f"step {step.name!r} binds {clash!r} as its repeat item, "
