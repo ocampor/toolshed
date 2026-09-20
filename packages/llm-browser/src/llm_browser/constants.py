@@ -47,6 +47,13 @@ WHEN_SKIP_REASON = "when condition not satisfied"
 # Every action whose result the flow runner keeps in ``outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 
+# What a ``repeat`` body may not contain: a loop is flat, and a sub-flow of a
+# sub-flow is rejected anyway.
+REPEAT_BODY_REJECTED = frozenset({"run-flow", "repeat"})
+
+# How much of an element's text a pass binds under the repeat's ``as``.
+ELEMENT_SNIPPET_MAX_CHARS = 80
+
 EXTRA_SAFE_ATTRS = frozenset({"href", "src", "title"})
 
 XHIGH_ATTRS = frozenset(

@@ -385,6 +385,10 @@ class BrowserSession:
             locator,
         )
 
+    def current_url(self) -> str:
+        """Where the page is right now."""
+        return str(self.driver.page_url(self.get_page()))
+
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
         """PNG bytes of the current page, or of ``selector`` alone when given.
 

@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.20.0 — 2026-09-19
+
+### Added
+
+- `action: repeat` with a `steps:` body loops several steps; it desugars at load
+  into today's `repeat:` modifier on an inline `run-flow`, so both spellings
+  share one engine (ocampor/toolshed#60).
+- `Repeat.over` takes an inline list as well as a list param's name.
+- `Repeat.over_selector` repeats over matched elements: the count is snapshotted
+  at step start and each pass binds the element's text snippet plus `<as>_index`.
+- `in: <as>` on a body step scopes its selector to that pass's element via
+  `selectors.ScopedSelector`, re-resolved every pass.
+- `Repeat.on_error` (`repeat.OnError`): `stop` (default) or `skip`, which keeps a
+  failed pass's partial outputs, names it in `skipped`, and runs the rest.
+- `FlowSuccess.iterations` / `FlowError.iterations`: one `iterations.IterationReport`
+  per repeating step, with `total`, `ok` and `failed[]` (`iterations.FailedPass`
+  carries index, item, step, error, message, selector, hint, url, screenshot).
+- `FlowSuccess.retry_hint` and `RetryHint.only`: the failed passes come back as
+  items in `data` for a list param, as indices for any other source.
+- `run_flow(..., only={step: [i, j]})` and `llm-browser run --only STEP=I,J` run
+  only those passes of a repeating step, under their original indices.
+- `session.BrowserSession.current_url()`, the page's url as a string.
+- `selector_map.resolve_ref`, one selector's ref swapped for the map's.
+- `docs/FLOWS.md` documents the block form, the sources, `in:`, `on_error`, the
+  report, the rerun path, and what `when:` really does.
+
+### Changed
+
+- The step loop moved to `llm_browser.flow_runner` (`run_loaded_flow`,
+  `run_subflow`, `child_data`), which `llm_browser.flows` re-exports — every
+  existing import keeps working.
+
+### Fixed
+
+- A `read` under `in:` that matches nothing fails its pass instead of returning
+  an empty row list (ocampor/toolshed#62 will generalize it as `expect`).
+- `flows.with_flow_path` fills `retry_hint.flow_path` on any result that carries
+  a hint, not only on a `FlowError`.
+
 ## 0.19.0 — 2026-09-17
 
 ### Breaking

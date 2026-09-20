@@ -38,8 +38,28 @@ class FallbackSelector(BaseModel):
     fallback: "CssSelector | XpathSelector | IdSelector | FallbackSelector"
 
 
+PlainSelector = str | CssSelector | XpathSelector | IdSelector | FallbackSelector
+
+
+class ScopedSelector(BaseModel):
+    """``inner``, looked for inside the ``index``-th match of ``root``.
+
+    What a step's ``in: <as>`` builds, once per pass: the root is re-resolved
+    and re-indexed every time, so no handle outlives the pass that made it.
+    """
+
+    root: PlainSelector
+    index: int
+    inner: PlainSelector
+
+
 type SelectorSpec = (
-    CssSelector | XpathSelector | IdSelector | FallbackSelector | RefSelector
+    CssSelector
+    | XpathSelector
+    | IdSelector
+    | FallbackSelector
+    | RefSelector
+    | ScopedSelector
 )
 type Selector = str | SelectorSpec
 
@@ -80,6 +100,8 @@ def _selector_string(selector: Selector) -> str:
             return f'[id="{el_id}"]'
         case FallbackSelector():
             raise ValueError("FallbackSelector must be resolved via resolve_selector")
+        case ScopedSelector():
+            raise ValueError("ScopedSelector must be resolved via resolve_selector")
         case RefSelector(ref=ref):
             raise ValueError(f"selector ref {ref!r} was never resolved from a map")
     raise ValueError(f"Unknown selector: {selector!r}")
@@ -95,6 +117,9 @@ def describe_selector(selector: Selector) -> str:
     if isinstance(selector, FallbackSelector):
         primary = describe_selector(selector.primary)
         return f"{primary} or {describe_selector(selector.fallback)}"
+    if isinstance(selector, ScopedSelector):
+        root = describe_selector(selector.root)
+        return f"{root}[{selector.index}] {describe_selector(selector.inner)}"
     return _selector_string(selector)
 
 
@@ -113,7 +138,29 @@ def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
     """Resolve a typed selector into a driver-native locator."""
     if isinstance(selector, FallbackSelector):
         return _resolve_with_fallback(driver, page, selector.primary, selector.fallback)
+    if isinstance(selector, ScopedSelector):
+        return _resolve_scoped(driver, page, selector)
     return driver.resolve(page, _selector_string(selector))
+
+
+def _resolve_scoped(driver: Driver, page: Any, selector: ScopedSelector) -> Any:
+    """Descendants of one match only. The count is checked first: a page that
+    dropped rows mid-loop fails the pass with what happened, not with whatever
+    a driver does when asked for an element that is no longer there."""
+    if isinstance(selector.inner, FallbackSelector):
+        raise ValueError(
+            "a fallback selector cannot be scoped to an element with `in:`; "
+            "name one selector"
+        )
+    root = resolve_selector(driver, page, selector.root)
+    count = driver.count(root)
+    if count <= selector.index:
+        raise ValueError(
+            f"{describe_selector(selector.root)} matches {count} elements now, "
+            f"so element {selector.index} is gone"
+        )
+    element = driver.nth(root, selector.index)
+    return driver.child(element, _selector_string(selector.inner))
 
 
 def expect_single(driver: Driver, locator: Any, selector: Selector) -> Any:
