@@ -11,7 +11,13 @@ from pydantic import ValidationError
 from llm_browser.actions import execute_action
 from llm_browser.drivers.base import Driver
 from llm_browser.flows import load_flow_document, run_flow
-from llm_browser.models import FlowData, FlowError, FlowSuccess, validate_step
+from llm_browser.models import (
+    FlowData,
+    FlowError,
+    FlowSuccess,
+    match_rule_of,
+    validate_step,
+)
 from llm_browser.results import AcceptedMatch, ErrorResult, ParsedResult
 from llm_browser.selectors import (
     MANY,
@@ -86,6 +92,13 @@ def run_steps(
 )
 def test_a_valid_match_rule_loads(step: dict[str, Any]) -> None:
     assert validate_step({"name": "s", **step}) is not None
+
+
+def test_a_pick_step_keeps_its_action_default_expect() -> None:
+    step = validate_step(
+        {"name": "s", "action": "pick", "selector": "#a", "value": "x", "pick": "first"}
+    )
+    assert match_rule_of(step) == MatchRule(expect="many", pick="first")
 
 
 @pytest.mark.parametrize(
@@ -432,13 +445,16 @@ def test_a_run_names_every_step_whose_pick_took_a_mismatch(
     skipped: list[str],
 ) -> None:
     """The click cases fail or skip after the pick: a step reports the mismatch
-    it ran on however it ended."""
+    it ran on however it ended. Every row here picks "first" out of 7 matches
+    against an expected 1, so the warning content is the same for each name."""
     session = page_session(tmp_path, 7)
     session.driver.click.side_effect = TimeoutError("element not clickable")
     result = run_steps(session, steps, data={"codes": ["a", "b"]})
     assert isinstance(result, FlowSuccess) is succeeds
     assert isinstance(result.warnings[0], AcceptedMatch)
-    assert [w.step for w in result.warnings] == warned
+    assert [w.model_dump() for w in result.warnings] == [
+        {"step": name, "expected": 1, "found": 7, "picked": "first"} for name in warned
+    ]
     assert [s.name for s in result.skipped] == skipped
 
 
