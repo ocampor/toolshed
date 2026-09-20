@@ -25,8 +25,8 @@ from llm_browser.constants import (
 )
 from llm_browser.flow_pipeline import resolve_flow, resolve_flow_text
 from llm_browser.flow_repository import FileFlowRepository, FlowNotFoundError
-from llm_browser.flow_passes import unindexed
-from llm_browser.flows import child_data, load_flow_document, run_flow, with_flow_path
+from llm_browser.flow_passes import child_data, unindexed
+from llm_browser.flows import load_flow_document, run_flow, with_flow_path
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     Flow,
@@ -378,6 +378,16 @@ def goto(ctx: click.Context, url: str) -> None:
     help="Re-enter the flow at this step name; skip every step before it.",
 )
 @click.option(
+    "--only",
+    "only_specs",
+    multiple=True,
+    metavar="STEP=I,J",
+    help=(
+        "Run only these passes of a repeating step, by index. Repeatable, "
+        "one --only per step; outputs keep the original indices."
+    ),
+)
+@click.option(
     "--cdp-url",
     "cdp_url",
     default=None,
@@ -424,6 +434,7 @@ def run(
     data_json: str,
     selector_map_path: str | None,
     from_step: str | None,
+    only_specs: tuple[str, ...],
     cdp_url: str | None,
     out_dir: str,
     capture_dir: str | None,
@@ -452,6 +463,7 @@ def run(
     flow, selector_map, missing = flow_with_selector_map(document, selector_map_path)
     fail_on_missing_selectors(flow_path or "<inline>", missing)
     behavior = resolve_behavior(behavior_spec)
+    only = parse_only(only_specs)
 
     def execute(target: BrowserSession) -> object:
         result = run_cli_flow(
@@ -462,6 +474,7 @@ def run(
             flow_path=file_path(flow_path),
             behavior=behavior,
             selector_map=selector_map,
+            only=only,
         )
         return write_run(
             result,
@@ -700,6 +713,22 @@ def resolve_behavior(spec: str | None) -> Behavior | None:
         raise click.ClickException(f"--behavior: {e}") from e
 
 
+def parse_only(specs: tuple[str, ...]) -> dict[str, list[int]] | None:
+    """``--only step=0,3`` into what ``run_flow(only=)`` takes."""
+    if not specs:
+        return None
+    only: dict[str, list[int]] = {}
+    for spec in specs:
+        name, _, indices = spec.partition("=")
+        try:
+            only[name] = [int(part) for part in indices.split(",") if part.strip()]
+        except ValueError as exc:
+            raise click.ClickException(f"--only {spec!r}: {exc}") from exc
+        if not name or not only[name]:
+            raise click.ClickException(f"--only {spec!r}: expected STEP=I,J")
+    return only
+
+
 def run_cli_flow(
     session: BrowserSession,
     flow: Flow,
@@ -709,6 +738,7 @@ def run_cli_flow(
     flow_path: str | None = None,
     behavior: Behavior | None = None,
     selector_map: SelectorMap | None = None,
+    only: dict[str, list[int]] | None = None,
 ) -> FlowResult:
     """``flow_path`` only fills ``retry_hint.flow_path``; the flow is already
     built."""
@@ -719,6 +749,7 @@ def run_cli_flow(
         from_step=from_step,
         behavior=behavior,
         selector_map=selector_map,
+        only=only,
     )
     if flow_path is None:
         return result
@@ -755,6 +786,17 @@ def run_attached(
         return execute(session)
     finally:
         session.close()
+
+
+def authored_subflows(document: dict[str, Any]) -> int:
+    """Counted off the document, not the flow: an `action: repeat` block is a
+    `run-flow` once loaded, but nobody wrote one."""
+    steps = document.get("steps")
+    if not isinstance(steps, list):
+        return 0
+    return sum(
+        1 for s in steps if isinstance(s, dict) and s.get("action") == "run-flow"
+    )
 
 
 @main.command()
@@ -820,13 +862,12 @@ def validate(
         )
         raise SystemExit(1) from exc
     fail_on_missing_selectors(label, missing)
-    subflow_count = sum(1 for s in flow.steps if isinstance(s, RunFlowStep))
     output(
         {
             "ok": True,
             "flow": label,
             "step_count": len(flow.steps),
-            "subflow_count": subflow_count,
+            "subflow_count": authored_subflows(document),
             "missing_selectors": missing,
         }
     )
