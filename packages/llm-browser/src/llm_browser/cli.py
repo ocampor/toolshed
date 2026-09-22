@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
+from llm_browser.cli_docs import docs
 from llm_browser.cli_explore import explore, survey
 from llm_browser.cli_output import output
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
@@ -1005,6 +1006,7 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     output({"html": html})
 
 
+main.add_command(docs)
 main.add_command(explore)
 main.add_command(survey)
 

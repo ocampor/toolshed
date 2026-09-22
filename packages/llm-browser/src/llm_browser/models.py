@@ -45,6 +45,17 @@ WaitState = Literal[
     "attached", "detached", "visible", "hidden", "enabled", "disabled", "stable"
 ]
 
+# What each state asks of the element, for the generated reference.
+WAIT_STATES: dict[WaitState, str] = {
+    "attached": "in the DOM, visible or not",
+    "detached": "gone from the DOM",
+    "visible": "in the DOM and rendered",
+    "hidden": "not rendered, whether or not it is in the DOM",
+    "enabled": "rendered and accepting input",
+    "disabled": "rendered and refusing input",
+    "stable": "its text has stopped changing for `settle` ms",
+}
+
 # Which way a text wait points. Text is read off ``innerText``, so "there" and
 # "rendered" are the same question — the other states ask about an element.
 TEXT_STATES: dict[WaitState, bool] = {
@@ -377,16 +388,8 @@ class GotoStep(BaseStep):
 
 
 class ScreenshotStep(MatchFields, BaseStep):
-    """``path`` is a CLI instruction, not a runner one.
-
-    The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
-    in ``FlowSuccess.outputs``; the library never writes a file. ``path`` is
-    where ``llm-browser run`` puts those bytes — relative to ``--out-dir`` —
-    and an embedding caller is free to ignore it.
-
-    ``selector`` crops the capture to one element; left unset, the whole
-    viewport is captured.
-    """
+    """Capture the page as PNG bytes in ``outputs``; the library never writes a
+    file, so ``path`` is an instruction to ``llm-browser run`` alone."""
 
     action: Literal["screenshot"]
     path: str | None = Field(
@@ -465,12 +468,8 @@ class ReadStep(SelectorStep):
 
 
 class ParseStep(SelectorStep):
-    """Parse rows into typed instances using a YAML schema.
-
-    Like ``read``, but every row is validated against the schema and
-    coerced to a Pydantic model. ``schema_path`` is CWD-relative or
-    absolute. ``path`` is CLI-only — see :class:`ScreenshotStep`.
-    """
+    """Read rows like ``read``, then validate each one against a YAML schema
+    and hand back typed instances rather than strings."""
 
     action: Literal["parse"]
 
@@ -507,10 +506,8 @@ class DomStep(SelectorStep):
 
 
 class DownloadStep(SelectorStep):
-    """``path`` is a CLI instruction, not a runner one — see
-    :class:`ScreenshotStep`. Left unset, ``llm-browser run`` falls back to the
-    filename the server suggested.
-    """
+    """Click ``selector`` and keep what the browser downloaded, in memory; like
+    ``screenshot``, ``path`` is an instruction to ``llm-browser run`` alone."""
 
     action: Literal["download"]
     path: str | None = Field(
