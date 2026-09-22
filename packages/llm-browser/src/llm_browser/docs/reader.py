@@ -1,9 +1,9 @@
 """Reading the docs the wheel ships, by name and by section.
 
-Two kinds live side by side: ``reference/*`` is generated from the models by
-:mod:`llm_browser.docgen`, ``guide/*`` is hand-written prose. A host serving
-these to a model wants one section at a time, so the split lives here rather
-than in every caller.
+Two kinds live side by side: ``reference/*`` is rendered from the source at
+build time by :mod:`llm_browser.docgen`, ``guide/*`` is hand-written prose. A
+host serving these to a model wants one section at a time, so the split lives
+here rather than in every caller.
 """
 
 import re
@@ -38,9 +38,12 @@ class DocEntry(BaseModel):
 
 
 def doc_names() -> list[str]:
+    """Every document present. ``reference/`` is absent in a source checkout
+    that has not been built yet, which is a state, not an error."""
     return sorted(
         f"{kind}/{entry.name.removesuffix('.md')}"
         for kind in KINDS
+        if (DOC_ROOT / kind).is_dir()
         for entry in (DOC_ROOT / kind).iterdir()
         if entry.name.endswith(".md")
     )
@@ -48,9 +51,21 @@ def doc_names() -> list[str]:
 
 def read(name: str) -> str:
     """One document's markdown. An unknown name is a ``ValueError``."""
-    if not NAME.match(name) or name not in doc_names():
-        raise ValueError(f"no such doc {name!r}; try one of {', '.join(doc_names())}")
+    if name not in doc_names():
+        raise ValueError(missing(name))
     return (DOC_ROOT / f"{name}.md").read_text(encoding="utf-8")
+
+
+def missing(name: str) -> str:
+    """Why a name did not resolve — a typo reads very differently from a
+    reference nobody has generated yet."""
+    ungenerated = NAME.match(name) and not (DOC_ROOT / "reference").is_dir()
+    if ungenerated:
+        return (
+            f"{name} is generated at build time and is not here; run "
+            "`llm-browser docs --write` in a source checkout"
+        )
+    return f"no such doc {name!r}; try one of {', '.join(doc_names())}"
 
 
 def sections(name: str) -> list[Section]:

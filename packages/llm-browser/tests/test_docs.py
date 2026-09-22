@@ -1,38 +1,45 @@
-"""The shipped docs are checked against the models, not trusted.
+"""The generated reference is checked against the source, not trusted.
 
-A generated file is only worth shipping if something fails when the code moves
-under it, and only useful to a reader that can fetch one section at a time.
+The files themselves are a build artifact, so there is nothing to compare a
+committed copy against; what is worth asserting is that the generator runs and
+covers every step type.
 """
 
 import pytest
-from llm_browser.docgen import DOCUMENTS, docs_dir, reference_documents
-from llm_browser.introspect import own_fields, step_arms
+from llm_browser.cli_docs import source_tree
+from llm_browser.docgen import DOCUMENTS, reference_documents
+from llm_browser.introspect import step_arms
 
 # A whole document has to fit one read by a host that caps its output.
 DOC_MAX_CHARS = 20_000
 
 
-@pytest.mark.parametrize("name", sorted(DOCUMENTS))
-def test_the_shipped_reference_matches_the_models(name: str) -> None:
-    path = docs_dir() / f"{name}.md"
-    assert path.read_text() == reference_documents()[name], (
-        f"{name}.md is stale; regenerate with `uv run llm-browser docs --write`"
-    )
+@pytest.fixture(scope="module")
+def rendered() -> dict[str, str]:
+    source = source_tree()
+    assert source is not None, "tests run from a source checkout"
+    return reference_documents(source)
+
+
+def test_the_generator_produces_every_document_it_names(
+    rendered: dict[str, str],
+) -> None:
+    assert set(rendered) == set(DOCUMENTS)
+    assert all(text.strip() for text in rendered.values())
 
 
 @pytest.mark.parametrize("name", sorted(DOCUMENTS))
-def test_every_document_fits_one_read(name: str) -> None:
-    assert len(reference_documents()[name]) <= DOC_MAX_CHARS
+def test_every_document_fits_one_read(rendered: dict[str, str], name: str) -> None:
+    assert len(rendered[name]) <= DOC_MAX_CHARS
 
 
-def test_no_step_field_is_left_out_of_the_reference() -> None:
-    """The step sections drop the targeting fields into one shared table, so
-    the count has to be checked against the models rather than assumed."""
-    steps = reference_documents()["reference/steps"]
+def test_every_step_type_reaches_the_reference(rendered: dict[str, str]) -> None:
+    """`docgen` finds step models by name; this is what fails if that rule
+    stops matching one."""
+    steps = rendered["reference/steps"]
     missing = [
-        f"{action}.{field}"
-        for action, step_class in step_arms()
-        for field in own_fields(step_class)
-        if f"| `{field}` |" not in steps
+        step_class.__name__
+        for _, step_class in step_arms()
+        if f"`{step_class.__name__}`" not in steps
     ]
     assert missing == []

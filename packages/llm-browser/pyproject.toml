@@ -28,12 +28,14 @@ package = true
 yaml-engine = { path = "../yaml-engine" }
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "griffe2md>=1.5", "griffe-pydantic>=1.1"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
     "cssselect>=1.5.0",
+    "griffe-pydantic>=1.1",
+    "griffe2md>=1.5",
     "lxml-stubs>=0.5.1",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
@@ -43,6 +45,11 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_browser"]
+# Written by the build hook and git-ignored, so it has to be named back in.
+artifacts = ["/src/llm_browser/docs/reference/*.md"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [tool.mypy]
 strict = true
@@ -55,6 +62,17 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "yaml_engine.*"
+ignore_missing_imports = true
+
+# Build-time only: griffe2md ships no py.typed, and the build hook runs under
+# hatchling's environment, where hatchling is present and this package is not.
+[[tool.mypy.overrides]]
+module = "griffe2md.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "hatch_build"
+ignore_errors = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
