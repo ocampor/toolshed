@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.1 — 2026-09-22
+
+Tracks `llm-browser` 0.22.0.
+
+### Changed
+
+- `coverage.py` imports `step_arms`, `own_fields` and `session_methods` from
+  `llm_browser.introspect` instead of declaring them, so the library and this
+  suite read the models the same way. Importers should take them from
+  `llm_browser.introspect`.
+
 ## 0.12.0 — 2026-09-22
 
 Tracks `llm-browser` 0.20.0.
