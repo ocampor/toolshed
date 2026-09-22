@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.1 — 2026-09-22
+
+### Changed
+
+- `match on a pick step` is folded back into `match per step`: the `pick` step
+  states its `expect:`/`pick:` alongside the other nine, and
+  `flows/match-pick-step.yaml` is gone.
+- `docs/known-gaps.md` drops the nodriver row for that scenario — only
+  patchright is run.
+
 ## 0.12.0 — 2026-09-22
 
 Tracks `llm-browser` 0.20.0.

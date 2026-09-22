@@ -29,6 +29,7 @@ MATCH_STEPS = (
     "dom",
     "fill",
     "parse",
+    "pick",
     "press",
     "read",
     "select",
@@ -57,19 +58,12 @@ def every_step_acts_on_the_match_its_pick_names(ctx: Context) -> None:
     assert ctx.js("document.querySelectorAll('.flag')[2].checked") is True
     assert ctx.js("document.querySelectorAll('.flag')[0].checked") is False
     assert ctx.value(".row:nth-child(1) .choice") == "two"
+    assert ctx.text("#picked") == "Gamma"
 
     assert texts(outputs, "read") == ["Gamma"]
     parsed: Any = outputs["parse"]
     assert [row["text"] for row in parsed] == ["Alpha"]
     assert "Beta" in str(outputs["dom"]), outputs["dom"]
-
-
-def a_pick_step_clicks_the_match_its_index_names(ctx: Context) -> None:
-    """``pick`` clicks by text among several matches, so narrowing it to one
-    first is what ``pick: 2`` has to do — the flow names Beta and index 2, and
-    the index is meant to win."""
-    expect_success(ctx, PAGE, "match-pick-step")
-    assert ctx.text("#picked") == "Gamma"
 
 
 def a_count_the_page_cannot_meet_fails_with_what_it_found(ctx: Context) -> None:
@@ -122,17 +116,6 @@ SCENARIOS = [
             for action in MATCH_STEPS
             for rule in ("expect", "pick")
         ),
-    ),
-    Scenario(
-        "match on a pick step",
-        Section.STEPS,
-        a_pick_step_clicks_the_match_its_index_names,
-        covers=frozenset({"field:pick.expect", "field:pick.pick"}),
-        known_gaps={
-            "nodriver": "NodriverDriver.nth keeps the whole selector, so the "
-            "narrowed locator still counts three and `pick` falls back to "
-            "matching `value:` — it clicks Beta, not the third option: see #59"
-        },
     ),
     Scenario(
         "match count failure",

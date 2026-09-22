@@ -69,8 +69,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:parse.selector` | parse typed rows |
 | `field:parse.schema_path` | parse typed rows |
 | `field:parse.path` | parse decimal and date rows |
-| `field:pick.expect` | match on a pick step |
-| `field:pick.pick` | match on a pick step |
+| `field:pick.expect` | match per step |
+| `field:pick.pick` | match per step |
 | `field:pick.selector` | pick by text |
 | `field:pick.value` | pick by text |
 | `field:press.expect` | match per step |

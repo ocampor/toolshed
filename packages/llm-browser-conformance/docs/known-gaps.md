@@ -19,7 +19,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
 | dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
-| match on a pick step | nodriver | NodriverDriver.nth keeps the whole selector, so the narrowed locator still counts three and `pick` falls back to matching `value:` — it clicks Beta, not the third option: see #59 |
 | popup to inline pdf | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | blank form post | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | popup renders then fetches | patchright | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |

@@ -1,9 +1,0 @@
-# `value:` is not consulted once `pick:` has left one match, so naming Beta
-# while picking index 2 is what tells the two apart.
-steps:
-  - name: pick
-    action: pick
-    selector: ".opt"
-    expect: 3
-    pick: 2
-    value: Beta
