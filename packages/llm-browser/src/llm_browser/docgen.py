@@ -295,22 +295,15 @@ def signature_of(name: str) -> str:
 
 
 def session_document() -> str:
-    rows = [
-        [
-            f"`{signature_of(name)}`",
-            first_line(docstring(getattr(BrowserSession, name))),
-        ]
+    sections = [
+        f"## `{signature_of(name)}`\n\n{docstring(getattr(BrowserSession, name))}\n"
         for name in session_methods()
     ]
     return (
         "# BrowserSession\n\n"
-        "The Python surface a flow step is built on; an embedding caller can "
-        "drive the same methods directly.\n\n" + table(["member", "what it does"], rows)
+        "The Python surface every flow step is built on; an embedding caller "
+        "drives the same methods directly.\n\n" + "\n".join(sections)
     )
-
-
-def first_line(text: str) -> str:
-    return text.split("\n", 1)[0].replace("|", r"\|")
 
 
 DOCUMENTS = {

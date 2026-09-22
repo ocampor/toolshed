@@ -21,14 +21,14 @@ detection). Those are the driver's job:
   (DataDome, PerimeterX).
 - For the hardest targets (Cloudflare JSD on high-traffic sites, Akamai Bot Manager) a launched
   automation context will often lose no matter how much stealth is applied. The supported path
-  is **attach mode** (`docs/ATTACH.md` in the llm-browser package): launch Chromium yourself with a warmed
+  is **attach mode** (`attach.md`): launch Chromium yourself with a warmed
   profile and connect to it over CDP.
 
 Generic bot-test pages (bot.sannysoft.com, arh.antoinevastel.com) don't predict real-world
 outcomes against specific vendors — always probe the actual target.
 
 The 2026 measurements behind that advice — and the finding that attach mode voids patchright's
-patches — are in `docs/RESEARCH.md` in the llm-browser package.
+patches — are in `docs/RESEARCH.md` in the llm-browser repo.
 
 The first patchright session start in a given process rewrites the driver bundle inside
 `site-packages` (see `drivers/patchright_shim.py`), so `site-packages` must be writable at

@@ -1,8 +1,11 @@
 """The models read off themselves — the generated reference is only as
 complete as this is."""
 
+import inspect
+
 from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.models import BaseStep, ClickStep
+from llm_browser.session import BrowserSession
 
 STEP_ARM_COUNT = 18
 
@@ -49,3 +52,14 @@ def test_every_step_type_explains_itself() -> None:
     assert [
         action for action, step_class in step_arms() if not step_class.__doc__
     ] == []
+
+
+def test_every_session_member_explains_itself() -> None:
+    """`reference/session.md` is those docstrings; a missing one is a blank
+    section in the shipped docs."""
+    undocumented = [
+        name
+        for name in session_methods()
+        if not inspect.getdoc(getattr(BrowserSession, name))
+    ]
+    assert undocumented == []

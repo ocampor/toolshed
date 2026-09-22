@@ -6,10 +6,10 @@ What `wait_for` (and any step's own wait) can wait for. The last column says whe
 
 | state | element is | valid for `text:` |
 | --- | --- | --- |
-| `attached` | in the DOM, visible or not | yes |
-| `detached` | gone from the DOM | yes |
-| `visible` | in the DOM and rendered | yes |
+| `attached` | in the DOM, rendered or not | yes |
+| `detached` | gone from the DOM — under a fallback selector, judged against whichever branch matched this tick | yes |
+| `visible` | rendered | yes |
 | `hidden` | not rendered, whether or not it is in the DOM | yes |
-| `enabled` | rendered and accepting input | no |
-| `disabled` | rendered and refusing input | no |
-| `stable` | its text has stopped changing for `settle` ms | no |
+| `enabled` | accepting input: not `disabled`, no `aria-disabled="true"`. The Playwright drivers ask the browser, so an ancestor's `<fieldset disabled>` counts; nodriver reads the attribute alone and misses the inherited case. A control locked some other way — a class, `pointer-events`, a listener that returns early — reads as enabled everywhere | no |
+| `disabled` | locked; the inverse, same rule. One that is not there yet is neither | no |
+| `stable` | its text unchanged for `settle` ms; one that is not there yet never settles | no |

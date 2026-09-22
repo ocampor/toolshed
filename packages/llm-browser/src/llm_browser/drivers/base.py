@@ -302,7 +302,7 @@ class Driver(ABC):
         ``timeout_ms`` bounds the call itself, for a script that waits in the
         page: ``None`` leaves the backend's own default, which is what every
         caller but the batch explore wants. A backend with no such knob says
-        so in ``docs/DRIVERS.md`` rather than raising.
+        so in ``docs/guide/drivers.md`` rather than raising.
         """
 
     @abstractmethod

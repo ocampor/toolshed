@@ -411,6 +411,7 @@ class BrowserSession:
         )
 
     def current_url(self) -> str:
+        """The page's URL right now, after any redirect it followed."""
         return str(self.driver.page_url(self.get_page()))
 
     def screenshot_bytes(self, selector: Selector | None = None) -> bytes:
@@ -463,6 +464,9 @@ class BrowserSession:
         *,
         allowed_schemes: Collection[str] = DEFAULT_URL_SCHEMES,
     ) -> None:
+        """Navigate. ``http``/``https`` only unless a caller opts this one call
+        into another scheme, so a flow cannot be talked into reading ``file:``.
+        """
         target = checked_url(url, allowed_schemes)
         self.driver.goto(self.get_page(), target, wait_until)
 
@@ -675,6 +679,8 @@ class BrowserSession:
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """Set a field's value: typed character by character under
+        ``Behavior.fill_as_type``, otherwise one write and no key events."""
         session_input.fill(
             self,
             selector,
@@ -694,6 +700,8 @@ class BrowserSession:
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """Type into a field key by key. An explicit ``delay_ms`` is the
+        caller's own cadence and wins over the behaviour's per-key jitter."""
         session_input.type(
             self,
             selector,
@@ -712,6 +720,8 @@ class BrowserSession:
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """Press ``key`` on the element; ``selector=None`` presses on whatever
+        holds focus."""
         session_input.press(self, selector, key, behavior=behavior, timeout=timeout)
 
     def select_option(
@@ -722,6 +732,7 @@ class BrowserSession:
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """Choose an option on a native ``<select>``."""
         session_input.select_option(
             self, selector, value, behavior=behavior, timeout=timeout
         )
@@ -734,6 +745,7 @@ class BrowserSession:
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """Drive a checkbox or radio to ``checked``, whatever state it is in."""
         session_input.set_checked(
             self, selector, checked, behavior=behavior, timeout=timeout
         )
@@ -804,6 +816,8 @@ class BrowserSession:
         intent: Intent = Intent.READ,
         sample_chars: int = EXPLORE_SAMPLE_CHARS,
     ) -> ExploreResult:
+        """Count and sample what a selector matches, and read the first one as
+        a click would find it — an answer about the page, never a click."""
         return explore.explore(
             self,
             selector,
@@ -821,17 +835,25 @@ class BrowserSession:
         sample_chars: int = EXPLORE_SAMPLE_CHARS,
         timeout_ms: int = DEFAULT_WAIT_TIMEOUT_MS,
     ) -> list[ExploreResult]:
+        """The same answer for a list of targets, from one page call and one
+        wait, in the order asked."""
         return explore.explore_many(self, targets, sample, sample_chars, timeout_ms)
 
     def survey(self, max_items: int = SURVEY_MAX_ITEMS) -> Survey:
+        """What the page is made of before any selector is written: landmarks,
+        link shapes, repeats and hydration. Never clicks, never scrolls."""
         return survey_rules.survey(self, max_items)
 
     def first_match(self, locator: Any) -> ExploreRead:
+        """Read one already-resolved locator the way ``explore`` reads its
+        first match."""
         return explore.first_match(self, locator)
 
     def verified_candidates(
         self, proposals: list[str], accepted: Collection[int]
     ) -> list[str]:
+        """The proposed selectors the page actually matches, in the order
+        proposed — what ``explore`` offers a caller to choose from."""
         return explore.verified_candidates(self, proposals, accepted)
 
     def count_of(self, selector: str) -> int:
@@ -852,6 +874,8 @@ class BrowserSession:
         max_depth: int = 0,
         level: SanitizeLevel = SanitizeLevel.LOW,
     ) -> str:
+        """Cleaned HTML of the matched element; several matches take the first
+        in document order."""
         # Reads tolerate several matches; a comma list yields document order.
         from llm_browser.html import sanitize_html_fragment
 

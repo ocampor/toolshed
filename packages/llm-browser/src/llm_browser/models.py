@@ -47,13 +47,25 @@ WaitState = Literal[
 
 # What each state asks of the element, for the generated reference.
 WAIT_STATES: dict[WaitState, str] = {
-    "attached": "in the DOM, visible or not",
-    "detached": "gone from the DOM",
-    "visible": "in the DOM and rendered",
+    "attached": "in the DOM, rendered or not",
+    "detached": (
+        "gone from the DOM — under a fallback selector, judged against "
+        "whichever branch matched this tick"
+    ),
+    "visible": "rendered",
     "hidden": "not rendered, whether or not it is in the DOM",
-    "enabled": "rendered and accepting input",
-    "disabled": "rendered and refusing input",
-    "stable": "its text has stopped changing for `settle` ms",
+    "enabled": (
+        'accepting input: not `disabled`, no `aria-disabled="true"`. The '
+        "Playwright drivers ask the browser, so an ancestor's `<fieldset "
+        "disabled>` counts; nodriver reads the attribute alone and misses "
+        "the inherited case. A control locked some other way — a class, "
+        "`pointer-events`, a listener that returns early — reads as enabled "
+        "everywhere"
+    ),
+    "disabled": "locked; the inverse, same rule. One that is not there yet is neither",
+    "stable": (
+        "its text unchanged for `settle` ms; one that is not there yet never settles"
+    ),
 }
 
 # Which way a text wait points. Text is read off ``innerText``, so "there" and

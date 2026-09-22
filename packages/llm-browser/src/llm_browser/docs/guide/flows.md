@@ -24,16 +24,7 @@ steps:
 
 ### Element actions (require `selector`)
 
-| Action | Required | Optional | Notes |
-|---|---|---|---|
-| `click` | — | `dispatch` (bool, default false), `humanize` (bool) | `dispatch: true` fires an untrusted DOM `click`, for overlays real input can't reach |
-| `fill` | — | `value`, `humanize` (bool) | Clears the field, then sets `value` in one write — or types it character by character when the session's `Behavior.fill_as_type` is on, which is the default under a behavior YAML |
-| `type` | — | `value`, `delay` (ms, or `[min, max]` for a per-key jitter, default 0), `humanize` (bool) | Types character by character |
-| `select` | — | `value` | Picks a `<select>` option |
-| `check` | — | `checked` (bool, default true) | Sets checkbox state |
-| `pick` | — | `value` | Clicks the list item matching this text |
-| `press` | `key` | `selector` (omit to press the focused element) | Keyboard press |
-| `download` | — | `path` | Triggers the download; the file's bytes come back in `outputs` under the step name. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir`, using the filename the server suggested |
+Every action, its own fields and their defaults: `reference/steps`.
 
 A plain `click` whose error names an interception (`intercepts pointer events`)
 is retried once with the target scrolled to the middle of the viewport, which is
@@ -77,25 +68,18 @@ cadence.
 
 ### Page actions (no selector)
 
-| Action | Required | Optional | Notes |
-|---|---|---|---|
-| `goto` | `url` | `wait_until` (default `domcontentloaded`) | Since 0.8.0, `http(s)://` only; other schemes fail with `url must be http or https` — opt out via `session.goto(url, allowed_schemes=(...))` from Python |
-| `screenshot` | — | `path`, `selector` | The PNG bytes come back in `outputs` under the step name. `selector` crops the capture to that one element; without it the viewport is captured. `path` names where `llm-browser run` writes it, and is ignored by the runner. With no `path`, `run` still writes it under `--out-dir` as `<step name>.png` |
+`goto` takes `http(s)://` only; other schemes fail with `url must be http
+or https` — opt out per call via `session.goto(url, allowed_schemes=(...))`
+from Python. A `screenshot`, `download`, `read`, `parse` or `dom` step
+returns its payload in `outputs` under the step name; `path:` only tells
+`llm-browser run` where to write a copy, and the runner ignores it.
 
 ### Waiting
 
 One step covers every kind of waiting: element presence, text stability, and
 a page state only its rendered text names.
 
-| State | True when | Notes |
-|---|---|---|
-| `attached` (default) | element is in the DOM | |
-| `detached` | element is gone from the DOM | with a fallback selector, judged against whichever branch matched this tick |
-| `visible` | element is rendered | |
-| `hidden` | element is not rendered | |
-| `enabled` | element is in the DOM and accepts input | no `aria-disabled="true"` and not disabled — the Playwright drivers ask the browser, so an ancestor's `disabled` (`<fieldset disabled>`) counts; nodriver reads the `disabled` attribute alone and misses the inherited case. A control locked some other way (a class, `pointer-events`, a listener that returns early) reads as enabled everywhere |
-| `disabled` | element is in the DOM and is locked | the inverse, same rule. An element that is not there yet is neither |
-| `stable` | text hasn't changed for `settle` ms | an element not there yet never settles |
+The states and what each one asks of the element: `reference/waits`.
 
 `wait_for` takes a `selector`, a `text:`, or both — with neither it is rejected at
 flow-load time. `text:` matches the whitespace-normalised `innerText` of the page
@@ -164,8 +148,8 @@ Every result comes back in `outputs`. `path:` is an instruction to `llm-browser 
 | Action | Required | Optional | Notes |
 |---|---|---|---|
 | `read` | — | `extract` (see [below](#extract-spec-for-read-action)), `exclude`, `path` | Extract structured data as dicts. No `extract:`, `extract: {}`, or `extract: null` all read each match's own text as `text` — `read` on `body` gives `[{ text: … }]` |
-| `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `docs/API.md` in the llm-browser package) |
-| `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page)). Several matches → the first in document order. |
+| `parse` | `schema_path` | `path` | Like `read`, but rows come back as instances of the YAML-declared schema (see `api.md`) |
+| `dom` | — | `max_depth` (default 0 = no limit), `level` (default `low`), `path` | Cleaned HTML snippet. `selector: body` returns the `<body>` element itself. `level` is the sanitization the CLI's `dom --level` and `session.dom(level=)` take: `low`, `medium`, `high`, `xhigh` (see [patterns.md → Reading the page](patterns.md#reading-the-page)). Several matches → the first in document order. |
 
 ### Composition
 
@@ -429,7 +413,7 @@ The session's own `Behavior` is left as it was — a run carries its behaviour, 
 | `capture_level` | `BrowserSession(capture_level=)`, `llm-browser run --capture-level` | `high` | how hard the DOM snapshot is sanitized: `low`, `medium`, `high`, `xhigh` |
 | `--capture-dir` | `llm-browser run` | the session dir | where the CLI writes `screenshot.png` and `dom.html` |
 
-`high` drops every `src` and `href`, which is what you want for reading a page back. Use `medium` when the link is the point — where the flow would have gone next — and `xhigh` when you want the structure without the wrappers. The levels mean exactly what they mean for a `dom` step; see [FLOW_PATTERNS.md → Reading the page](FLOW_PATTERNS.md#reading-the-page).
+`high` drops every `src` and `href`, which is what you want for reading a page back. Use `medium` when the link is the point — where the flow would have gone next — and `xhigh` when you want the structure without the wrappers. The levels mean exactly what they mean for a `dom` step; see [patterns.md → Reading the page](patterns.md#reading-the-page).
 
 ## Selectors
 
@@ -466,27 +450,14 @@ that pass's bindings — and on a `run-flow` step before the child is loaded.
 
 ## Step options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `name` | string | Step identifier (for logging and error messages) |
-| `action` | string | One of the actions above |
-| `optional` | bool | Swallow `TimeoutError`/`ValueError` from this step (and every child step for `run-flow`) and continue |
-| `selector` | string or dict | Target element (required for element/data actions; on `wait_for` with `text:`, the scope to search) |
-| `when` | list | Conditions to evaluate before executing |
-| `wait_after` | int (ms) | Sleep after step completes |
-| `timeout` | int (ms, default 10000; `wait_for` defaults to 3000) | How long to wait for this step's element |
-| `expect` / `pick` | count / choice | How many elements the selector should match, and which one to use ([below](#match-count-expect-and-pick)) |
-| `repeat` | `{ over \| over_selector, as, on_error }` | Run the step once per item of a list in flow data, or once per matched element ([above](#repetition)) |
-| `in` | string | Scope this step's selector to the enclosing repeat's current element ([above](#addressing-one-element-in)) |
-| `save_as` | string or `{ name, field, where }` | `read` only: keep the rows, or one scalar, as flow data ([above](#saving-a-read-save_as)) |
-| `eval` | string | JavaScript to evaluate on page (independent of action) |
+Every option, its type and its default: `reference/steps` — the shared
+options at the end of that document, the per-action fields in each
+section. What they *mean together* is the rest of this page.
 
 ### Match count: `expect` and `pick`
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `expect` | `1`, a count, or `many` | `1`; `many` on `read`, `parse`, `dom`, `pick` | How many elements the selector should match |
-| `pick` | `first`, `last`, or an index | none, so a mismatch fails | Which match the step uses when more are found |
+`expect` counts the matches and `pick` chooses among them — the types and
+defaults are in `reference/steps`. What each combination does:
 
 | `expect` | `pick` | Page has 1 | Page has 7 | Page has 0 |
 |----------|--------|------------|------------|------------|
@@ -554,13 +525,10 @@ split the value across several steps.
     link: "td.desc a@href"          # compact form
 ```
 
-`attribute` is read as a DOM property when it is one of `textContent`
-(default), `innerText`, `value`, `tagName`, `childElementCount`, `outerHTML`,
-`innerHTML`; every other name is read with `getAttribute` (`href`, `id`,
-`data-*`, …). Either way the value comes back as a string, or `null` when the
-element or the value is missing. The compact form is
-`"child selector@attribute"` — `"td.name"`, `"@href"`, `"td.name@href"`, and
-`""` for the row's own text.
+The readable properties, the compact `child selector@attribute` form and
+the default field name are in `reference/extract`. Either way the value
+comes back as a string, or `null` when the element or the value is
+missing.
 
 Leaving `extract` out entirely, `extract: {}`, and `extract: null` are all
 that last form under the name `text`: one `{ text: … }` per matched element.
@@ -578,7 +546,7 @@ The rows land in `FlowSuccess.outputs` under the step name; `path: <file>` on a 
 
 ## Patterns
 
-Hard widgets — autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating ids — have worked, JavaScript-free YAML in [FLOW_PATTERNS.md](FLOW_PATTERNS.md).
+Hard widgets — autocomplete, framework-bound inputs, hidden checkboxes, modal dismissal, rotating ids — have worked, JavaScript-free YAML in [patterns.md](patterns.md).
 
 **Autocomplete** — `type` to trigger the dropdown, `pick` to select from it:
 
@@ -604,4 +572,4 @@ Hard widgets — autocomplete, framework-bound inputs, hidden checkboxes, modal 
 
 ## Drivers
 
-Every action reaches the browser through a `Driver` — the ABC in `llm_browser/drivers/base.py`, whose class docstring is the contract a backend implements. See "Writing a driver" in the llm-browser README, and [DRIVERS.md](DRIVERS.md) for stealth details.
+Every action reaches the browser through a `Driver` — the ABC in `llm_browser/drivers/base.py`, whose class docstring is the contract a backend implements. See "Writing a driver" in the llm-browser README, and [drivers.md](drivers.md) for stealth details.

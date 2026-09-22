@@ -727,7 +727,7 @@ class NodriverDriver(Driver):
 
         ``timeout_ms`` is accepted and ignored: CDP `Runtime.callFunctionOn`
         has no deadline of its own, so an awaited script ends when the page
-        ends it — see ``docs/DRIVERS.md``.
+        ends it — see ``docs/guide/drivers.md``.
         """
         if isinstance(target, NodriverLocator):
             declaration = (

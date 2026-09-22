@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.22.0 — 2026-09-22
+
+### Added
+
+- `llm_browser.docs`: `index()`, `read(name)` and `sections(name)` over the docs
+  the wheel now ships, named `reference/<x>` and `guide/<x>`. `sections` splits at
+  every `#`–`###` heading and keeps fenced code inside its section.
+- `llm-browser docs [--write | --check]`: rewrite the generated reference from
+  the models, or fail when a shipped file no longer matches them.
+- `llm_browser.docgen`: `reference_documents()` builds `reference/{steps,
+  selectors,waits,behavior,results,extract,session}.md` from the models, each
+  capped at 20,000 characters so a host can serve one whole.
+- `llm_browser.introspect`: `step_arms()`, `own_fields()` and `session_methods()`,
+  moved out of `llm-browser-conformance` and shared with it.
+- `models.WAIT_STATES`: what each `wait_for` state asks of the element.
+- `Field(description=)` on every step field, every `BaseStep` option and every
+  `Behavior` knob; a docstring on every step type and every `BrowserSession`
+  member. Tests fail when a new one ships without either.
+
+### Changed
+
+- The guides moved into the wheel: `docs/{FLOWS,FLOW_PATTERNS,DRIVERS,ATTACH,
+  API}.md` are now `src/llm_browser/docs/guide/{flows,patterns,drivers,attach,
+  api}.md`. `README.md` and `docs/RESEARCH.md` stay where they were.
+- The guides lost the tables that restated the models — steps, wait states, step
+  options, `expect`/`pick` types, extract properties, session methods — and point
+  at `reference/` instead. The prose around them is unchanged.
+
 ## 0.20.0 — 2026-09-19
 
 ### Breaking
