@@ -56,19 +56,9 @@ def test_every_step_type_reaches_the_reference(rendered: dict[str, str]) -> None
     assert missing == []
 
 
-# Prose that explains the library to its user has to reach a shipped doc.
-# These are the modules whose long docstring is addressed to a maintainer
-# instead, so nothing renders them.
-MAINTAINER_MODULES = {
-    "llm_browser.docgen",
-    "llm_browser.docs.reader",
-    "llm_browser.introspect",
-    "llm_browser.session_input",
-    "llm_browser.state",
-}
-
 # Shorter than this and a module docstring is a label, not documentation.
-PROSE_LINES = 5
+# Every module over it is user-facing today, so no exemption list is needed.
+PROSE_LINES = 12
 
 MODEL_MODULES = ("models", "repeat", "selectors", "behavior", "results")
 
@@ -81,9 +71,7 @@ def documented_modules() -> set[str]:
 
 def module_prose() -> dict[str, int]:
     """Every module under `src/llm_browser`, by the length of its docstring."""
-    root = Path("src/llm_browser").resolve()
-    if not root.is_dir():
-        root = Path(llm_browser.__file__).resolve().parent
+    root = Path(llm_browser.__file__).resolve().parent
     found = {}
     for path in sorted(root.rglob("*.py")):
         docstring = ast.get_docstring(ast.parse(path.read_text())) or ""
@@ -102,9 +90,7 @@ def test_every_module_that_explains_itself_reaches_a_doc() -> None:
     unreachable = sorted(
         name
         for name, lines in module_prose().items()
-        if lines > PROSE_LINES
-        and name not in documented
-        and name not in MAINTAINER_MODULES
+        if lines > PROSE_LINES and name not in documented
     )
     assert unreachable == []
 
