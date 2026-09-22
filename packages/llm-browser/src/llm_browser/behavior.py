@@ -7,6 +7,16 @@ Playwright-family drivers invoke `humanized_click` / `humanized_type`
 directly; non-Playwright drivers (e.g. nodriver) use their own native
 humanization and honor only the timing fields.
 
+A step's ``humanize:`` switches this on or off for that step alone: ``true``
+takes the humanized path even when the session runs with humanization off,
+``false`` takes the plain one even when it is on, and leaving it out follows
+the session. It only switches on what is still off — a knob the session tuned
+is left as it was. On ``fill`` it switches ``fill_as_type``. A driver's own
+opt-out is applied last, to whatever the step resolved to: camoufox leaves the
+mouse path to its native engine, so nothing stacks ours on top unless the
+session's behavior YAML asked for it. ``min_gap_ms`` is a rate limit rather
+than a humanization knob and survives either way.
+
 Nothing here remembers anything between calls: `Behavior` is frozen config,
 every sample comes from the unseeded module `random`, and each mouse path
 starts fresh near its target. State that survives an action is state a
@@ -60,8 +70,16 @@ class Jitter(BaseModel):
 
 
 class Behavior(BaseModel):
-    """Timing knobs for one run. Every field is a ``Jitter`` range or a
-    probability because a constant is the thing a behavioral score reads."""
+    """Timing and pointer knobs for one run.
+
+    Where a timing knob is a ``Jitter`` rather than a number, it is one
+    because a constant cadence is itself a fingerprint; the booleans switch a
+    whole tactic on or off.
+
+    Three presets: ``human()`` and ``off()`` are what ``--behavior`` takes and
+    what a run reports as its ``BehaviorProfile``; ``pace()`` is reachable from
+    Python only, and a run under it reports ``custom``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -131,10 +149,14 @@ class Behavior(BaseModel):
 
     @classmethod
     def off(cls) -> Self:
+        """Every knob at zero: the library adds no delay and no mouse path."""
         return BEHAVIOR_OFF  # type: ignore[return-value]
 
     @classmethod
     def pace(cls) -> Self:
+        """Human timing without the mouse path — for a driver with its own
+        pointer engine. Python-only: ``--behavior`` does not take the name, and
+        a run under it reports ``custom``."""
         return cls(mouse_move=False, focus_drift=False)
 
     @classmethod

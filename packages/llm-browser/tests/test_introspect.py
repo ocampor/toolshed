@@ -2,9 +2,12 @@
 complete as this is."""
 
 import inspect
+import typing
 
+from llm_browser.behavior import BehaviorProfile
+from llm_browser.cli import BEHAVIOR_PRESETS
 from llm_browser.introspect import own_fields, session_methods, step_arms
-from llm_browser.models import BaseStep, ClickStep
+from llm_browser.models import TEXT_STATES, WAIT_STATES, BaseStep, ClickStep, WaitState
 from llm_browser.session import BrowserSession
 
 STEP_ARM_COUNT = 18
@@ -63,3 +66,16 @@ def test_every_session_member_explains_itself() -> None:
         if not inspect.getdoc(getattr(BrowserSession, name))
     ]
     assert undocumented == []
+
+
+def test_wait_states_are_bound_to_the_literal() -> None:
+    """`WAIT_STATES` is the prose for `WaitState`; a state added to one and
+    not the other would go undocumented in silence."""
+    states = set(typing.get_args(WaitState))
+    assert set(WAIT_STATES) == states
+    assert set(TEXT_STATES) <= states
+
+
+def test_behaviour_presets_are_bound_to_the_profile() -> None:
+    """A preset `--behavior` accepts is a profile a run can report."""
+    assert set(BEHAVIOR_PRESETS) | {"custom"} == set(typing.get_args(BehaviorProfile))
