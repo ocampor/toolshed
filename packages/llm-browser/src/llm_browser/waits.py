@@ -11,7 +11,7 @@ this loop's deadline.
 """
 
 import time
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from llm_browser.behavior import Jitter
 from llm_browser.constants import (
@@ -22,8 +22,15 @@ from llm_browser.constants import (
 )
 from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState, check_text_state
-from llm_browser.scripts import text_match_js
-from llm_browser.selectors import Selector, describe_selector, resolve_selector
+from llm_browser.scripts import field_value_js, text_match_js
+from llm_browser.selectors import (
+    SINGLE,
+    MatchRule,
+    Selector,
+    describe_selector,
+    match_elements,
+    resolve_selector,
+)
 
 StatePredicate = Callable[[Driver, Any], bool]
 
@@ -190,12 +197,17 @@ def matches_now(driver: Driver, element: Any, script: str) -> bool:
     has no text this tick, which is the answer the next tick re-asks. Anything
     else is the script's own bug, and says so rather than polling out.
     """
+    return bool(evaluate_now(driver, element, script))
+
+
+def evaluate_now(driver: Driver, element: Any, script: str) -> Any:
+    """``None`` when the bounded read timed out on a node that went away."""
     try:
-        return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
+        return driver.evaluate(element, script, READ_TIMEOUT_MS)
     except Exception as exc:
         # patchright's TimeoutError is not playwright's, and neither is the builtin.
         if type(exc).__name__ == "TimeoutError":
-            return False
+            return None
         raise
 
 
@@ -221,3 +233,71 @@ def poll_for_text(
         timeout_ms,
         interval_ms,
     )
+
+
+class FieldRead(NamedTuple):
+    text: str
+    secret: bool
+
+    def shown(self) -> str:
+        """The text for a message; a password field shows only its length."""
+        return f"{len(self.text)} characters" if self.secret else repr(self.text)
+
+
+def read_field(driver: Driver, element: Any) -> FieldRead:
+    """``ValueError`` when the bounded read timed out on a node that went away."""
+    read = evaluate_now(driver, element, field_value_js())
+    if read is None:
+        raise ValueError("the field could not be read back: it went away")
+    return FieldRead(text=str(read["text"]), secret=bool(read["secret"]))
+
+
+def poll_for_value(
+    driver: Driver,
+    page: Any,
+    selector: Selector,
+    value: str,
+    *,
+    exact: bool = False,
+    rule: MatchRule = SINGLE,
+    timeout_ms: int,
+    interval_ms: int,
+) -> None:
+    """Block until the field holds ``value`` (a substring unless ``exact``), or
+    raise ``TimeoutError`` naming what it held last."""
+    held: FieldRead | None = None
+
+    def reached() -> bool:
+        nonlocal held
+        held = value_now(driver, page, selector, rule)
+        if held is None:
+            return False
+        return held.text == value if exact else value in held.text
+
+    try:
+        poll_until(reached, describe_selector(selector), timeout_ms, interval_ms)
+    except TimeoutError:
+        raise TimeoutError(value_timeout(selector, value, held, timeout_ms)) from None
+
+
+def value_timeout(
+    selector: Selector, value: str, held: FieldRead | None, timeout_ms: int
+) -> str:
+    """Names what the field held; for a password field, lengths only."""
+    wanted = f"{len(value)} characters" if held and held.secret else repr(value)
+    last = held.shown() if held else "nothing: no element matched"
+    return (
+        f"{describe_selector(selector)} did not hold {wanted} "
+        f"within {timeout_ms}ms; it held {last}"
+    )
+
+
+def value_now(
+    driver: Driver, page: Any, selector: Selector, rule: MatchRule = SINGLE
+) -> FieldRead | None:
+    """``None`` while nothing matches; a count the step's rule rules out raises,
+    the way every other selector step reads its match."""
+    locator = resolve_selector(driver, page, selector)
+    if driver.count(locator) == 0:
+        return None
+    return read_field(driver, match_elements(driver, locator, selector, rule).locator)

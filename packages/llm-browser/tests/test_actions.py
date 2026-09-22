@@ -82,7 +82,11 @@ def test_fill(input_session: MagicMock) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(input_session, step)
     input_session.fill.assert_called_once_with(
-        step.selector, "hello", behavior=Behavior.off(), timeout=step.timeout
+        step.selector,
+        "hello",
+        verify="changed",
+        behavior=Behavior.off(),
+        timeout=step.timeout,
     )
 
 
@@ -143,10 +147,14 @@ def test_select(input_session: MagicMock) -> None:
 
 
 def test_check(input_session: MagicMock) -> None:
-    step = CheckStep(name="s", action="check", selector="#cb")
+    step = CheckStep(name="s", action="check", selector="#cb", dispatch=True)
     execute_action(input_session, step)
     input_session.set_checked.assert_called_once_with(
-        step.selector, True, behavior=Behavior.off(), timeout=step.timeout
+        step.selector,
+        True,
+        dispatch=True,
+        behavior=Behavior.off(),
+        timeout=step.timeout,
     )
 
 

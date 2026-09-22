@@ -17,6 +17,8 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | shadow dom | nodriver | selectors do not pierce an open shadow root, so the input inside it is never found |
 | native select disabled option | patchright | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
 | native select disabled option | camoufox | Driver.select_option has no timeout, so the step's budget bounds find() only and Playwright's own action timeout takes over |
+| prefilled autocomplete clear | nodriver | a humanized click on nodriver reads no viewport fit and raises before clicking, so the human profile's pick never lands: see #59 |
+| wait_for value | nodriver | a humanized click on nodriver reads no viewport fit and raises before clicking, so the human profile's pick never lands: see #59 |
 | goto wait_until | nodriver | goto drops wait_until: NodriverDriver.goto calls tab.get(url), which has no load-state argument, so both wait states get whatever tab.get itself waits for |
 | dispatch click step | camoufox | Gecko marks an event dispatched from Playwright's chrome-privileged agent as trusted, so dispatch=True is indistinguishable from real input on Firefox |
 | match on a pick step | nodriver | NodriverDriver.nth keeps the whole selector, so the narrowed locator still counts three and `pick` falls back to matching `value:` — it clicks Beta, not the third option: see #59 |

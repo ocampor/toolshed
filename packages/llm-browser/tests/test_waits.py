@@ -25,6 +25,7 @@ from llm_browser.selectors import (
     IdSelector,
     XpathSelector,
 )
+from llm_browser.selectors import MatchCountError, MatchRule
 from llm_browser.session import BrowserSession
 
 
@@ -614,3 +615,83 @@ def test_text_present_is_one_read_with_no_waiting(
 
     assert session.text_present("Listo") is False
     assert clock.sleeps == []
+
+
+# --- waiting on a field's value ---
+
+
+def driver_with_values(
+    values: list[str], secret: bool = False, count: int = 1
+) -> MagicMock:
+    """A field whose value reads walk ``values``, repeating the last."""
+    driver = driver_with(counts=[count])
+    take = _series(values)
+    driver.evaluate.side_effect = lambda *_: {"text": take(), "secret": secret}
+    return driver
+
+
+@pytest.mark.parametrize(
+    ("exact", "values"),
+    [(False, ["", "Peso", "Peso Mexicano"]), (True, ["Peso", "Peso Mexicano"])],
+)
+def test_wait_for_value_returns_once_the_field_holds_it(
+    tmp_path: Path, clock: FakeClock, exact: bool, values: list[str]
+) -> None:
+    session = make_session(tmp_path, driver_with_values(values))
+
+    session.wait_for_value(
+        "#moneda", "Mexicano" if not exact else "Peso Mexicano", exact=exact
+    )
+
+    assert len(clock.sleeps) == len(values) - 1
+
+
+def test_wait_for_value_times_out_naming_what_the_field_held(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_values(["Peso Mexicano"]))
+
+    with pytest.raises(
+        TimeoutError,
+        match="did not hold 'Dólar' within 1000ms; it held 'Peso Mexicano'",
+    ):
+        session.wait_for_value("#moneda", "Dólar", timeout=1000)
+
+
+def test_a_password_value_wait_names_lengths_never_contents(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    session = make_session(tmp_path, driver_with_values(["hunt"], secret=True))
+
+    with pytest.raises(TimeoutError) as failure:
+        session.wait_for_value("#pw", "hunter2", timeout=1000)
+
+    message = str(failure.value)
+    assert "hunt" not in message, message
+    assert "did not hold 7 characters within 1000ms; it held 4 characters" in message
+
+
+def test_a_value_wait_refuses_a_count_the_rule_rules_out(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """`wait_for` takes no `expect`/`pick`, so the rule is always one match."""
+    session = make_session(tmp_path, driver_with_values(["x"], count=2))
+
+    with pytest.raises(
+        MatchCountError, match="expected 1 element for '.field', found 2"
+    ):
+        session.wait_for_value(".field", "x")
+
+
+def test_a_value_wait_reads_the_pick_a_step_states(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """A caller that set a rule — a session API user, since the step type
+    rejects one — reads the picked match, not the first."""
+    driver = driver_with_values(["x"], count=2)
+    session = make_session(tmp_path, driver)
+    session.match_rule = MatchRule(expect=1, pick="last")
+
+    session.wait_for_value(".field", "x")
+
+    assert driver.nth.call_args.args[1] == 1

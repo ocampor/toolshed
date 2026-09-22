@@ -1,0 +1,6 @@
+steps:
+  - {name: clean, action: clean, selector: "input[id$='textboxautocomplete32']", pick: first}
+  - name: cleaned
+    action: read
+    selector: "input[id$='textboxautocomplete32']"
+    extract: {text: {attribute: value}}

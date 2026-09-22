@@ -41,6 +41,7 @@ from llm_browser.explore_models import (
 )
 from llm_browser.models import (
     CaptureMode,
+    FillVerify,
     check_settle_budget,
     check_text_wanted,
     PageProbe,
@@ -623,6 +624,27 @@ class BrowserSession:
             interval_ms=interval,
         )
 
+    def wait_for_value(
+        self,
+        selector: Selector,
+        value: str,
+        *,
+        exact: bool = False,
+        timeout: int = DEFAULT_WAIT_TIMEOUT_MS,
+        interval: int = DEFAULT_POLL_INTERVAL_MS,
+    ) -> None:
+        """Poll until the field holds ``value``; ``TimeoutError`` names what it held."""
+        waits.poll_for_value(
+            self.driver,
+            self.get_page(),
+            selector,
+            value,
+            exact=exact,
+            rule=self.match_rule or SINGLE,
+            timeout_ms=timeout,
+            interval_ms=interval,
+        )
+
     def text_present(
         self,
         text: str,
@@ -671,18 +693,31 @@ class BrowserSession:
         selector: Selector,
         value: str,
         *,
+        verify: FillVerify = "changed",
         humanize: bool | None = None,
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """``ValueError`` when the field did not take ``value`` (see ``verify``)."""
         session_input.fill(
             self,
             selector,
             value,
+            verify=verify,
             humanize=humanize,
             behavior=behavior,
             timeout=timeout,
         )
+
+    def clean(
+        self,
+        selector: Selector,
+        *,
+        behavior: Behavior | None = None,
+        timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+    ) -> None:
+        """Empty a field with trusted keys; ``ValueError`` if anything is left."""
+        session_input.clean(self, selector, behavior=behavior, timeout=timeout)
 
     def type(
         self,
@@ -731,11 +766,19 @@ class BrowserSession:
         selector: Selector,
         checked: bool,
         *,
+        dispatch: bool = False,
         behavior: Behavior | None = None,
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
     ) -> None:
+        """``dispatch=True`` reaches a hidden box with an untrusted click and
+        raises ``ValueError`` when the box still disagrees (a disabled one)."""
         session_input.set_checked(
-            self, selector, checked, behavior=behavior, timeout=timeout
+            self,
+            selector,
+            checked,
+            dispatch=dispatch,
+            behavior=behavior,
+            timeout=timeout,
         )
 
     def pick(

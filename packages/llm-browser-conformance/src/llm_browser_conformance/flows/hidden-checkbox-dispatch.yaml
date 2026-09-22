@@ -1,0 +1,3 @@
+# display:none and no label[for]: only a dispatched click reaches the box.
+steps:
+  - {name: check, action: check, selector: "#exento", dispatch: true, timeout: 1000}

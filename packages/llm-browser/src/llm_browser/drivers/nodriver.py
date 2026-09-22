@@ -517,6 +517,9 @@ class NodriverDriver(Driver):
         await loc.tab.send(nodriver.cdp.dom.focus(backend_node_id=el.backend_node_id))
         return el
 
+    def clear(self, locator: Any) -> None:
+        self.run(self.clear_trusted(locator))
+
     async def clear_trusted(self, loc: NodriverLocator) -> None:
         """CDP focus → Ctrl+A (selectAll) → Delete. All isTrusted=true.
 

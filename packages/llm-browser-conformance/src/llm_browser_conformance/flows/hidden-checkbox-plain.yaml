@@ -1,0 +1,2 @@
+steps:
+  - {name: check, action: check, selector: "#exento", timeout: 1000}

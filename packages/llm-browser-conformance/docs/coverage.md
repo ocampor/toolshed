@@ -15,12 +15,13 @@ A scenario claims a key through `Scenario.covers`; see
 
 | item | scenarios |
 | --- | --- |
-| `step:check` | fill waits for enabled, checkbox and radio |
+| `step:check` | fill waits for enabled, checkbox and radio, hidden checkbox plain |
+| `step:clean` | clean step, clean contenteditable |
 | `step:click` | overlay intercepts click, sticky header, sticky bands, disabled button, new tab, autocomplete click, custom select click |
 | `step:dom` | dom step depth |
 | `step:download` | download |
 | `step:eval` | eval step |
-| `step:fill` | shadow dom, controlled input |
+| `step:fill` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill, fill does not stick, fill refused keys |
 | `step:goto` | redirect, goto wait_until |
 | `step:parse` | parse typed rows |
 | `step:pick` | pick by text |
@@ -42,6 +43,10 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.pick` | match per step |
 | `field:check.selector` | checkbox and radio |
 | `field:check.checked` | fill waits for enabled, checkbox and radio |
+| `field:check.dispatch` | hidden checkbox dispatch, hidden checkbox disabled |
+| `field:clean.expect` | clean contenteditable |
+| `field:clean.pick` | clean step |
+| `field:clean.selector` | clean step |
 | `field:click.expect` | match per step |
 | `field:click.pick` | match per step |
 | `field:click.selector` | overlay intercepts click |
@@ -60,7 +65,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:fill.expect` | match per step |
 | `field:fill.pick` | match per step |
 | `field:fill.selector` | shadow dom |
-| `field:fill.value` | shadow dom, controlled input |
+| `field:fill.value` | shadow dom, controlled input, prefilled autocomplete clear, prefilled autocomplete fill |
+| `field:fill.verify` | fill verify exact |
 | `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
@@ -107,6 +113,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:type.humanize` | jittered key delay |
 | `field:wait_for.selector` | flow failure captures artifacts, slow xhr rows |
 | `field:wait_for.text` | wait exact text scoped |
+| `field:wait_for.value` | wait_for value |
 | `field:wait_for.exact` | wait exact text scoped |
 | `field:wait_for.state` | fill waits for enabled, flow failure captures artifacts, enter and escape, slow xhr rows |
 | `field:wait_for.interval` | slow xhr rows |
@@ -144,6 +151,7 @@ A scenario claims a key through `Scenario.covers`; see
 | --- | --- |
 | `session:attach` | attach over cdp |
 | `session:attach_to_tab` | attach over cdp |
+| `session:clean` | clean step |
 | `session:click` | wait detached, dynamic loading, dynamic controls toggle, dynamic controls enable, click is trusted, dispatch is untrusted, tab order |
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
@@ -189,6 +197,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:wait_for_element` | wait attached, wait detached, wait visible, wait hidden, wait stable, attached is immediate, visibility:hidden is hidden, opacity:0 is visible, wait enabled, wait aria-disabled, timeout message, detached times out on hidden, settle must fit timeout, dynamic loading, revealed control is fillable, attached sends no Runtime, visible costs one Runtime per poll |
 | `session:wait_for_load_state` | wait for load state |
 | `session:wait_for_text` | wait text present, wait text absent, hidden scope has no text, display:contents scope |
+| `session:wait_for_value` | wait_for value |
 
 ## library behaviour
 

@@ -1,0 +1,5 @@
+# `pick` sets the field from script; the wait reads the field, not the page text.
+steps:
+  - {name: fill, action: fill, selector: "input[id$='textboxautocomplete32']", value: Peso}
+  - {name: pick, action: pick, selector: "li.ui-menu-item", value: Peso Mexicano}
+  - {name: picked, action: wait_for, selector: "input[id$='textboxautocomplete32']", value: Peso Mexicano, exact: true, timeout: 4000}

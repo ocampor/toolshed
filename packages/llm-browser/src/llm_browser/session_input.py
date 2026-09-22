@@ -27,9 +27,15 @@ from llm_browser.constants import (
     LOGGER_NAME,
     WHEEL_INTO_VIEW_TICKS,
 )
+from llm_browser.models import FillVerify, WaitState
 from llm_browser.results import HitTarget, is_step_failure, is_timeout
-from llm_browser.scripts import hit_test_js, select_control_tag_js, viewport_fit_js
+from llm_browser.scripts import (
+    hit_test_js,
+    select_control_tag_js,
+    viewport_fit_js,
+)
 from llm_browser.selectors import Selector, describe_selector
+from llm_browser.waits import FieldRead, evaluate_now, read_field
 
 if TYPE_CHECKING:
     from llm_browser.session import BrowserSession
@@ -135,12 +141,14 @@ def click(
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> HitTarget | None:
     """``dispatch=True`` fires an untrusted DOM event — driver rule 2's opt-out,
-    for overlays that real input cannot reach."""
+    for overlays that real input cannot reach — and needs no box, so it
+    reaches a hidden element too."""
     behavior = effective_behavior(session, humanize, behavior)
+    state: WaitState = "attached" if dispatch else "visible"
     with paced(behavior):
         return click_element(
             session,
-            session.find(selector, timeout=timeout),
+            session.find(selector, state=state, timeout=timeout),
             dispatch=dispatch,
             behavior=behavior,
         )
@@ -370,19 +378,74 @@ def fill(
     selector: Selector,
     value: str,
     *,
+    verify: FillVerify = "changed",
     humanize: bool | None = None,
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     """``fill_as_type`` is one of the knobs ``humanize`` switches, so ``True``
-    types the value key by key and ``False`` writes it in one go."""
+    clears and types the value key by key and ``False`` writes it in one go."""
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
         if behavior.fill_as_type:
+            baseline = cleared(session, element)
             type_humanized(session, element, value, behavior)
         else:
+            baseline = read_field(session.driver, element).text
             session.driver.fill(element, value)
+        after = read_field(session.driver, element)
+    if fill_failed(value, baseline, after.text, verify):
+        raise ValueError(fill_error(selector, value, after))
+
+
+def cleared(session: "BrowserSession", element: Any) -> str:
+    """What the field holds once emptied, right before typing; an empty field
+    needs no clear: nobody select-alls nothing."""
+    held = read_field(session.driver, element).text
+    if not held:
+        return held
+    session.driver.clear(element)
+    return read_field(session.driver, element).text
+
+
+def fill_failed(value: str, baseline: str, after: str, verify: FillVerify) -> bool:
+    """``baseline`` is the field right before the value went in. ``changed``
+    tolerates a page that reformats or truncates what it was given (a mask,
+    ``maxlength``) — a rewrite that is never empty — and objects to a field
+    the value never reached."""
+    if verify == "exact":
+        return after != value
+    if value and not after:
+        return True
+    return after == baseline != value
+
+
+def fill_error(selector: Selector, value: str, after: FieldRead) -> str:
+    target = f"fill {describe_selector(selector)}"
+    if after.secret:
+        return (
+            f"{target}: the field differs from the value asked for "
+            f"({len(value)} characters asked, {after.shown()} held)"
+        )
+    return f"{target}: expected {value!r}, field holds {after.shown()}"
+
+
+def clean(
+    session: "BrowserSession",
+    selector: Selector,
+    *,
+    behavior: Behavior | None = None,
+    timeout: int = DEFAULT_FIND_TIMEOUT_MS,
+) -> None:
+    with paced(effective_behavior(session, behavior=behavior)):
+        element = session.find(selector, timeout=timeout)
+        session.driver.clear(element)
+        held = read_field(session.driver, element)
+    if held.text:
+        raise ValueError(
+            f"clean {describe_selector(selector)}: field still holds {held.shown()}"
+        )
 
 
 def type(  # shadows the builtin to mirror the `type` action's name
@@ -467,11 +530,45 @@ def set_checked(
     selector: Selector,
     checked: bool,
     *,
+    dispatch: bool = False,
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
     with paced(effective_behavior(session, behavior=behavior)):
-        session.driver.set_checked(session.find(selector, timeout=timeout), checked)
+        if not dispatch:
+            element = session.find(selector, timeout=timeout)
+            session.driver.set_checked(element, checked)
+            return
+        element = session.find(selector, state="attached", timeout=timeout)
+        dispatch_checked(session, element, selector, checked)
+
+
+def dispatch_checked(
+    session: "BrowserSession", element: Any, selector: Selector, checked: bool
+) -> None:
+    """A disabled box is refused up front: Chromium toggles one on a dispatched
+    click, Gecko does not. ``Driver.click(dispatch=True)``, not
+    ``dispatch_event``: nodriver's plain ``Event`` never toggles a checkbox."""
+    if is_checked(session, element) == checked:
+        return
+    if not session.driver.is_enabled(element):
+        raise ValueError(
+            f"check {describe_selector(selector)}: the box is disabled, "
+            f"so checked stays {not checked}"
+        )
+    session.driver.click(element, dispatch=True)
+    if is_checked(session, element) != checked:
+        raise ValueError(
+            f"check {describe_selector(selector)}: checked is still "
+            f"{not checked} after a dispatched click"
+        )
+
+
+def is_checked(session: "BrowserSession", element: Any) -> bool:
+    checked = evaluate_now(session.driver, element, "(el) => el.checked")
+    if checked is None:
+        raise ValueError("the checkbox could not be read back: it went away")
+    return bool(checked)
 
 
 def type_humanized(

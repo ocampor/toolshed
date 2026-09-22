@@ -1,0 +1,3 @@
+# Chromium leaves a <br> in an emptied contenteditable.
+steps:
+  - {name: clean, action: clean, selector: "#note", expect: 1}
