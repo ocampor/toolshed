@@ -52,12 +52,22 @@ QUIET = {"show_if_no_docstring": False}
 Members = Callable[[griffe.Module], list[str]]
 
 
+def nothing(module: griffe.Module) -> list[str]:
+    return []
+
+
 class Document(NamedTuple):
-    """A generated file: its heading, its opening line, and what it renders."""
+    """A generated file: its heading, its opening line, and what it renders.
+
+    ``prose`` is for a module or class whose *docstring* is the documentation
+    and whose members are not — the CLI's lifecycle notes, a driver's fine
+    print. ``members`` is for the objects rendered whole.
+    """
 
     title: str
     intro: str
-    members: Members
+    members: Members = nothing
+    prose: tuple[tuple[str, str], ...] = ()
     config: dict[str, Any] = {}
 
 
@@ -86,7 +96,20 @@ def classes_named(where: str, suffix: str) -> Members:
 
 def step_models(module: griffe.Module) -> list[str]:
     extra = ["models.MatchFields", "models.SaveAs", "models.TargetSpec"]
-    return classes_named("models", "Step")(module) + extra
+    flow = ["models.Flow", "models.SubFlow", "models.Param", "models.FlowData"]
+    return classes_named("models", "Step")(module) + extra + flow
+
+
+def result_models(module: griffe.Module) -> list[str]:
+    """The flow-level results, then every action result they are built from."""
+    flow_level = [
+        "models.FlowSuccess",
+        "models.FlowError",
+        "models.RetryHint",
+        "models.SkippedStep",
+        "models.MatchWarning",
+    ]
+    return flow_level + classes_named("results", "")(module)
 
 
 DOCUMENTS: dict[str, Document] = {
@@ -113,37 +136,64 @@ DOCUMENTS: dict[str, Document] = {
             "models.check_text_state",
             "models.WaitForStep",
         ),
+        (("How the wait polls", "waits"),),
+    ),
+    "reference/repeat": Document(
+        "Repeating a step",
+        "Running one step once per item of a list, or once per matched element.",
+        named("repeat.Repeat", "repeat.RepeatBlock", "repeat.OnError"),
+        (("The two forms", "repeat"),),
     ),
     "reference/behavior": Document(
         "Behavior",
         "The humanization knobs a run can be given, and the presets that set them.",
         named("behavior.Behavior", "behavior.Jitter", "behavior.profile"),
+        (
+            ("What humanization covers", "behavior"),
+            ("Configuring it from YAML", "behavior_config"),
+        ),
     ),
     "reference/results": Document(
         "Flow results",
         "What a run hands back, successful or not.",
-        named(
-            "models.FlowSuccess",
-            "models.FlowError",
-            "models.RetryHint",
-            "models.SkippedStep",
-            "models.MatchWarning",
-            "results.AcceptedMatch",
-            "results.BytesResult",
-        ),
+        result_models,
     ),
     "reference/extract": Document(
         "Extract specs",
         "What a `read` step's `extract:` writes, one entry per column.",
         named("parse.ExtractField", "parse.ParseBase", "parse.build_model"),
+        (("Types a schema may declare", "schema_types"),),
         QUIET,
     ),
     "reference/session": Document(
         "BrowserSession",
         "The Python surface every flow step is built on; an embedding caller "
         "drives the same methods directly.",
-        named("session.BrowserSession"),
+        named(
+            "session.BrowserSession",
+            "models.PageProbe",
+            "models.SessionResult",
+            "models.SessionInfo",
+        ),
+        (("Surveying a page", "survey"),),
         QUIET,
+    ),
+    "reference/attach": Document(
+        "Launched, attached and detached",
+        "Which browser a command drives, and how long it lives.",
+        prose=(("The CLI's browser lifecycle", "cli"),),
+    ),
+    "reference/drivers": Document(
+        "Drivers",
+        "Which backend to run against, and where each one falls short.",
+        prose=(
+            ("Picking a driver", "drivers"),
+            ("The contract a driver implements", "drivers.base.Driver"),
+            ("patchright", "drivers.patchright"),
+            ("camoufox", "drivers.camoufox"),
+            ("nodriver", "drivers.nodriver"),
+            ("The Playwright family", "drivers.playwright_base"),
+        ),
     ),
 }
 
@@ -160,9 +210,29 @@ def load_package(source: Path) -> griffe.Module:
     return loaded
 
 
+def prose_section(module: griffe.Module, heading: str, path: str) -> str:
+    docstring = module[path].docstring
+    return f"## {heading}\n\n{docstring.value if docstring else ''}\n"
+
+
+def covered_modules(module: griffe.Module) -> set[str]:
+    """Every module some document renders from, whole or through a member."""
+    names = set()
+    for document in DOCUMENTS.values():
+        paths = [path for _, path in document.prose] + document.members(module)
+        for path in paths:
+            obj = module[path]
+            parent = obj if obj.is_module else obj.parent
+            assert parent is not None
+            names.add(parent.path)
+    return names
+
+
 def render(module: griffe.Module, document: Document) -> str:
     config = {**CONFIG, **document.config}
     bodies = [
+        prose_section(module, heading, path) for heading, path in document.prose
+    ] + [
         griffe2md.render_object_docs(module[path], config)
         for path in document.members(module)
     ]
