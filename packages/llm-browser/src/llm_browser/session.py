@@ -81,6 +81,20 @@ class BrowserSession:
 
     Each instance manages a persistent browser session through a pluggable
     Driver and provides high-level methods for page interaction.
+
+    ``capture`` decides what a failing step carries back on its ``FlowError``,
+    in memory and never as a file: ``"screenshot"`` (the default) fills
+    ``screenshot`` with PNG bytes, ``"dom"`` fills ``dom`` with sanitized HTML,
+    ``"both"`` fills both and ``"none"`` neither. ``capture_level`` is how hard
+    that HTML is sanitized — ``high`` by default, which drops every ``src`` and
+    ``href``; drop to ``medium`` when where the page would have gone next is
+    the point. Persisting either is the caller's business.
+
+    The session directory is ``<state_dir>/sessions/<session_id>``, logged at
+    INFO on the first ``launch()`` / ``attach()``. It holds state, never
+    output: ``state.json`` and ``user-data/``. The user-data dir is never
+    removed automatically — profile reuse is the point — so delete the session
+    directory by hand to start fresh.
     """
 
     def __init__(

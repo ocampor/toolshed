@@ -75,7 +75,7 @@ class FirstMatch(BaseModel):
     """The first match as a click would find it.
 
     Each name in ``why_not`` is one reason a click would miss — see
-    ``docs/guide/api.md`` for the list. ``hit_tested`` is false when the centre was
+    ``constants.EXTRACT_PROPERTIES`` for the list. ``hit_tested`` is false when the centre was
     not a point the page could be asked about, so ``covered_by`` of ``None``
     means "not asked" rather than "nothing over it".
     """

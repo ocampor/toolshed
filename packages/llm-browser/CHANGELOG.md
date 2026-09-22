@@ -7,26 +7,35 @@
 - `llm_browser.docs`: `index()`, `read(name)` and `sections(name)` over the docs
   the wheel now ships, named `reference/<x>` and `guide/<x>`. `sections` splits at
   every `#`–`###` heading and keeps fenced code inside its section.
-- `llm-browser docs [--write | --check]`: rewrite the generated reference from
-  the models, or fail when a shipped file no longer matches them.
-- `llm_browser.docgen`: `reference_documents()` builds `reference/{steps,
-  selectors,waits,behavior,results,extract,session}.md` from the models, each
-  capped at 20,000 characters so a host can serve one whole.
+- `llm-browser docs [--write | --check]`: render the reference from the source,
+  or report drift. A maintainer command — it refuses to run without the source
+  tree the package was built from.
+- `llm_browser.docgen`: names what to document; griffe and griffe2md read the
+  source statically and render `reference/{steps,selectors,waits,behavior,
+  results,extract,session}.md`. Both are build-time dependencies, never runtime
+  ones, and the files are written into the wheel by `hatch_build.py`.
 - `llm_browser.introspect`: `step_arms()`, `own_fields()` and `session_methods()`,
   moved out of `llm-browser-conformance` and shared with it.
-- `models.WAIT_STATES`: what each `wait_for` state asks of the element.
+- `models.WAIT_STATES`: what each `wait_for` state asks of the element, bound to
+  the `WaitState` literal by a test.
 - `Field(description=)` on every step field, every `BaseStep` option and every
   `Behavior` knob; a docstring on every step type and every `BrowserSession`
   member. Tests fail when a new one ships without either.
 
 ### Changed
 
-- The guides moved into the wheel: `docs/{FLOWS,FLOW_PATTERNS,DRIVERS,ATTACH,
-  API}.md` are now `src/llm_browser/docs/guide/{flows,patterns,drivers,attach,
-  api}.md`. `README.md` and `docs/RESEARCH.md` stay where they were.
-- The guides lost the tables that restated the models — steps, wait states, step
-  options, `expect`/`pick` types, extract properties, session methods — and point
-  at `reference/` instead. The prose around them is unchanged.
+- The docs moved into the wheel. `docs/FLOW_PATTERNS.md` is now
+  `src/llm_browser/docs/guide/patterns.md`; `README.md` and `docs/RESEARCH.md`
+  stay where they were.
+- `Behavior.pace()` says it is reachable from Python only — `--behavior` takes
+  `human` and `off`, and a run under `pace()` reports `custom`.
+
+### Removed
+
+- `docs/{FLOWS,API,ATTACH,DRIVERS}.md`. What they explained now lives on the
+  thing it explains — step and field docstrings, `BrowserSession`, the `cli` and
+  `drivers` module docstrings — and is rendered into `reference/`. What they
+  restated is gone.
 
 ## 0.20.0 — 2026-09-19
 

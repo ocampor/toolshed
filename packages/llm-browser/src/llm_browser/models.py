@@ -150,6 +150,14 @@ class BaseStep(BaseModel):
     ``scope`` is written ``in:`` in a flow (``in`` is a keyword): it names the
     enclosing repeat's ``as`` and scopes this step's selector to that pass's
     element, descendants only.
+
+    ``when:`` holds conditions that must all hold or the step is skipped, not
+    failed: ``{field, op: eq|is_truthy|not_null, value}`` against flow data,
+    and ``{element_exists|element_missing: {selector}}`` or
+    ``{text_present: {text}}`` against the page. They are checked when the step
+    runs — once per pass inside a ``repeat``, and before a ``run-flow``'s child
+    is loaded. ``element_missing`` is the idempotent-toggle guard: act only
+    when the post-action element is not already there.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -239,9 +247,22 @@ DEFAULT_EXPECT: dict[MatchTarget, ExpectCount] = {
 
 
 class MatchFields(BaseModel):
-    """``expect`` is ``None`` until the flow states one — the default comes from
+    """How many elements a step's selector should match, and which one it acts
+    on.
+
+    ``expect`` defaults to ``1`` for an acting step and ``many`` for ``read``,
+    ``parse``, ``dom`` and ``pick``. Without a ``pick``, a count the page does
+    not have is a ``MatchCountError`` naming what it found and sampling the
+    first few; with one, the step runs and says so in the run's ``warnings``. A
+    ``pick`` past the end is a ``PickRangeError`` either way. An acting step
+    drives one element, so an ``expect`` other than ``1`` on it needs a
+    ``pick``, and both fields are rejected where they could only be ignored —
+    on ``wait_for``, and on a ``press`` or ``screenshot`` with no selector.
+
+    ``expect`` is ``None`` until the flow states one — the default comes from
     ``match_target`` — so "stated" survives the ``model_dump`` round trip
-    :func:`llm_browser.steps.resolve_step_templates` makes."""
+    :func:`llm_browser.steps.resolve_step_templates` makes.
+    """
 
     expect: ExpectCount | None = Field(
         None,
@@ -310,7 +331,16 @@ class SelectorStep(MatchFields, BaseStep):
 
 class ClickStep(SelectorStep):
     """A real pointer click, hit-tested: a click that lands on an overlay fails
-    instead of silently activating it."""
+    instead of silently activating it.
+
+    A failure naming an interception is retried once with the target scrolled
+    to the middle of the viewport, which is what clears a fixed header or
+    footer; the "try dispatch: true" hint is added only when that second try
+    was intercepted too. Every other failure — disabled, hidden, nothing
+    matched — is reported unretried. A driver that dispatches at the element's
+    coordinates without noticing the banner raises nothing and so retries
+    nothing: that page still needs ``dispatch``.
+    """
 
     action: Literal["click"]
     dispatch: bool = Field(
@@ -323,8 +353,14 @@ class ClickStep(SelectorStep):
 
 
 class FillStep(SelectorStep):
-    """Set an input's value in one go; `type` is the per-key alternative for a
-    field that listens to keystrokes."""
+    """Set an input's value in one go; ``type`` is the per-key alternative for
+    a field that listens to keystrokes.
+
+    With humanization off (or ``fill_as_type: false``) this fires no keystroke
+    at all — the equivalent of a paste — and a page watching input telemetry
+    sees nothing. Prefer ``type`` where that telemetry matters: it says what it
+    does whatever the session is set to.
+    """
 
     action: Literal["fill"]
     value: str = Field("", description="Text to put in the field.")
@@ -335,7 +371,14 @@ class FillStep(SelectorStep):
 
 class TypeStep(SelectorStep):
     """Type key by key, so a field that reacts to each keystroke (autocomplete,
-    a masked input) sees them."""
+    a masked input) sees them.
+
+    A ``delay`` pair is a cadence the flow asked for, so ``humanize: false``
+    does not undo it — drop the pair for a constant cadence. The step costs
+    roughly ``len(value) × delay`` *after* its wait succeeded, which no
+    ``timeout`` bounds: an embedding caller with its own deadline needs a
+    budget that covers it.
+    """
 
     action: Literal["type"]
     value: str = Field("", description="Text to type.")

@@ -1,12 +1,11 @@
 # Flow Patterns
 
 Field-tested, JavaScript-free YAML for the situations that cost the most time. Language
-reference: [flows.md](flows.md); driver limits: [drivers.md](drivers.md). `eval:` is not a
+reference: `reference/steps`; driver limits: the `llm_browser.drivers` module docs. `eval:` is not a
 pattern here — if a page needs one, the missing primitive belongs in the library.
 
 **XPath is not portable.** Every `{ xpath: ... }` and `:has-text(...)` below needs `patchright`
-or `camoufox`; on `nodriver` only real CSS reaches the page ([drivers.md → Selector and key
-support](drivers.md#selector-and-key-support)). Each pattern names its CSS equivalent.
+or `camoufox`; on `nodriver` only real CSS reaches the page (see `llm_browser.drivers`). Each pattern names its CSS equivalent.
 
 | Instead of `eval` for | Use |
 |---|---|
@@ -46,7 +45,7 @@ answers each one against its own `--intent`, exiting non-zero unless every
 verdict is `ok` — the flow failing at authoring time instead of on the run.
 Targets are CSS and at most twenty per call; one the page cannot parse answers
 `error: not css` and the rest still answer.
-See [api.md](api.md#surveying-before-exploring) for every field.
+See `reference/session` under `survey` for every field.
 
 `llm-browser explore --selector … --intent <what the step will do>` is the same
 answer for one selector, when a step is all that is in question.
@@ -245,7 +244,7 @@ llm-browser find --selector "button" --all
 `dispatch: true` fires an untrusted DOM `click` — last resort, only for a JS-bound submit or
 confirm button. It emits `isTrusted=false` on **every** driver, camoufox included: camoufox's
 stealth is fingerprint-level and does not rewrite `Event.isTrusted` for a page-created event.
-See [drivers.md](drivers.md) for the escape-hatch list.
+See `llm_browser.drivers` for the escape-hatch list.
 
 ```yaml
 - { name: continue, selector: "#btnContinuar", action: click, dispatch: true }
@@ -366,12 +365,12 @@ steps:
   step: `llm-browser explore --selector "[componentkey='SearchResultsMainContent'] p"` reports
   how many rows it matches right now and how much text they carry, and a stub shows up as a
   count far below the real list (see
-  [api.md → Exploring before writing a step](api.md#exploring-before-writing-a-step)).
+  `reference/session` under `explore`).
 - When the stub has the right shape but placeholder text, `wait_for` `state: stable` with
   `settle: 1000` on the container waits for the text to stop changing instead.
 - When hydration is what unlocks a field — an input a checkbox enables — `wait_for`
-  `state: enabled` on that field is the precise wait (see flows.md's
-  [state table](flows.md#waiting)).
+  `state: enabled` on that field is the precise wait (the states are in
+  `reference/waits`).
 
 ## One-shot pages
 
@@ -394,10 +393,10 @@ steps:
 ```
 
 No `extract:` needed — a bare `read` gives the default `text` field (see
-flows.md's [data actions](flows.md#data-actions)).
+`reference/steps` under `ReadStep`).
 
 - No `goto` in the flow. Open the link by hand in a live tab and address that tab:
-  `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` ([attach.md](attach.md)). A
+  `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` (see `llm-browser --help`). A
   flow that navigates itself spends the view on the rehearsal.
 - Check the shape with `llm-browser validate --flow one_shot.yaml` and rehearse the steps on a
   page you can reload; the share link gets the one real run.
