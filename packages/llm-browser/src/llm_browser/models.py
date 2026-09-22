@@ -131,16 +131,46 @@ class BaseStep(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    name: str = "unnamed"
-    scope: str | None = Field(None, alias="in", min_length=1)
-    fields: list[TargetSpec] = []
-    read: dict[str, TargetSpec] = {}
-    when: list[dict[str, Any]] = []
-    eval: str | None = None
-    wait_after: int | None = None
-    optional: bool = False
-    timeout: int = 10_000
-    repeat: Repeat | None = None
+    name: str = Field(
+        "unnamed",
+        description="Identifies the step: keys its output, targets `--from` and a retry hint.",
+    )
+    scope: str | None = Field(
+        None,
+        alias="in",
+        min_length=1,
+        description="Written `in:`; names the enclosing repeat's `as` and confines this step's selector to that pass's element.",
+    )
+    fields: list[TargetSpec] = Field(
+        default=[],
+        description="Element targets carried for a host to act on; the runner does not execute them.",
+    )
+    read: dict[str, TargetSpec] = Field(
+        default={},
+        description="Named element targets carried for a host to act on; the runner does not execute them.",
+    )
+    when: list[dict[str, Any]] = Field(
+        default=[],
+        description="Conditions that must all hold, or the step is skipped rather than failed.",
+    )
+    eval: str | None = Field(
+        None,
+        description="Expression evaluated after the action; its value lands in flow data.",
+    )
+    wait_after: int | None = Field(
+        None,
+        description="Idle pause in ms after the step, for a page that settles late.",
+    )
+    optional: bool = Field(
+        False,
+        description="A timeout or bad value skips the step instead of failing the flow.",
+    )
+    timeout: int = Field(
+        10_000, description="Budget in ms for this step's action, waits included."
+    )
+    repeat: Repeat | None = Field(
+        None, description="Run this step once per element or per list item."
+    )
     # Set by ``RunFlowStep``'s after-validator on each child step in a
     # sub-flow: the parent's ``run-flow`` step name. ``None`` for
     # top-level steps. Drives ``qualified_name`` for diagnostic output
@@ -190,8 +220,14 @@ class MatchFields(BaseModel):
     ``match_target`` — so "stated" survives the ``model_dump`` round trip
     :func:`llm_browser.steps.resolve_step_templates` makes."""
 
-    expect: ExpectCount | None = None
-    pick: PickChoice | None = None
+    expect: ExpectCount | None = Field(
+        None,
+        description="How many elements the selector should match; the default follows the action.",
+    )
+    pick: PickChoice | None = Field(
+        None,
+        description="Which match to act on when there is more than one: `first`, `last` or a 0-based index.",
+    )
 
     match_target: ClassVar[MatchTarget] = MatchTarget.ONE
 
@@ -236,7 +272,10 @@ def match_rule_of(step: Step) -> MatchRule | None:
 class SelectorStep(MatchFields, BaseStep):
     """Base for steps that operate on a DOM element. Selector is required."""
 
-    selector: Selector
+    selector: Selector = Field(
+        ...,
+        description="What the step acts on: a CSS string, a selector form, or a `ref:`.",
+    )
 
 
 # Steps that target a DOM element inherit from ``SelectorStep`` (selector
@@ -247,25 +286,43 @@ class SelectorStep(MatchFields, BaseStep):
 
 
 class ClickStep(SelectorStep):
+    """A real pointer click, hit-tested: a click that lands on an overlay fails
+    instead of silently activating it."""
+
     action: Literal["click"]
-    dispatch: bool = False
-    humanize: bool | None = None
+    dispatch: bool = Field(
+        False,
+        description="Fire the DOM event directly, for an element no pointer can reach.",
+    )
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
 
 class FillStep(SelectorStep):
+    """Set an input's value in one go; `type` is the per-key alternative for a
+    field that listens to keystrokes."""
+
     action: Literal["fill"]
-    value: str = ""
-    humanize: bool | None = None
+    value: str = Field("", description="Text to put in the field.")
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
 
 class TypeStep(SelectorStep):
-    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
-    a constant cadence is itself a fingerprint."""
+    """Type key by key, so a field that reacts to each keystroke (autocomplete,
+    a masked input) sees them."""
 
     action: Literal["type"]
-    value: str = ""
-    delay: int | Jitter = 0
-    humanize: bool | None = None
+    value: str = Field("", description="Text to type.")
+    delay: int | Jitter = Field(
+        0,
+        description="Per-key gap in ms, or `[min, max]` to jitter it — a constant cadence is itself a fingerprint.",
+    )
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
     @field_validator("delay", mode="before")
     @classmethod
@@ -281,26 +338,42 @@ class TypeStep(SelectorStep):
 
 
 class SelectStep(SelectorStep):
+    """Choose an option on a native `<select>`; a custom widget is a `click`
+    then a `pick`."""
+
     action: Literal["select"]
-    value: str = ""
+    value: str = Field(
+        "", description="Option to choose, matched on its value, label or text."
+    )
 
 
 class CheckStep(SelectorStep):
+    """Drive a checkbox or radio to a state, whatever state it is already in."""
+
     action: Literal["check"]
-    checked: bool = True
+    checked: bool = Field(True, description="The state to leave the control in.")
 
 
 class PickStep(SelectorStep):
+    """Click the one match whose text is ``value`` — the custom-dropdown
+    counterpart to ``select``, so the selector names the whole option list."""
+
     action: Literal["pick"]
-    value: str = ""
+    value: str = Field("", description="Text of the option to click.")
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
 
 class GotoStep(BaseStep):
+    """Navigate. Only http(s) and about:blank are allowed — a flow cannot be
+    talked into reading `file:` off the machine it runs on."""
+
     action: Literal["goto"]
-    url: str = Field(..., min_length=1)
-    wait_until: str = "domcontentloaded"
+    url: str = Field(..., min_length=1, description="Where to navigate.")
+    wait_until: str = Field(
+        "domcontentloaded",
+        description="Load milestone to wait for: `domcontentloaded`, `load` or `networkidle`.",
+    )
 
 
 class ScreenshotStep(MatchFields, BaseStep):
@@ -316,11 +389,18 @@ class ScreenshotStep(MatchFields, BaseStep):
     """
 
     action: Literal["screenshot"]
-    path: str | None = None
-    selector: Selector | None = None
+    path: str | None = Field(
+        None, description="Where `llm-browser run` writes the PNG, under `--out-dir`."
+    )
+    selector: Selector | None = Field(
+        None, description="Crop to this element; unset captures the viewport."
+    )
 
 
 class ReadStep(SelectorStep):
+    """Pull text out of the matched elements as rows of named fields — the
+    selector names the row, `extract` names the columns."""
+
     # ExtractField is a FieldInfo subclass (not a Pydantic model), so the
     # default schema generator can't introspect it. ``arbitrary_types_allowed``
     # tells Pydantic to skip schema generation and trust runtime-validated
@@ -332,14 +412,22 @@ class ReadStep(SelectorStep):
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
     extract: dict[str, ExtractField] = Field(
-        default_factory=lambda: parse_extract_spec(None)
+        default_factory=lambda: parse_extract_spec(None),
+        description="Field name to `child selector@attribute`; unset reads each row's own text as `text`.",
     )
     # CSS selectors dropped from the text, not from the DOM: the read happens
     # on a copy, and only for a property a descendant is part of.
-    exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
-    # CLI-only, like every other `path:` — see ScreenshotStep.
-    path: str | None = None
-    save_as: SaveAs | None = None
+    exclude: list[Annotated[str, Field(min_length=1)]] = Field(
+        default_factory=list,
+        description="CSS selectors whose text is dropped from the read, on a copy of the DOM.",
+    )
+    path: str | None = Field(
+        None, description="Where `llm-browser run` writes the rows, under `--out-dir`."
+    )
+    save_as: SaveAs | None = Field(
+        None,
+        description="Put the rows, or one field of one row, into flow data for later steps.",
+    )
 
     @model_validator(mode="after")
     def _check_save_as(self) -> ReadStep:
@@ -388,19 +476,34 @@ class ParseStep(SelectorStep):
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
-    schema_path: str = Field(..., min_length=1)
-    path: str | None = None
+    schema_path: str = Field(
+        ...,
+        min_length=1,
+        description="YAML schema every row is validated against; CWD-relative or absolute.",
+    )
+    path: str | None = Field(
+        None, description="Where `llm-browser run` writes the rows, under `--out-dir`."
+    )
 
 
 class DomStep(SelectorStep):
+    """Return the matched element's HTML, sanitized — for reading a structure
+    no `read` has a shape for yet."""
+
     action: Literal["dom"]
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
-    max_depth: int = 0
-    level: SanitizeLevel = SanitizeLevel.LOW
-    # CLI-only, like every other `path:` — see ScreenshotStep.
-    path: str | None = None
+    max_depth: int = Field(
+        0, description="Depth to truncate the tree at; 0 keeps it whole."
+    )
+    level: SanitizeLevel = Field(
+        SanitizeLevel.LOW,
+        description="How much noise to strip before returning the HTML.",
+    )
+    path: str | None = Field(
+        None, description="Where `llm-browser run` writes the HTML, under `--out-dir`."
+    )
 
 
 class DownloadStep(SelectorStep):
@@ -410,29 +513,41 @@ class DownloadStep(SelectorStep):
     """
 
     action: Literal["download"]
-    path: str | None = None
+    path: str | None = Field(
+        None,
+        description="Where `llm-browser run` writes the file, under `--out-dir`; unset uses the name the server suggested.",
+    )
 
 
 class ThinkStep(BaseStep):
+    """Pause for a random spell, so a run does not act at machine cadence."""
+
     action: Literal["think"]
-    min_ms: int = 500
-    max_ms: int = 2000
+    min_ms: int = Field(500, description="Shortest pause in ms.")
+    max_ms: int = Field(2000, description="Longest pause in ms.")
 
 
 class ScrollStep(BaseStep):
     """Mouse-wheel scroll: ``times`` ticks of ``delta`` px, paced by ``pause``."""
 
     action: Literal["scroll"]
-    delta: int = 600
-    times: int = 1
-    pause: Jitter = Jitter(min_ms=300, max_ms=1200)
+    delta: int = Field(600, description="Pixels per tick; negative scrolls up.")
+    times: int = Field(1, description="How many ticks.")
+    pause: Jitter = Field(
+        Jitter(min_ms=300, max_ms=1200), description="Gap between ticks in ms."
+    )
 
 
 class PressStep(MatchFields, BaseStep):
+    """Send a key or a chord; the one step that needs no selector."""
+
     action: Literal["press"]
-    # Optional: when None, press the focused element via ``press_focused``.
-    selector: Selector | None = None
-    key: str = Field(..., min_length=1)
+    selector: Selector | None = Field(
+        None, description="Element to press on; unset presses whatever has focus."
+    )
+    key: str = Field(
+        ..., min_length=1, description="Key or chord, e.g. `Enter` or `Control+a`."
+    )
 
 
 def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
@@ -465,15 +580,31 @@ class WaitForStep(BaseStep):
     """
 
     action: Literal["wait_for"]
-    selector: Selector | None = None
-    text: str | None = None
-    exact: bool = False
-    state: WaitState = "attached"
-    timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
+    selector: Selector | None = Field(
+        None, description="Element to watch; scopes `text` when both are given."
+    )
+    text: str | None = Field(
+        None, description="Rendered text to wait for — a landmark no selector names."
+    )
+    exact: bool = Field(
+        False, description="Match the whole text rather than a substring."
+    )
+    state: WaitState = Field("attached", description="The state to wait for.")
+    timeout: int = Field(
+        DEFAULT_WAIT_TIMEOUT_MS, ge=0, description="Whole budget for the wait, in ms."
+    )
     # Bounded here so a typo fails at flow load with a field-named error,
     # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
-    interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
-    settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+    interval: int = Field(
+        DEFAULT_POLL_INTERVAL_MS,
+        gt=0,
+        description="Nominal gap between polls in ms, jittered.",
+    )
+    settle: int = Field(
+        DEFAULT_SETTLE_MS,
+        gt=0,
+        description="How long the text must hold still for state `stable`; must be under `timeout`.",
+    )
 
     _no_match_fields = model_validator(mode="before")(reject_wait_for_match_fields)
 
@@ -506,8 +637,13 @@ class RunFlowStep(BaseStep):
     """
 
     action: Literal["run-flow"]
-    flow: SubFlow | str
-    data: dict[str, Any] = {}
+    flow: SubFlow | str = Field(
+        ...,
+        description="The child flow inline, or a reference resolved before validation.",
+    )
+    data: dict[str, Any] = Field(
+        default={}, description="Params handed to the child flow."
+    )
 
     @model_validator(mode="after")
     def _reject_unresolved_reference(self) -> RunFlowStep:
