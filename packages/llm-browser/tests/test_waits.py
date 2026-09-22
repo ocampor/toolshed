@@ -25,6 +25,7 @@ from llm_browser.selectors import (
     IdSelector,
     XpathSelector,
 )
+from llm_browser.selectors import MatchCountError, MatchRule
 from llm_browser.session import BrowserSession
 
 
@@ -670,10 +671,27 @@ def test_a_password_value_wait_names_lengths_never_contents(
     assert "did not hold 7 characters within 1000ms; it held 4 characters" in message
 
 
-def test_a_value_wait_refuses_an_ambiguous_selector(
+def test_a_value_wait_refuses_a_count_the_rule_rules_out(
     tmp_path: Path, clock: FakeClock
 ) -> None:
+    """`wait_for` takes no `expect`/`pick`, so the rule is always one match."""
     session = make_session(tmp_path, driver_with_values(["x"], count=2))
 
-    with pytest.raises(ValueError, match="Expected 1 element for '.field', found 2"):
+    with pytest.raises(
+        MatchCountError, match="expected 1 element for '.field', found 2"
+    ):
         session.wait_for_value(".field", "x")
+
+
+def test_a_value_wait_reads_the_pick_a_step_states(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    """A caller that set a rule — a session API user, since the step type
+    rejects one — reads the picked match, not the first."""
+    driver = driver_with_values(["x"], count=2)
+    session = make_session(tmp_path, driver)
+    session.match_rule = MatchRule(expect=1, pick="last")
+
+    session.wait_for_value(".field", "x")
+
+    assert driver.nth.call_args.args[1] == 1

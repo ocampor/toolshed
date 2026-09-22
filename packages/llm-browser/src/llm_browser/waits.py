@@ -24,9 +24,11 @@ from llm_browser.drivers.base import Driver
 from llm_browser.models import WaitState, check_text_state
 from llm_browser.scripts import field_value_js, text_match_js
 from llm_browser.selectors import (
+    SINGLE,
+    MatchRule,
     Selector,
     describe_selector,
-    expect_single,
+    match_elements,
     resolve_selector,
 )
 
@@ -257,6 +259,7 @@ def poll_for_value(
     value: str,
     *,
     exact: bool = False,
+    rule: MatchRule = SINGLE,
     timeout_ms: int,
     interval_ms: int,
 ) -> None:
@@ -266,7 +269,7 @@ def poll_for_value(
 
     def reached() -> bool:
         nonlocal held
-        held = value_now(driver, page, selector)
+        held = value_now(driver, page, selector, rule)
         if held is None:
             return False
         return held.text == value if exact else value in held.text
@@ -289,10 +292,12 @@ def value_timeout(
     )
 
 
-def value_now(driver: Driver, page: Any, selector: Selector) -> FieldRead | None:
-    """``None`` while nothing matches; several matches are a mistake, as in
-    ``BrowserSession.find``."""
+def value_now(
+    driver: Driver, page: Any, selector: Selector, rule: MatchRule = SINGLE
+) -> FieldRead | None:
+    """``None`` while nothing matches; a count the step's rule rules out raises,
+    the way every other selector step reads its match."""
     locator = resolve_selector(driver, page, selector)
     if driver.count(locator) == 0:
         return None
-    return read_field(driver, expect_single(driver, locator, selector))
+    return read_field(driver, match_elements(driver, locator, selector, rule).locator)

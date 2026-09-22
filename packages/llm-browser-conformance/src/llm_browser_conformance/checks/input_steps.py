@@ -171,7 +171,9 @@ SCENARIOS = [
         "clean step",
         Section.STEPS,
         clean_empties_a_prefilled_field,
-        covers=frozenset({"step:clean", "field:clean.selector", "session:clean"}),
+        covers=frozenset(
+            {"step:clean", "field:clean.selector", "field:clean.pick", "session:clean"}
+        ),
     ),
     Scenario(
         "fill does not stick",
@@ -195,7 +197,7 @@ SCENARIOS = [
         "clean contenteditable",
         Section.STEPS,
         clean_empties_a_contenteditable,
-        covers=frozenset({"step:clean"}),
+        covers=frozenset({"step:clean", "field:clean.expect"}),
     ),
     Scenario(
         "wait_for value",

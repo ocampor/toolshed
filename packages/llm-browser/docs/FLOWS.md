@@ -102,8 +102,8 @@ a page state only its rendered text names.
 flow-load time. `value:` with a `selector` (and no `text:`, nor a `state:` other than `attached`) waits until that field
 holds the value (`value`, or `innerText` on a contenteditable) — a substring unless
 `exact: true` — and its timeout names what the field held last (only the length,
-for a password field). A selector matching several elements fails at once, as
-every single-element step does. `text:` matches the whitespace-normalised `innerText` of the page
+for a password field). `wait_for` takes no `expect:`/`pick:`, so a selector
+matching several elements fails with the count, as one match is the rule. `text:` matches the whitespace-normalised `innerText` of the page
 (or of whatever `selector` matches, when both are given), as a substring unless
 `exact: true`, which asks some element's whole text to equal it. Accents, `&nbsp;`
 and the text moving to a child node are all invisible to it, unlike an XPath

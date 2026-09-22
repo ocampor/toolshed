@@ -44,8 +44,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:check.selector` | checkbox and radio |
 | `field:check.checked` | fill waits for enabled, checkbox and radio |
 | `field:check.dispatch` | hidden checkbox dispatch, hidden checkbox disabled |
-| `field:clean.expect` | **uncovered** |
-| `field:clean.pick` | **uncovered** |
+| `field:clean.expect` | clean contenteditable |
+| `field:clean.pick` | clean step |
 | `field:clean.selector` | clean step |
 | `field:click.expect` | match per step |
 | `field:click.pick` | match per step |

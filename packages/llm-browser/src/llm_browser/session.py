@@ -640,6 +640,7 @@ class BrowserSession:
             selector,
             value,
             exact=exact,
+            rule=self.match_rule or SINGLE,
             timeout_ms=timeout,
             interval_ms=interval,
         )
