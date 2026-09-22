@@ -50,7 +50,12 @@ class Repeat(BaseModel):
 
     over: str | list[RepeatItem] | None = None
     over_selector: Selector | None = None
-    bind: str = Field(..., min_length=1, alias="as")
+    bind: str = Field(
+        ...,
+        min_length=1,
+        alias="as",
+        description="Written `as:`; names the variable each pass binds its item to.",
+    )
     on_error: OnError = OnError.stop
 
     @property
@@ -77,7 +82,12 @@ class RepeatBlock(BaseModel):
     name: str = "unnamed"
     over: str | list[RepeatItem] | None = None
     over_selector: Selector | None = None
-    bind: str = Field(..., min_length=1, alias="as")
+    bind: str = Field(
+        ...,
+        min_length=1,
+        alias="as",
+        description="Written `as:`; names the variable each pass binds its item to.",
+    )
     on_error: OnError = OnError.stop
     when: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = Field(..., min_length=1)

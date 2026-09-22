@@ -29,8 +29,8 @@ Headless
 The Chromium-based drivers leak ``HeadlessChrome`` in the User-Agent and fall
 back to SwiftShader for WebGL when headless, both cheap detection signals; run
 them headed or under Xvfb. ``camoufox`` spoofs both even headless and is the
-only viable headless option against strict detectors. ``scripts/stealth_probe.py``
-reproduces the measurement.
+only viable headless option against strict detectors. ``scripts/stealth_probe.py``, in the
+toolshed repo, reproduces the measurement.
 """
 
 from functools import lru_cache

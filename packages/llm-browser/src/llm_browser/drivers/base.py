@@ -48,7 +48,7 @@ class Driver(ABC):
     5. Timeouts are milliseconds, and an expired one raises the builtin
        ``TimeoutError``.
 
-    Run ``llm-browser-check`` from ``packages/llm-browser-conformance`` to
+    Run ``llm-browser-check`` (the conformance package, in the toolshed repo) to
     validate an implementation: it drives a new driver through every rule
     above against a real headless browser and a fixture site it serves
     itself, and names what it got wrong. Anything the driver deliberately
