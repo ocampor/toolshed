@@ -4,7 +4,7 @@
 
 The Python surface every flow step is built on; an embedding caller drives the same methods directly.
 
-## `attach(cdp_url: 'str') -> 'SessionResult'`
+## `attach(cdp_url: str) -> SessionResult`
 
 Attach to an already-running Chromium exposing CDP at cdp_url.
 
@@ -13,18 +13,18 @@ the tab we opened are cleaned up. Use this against a user-launched
 Chromium with a warmed profile to pass fingerprint-grade bot
 detection (Cloudflare, PerimeterX, DataDome).
 
-## `attach_to_tab(cdp_url: 'str', target_id: 'str') -> 'SessionResult'`
+## `attach_to_tab(cdp_url: str, target_id: str) -> SessionResult`
 
 Attach to one existing tab of a running Chromium by its target id.
 
 `(cdp_url, target_id)` is the full address of a tab: a caller can
 hold it between invocations instead of a state file.
 
-## `click(selector: 'Selector', *, dispatch: 'bool' = False, humanize: 'bool | None' = None, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'HitTarget | None'`
+## `click(selector: Selector, *, dispatch: bool = False, humanize: bool | None = None, behavior: Behavior | None = None, timeout: int = 10000) -> HitTarget | None`
 
 Answers what the pointer was over, when the humanized path looked.
 
-## `close() -> 'SessionResult'`
+## `close() -> SessionResult`
 
 Close the browser and clean up.
 
@@ -35,11 +35,11 @@ The user-data-dir is never auto-removed (profile reuse is
 intentional). Nothing else is left behind to remove: the session
 directory holds state, never captures.
 
-## `connect() -> 'Any'`
+## `connect() -> Any`
 
 Connect to a running browser and return the active page.
 
-## `count_of(selector: 'str') -> 'int'`
+## `count_of(selector: str) -> int`
 
 How many elements a proposed selector matches.
 
@@ -48,22 +48,22 @@ escapes what it interpolates and withholds `role=` from drivers that
 do not take it — so a raised error here is a dead session or a closed
 page, and belongs to the caller.
 
-## `current_url() -> 'str'`
+## `current_url() -> str`
 
 The page's URL right now, after any redirect it followed.
 
-## `dom(selector: 'Selector', max_depth: 'int' = 0, level: 'SanitizeLevel' = <SanitizeLevel.LOW: 'low'>) -> 'str'`
+## `dom(selector: Selector, max_depth: int = 0, level: SanitizeLevel = 'low') -> str`
 
 Cleaned HTML of the matched element; several matches take the first
 in document order.
 
-## `dom_snapshot(level: 'SanitizeLevel | None' = None) -> 'str'`
+## `dom_snapshot(level: SanitizeLevel | None = None) -> str`
 
 Sanitized HTML of the whole current page, as text.
 
 `level` defaults to the session's `capture_level`.
 
-## `download_file(selector: 'Selector', *, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'BytesResult'`
+## `download_file(selector: Selector, *, behavior: Behavior | None = None, timeout: int = 10000) -> BytesResult`
 
 Click `selector` and return what the browser downloaded.
 
@@ -72,7 +72,7 @@ suggested — remote input, so a caller writing it to disk takes the
 basename first. `timeout` bounds both halves: finding the element
 and waiting for the download it starts.
 
-## `element_exists(selector: 'Selector', timeout: 'int' = 3000, *, state: 'WaitState' = 'attached') -> 'bool'`
+## `element_exists(selector: Selector, timeout: int = 3000, *, state: WaitState = 'attached') -> bool`
 
 Whether `selector` reaches `state` within `timeout`; never raises.
 
@@ -80,11 +80,11 @@ The bool half of `wait_for_element`: `state` is there so "is the
 error visible" and "is the input gone" are answerable without an
 exception, the way a racing poll needs them.
 
-## `evaluate(target: 'Any', script: 'str') -> 'Any'`
+## `evaluate(target: Any, script: str) -> Any`
 
 Run JS in the context of a page or locator.
 
-## `evaluate_document(script: 'str', timeout_ms: 'int | None' = None) -> 'Any'`
+## `evaluate_document(script: str, timeout_ms: int | None = None) -> Any`
 
 Run a page-wide script against `<html>` rather than the page.
 
@@ -94,40 +94,40 @@ pending promise. The script reads the page through
 `el.ownerDocument`. `timeout_ms` bounds the call for a script that
 waits in the page; `None` keeps the driver's own default.
 
-## `explore(selector: 'Selector', extract: 'dict[str, ExtractField] | None' = None, sample: 'int' = 3, timeout_ms: 'int' = 3000, intent: 'Intent' = <Intent.READ: 'read'>, sample_chars: 'int' = 200) -> 'ExploreResult'`
+## `explore(selector: Selector, extract: dict[str, ExtractField] | None = None, sample: int = 3, timeout_ms: int = 3000, intent: Intent = 'read', sample_chars: int = 200) -> ExploreResult`
 
 Count and sample what a selector matches, and read the first one as
 a click would find it — an answer about the page, never a click.
 
-## `explore_many(targets: 'list[ExploreTarget]', sample: 'int' = 3, sample_chars: 'int' = 200, timeout_ms: 'int' = 3000) -> 'list[ExploreResult]'`
+## `explore_many(targets: list[ExploreTarget], sample: int = 3, sample_chars: int = 200, timeout_ms: int = 3000) -> list[ExploreResult]`
 
 The same answer for a list of targets, from one page call and one
 wait, in the order asked.
 
-## `fill(selector: 'Selector', value: 'str', *, humanize: 'bool | None' = None, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'None'`
+## `fill(selector: Selector, value: str, *, humanize: bool | None = None, behavior: Behavior | None = None, timeout: int = 10000) -> None`
 
 Set a field's value: typed character by character under
 `Behavior.fill_as_type`, otherwise one write and no key events.
 
-## `find(selector: 'Selector', state: 'WaitState' = 'visible', timeout: 'int' = 10000) -> 'Any'`
+## `find(selector: Selector, state: WaitState = 'visible', timeout: int = 10000) -> Any`
 
 Find the one element the step acts on — its `pick` when it names
 one, the single match otherwise.
 
-## `find_all(selector: 'Selector', state: 'WaitState' = 'attached', timeout: 'int' = 10000) -> 'Any'`
+## `find_all(selector: Selector, state: WaitState = 'attached', timeout: int = 10000) -> Any`
 
 Find all matching elements, waiting for at least one.
 
-## `first_match(locator: 'Any') -> 'ExploreRead'`
+## `first_match(locator: Any) -> ExploreRead`
 
 Read one already-resolved locator the way `explore` reads its
 first match.
 
-## `frame(selector: 'Selector', timeout: 'int' = 10000) -> 'Any'`
+## `frame(selector: Selector, timeout: int = 10000) -> Any`
 
 Enter an iframe, returning the Frame.
 
-## `get_page() -> 'Any'`
+## `get_page() -> Any`
 
 Get the current page, connecting if needed.
 
@@ -135,20 +135,20 @@ Calls on the raw page returned here BYPASS humanization — only the
 `BrowserSession` input methods honor `Behavior.human()` timing
 and mouse-path jitter.
 
-## `goto(url: 'str', wait_until: 'str' = 'domcontentloaded', *, allowed_schemes: 'Collection[str]' = ('http', 'https')) -> 'None'`
+## `goto(url: str, wait_until: str = 'domcontentloaded', *, allowed_schemes: Collection[str] = ('http', 'https')) -> None`
 
 Navigate. `http`/`https` only unless a caller opts this one call
 into another scheme, so a flow cannot be talked into reading `file:`.
 
-## `latest_tab() -> 'Any'`
+## `latest_tab() -> Any`
 
 Switch to the most recently opened tab and return it.
 
-## `launch(url: 'str | None' = None, headed: 'bool' = True) -> 'SessionResult'`
+## `launch(url: str | None = None, headed: bool = True) -> SessionResult`
 
 Launch the browser and connect.
 
-## `launch_detached(url: 'str | None' = None, headed: 'bool' = True, executable_path: 'str | Path | None' = None, user_data_dir: 'str | Path | None' = None) -> 'SessionResult'`
+## `launch_detached(url: str | None = None, headed: bool = True, executable_path: str | Path | None = None, user_data_dir: str | Path | None = None) -> SessionResult`
 
 Spawn Chromium as a detached process and attach to it over CDP.
 
@@ -164,16 +164,16 @@ running Chrome first, or use a dedicated profile directory.
 
 Call `stop_detached()` to kill the browser when you're done.
 
-## `match_all(selector: 'Selector', state: 'WaitState' = 'attached', timeout: 'int' = 10000) -> 'Match'`
+## `match_all(selector: Selector, state: WaitState = 'attached', timeout: int = 10000) -> Match`
 
 Wait for at least one match, then check them against the step's rule.
 
-## `matched(selector: 'Selector', rule: 'MatchRule') -> 'Match'`
+## `matched(selector: Selector, rule: MatchRule) -> Match`
 
 Check what `selector` matches right now against `rule`, keeping
 any mismatch the rule's `pick` accepted.
 
-## `matched_after_wait(selector: 'Selector', rule: 'MatchRule', state: 'WaitState', timeout: 'int') -> 'Match'`
+## `matched_after_wait(selector: Selector, rule: MatchRule, state: WaitState, timeout: int) -> Match`
 
 Wait for `selector`, then check what it matches against `rule`.
 
@@ -184,14 +184,14 @@ again after, because the wait is what makes a match appear, and
 counting never waits. A wait that expired is the failure: an element
 that never showed up is what the step was waiting for.
 
-## `matched_rows(selector: 'Selector', rule: 'MatchRule', timeout: 'int') -> 'Match'`
+## `matched_rows(selector: Selector, rule: MatchRule, timeout: int) -> Match`
 
 The matches a `read` or `parse` reads from.
 
 A wait that expired reports the count instead: the flow stated how many
 rows it wanted, so "found 0" is the failure it is looking for.
 
-## `matching(rule: 'MatchRule | None') -> 'Iterator[list[AcceptedMatch]]'`
+## `matching(rule: MatchRule | None) -> Iterator[list[AcceptedMatch]]`
 
 Run a step under `rule`, yielding the mismatches it accepted.
 
@@ -199,7 +199,7 @@ The rule rides the session rather than every `find` signature, so a
 step's `expect`/`pick` reaches the element lookup its action
 happens to make.
 
-## `parse_elements(selector: 'Selector', extract: 'dict[str, ExtractField]', exclude: 'Sequence[str]' = (), timeout: 'int' = 10000) -> 'list[dict[str, str | None]]'`
+## `parse_elements(selector: Selector, extract: dict[str, ExtractField], exclude: Sequence[str] = (), timeout: int = 10000) -> list[dict[str, str | None]]`
 
 Extract structured data from matching elements.
 
@@ -212,16 +212,16 @@ reads, so a page's chrome can be left out of it.
 `timeout` bounds the wait a stated count earns — see
 `matched_rows`.
 
-## `pick(selector: 'Selector', value: 'str', *, behavior: 'Behavior | None' = None) -> 'None'`
+## `pick(selector: Selector, value: str, *, behavior: Behavior | None = None) -> None`
 
 Click the element matching text from a list of elements.
 
-## `press(selector: 'Selector | None', key: 'str', *, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'None'`
+## `press(selector: Selector | None, key: str, *, behavior: Behavior | None = None, timeout: int = 10000) -> None`
 
 Press `key` on the element; `selector=None` presses on whatever
 holds focus.
 
-## `probe(selector: 'Selector | None' = None, max_chars: 'int' = 20000) -> 'PageProbe'`
+## `probe(selector: Selector | None = None, max_chars: int = 20000) -> PageProbe`
 
 Read the page's human-attention signals in a single evaluate.
 
@@ -229,13 +229,13 @@ Pass `selector` to also capture that element's rendered text in
 `PageProbe.selector_text`. Feed the result to
 `human_needed`.
 
-## `screenshot_bytes(selector: 'Selector | None' = None) -> 'bytes'`
+## `screenshot_bytes(selector: Selector | None = None) -> bytes`
 
 PNG bytes of the current page, or of `selector` alone when given.
 
 Nothing is written into the session dir either way.
 
-## `scroll(dx: 'int', dy: 'int', selector: 'Selector | None' = None, *, behavior: 'Behavior | None' = None) -> 'None'`
+## `scroll(dx: int, dy: int, selector: Selector | None = None, *, behavior: Behavior | None = None) -> None`
 
 Scroll by a mouse-wheel delta, over `selector` when one is given.
 
@@ -244,19 +244,19 @@ element when the thing you mean to scroll is not the document. Each
 delta strays by up to `Behavior.scroll_delta_jitter`; ticks of
 identical size are a tell.
 
-## `select_option(selector: 'Selector', value: 'str', *, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'None'`
+## `select_option(selector: Selector, value: str, *, behavior: Behavior | None = None, timeout: int = 10000) -> None`
 
 Choose an option on a native `<select>`.
 
-## `set_checked(selector: 'Selector', checked: 'bool', *, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'None'`
+## `set_checked(selector: Selector, checked: bool, *, behavior: Behavior | None = None, timeout: int = 10000) -> None`
 
 Drive a checkbox or radio to `checked`, whatever state it is in.
 
-## `status() -> 'SessionResult'`
+## `status() -> SessionResult`
 
 Return current browser status.
 
-## `stop_detached() -> 'SessionResult'`
+## `stop_detached() -> SessionResult`
 
 Release our CDP connection AND kill the detached Chromium.
 
@@ -264,26 +264,26 @@ Use this to shut down a browser previously started with
 `launch_detached()`. A plain `close()` only releases the
 connection and leaves the browser running.
 
-## `survey(max_items: 'int' = 60) -> 'Survey'`
+## `survey(max_items: int = 60) -> Survey`
 
 What the page is made of before any selector is written: landmarks,
 link shapes, repeats and hydration. Never clicks, never scrolls.
 
-## `text_present(text: 'str', *, selector: 'Selector | None' = None, exact: 'bool' = False) -> 'bool'`
+## `text_present(text: str, *, selector: Selector | None = None, exact: bool = False) -> bool`
 
 Whether the page renders `text` right now — one read, no waiting.
 
-## `type(selector: 'Selector', value: 'str', *, delay_ms: 'int | Jitter' = 0, humanize: 'bool | None' = None, behavior: 'Behavior | None' = None, timeout: 'int' = 10000) -> 'None'`
+## `type(selector: Selector, value: str, *, delay_ms: int | Jitter = 0, humanize: bool | None = None, behavior: Behavior | None = None, timeout: int = 10000) -> None`
 
 Type into a field key by key. An explicit `delay_ms` is the
 caller's own cadence and wins over the behaviour's per-key jitter.
 
-## `verified_candidates(proposals: 'list[str]', accepted: 'Collection[int]') -> 'list[str]'`
+## `verified_candidates(proposals: list[str], accepted: Collection[int]) -> list[str]`
 
 The proposed selectors the page actually matches, in the order
 proposed — what `explore` offers a caller to choose from.
 
-## `wait_for_element(selector: 'Selector', *, state: 'WaitState' = 'attached', timeout: 'int' = 3000, interval: 'int' = 500, settle: 'int' = 1500) -> 'None'`
+## `wait_for_element(selector: Selector, *, state: WaitState = 'attached', timeout: int = 3000, interval: int = 500, settle: int = 1500) -> None`
 
 Poll until `selector` reaches `state`; raise `TimeoutError` if not.
 
@@ -294,11 +294,11 @@ applies to `state="stable"` — how long the element's text has to
 hold still, and has to fit inside `timeout`. Use `element_exists`
 when you want a bool back.
 
-## `wait_for_load_state(state: 'str' = 'domcontentloaded', timeout: 'int' = 10000) -> 'None'`
+## `wait_for_load_state(state: str = 'domcontentloaded', timeout: int = 10000) -> None`
 
 Wait for page load state (domcontentloaded, load, networkidle).
 
-## `wait_for_text(text: 'str', *, selector: 'Selector | None' = None, exact: 'bool' = False, state: 'WaitState' = 'attached', timeout: 'int' = 3000, interval: 'int' = 500) -> 'None'`
+## `wait_for_text(text: str, *, selector: Selector | None = None, exact: bool = False, state: WaitState = 'attached', timeout: int = 3000, interval: int = 500) -> None`
 
 Poll until `text` is on the page; raise `TimeoutError` if not.
 

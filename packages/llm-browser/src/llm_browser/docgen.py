@@ -6,17 +6,17 @@ and ``tests/test_docs.py`` fails when what ships no longer matches. Nothing
 here is hand-edited, so a field's meaning is maintained once, on the field.
 """
 
-import inspect
-import re
-import types
-import typing
-from enum import Enum
 from pathlib import Path
 
-from pydantic import BaseModel
-from pydantic.fields import FieldInfo
-
 from llm_browser import constants
+from llm_browser.doc_render import (
+    docstring,
+    field_table,
+    model_section,
+    render_signature,
+    render_value,
+    table,
+)
 from llm_browser.behavior import Behavior
 from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.models import (
@@ -47,110 +47,9 @@ HEADER = (
     "not this file. -->\n"
 )
 
-# A default longer than this says nothing a reader can use in a table cell.
-DEFAULT_MAX_CHARS = 40
-
 
 def docs_dir() -> Path:
     return Path(__file__).parent / "docs"
-
-
-# --- Rendering a model ---
-
-
-def render_type(annotation: object) -> str:
-    """A field's type as a flow author would say it, not as pydantic holds it."""
-    if annotation is None or annotation is type(None):
-        return "None"
-    if isinstance(annotation, typing.TypeAliasType):
-        return annotation.__name__
-    metadata_of = getattr(annotation, "__metadata__", None)
-    if metadata_of is not None:
-        return render_type(typing.get_args(annotation)[0])
-    origin = typing.get_origin(annotation)
-    if origin is typing.Literal:
-        return " | ".join(f'"{arg}"' for arg in typing.get_args(annotation))
-    if origin in (types.UnionType, typing.Union):
-        return " | ".join(unique(render_type(a) for a in typing.get_args(annotation)))
-    if origin is not None:
-        args = ", ".join(render_type(a) for a in typing.get_args(annotation))
-        name = getattr(origin, "__name__", str(origin))
-        return f"{name}[{args}]" if args else name
-    return getattr(annotation, "__name__", str(annotation))
-
-
-def unique(values: typing.Iterable[str]) -> list[str]:
-    return list(dict.fromkeys(values))
-
-
-def render_value(value: object) -> str:
-    if isinstance(value, Enum):
-        return repr(value.value)
-    if isinstance(value, BaseModel):
-        return repr(value)
-    return repr(value)
-
-
-def render_default(field: FieldInfo) -> str:
-    if field.is_required():
-        return "required"
-    value = field.default_factory() if field.default_factory else field.default  # type: ignore[call-arg]
-    text = render_value(value)
-    return text if len(text) <= DEFAULT_MAX_CHARS else "—"
-
-
-def field_rows(model: type[BaseModel], names: typing.Iterable[str]) -> list[list[str]]:
-    rows = []
-    for name in names:
-        field = model.model_fields[name]
-        alias = field.alias or name
-        rows.append(
-            [
-                f"`{alias}`",
-                f"`{render_type(field.annotation)}`",
-                f"`{render_default(field)}`",
-                field.description or "",
-            ]
-        )
-    return rows
-
-
-def table(headings: list[str], rows: list[list[str]]) -> str:
-    """A pipe inside a cell would end it, so every cell is escaped once here."""
-    divider = " | ".join("---" for _ in headings)
-    body = "".join(
-        f"| {' | '.join(cell.replace('|', chr(92) + '|') for cell in row)} |\n"
-        for row in rows
-    )
-    return f"| {' | '.join(headings)} |\n| {divider} |\n{body}"
-
-
-def field_table(model: type[BaseModel], names: typing.Iterable[str]) -> str:
-    rows = field_rows(model, names)
-    if not any(row[-1] for row in rows):
-        rows = [row[:-1] for row in rows]
-        return table(["field", "type", "default"], rows)
-    return table(["field", "type", "default", "meaning"], rows)
-
-
-# Docstrings are written in reST for the editor; the docs are markdown.
-RST_ROLE = re.compile(r":(?:class|func|meth|attr|mod|data|exc):`~?([^`]+)`")
-
-
-def docstring(obj: object) -> str:
-    text = inspect.getdoc(obj) or ""
-    text = RST_ROLE.sub(lambda m: f"`{m.group(1).rsplit('.', 1)[-1]}`", text)
-    return text.replace("``", "`")
-
-
-def model_section(
-    title: str, model: type[BaseModel], names: list[str] | None = None
-) -> str:
-    fields = model.model_fields if names is None else names
-    parts = [f"## {title}", docstring(model)]
-    if fields:
-        parts.append(field_table(model, fields))
-    return "\n\n".join(part for part in parts if part) + "\n"
 
 
 # --- The documents ---
@@ -287,11 +186,7 @@ def extract_document() -> str:
 
 
 def signature_of(name: str) -> str:
-    try:
-        rendered = str(inspect.signature(getattr(BrowserSession, name)))
-    except (TypeError, ValueError):
-        return name
-    return f"{name}{rendered.replace('self, ', '').replace('self', '')}"
+    return render_signature(name, getattr(BrowserSession, name))
 
 
 def session_document() -> str:
