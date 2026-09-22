@@ -51,21 +51,15 @@ def doc_names() -> list[str]:
 
 def read(name: str) -> str:
     """One document's markdown. An unknown name is a ``ValueError``."""
-    if name not in doc_names():
-        raise ValueError(missing(name))
-    return (DOC_ROOT / f"{name}.md").read_text(encoding="utf-8")
-
-
-def missing(name: str) -> str:
-    """Why a name did not resolve — a typo reads very differently from a
-    reference nobody has generated yet."""
-    ungenerated = NAME.match(name) and not (DOC_ROOT / "reference").is_dir()
-    if ungenerated:
-        return (
+    if name in doc_names():
+        return (DOC_ROOT / f"{name}.md").read_text(encoding="utf-8")
+    # A typo reads very differently from a reference nobody has built yet.
+    if NAME.match(name) and not (DOC_ROOT / "reference").is_dir():
+        raise ValueError(
             f"{name} is generated at build time and is not here; run "
             "`llm-browser docs --write` in a source checkout"
         )
-    return f"no such doc {name!r}; try one of {', '.join(doc_names())}"
+    raise ValueError(f"no such doc {name!r}; try one of {', '.join(doc_names())}")
 
 
 def sections(name: str) -> list[Section]:
