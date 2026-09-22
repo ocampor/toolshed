@@ -1,0 +1,14 @@
+# `in: row` scopes the selector to the pass's element, re-resolved each time.
+steps:
+  - name: each
+    action: repeat
+    over_selector: ".row"
+    as: row
+    steps:
+      - name: label
+        action: read
+        in: row
+        selector: ".label"
+        extract:
+          text:
+            attribute: textContent

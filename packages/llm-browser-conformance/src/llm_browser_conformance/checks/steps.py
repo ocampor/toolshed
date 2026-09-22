@@ -127,6 +127,9 @@ def a_redirect_is_followed_to_late_content(ctx: Context) -> None:
     # never.html is only a neutral starting page; the flow's goto is the test.
     outputs = expect_success(ctx, "never.html", "redirect", url=ctx.url("redirect"))
     assert one_text(outputs, "result") == "arrived"
+    # The session reports where the redirect left it, not where the goto aimed.
+    landed = ctx.session.current_url()
+    assert "redirect-target.html" in landed, landed
 
 
 def a_download_comes_back_as_bytes(ctx: Context) -> None:
@@ -257,7 +260,14 @@ SCENARIOS = [
         "redirect",
         Section.STEPS,
         a_redirect_is_followed_to_late_content,
-        covers=frozenset({"api:templating.value", "field:goto.url", "step:goto"}),
+        covers=frozenset(
+            {
+                "api:templating.value",
+                "field:goto.url",
+                "session:current_url",
+                "step:goto",
+            }
+        ),
     ),
     Scenario(
         "download",

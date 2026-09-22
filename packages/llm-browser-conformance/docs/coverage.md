@@ -38,44 +38,69 @@ A scenario claims a key through `Scenario.covers`; see
 
 | item | scenarios |
 | --- | --- |
+| `field:check.expect` | match per step |
+| `field:check.pick` | match per step |
 | `field:check.selector` | checkbox and radio |
 | `field:check.checked` | fill waits for enabled, checkbox and radio |
+| `field:click.expect` | match per step |
+| `field:click.pick` | match per step |
 | `field:click.selector` | overlay intercepts click |
 | `field:click.dispatch` | dispatch click step |
 | `field:click.humanize` | humanized click and fill |
+| `field:dom.expect` | match per step |
+| `field:dom.pick` | match per step |
 | `field:dom.selector` | dom step depth |
 | `field:dom.max_depth` | dom step depth |
 | `field:dom.level` | dom body |
 | `field:dom.path` | dom step depth |
+| `field:download.expect` | match picks a file link |
+| `field:download.pick` | match picks a file link |
 | `field:download.selector` | download |
 | `field:download.path` | download |
+| `field:fill.expect` | match per step |
+| `field:fill.pick` | match per step |
 | `field:fill.selector` | shadow dom |
 | `field:fill.value` | shadow dom, controlled input |
 | `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
+| `field:parse.expect` | match per step |
+| `field:parse.pick` | match per step |
 | `field:parse.selector` | parse typed rows |
 | `field:parse.schema_path` | parse typed rows |
 | `field:parse.path` | parse decimal and date rows |
+| `field:pick.expect` | match on a pick step |
+| `field:pick.pick` | match on a pick step |
 | `field:pick.selector` | pick by text |
 | `field:pick.value` | pick by text |
+| `field:press.expect` | match per step |
+| `field:press.pick` | match per step |
 | `field:press.selector` | enter and escape, press chord |
 | `field:press.key` | enter and escape, autocomplete enter |
+| `field:read.expect` | match per step |
+| `field:read.pick` | match per step |
 | `field:read.selector` | overlay intercepts click |
 | `field:read.extract` | overlay intercepts click, read attributes |
 | `field:read.exclude` | read exclude |
 | `field:read.path` | read attributes |
+| `field:read.save_as` | read save_as |
 | `field:run-flow.flow` | run-flow embedded, repeat a sub-flow |
 | `field:run-flow.data` | run-flow embedded, repeat a sub-flow |
+| `field:screenshot.expect` | match crops a screenshot |
+| `field:screenshot.pick` | match crops a screenshot |
 | `field:screenshot.path` | screenshot step |
 | `field:screenshot.selector` | screenshot step |
 | `field:scroll.delta` | wheel ticks |
 | `field:scroll.times` | wheel ticks |
 | `field:scroll.pause` | wheel ticks |
+| `field:select.expect` | match per step |
+| `field:select.pick` | match per step |
 | `field:select.selector` | custom select rejects select |
 | `field:select.value` | custom select rejects select, native select optgroup |
 | `field:think.min_ms` | think pauses |
 | `field:think.max_ms` | think pauses |
+| `field:type.expect` | match per step |
+| `field:type.pick` | match per step |
 | `field:type.selector` | controlled input, type delay |
 | `field:type.value` | controlled input, masked input |
 | `field:type.delay` | masked input, type delay, jittered key delay |
@@ -92,7 +117,9 @@ A scenario claims a key through `Scenario.covers`; see
 | item | scenarios |
 | --- | --- |
 | `option:name` | step name keys the output |
-| `option:fields` | fields are ignored |
+| `option:scope` | in: scopes the selector |
+| `option:fields` | fields and read are ignored |
+| `option:read` | fields and read are ignored |
 | `option:when` | when is_truthy |
 | `option:eval` | eval step |
 | `option:wait_after` | wait_after |
@@ -121,6 +148,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:close` | attach over cdp |
 | `session:connect` | attach over cdp |
 | `session:count_of` | explore a button |
+| `session:current_url` | redirect |
 | `session:dom` | dom snippet, dom step depth, dom first match, sanitize levels |
 | `session:dom_snapshot` | flow failure captures artifacts, flow failure capture level |
 | `session:download_file` | download |
@@ -139,6 +167,11 @@ A scenario claims a key through `Scenario.covers`; see
 | `session:latest_tab` | latest tab |
 | `session:launch` | attach over cdp |
 | `session:launch_detached` | attach over cdp |
+| `session:match_all` | match rules |
+| `session:matched` | match rules |
+| `session:matched_after_wait` | match rules |
+| `session:matched_rows` | match rules |
+| `session:matching` | match rules |
 | `session:parse_elements` | overlay intercepts click, read attributes |
 | `session:pick` | pick by text |
 | `session:press` | press is trusted, tab order |

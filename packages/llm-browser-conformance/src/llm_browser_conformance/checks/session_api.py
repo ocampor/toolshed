@@ -25,6 +25,7 @@ from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
 from llm_browser.probe import human_needed
+from llm_browser.selectors import MatchRule
 from llm_browser.session import BrowserSession
 
 from llm_browser_conformance.checks.support import artifact_snapshot
@@ -32,6 +33,7 @@ from llm_browser_conformance.drivers import chrome_binary, configured
 from llm_browser_conformance.scenario import (
     POLL_MS,
     SLACK_MS,
+    TIMEOUT_MS,
     Context,
     Scenario,
     Section,
@@ -108,6 +110,30 @@ def find_all_returns_what_find_refuses(ctx: Context) -> None:
     assert ctx.session.driver.count(locator) == 2
     error = raises(ValueError, lambda: ctx.session.find(".item"))
     assert "found 2" in str(error), error
+
+
+def a_match_rule_reaches_every_lookup_a_step_makes(ctx: Context) -> None:
+    """``matching`` is how a step's ``expect``/``pick`` rides the session: the
+    rule is set once and every lookup inside the block obeys it, including the
+    ones ``find`` and ``parse_elements`` make on their own."""
+    ctx.visit("match-rules.html")
+    rule = MatchRule(expect=3, pick="last")
+
+    assert ctx.session.matched(".label", rule).nth == 2
+    assert (
+        ctx.session.matched_after_wait(".label", rule, "attached", TIMEOUT_MS).nth == 2
+    )
+    assert ctx.session.matched_rows(".label", rule, TIMEOUT_MS).nth == 2
+    assert ctx.session.match_all(".label").nth is None, "no rule, nothing to narrow"
+
+    with ctx.session.matching(rule) as accepted:
+        assert ctx.session.match_all(".label").nth == 2
+        assert ctx.session.driver.text_content(ctx.session.find(".label")) == "Gamma"
+    assert accepted == [], "the page had exactly the three it expected"
+
+    with ctx.session.matching(MatchRule(expect=2, pick="first")) as tolerated:
+        ctx.session.find(".label")
+    assert [(m.expected, m.found, m.picked) for m in tolerated] == [(2, 3, "first")]
 
 
 def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> None:
@@ -698,6 +724,20 @@ SCENARIOS = [
         Section.API,
         find_all_returns_what_find_refuses,
         covers=frozenset({"session:find_all"}),
+    ),
+    Scenario(
+        "match rules",
+        Section.API,
+        a_match_rule_reaches_every_lookup_a_step_makes,
+        covers=frozenset(
+            {
+                "session:match_all",
+                "session:matched",
+                "session:matched_after_wait",
+                "session:matched_rows",
+                "session:matching",
+            }
+        ),
     ),
     Scenario(
         "explore a button",

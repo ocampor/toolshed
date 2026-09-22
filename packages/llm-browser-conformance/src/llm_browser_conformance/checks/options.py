@@ -107,9 +107,10 @@ def wait_after_costs_the_flow_its_milliseconds(ctx: Context) -> None:
     assert waited <= ceiling, f"waited {waited:.3f}s, budget {ceiling:.3f}s"
 
 
-def a_fields_block_changes_nothing(ctx: Context) -> None:
-    """``fields:`` is accepted and ignored, so the block in the flow names a
-    selector and an attribute that would be wrong if anything read them."""
+def a_fields_or_read_block_changes_nothing(ctx: Context) -> None:
+    """``fields:`` and ``read:`` are carried for hosts and ignored by the
+    runner, so both blocks in the flow name a selector and an attribute that
+    would be wrong if anything read them."""
     plain = expect_success(ctx, PAGE, "option-plain")
     declared = expect_success(ctx, PAGE, "option-fields")
     assert declared == plain, f"{declared} != {plain}"
@@ -141,6 +142,17 @@ def repeat_runs_one_step_once_per_item(ctx: Context) -> None:
         "first",
         "second",
         "third",
+    ]
+
+
+def a_scoped_selector_resolves_inside_each_pass(ctx: Context) -> None:
+    """``.label`` matches three elements on the page and exactly one inside a
+    row, so a pass that resolved it globally would read Alpha every time."""
+    outputs = expect_success(ctx, "match-rules.html", "scoped-read")
+    assert [one_text(outputs, f"each/label[{n}]") for n in range(3)] == [
+        "Alpha",
+        "Beta",
+        "Gamma",
     ]
 
 
@@ -229,10 +241,16 @@ SCENARIOS = [
         covers=frozenset({"option:wait_after"}),
     ),
     Scenario(
-        "fields are ignored",
+        "fields and read are ignored",
         Section.OPTIONS,
-        a_fields_block_changes_nothing,
-        covers=frozenset({"option:fields"}),
+        a_fields_or_read_block_changes_nothing,
+        covers=frozenset({"option:fields", "option:read"}),
+    ),
+    Scenario(
+        "in: scopes the selector",
+        Section.OPTIONS,
+        a_scoped_selector_resolves_inside_each_pass,
+        covers=frozenset({"option:scope"}),
     ),
     Scenario(
         "step name keys the output",

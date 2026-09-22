@@ -1,0 +1,18 @@
+# `where` picks the row, `field` the scalar, and the next step templates it —
+# row 0 is Alpha, so a save that ignored `where` would fill the wrong text.
+steps:
+  - name: labels
+    action: read
+    selector: ".label"
+    save_as:
+      name: chosen
+      field: text
+      where:
+        text: Beta
+    extract:
+      text:
+        attribute: textContent
+  - name: fill
+    action: fill
+    selector: "#target"
+    value: "{{ chosen }}"

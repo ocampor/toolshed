@@ -1,0 +1,8 @@
+# Two download links; the second suggests a different filename, so the
+# downloaded bytes name which one `pick:` took.
+steps:
+  - name: download
+    action: download
+    selector: ".file"
+    expect: 2
+    pick: last

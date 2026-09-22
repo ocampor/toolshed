@@ -1,0 +1,4 @@
+name: LabelRow
+fields:
+  text:
+    type: str
