@@ -11,6 +11,7 @@ touched it.
 from pathlib import Path
 
 import pytest
+from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.session import BrowserSession
 
 from llm_browser_conformance.coverage import (
@@ -19,10 +20,7 @@ from llm_browser_conformance.coverage import (
     claimed_keys,
     coverage_document,
     every_required_key,
-    own_fields,
     required_keys,
-    session_methods,
-    step_arms,
     uncovered,
     unknown,
 )

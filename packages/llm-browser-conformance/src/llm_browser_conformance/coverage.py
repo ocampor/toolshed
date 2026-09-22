@@ -4,7 +4,9 @@
 the step types, step fields, step options and session methods are introspected
 from ``llm_browser`` itself, so a step type the library grows — or a field
 added to an existing one — turns into an uncovered row and fails
-``tests/test_coverage.py`` until a scenario claims it.
+``tests/test_coverage.py`` until a scenario claims it. The introspection
+itself lives in ``llm_browser.introspect``, shared with the library's own
+generated reference.
 
 A scenario claims a key through ``Scenario.covers``. Keys are strings with a
 kind prefix:
@@ -23,13 +25,10 @@ they name behaviour (``redact=``, partial outputs, a sanitize level) rather
 than an attribute.
 """
 
-import functools
-import inspect
-import typing
 from collections.abc import Iterable
 
-from llm_browser.models import BaseStep, Step
-from llm_browser.session import BrowserSession
+from llm_browser.introspect import own_fields, session_methods, step_arms
+from llm_browser.models import BaseStep
 
 from llm_browser_conformance.scenarios import ALL_SCENARIOS
 
@@ -78,58 +77,6 @@ REQUIRED_API = (
     "templating.value",
     "type.delay_jitter",
 )
-
-
-def step_arms() -> list[tuple[str, type[BaseStep]]]:
-    """``(action tag, step class)`` for every arm of the ``Step`` union.
-
-    The union is ``Annotated[A | B | ..., Discriminator]`` and each arm is
-    ``Annotated[StepClass, Tag("action")]``, so the tag is the same string a
-    flow writes as ``action:`` — including ``eval``, which has none.
-    """
-    union = typing.get_args(Step)[0]
-    arms = []
-    for arm in typing.get_args(union):
-        step_class, tag = typing.get_args(arm)
-        arms.append((str(tag.tag), step_class))
-    return sorted(arms)
-
-
-def own_fields(step_class: type[BaseStep]) -> list[str]:
-    """Fields this step has below ``BaseStep``.
-
-    ``action`` is the discriminator, not an option, and the ``BaseStep``
-    fields are counted once as options rather than once per step type.
-    Everything under it is per-step, ``SelectorStep.selector`` included: what
-    a selector means is the step's own question, so every selector step keeps
-    the row.
-
-    The one thing this misses is a step that re-declares a ``BaseStep``
-    option to narrow it: the subtraction goes by name, not by semantics.
-    """
-    return [
-        name
-        for name in step_class.model_fields
-        if name != "action" and name not in BaseStep.model_fields
-    ]
-
-
-def session_methods() -> list[str]:
-    """Every public member of ``BrowserSession``, however it is declared.
-
-    Walking the MRO rather than ``inspect.getmembers``: a ``property`` or a
-    ``classmethod`` is not a function once the class body is done with it, so
-    a session attribute declared as one would otherwise never be required.
-    """
-    descriptors = (staticmethod, classmethod, property, functools.cached_property)
-    names = set()
-    for klass in BrowserSession.__mro__:
-        for name, member in vars(klass).items():
-            if name.startswith("_"):
-                continue
-            if inspect.isfunction(member) or isinstance(member, descriptors):
-                names.add(name)
-    return sorted(names)
 
 
 def required_keys() -> dict[str, list[str]]:
