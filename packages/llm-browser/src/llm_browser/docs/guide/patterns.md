@@ -1,11 +1,11 @@
 # Flow Patterns
 
 Field-tested, JavaScript-free YAML for the situations that cost the most time. Language
-reference: `reference/steps`; driver limits: the `llm_browser.drivers` module docs. `eval:` is not a
+reference: `reference/steps`; driver limits: `reference/drivers`. `eval:` is not a
 pattern here — if a page needs one, the missing primitive belongs in the library.
 
 **XPath is not portable.** Every `{ xpath: ... }` and `:has-text(...)` below needs `patchright`
-or `camoufox`; on `nodriver` only real CSS reaches the page (see `llm_browser.drivers`). Each pattern names its CSS equivalent.
+or `camoufox`; on `nodriver` only real CSS reaches the page (see `reference/drivers`). Each pattern names its CSS equivalent.
 
 | Instead of `eval` for | Use |
 |---|---|
@@ -32,7 +32,7 @@ llm-browser explore --targets flow.yaml # every selector of the flow, one page c
 ```
 
 ```yaml
-# flow.yaml — one entry per step you are about to write
+# targets.yaml — one entry per step you are about to write
 - { selector: "tr.athing", extract: { title: ".titleline > a" } }   # from repeats
 - { selector: ".morelink", intent: click }                          # from landmarks
 ```
@@ -82,19 +82,9 @@ schema and never opens the page.
 `dom` sanitizes; `find` does not. `find --selector … --all` returns each match's raw `outerHTML`,
 so `data-*` and `aria-*` are readable per candidate without a page-sized dump.
 
-Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
+Which attributes each `--level` keeps, and which tags it unwraps: the
+`SanitizeLevel` table in `reference/session`.
 
-| `--level` | Attributes kept | Also |
-|---|---|---|
-| `low` | every attribute except `style` | the default |
-| `medium` | lxml's `safe_attrs` (`id`, `class`, `name`, `type`, `value`, `alt`, `title`, `for`, table attrs, …) plus `href`, `src`; no `style` | drops `data-*`, `aria-*`, `role`, `placeholder` |
-| `high` | `medium` minus `href` and `src` | for page-sized `dom` reads where links are noise |
-| `xhigh` | `id`, `name`, `role`, `type`, `value`, `placeholder`, `alt`, `title` only | unwraps `div`/`span`/`section`, so structure reads at a glance |
-
-- Scripts, inline styles, `style` attributes, comments, `<meta>` and `<link>` are stripped at
-  **every** level — the levels differ only in attributes, killed tags and data-URI truncation.
-- `role` and `placeholder` survive at `xhigh` but **not** at `medium`; `data-*` and `aria-*`
-  survive only at `low`. Pick the level from this table, not by stepping down through them.
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
 - On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
@@ -244,7 +234,7 @@ llm-browser find --selector "button" --all
 `dispatch: true` fires an untrusted DOM `click` — last resort, only for a JS-bound submit or
 confirm button. It emits `isTrusted=false` on **every** driver, camoufox included: camoufox's
 stealth is fingerprint-level and does not rewrite `Event.isTrusted` for a page-created event.
-See `llm_browser.drivers` for the escape-hatch list.
+See `reference/drivers` for the escape-hatch list.
 
 ```yaml
 - { name: continue, selector: "#btnContinuar", action: click, dispatch: true }

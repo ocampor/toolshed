@@ -1,7 +1,14 @@
 """Stage two of the flow pipeline (a resolved document in, a validated ``Flow``
 out) and the entry point to stage three: run it, redacted, with a retry hint.
 Neither stage touches the filesystem — every ``run-flow`` reference is inlined
-by :mod:`llm_browser.flow_pipeline` first."""
+by :mod:`llm_browser.flow_pipeline` first.
+
+``{{ name }}`` anywhere in a step's strings is replaced from flow data before
+the step runs — declared params, values a ``save_as`` put there, and the
+bindings of the enclosing ``repeat``. Dotted paths (``{{ row.price }}``) read
+into a mapping. A name flow data does not carry fails its step rather than
+reaching the page as literal braces.
+"""
 
 from collections.abc import Iterable, Mapping
 from typing import Any

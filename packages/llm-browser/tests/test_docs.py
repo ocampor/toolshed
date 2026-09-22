@@ -7,9 +7,11 @@ covers every step type.
 
 import ast
 import importlib
+import re
 from pathlib import Path
 
 import llm_browser
+from llm_browser import docs
 import pytest
 from llm_browser.cli_docs import source_tree
 from llm_browser.docgen import (
@@ -116,3 +118,51 @@ def test_every_public_model_is_rendered_somewhere(rendered: dict[str, str]) -> N
         if f"## `{path.rsplit('.', 1)[1]}`" not in documents
     ]
     assert missing == []
+
+
+def test_no_class_variable_renders_as_a_field(rendered: dict[str, str]) -> None:
+    """A `ClassVar` configures the model; a flow that writes one is ignored."""
+    documents = "\n".join(rendered.values())
+    shown = [
+        f"{model.__name__}.{name}"
+        for path in public_models()
+        for model in [resolve(path)]
+        for name in model.__class_vars__
+        if f"### `{model.__name__}.{name}`" in documents
+    ]
+    assert shown == []
+
+
+def test_every_default_factory_field_shows_a_default(rendered: dict[str, str]) -> None:
+    """Without one the field reads as required, contradicting its own
+    description."""
+    documents = "\n".join(rendered.values())
+    undefaulted = [
+        f"{path}.{name}"
+        for path in public_models()
+        for model in [resolve(path)]
+        for name, field in model.model_fields.items()
+        if field.default_factory is not None
+        and re.search(rf"^{name}: [^=\n]*$", documents, re.MULTILINE)
+    ]
+    assert undefaulted == []
+
+
+def resolve(path: str) -> type[BaseModel]:
+    module, _, name = path.rpartition(".")
+    return getattr(importlib.import_module(module), name)  # type: ignore[no-any-return]
+
+
+DOC_NAME = re.compile(r"`((?:reference|guide)/[a-z0-9_-]+)`")
+
+
+def test_every_doc_name_a_doc_mentions_resolves(rendered: dict[str, str]) -> None:
+    """A pointer at a document that does not exist is worse than none."""
+    readme = (Path(llm_browser.__file__).parents[2] / "README.md").read_text()
+    names = {entry.name for entry in docs.index()}
+    pointed = {
+        name
+        for text in (*rendered.values(), docs.read("guide/patterns"), readme)
+        for name in DOC_NAME.findall(text)
+    }
+    assert sorted(pointed - names) == []

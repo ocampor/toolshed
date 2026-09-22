@@ -13,6 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import re
+
 import griffe
 import griffe2md
 
@@ -44,10 +46,16 @@ CONFIG: dict[str, Any] = {
     "filters": ["!^_", "!^model_config$"],
 }
 
-# One member of a step model carries no docstring and is the thing a flow
-# author most needs: `action: Literal["click"]`. So undocumented members stay
-# visible everywhere except the session, where they are `self.x = x` noise.
-QUIET = {"show_if_no_docstring": False}
+# The session methods for writing a step rather than running one. They answer a
+# different question from the rest and are documented apart.
+AUTHORING = (
+    "explore",
+    "explore_many",
+    "survey",
+    "count_of",
+    "first_match",
+    "verified_candidates",
+)
 
 Members = Callable[[griffe.Module], list[str]]
 
@@ -163,7 +171,6 @@ DOCUMENTS: dict[str, Document] = {
         "What a `read` step's `extract:` writes, one entry per column.",
         named("parse.ExtractField", "parse.ParseBase", "parse.build_model"),
         (("Types a schema may declare", "schema_types"),),
-        QUIET,
     ),
     "reference/session": Document(
         "BrowserSession",
@@ -174,9 +181,38 @@ DOCUMENTS: dict[str, Document] = {
             "models.PageProbe",
             "models.SessionResult",
             "models.SessionInfo",
+            "html.SanitizeLevel",
         ),
-        (("Surveying a page", "survey"),),
-        QUIET,
+        config={"filters": [*CONFIG["filters"], rf"!^({'|'.join(AUTHORING)})$"]},
+    ),
+    "reference/explore": Document(
+        "Exploring before writing a step",
+        "Counting and sampling what a selector matches, and reading what a "
+        "page is made of — answers about the page, never a click.",
+        named(
+            "session.BrowserSession",
+            "explore_models.ExploreTarget",
+            "explore_models.ExploreResult",
+            "explore_models.Intent",
+            "survey_models.Survey",
+        ),
+        (("How a survey ranks what it finds", "survey"),),
+        {"members": list(AUTHORING)},
+    ),
+    "reference/flows": Document(
+        "Running a flow",
+        "Loading a flow, handing it data and reading what comes back.",
+        named(
+            "flows.run_flow",
+            "flows.load_flow_document",
+            "flow_repository.FlowRepository",
+            "selector_map.load_selector_map",
+        ),
+        (
+            ("Data and templates", "flows"),
+            ("Resolving a flow before it runs", "flow_pipeline"),
+            ("Selector refs", "selector_map"),
+        ),
     ),
     "reference/attach": Document(
         "Launched, attached and detached",
@@ -198,6 +234,55 @@ DOCUMENTS: dict[str, Document] = {
 }
 
 
+# A ClassVar, a property and a `self.x = x` are not keys a flow may write, but
+# griffe2md renders every one of them as a field.
+NOT_A_FIELD = frozenset({"property", "instance-attribute"})
+
+# What `default_factory=<name>` produces, when a reader is better served by the
+# value than by the call.
+FACTORY_VALUES = {"list": "[]", "dict": "{}"}
+
+
+def prune(module: griffe.Module) -> None:
+    """Drop from every class what a flow author cannot write.
+
+    A pydantic model's ``ClassVar`` is configuration for the model, not a YAML
+    key; an enum's class attributes are its members, so the rule applies to a
+    model and nothing else.
+    """
+    for klass in classes_of(module):
+        model = "pydantic-model" in klass.labels
+        for name in list(klass.members):
+            member = klass.members[name]
+            config = model and "class-attribute" in member.labels
+            if member.labels & NOT_A_FIELD or config:
+                del klass.members[name]
+            elif "pydantic-field" in member.labels:
+                show_factory_default(member)  # type: ignore[arg-type]
+
+
+def show_factory_default(field: griffe.Attribute) -> None:
+    """``default_factory`` leaves no value, so the field reads as required."""
+    constraints = field.extra.get("griffe_pydantic", {}).get("constraints", {})
+    factory = constraints.get("default_factory")
+    if factory is None or field.value is not None:
+        return
+    made = getattr(factory, "body", None) or FACTORY_VALUES.get(str(factory))
+    field.value = str(made) if made is not None else f"{factory}()"
+
+
+def classes_of(obj: griffe.Module | griffe.Class) -> list[griffe.Class]:
+    found = []
+    for member in obj.members.values():
+        if member.is_alias:
+            continue
+        if member.is_module or member.is_class:
+            found.extend(classes_of(member))  # type: ignore[arg-type]
+        if member.is_class:
+            found.append(member)  # type: ignore[arg-type]
+    return found
+
+
 def load_package(source: Path) -> griffe.Module:
     """The package as griffe reads it — statically, without importing it."""
     loaded = griffe.load(
@@ -207,6 +292,7 @@ def load_package(source: Path) -> griffe.Module:
         resolve_aliases=True,
     )
     assert isinstance(loaded, griffe.Module)
+    prune(loaded)
     return loaded
 
 
@@ -228,14 +314,26 @@ def covered_modules(module: griffe.Module) -> set[str]:
     return names
 
 
+MEMBER_HEADING = re.compile(r"^### `([^`]+)`", re.MULTILINE)
+
+
+def render_member(module: griffe.Module, path: str, config: dict[str, Any]) -> str:
+    """One object, its member headings qualified by the owner.
+
+    ``sections()`` is the search surface, and eighteen sections all called
+    `action` answer nothing.
+    """
+    obj = module[path]
+    rendered = griffe2md.render_object_docs(obj, config)
+    return MEMBER_HEADING.sub(rf"### `{obj.name}.\1`", rendered)
+
+
 def render(module: griffe.Module, document: Document) -> str:
     config = {**CONFIG, **document.config}
+    # Members first: the prose is background, and the models are the answer.
     bodies = [
-        prose_section(module, heading, path) for heading, path in document.prose
-    ] + [
-        griffe2md.render_object_docs(module[path], config)
-        for path in document.members(module)
-    ]
+        render_member(module, path, config) for path in document.members(module)
+    ] + [prose_section(module, heading, path) for heading, path in document.prose]
     return "\n".join([HEADER, f"# {document.title}\n", document.intro, "", *bodies])
 
 

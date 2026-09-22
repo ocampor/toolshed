@@ -137,10 +137,8 @@ The states and their parameters: `reference/waits`.
 
 ## Drivers
 
-`patchright` (default), `camoufox` and `nodriver`: which to pick, what each one spoofs and
-where each one falls short is `src/llm_browser/drivers/__init__.py` and the driver class
-docstrings, rendered into `reference/session`. The contract they implement is the `Driver`
-class docstring, `src/llm_browser/drivers/base.py`. Build-vs-buy investigation of the 2026
+`patchright` (default), `camoufox` and `nodriver`: which to pick, what each one spoofs,
+where each one falls short and the contract they implement are all in `reference/drivers`. Build-vs-buy investigation of the 2026
 landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Attach, daemon, and capture modes
