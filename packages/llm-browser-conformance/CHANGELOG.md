@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.12.0 — 2026-09-22
+
+Tracks `llm-browser` 0.20.0.
+
+### Added
+
+- `match per step`, on `site/match-rules.html` and `flows/match-rules.yaml`:
+  every element-driving step states an `expect:` count and a `pick:`, on a page
+  with three of everything, so a step that took the first match is caught.
+- `match on a pick step`, `match crops a screenshot` and `match picks a file
+  link` carry the same rule for `pick`, `screenshot` and `download`, each split
+  off so a driver gap there cannot mask the rest.
+- `match count failure`: a stated count the page cannot meet, and a `pick:` past
+  the last match, report `expected`, `found`, `samples` and a hint.
+- `match rules`: `BrowserSession.matching` sets the rule every lookup inside the
+  block obeys, and `matched`, `matched_after_wait`, `matched_rows` and
+  `match_all` each narrow to the pick.
+- `read save_as` (`flows/save-as.yaml`): `where` picks the row, `field` the
+  scalar, and the next step templates it.
+- `in: scopes the selector` (`flows/scoped-read.yaml`): a `repeat` over
+  `over_selector` re-resolves the scoped selector each pass.
+- `redirect` also claims `session:current_url`, and `fields and read are
+  ignored` claims the `read:` option alongside `fields:`.
+
+### Fixed
+
+- `docs/coverage.md` covers every key `llm-browser` 0.20.0 added, so
+  `tests/test_coverage.py` passes again.
+
 ## 0.11.2 — 2026-09-17
 
 Tracks `llm-browser` 0.18.4.

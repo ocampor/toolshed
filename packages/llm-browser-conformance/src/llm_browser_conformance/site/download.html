@@ -1,7 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Download</title>
-<a id="download" href="download.txt" download="download.txt">Download</a>
+<a id="download" class="file" href="download.txt" download="download.txt">Download</a>
+<!-- Same bytes under another suggested name, so a `pick:` is visible in the result. -->
+<a id="download-alternate" class="file" href="download.txt" download="alternate.txt">Download again</a>
 <script>
 const delay = Number(new URLSearchParams(location.search).get("delay") ?? 1500);
 

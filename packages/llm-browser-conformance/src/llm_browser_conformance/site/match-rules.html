@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Match rules</title>
+<style>
+  /* Rows of different heights, so a cropped screenshot says which one it took. */
+  .row { display: block; min-height: 40px; }
+  .row:nth-child(2) { min-height: 90px; }
+  .row:nth-child(3) { min-height: 140px; }
+</style>
+<ul id="rows">
+  <li class="row">
+    <span class="label">Alpha</span>
+    <button class="act">act</button>
+    <input class="name" value="">
+    <input class="flag" type="checkbox">
+    <select class="choice">
+      <option value="">-</option>
+      <option value="one">one</option>
+      <option value="two">two</option>
+    </select>
+  </li>
+  <li class="row">
+    <span class="label">Beta</span>
+    <button class="act">act</button>
+    <input class="name" value="">
+    <input class="flag" type="checkbox">
+    <select class="choice">
+      <option value="">-</option>
+      <option value="one">one</option>
+      <option value="two">two</option>
+    </select>
+  </li>
+  <li class="row">
+    <span class="label">Gamma</span>
+    <button class="act">act</button>
+    <input class="name" value="">
+    <input class="flag" type="checkbox">
+    <select class="choice">
+      <option value="">-</option>
+      <option value="one">one</option>
+      <option value="two">two</option>
+    </select>
+  </li>
+</ul>
+<ul id="options">
+  <li class="opt">Alpha</li>
+  <li class="opt">Beta</li>
+  <li class="opt">Gamma</li>
+</ul>
+<p id="clicked"></p>
+<p id="picked"></p>
+<input id="target" value="">
+<script>
+const labelOf = (el) => el.closest(".row").querySelector(".label").textContent;
+for (const button of document.querySelectorAll(".act")) {
+  button.addEventListener("click", () => {
+    document.querySelector("#clicked").textContent = labelOf(button);
+  });
+}
+for (const option of document.querySelectorAll(".opt")) {
+  option.addEventListener("click", () => {
+    document.querySelector("#picked").textContent = option.textContent;
+  });
+}
+
+const recordTrust = (e) => {
+  if (e.target.setAttribute) e.target.setAttribute("data-trusted", String(e.isTrusted));
+};
+document.addEventListener("click", recordTrust, true);
+document.addEventListener("keydown", recordTrust, true);
+</script>

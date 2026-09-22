@@ -1,0 +1,59 @@
+# One step per element-driving action, each stating the count it expects and
+# the match it acts on. The page has three of everything, so a step that
+# ignored `pick:` would act on the first row and be caught.
+params:
+  - schema_path
+steps:
+  - name: click
+    action: click
+    selector: ".act"
+    expect: 3
+    pick: last
+  - name: fill
+    action: fill
+    selector: ".name"
+    expect: 3
+    pick: 0
+    value: filled
+  - name: type
+    action: type
+    selector: ".name"
+    expect: 3
+    pick: 1
+    value: typed
+  - name: check
+    action: check
+    selector: ".flag"
+    expect: 3
+    pick: last
+  - name: select
+    action: select
+    selector: ".choice"
+    expect: 3
+    pick: first
+    value: two
+  - name: press
+    action: press
+    selector: ".name"
+    expect: 3
+    pick: 2
+    key: x
+  - name: read
+    action: read
+    selector: ".label"
+    expect: 3
+    pick: 2
+    extract:
+      text:
+        attribute: textContent
+  - name: parse
+    action: parse
+    selector: ".label"
+    expect: 3
+    pick: 0
+    schema_path: "{{ schema_path }}"
+  - name: dom
+    action: dom
+    selector: ".row"
+    expect: 3
+    pick: 1

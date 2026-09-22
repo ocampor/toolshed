@@ -1,0 +1,9 @@
+# `read` defaults to `many`, so only the stated count can fail this.
+steps:
+  - name: read
+    action: read
+    selector: ".label"
+    expect: 1
+    extract:
+      text:
+        attribute: textContent

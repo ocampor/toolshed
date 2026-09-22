@@ -421,6 +421,13 @@ def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
     assert rows[0]["note"] == "Footnote", rows
 
 
+def a_saved_read_feeds_the_next_steps_template(ctx: Context) -> None:
+    """``where`` picks the row and ``field`` the scalar: row 0 is Alpha, so a
+    save that ignored ``where`` would fill the wrong text."""
+    expect_success(ctx, "match-rules.html", "save-as")
+    assert ctx.value("#target") == "Beta"
+
+
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
@@ -515,6 +522,12 @@ SCENARIOS = [
         "read properties",
         Section.STEPS,
         read_pulls_dom_properties_alongside_attributes,
+    ),
+    Scenario(
+        "read save_as",
+        Section.STEPS,
+        a_saved_read_feeds_the_next_steps_template,
+        covers=frozenset({"field:read.save_as"}),
     ),
     Scenario(
         "think pauses",

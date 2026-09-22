@@ -1,0 +1,12 @@
+# The rows are deliberately different heights, so the crop says which one.
+steps:
+  - name: first
+    action: screenshot
+    selector: ".row"
+    expect: 3
+    pick: first
+  - name: last
+    action: screenshot
+    selector: ".row"
+    expect: 3
+    pick: last

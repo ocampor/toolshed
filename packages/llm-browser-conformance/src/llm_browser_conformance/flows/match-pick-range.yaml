@@ -1,0 +1,9 @@
+# A pick past the last match: the count is fine, the index is not.
+steps:
+  - name: read
+    action: read
+    selector: ".label"
+    pick: 5
+    extract:
+      text:
+        attribute: textContent
