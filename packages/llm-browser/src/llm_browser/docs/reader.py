@@ -1,9 +1,9 @@
 """Reading the docs the wheel ships, by name and by section.
 
-Two kinds live side by side: ``reference/*`` is rendered from the source at
-build time by :mod:`llm_browser.docgen`, ``guide/*`` is hand-written prose. A
-host serving these to a model wants one section at a time, so the split lives
-here rather than in every caller.
+Two kinds live side by side: ``reference/*`` is rendered at build time by
+``bench.docs`` from :mod:`llm_browser.docgen`'s ``REFERENCE``, ``guide/*`` is
+hand-written prose. A host serving these to a model wants one section at a
+time, so the split lives here rather than in every caller.
 """
 
 import re

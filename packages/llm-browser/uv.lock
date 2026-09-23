@@ -384,7 +384,7 @@ dev = [
     { name = "cssselect", specifier = ">=1.5.0" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mypy", specifier = ">=1.19.1" },
-    { name = "ocampor-bench", extras = ["docs"], editable = "../bench" },
+    { name = "ocampor-bench", extras = ["docs"], directory = "../bench" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.11" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
@@ -675,7 +675,7 @@ wheels = [
 [[package]]
 name = "ocampor-bench"
 version = "0.1.0"
-source = { editable = "../bench" }
+source = { directory = "../bench" }
 
 [package.optional-dependencies]
 docs = [
