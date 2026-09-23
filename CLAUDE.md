@@ -9,6 +9,7 @@ Shared Python packages monorepo · Python 3.13+ · uv · hatchling · ruff · my
 - `packages/llm-browser` — Playwright browser automation with declarative YAML flows
 - `packages/cf-access` — Cloudflare Access JWT validation middleware for Starlette/MCP origins
 - `packages/llm-browser-conformance` — Real-browser conformance suite for llm-browser drivers (`llm-browser-check`)
+- `packages/bench` — Shared basics too small to release alone; `docs` extra renders griffe2md reference docs (`ocampor-bench`)
 
 ## Commands
 

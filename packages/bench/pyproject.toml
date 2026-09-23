@@ -1,0 +1,47 @@
+[project]
+name = "ocampor-bench"
+version = "0.1.0"
+description = "Shared basics too small to release alone; one extra per capability."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+docs = [
+    "griffe2md>=1.5,<2",
+    "griffe-pydantic>=1.1,<2",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "hatchling>=1.27",
+    "mypy>=1.19.1",
+    "ocampor-bench[docs]",
+    "pytest>=9.0.2",
+    "ruff>=0.11.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bench"]
+
+[tool.mypy]
+strict = true
+exclude = ["example/"]
+
+# griffe2md ships no py.typed.
+[[tool.mypy.overrides]]
+module = "griffe2md.*"
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
