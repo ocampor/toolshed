@@ -14,12 +14,9 @@ import llm_browser
 from llm_browser import docs
 import pytest
 from llm_browser.cli_docs import source_tree
-from llm_browser.docgen import (
-    DOCUMENTS,
-    covered_modules,
-    load_package,
-    reference_documents,
-)
+from bench.docs.files import reference_documents
+from bench.docs.render import load_package
+from llm_browser.docgen import DOCUMENTS, REFERENCE, covered_modules
 from llm_browser.introspect import step_arms
 from pydantic import BaseModel
 
@@ -31,7 +28,7 @@ DOC_MAX_CHARS = 20_000
 def rendered() -> dict[str, str]:
     source = source_tree()
     assert source is not None, "tests run from a source checkout"
-    return reference_documents(source)
+    return reference_documents(REFERENCE, source)
 
 
 @pytest.mark.parametrize("name", sorted(DOCUMENTS))
@@ -61,7 +58,7 @@ MODEL_MODULES = ("models", "repeat", "selectors", "behavior", "results")
 def documented_modules() -> set[str]:
     source = source_tree()
     assert source is not None
-    return covered_modules(load_package(source))
+    return covered_modules(load_package(REFERENCE.package, source))
 
 
 def module_prose() -> dict[str, int]:

@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser"
-version = "0.22.0"
+version = "0.23.0"
 description = "Playwright browser automation with declarative YAML flows for LLM agents."
 requires-python = ">=3.13"
 dependencies = [
@@ -26,18 +26,18 @@ package = true
 
 [tool.uv.sources]
 yaml-engine = { path = "../yaml-engine" }
+ocampor-bench = { path = "../bench", editable = true }
 
 [build-system]
-requires = ["hatchling", "griffe2md>=1.5", "griffe-pydantic>=1.1"]
+requires = ["hatchling", "ocampor-bench[docs]>=0.1,<0.2"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
     "cssselect>=1.5.0",
-    "griffe-pydantic>=1.1",
-    "griffe2md>=1.5",
     "lxml-stubs>=0.5.1",
     "mypy>=1.19.1",
+    "ocampor-bench[docs]>=0.1,<0.2",
     "pytest>=9.0.2",
     "ruff>=0.11",
     "types-pyyaml>=6.0.12.20250915",
@@ -50,6 +50,7 @@ artifacts = ["/src/llm_browser/docs/reference/*.md"]
 
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
+package = "llm_browser"
 
 [tool.mypy]
 strict = true
@@ -62,17 +63,6 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "yaml_engine.*"
-ignore_missing_imports = true
-
-# Build-time only: griffe2md ships no py.typed, and the build hook runs under
-# hatchling's environment, where hatchling is present and this package is not.
-[[tool.mypy.overrides]]
-module = "griffe2md.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "hatch_build"
-ignore_errors = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

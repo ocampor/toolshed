@@ -62,6 +62,7 @@ def read(name: str) -> str:
     raise ValueError(f"no such doc {name!r}; try one of {', '.join(doc_names())}")
 
 
+# Same body as bench.docs.sections.sections_of; the wheel runs without bench.
 def sections(name: str) -> list[Section]:
     """Split at every `#`–`###` heading, fenced code kept inside its section.
 

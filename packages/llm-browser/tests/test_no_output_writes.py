@@ -51,7 +51,6 @@ WRITE_MODES = set("wax+")
 # Every module allowed to put bytes on disk, and why it earns the exemption.
 ALLOWED = {
     "cli.py": "the CLI is what writes what a run returned",
-    "docgen.py": "`llm-browser docs --write` rewrites its own source tree",
     "state.py": "state.json is how a detached browser is found again",
     "drivers/patchright_shim.py": "it patches patchright's own Node bundle in place",
 }

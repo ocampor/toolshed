@@ -9,45 +9,14 @@ Nothing here imports ``llm_browser``: the hook loads this file on its own, in
 a build environment where the package is source, not an installed dependency.
 """
 
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any, NamedTuple
-
-import re
-
 import griffe
-import griffe2md
-
-PACKAGE = "llm_browser"
-
-# A resolved constant longer than this is a path or a table, not a number.
-DEFAULT_MAX_CHARS = 40
+from bench.docs.files import Reference
+from bench.docs.render import CONFIG, Document, Members, members_of
 
 HEADER = (
     "<!-- Generated from the source of `packages/llm-browser` in the toolshed "
     "repo; edit the docstrings, not this file. -->\n"
 )
-
-# griffe2md's defaults are written for a docs site with an index and full
-# dotted paths. A model reads one document at a time, so: plain names as
-# headings, no summary index, source order, signatures with their annotations,
-# and inherited members left to the base class that declares them.
-CONFIG: dict[str, Any] = {
-    **griffe2md.default_config,
-    "heading_level": 2,
-    "show_root_heading": True,
-    "show_root_full_path": False,
-    "show_object_full_path": False,
-    "show_root_members_full_path": False,
-    "show_bases": True,
-    "summary": False,
-    "inherited_members": False,
-    "members_order": "source",
-    "show_signature_annotations": True,
-    "separate_signature": True,
-    # `model_config` is pydantic's own plumbing, not a field a flow writes.
-    "filters": ["!^_", "!^model_config$"],
-}
 
 # The session methods for writing a step rather than running one. They answer a
 # different question from the rest and are documented apart.
@@ -59,27 +28,6 @@ AUTHORING = (
     "first_match",
     "verified_candidates",
 )
-
-Members = Callable[[griffe.Module], list[str]]
-
-
-def nothing(module: griffe.Module) -> list[str]:
-    return []
-
-
-class Document(NamedTuple):
-    """A generated file: its heading, its opening line, and what it renders.
-
-    ``prose`` is for a module or class whose *docstring* is the documentation
-    and whose members are not — the CLI's lifecycle notes, a driver's fine
-    print. ``members`` is for the objects rendered whole.
-    """
-
-    title: str
-    intro: str
-    members: Members = nothing
-    prose: tuple[tuple[str, str], ...] = ()
-    config: dict[str, Any] = {}
 
 
 def named(*paths: str) -> Members:
@@ -237,163 +185,17 @@ DOCUMENTS: dict[str, Document] = {
 }
 
 
-# A ClassVar, a property and a `self.x = x` are not keys a flow may write, but
-# griffe2md renders every one of them as a field.
-NOT_A_FIELD = frozenset({"property", "instance-attribute"})
-
-# What `default_factory=<name>` produces, when a reader is better served by the
-# value than by the call.
-FACTORY_VALUES = {"list": "[]", "dict": "{}"}
-
-
-def prune(module: griffe.Module) -> None:
-    """Drop from every class what a flow author cannot write.
-
-    A pydantic model's ``ClassVar`` is configuration for the model, not a YAML
-    key; an enum's class attributes are its members, so the rule applies to a
-    model and nothing else.
-    """
-    for klass in classes_of(module):
-        model = "pydantic-model" in klass.labels
-        for name in list(klass.members):
-            member = klass.members[name]
-            config = model and "class-attribute" in member.labels
-            if member.labels & NOT_A_FIELD or config:
-                del klass.members[name]
-            elif "pydantic-field" in member.labels:
-                show_factory_default(member)  # type: ignore[arg-type]
-                show_constant_default(module, member)  # type: ignore[arg-type]
-
-
-def show_constant_default(module: griffe.Module, field: griffe.Attribute) -> None:
-    """A default written as a constant renders as the name alone, so a reader
-    cannot see that a wait's budget is shorter than its step's."""
-    if not isinstance(field.value, griffe.ExprName):
-        return
-    path = field.value.canonical_path.removeprefix(f"{PACKAGE}.")
-    literal = getattr(module.get_member(path), "value", None) if path else None
-    if literal is not None and len(str(literal)) <= DEFAULT_MAX_CHARS:
-        field.value = f"{field.value.name} (= {literal})"
-
-
-def show_factory_default(field: griffe.Attribute) -> None:
-    """``default_factory`` leaves no value, so the field reads as required."""
-    constraints = field.extra.get("griffe_pydantic", {}).get("constraints", {})
-    factory = constraints.get("default_factory")
-    if factory is None or field.value is not None:
-        return
-    made = getattr(factory, "body", None) or FACTORY_VALUES.get(str(factory))
-    field.value = str(made) if made is not None else f"{factory}()"
-
-
-def classes_of(obj: griffe.Module | griffe.Class) -> list[griffe.Class]:
-    found = []
-    for member in obj.members.values():
-        if member.is_alias:
-            continue
-        if member.is_module or member.is_class:
-            found.extend(classes_of(member))  # type: ignore[arg-type]
-        if member.is_class:
-            found.append(member)  # type: ignore[arg-type]
-    return found
-
-
-def load_package(source: Path) -> griffe.Module:
-    """The package as griffe reads it — statically, without importing it."""
-    loaded = griffe.load(
-        PACKAGE,
-        search_paths=[str(source)],
-        extensions=griffe.load_extensions("griffe_pydantic"),
-        resolve_aliases=True,
-    )
-    assert isinstance(loaded, griffe.Module)
-    prune(loaded)
-    return loaded
-
-
-def prose_section(module: griffe.Module, heading: str, path: str) -> str:
-    docstring = module[path].docstring
-    return f"## {heading}\n\n{docstring.value if docstring else ''}\n"
+REFERENCE = Reference(package="llm_browser", header=HEADER, documents=DOCUMENTS)
 
 
 def covered_modules(module: griffe.Module) -> set[str]:
     """Every module some document renders from, whole or through a member."""
     names = set()
     for document in DOCUMENTS.values():
-        paths = [path for _, path in document.prose] + document.members(module)
+        paths = [path for _, path in document.prose] + members_of(module, document)
         for path in paths:
             obj = module[path]
             parent = obj if obj.is_module else obj.parent
             assert parent is not None
             names.add(parent.path)
     return names
-
-
-MEMBER_HEADING = re.compile(r"^### `([^`]+)`", re.MULTILINE)
-
-
-def render_member(module: griffe.Module, path: str, config: dict[str, Any]) -> str:
-    """One object, its member headings qualified by the owner.
-
-    ``sections()`` is the search surface, and eighteen sections all called
-    `action` answer nothing.
-    """
-    obj = module[path]
-    rendered = griffe2md.render_object_docs(obj, config)
-    return MEMBER_HEADING.sub(rf"### `{obj.name}.\1`", rendered)
-
-
-def render(module: griffe.Module, document: Document) -> str:
-    config = {**CONFIG, **document.config}
-    # Members first: the prose is background, and the models are the answer.
-    bodies = [
-        render_member(module, path, config) for path in document.members(module)
-    ] + [prose_section(module, heading, path) for heading, path in document.prose]
-    return "\n".join([HEADER, f"# {document.title}\n", document.intro, "", *bodies])
-
-
-def reference_documents(source: Path) -> dict[str, str]:
-    """Every generated document, keyed by its doc name."""
-    module = load_package(source)
-    return {name: render(module, document) for name, document in DOCUMENTS.items()}
-
-
-def reference_dir(source: Path) -> Path:
-    return source / PACKAGE / "docs" / "reference"
-
-
-def write_reference(source: Path) -> list[str]:
-    """Write every document under ``source``; answer the names that changed."""
-    target = reference_dir(source)
-    target.mkdir(parents=True, exist_ok=True)
-    changed = []
-    for name, text in reference_documents(source).items():
-        path = target / f"{Path(name).name}.md"
-        if not path.exists() or path.read_text() != text:
-            path.write_text(text)
-            changed.append(name)
-    for orphan in orphans(source):
-        orphan.unlink()
-        changed.append(f"removed {orphan.name}")
-    return changed
-
-
-def orphans(source: Path) -> list[Path]:
-    """Files left behind by a document that was renamed or dropped."""
-    wanted = {f"{Path(name).name}.md" for name in DOCUMENTS}
-    target = reference_dir(source)
-    if not target.exists():
-        return []
-    return sorted(path for path in target.glob("*.md") if path.name not in wanted)
-
-
-def stale_reference(source: Path) -> list[str]:
-    """What a rebuild would change: drift, missing files and orphans alike."""
-    target = reference_dir(source)
-    stale = [
-        name
-        for name, text in reference_documents(source).items()
-        if not (path := target / f"{Path(name).name}.md").exists()
-        or path.read_text() != text
-    ]
-    return stale + [f"orphan {path.name}" for path in orphans(source)]
