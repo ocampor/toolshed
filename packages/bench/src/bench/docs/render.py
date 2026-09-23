@@ -6,7 +6,8 @@ from typing import Any, NamedTuple
 try:
     import griffe
     import griffe2md
-except ImportError:
+    import griffe_pydantic  # noqa: F401
+except ModuleNotFoundError:
     # `from None`: a missing extra reads as one line, never a griffe traceback.
     raise ImportError("bench.docs needs the docs extra: install 'ocampor-bench[docs]'") from None
 
@@ -140,7 +141,7 @@ def prose_section(module: griffe.Module, heading: str, path: str) -> str:
 MEMBER_HEADING = re.compile(r"^### `([^`]+)`", re.MULTILINE)
 
 
-def render_member(module: griffe.Module, path: str, config: dict[str, Any] = CONFIG) -> str:
+def render_member(module: griffe.Module, path: str, config: dict[str, Any]) -> str:
     """One object, its member headings qualified by the owner.
 
     A section is searched on its own, and eighteen sections all called
