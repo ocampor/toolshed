@@ -20,7 +20,7 @@ pip install 'ocampor-bench[docs]' --index-url https://pypi.ocampor.com/simple/
 
 `src/<package>/docgen.py` names what to document; the hook finds it by the name `REFERENCE`.
 
-```python
+```python title="src/my_package/docgen.py"
 from bench.docs.files import Reference
 from bench.docs.render import Document
 
@@ -31,15 +31,19 @@ REFERENCE = Reference(
 )
 ```
 
-`hatch_build.py` is one line:
+`hatch_build.py`:
 
-```python
+```python title="hatch_build.py"
 from bench.docs.hook import ReferenceDocsHook  # noqa: F401
 ```
 
 `pyproject.toml`:
 
-```toml
+```toml title="pyproject.toml"
+[project]
+name = "my-package"
+version = "0"
+
 [build-system]
 requires = ["hatchling", "ocampor-bench[docs]>=0.1,<0.2"]
 
@@ -48,6 +52,7 @@ path = "hatch_build.py"
 package = "my_package"
 
 [tool.hatch.build.targets.wheel]
+packages = ["src/my_package"]
 artifacts = ["/src/my_package/docs/reference/*.md"]
 ```
 
