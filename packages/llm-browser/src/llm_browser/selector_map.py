@@ -1,5 +1,14 @@
 """Selector map: load a YAML file mapping symbolic names to selectors, name the
-refs a flow needs, and swap each one for its selector as a step runs."""
+refs a flow needs, and swap each one for its selector as a step runs.
+
+A flow writes ``ref: <group>.<name>`` where a selector would go — or the long
+``selector: {ref: ...}`` — and never carries the selector itself, so a site
+that moves its markup is one map edit rather than a flow edit. The map is a
+two-level YAML file, ``group: {name: selector}``, given to the CLI as
+``--selector-map`` or to :func:`llm_browser.flows.run_flow` as
+``selector_map=``. Refs resolve per step, at run time: a ref the map lacks
+fails the load, not the step, so a typo never reaches a browser.
+"""
 
 from collections.abc import Iterator
 from pathlib import Path

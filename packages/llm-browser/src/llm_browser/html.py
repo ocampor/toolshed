@@ -28,6 +28,22 @@ from llm_browser.constants import (
 
 
 class SanitizeLevel(enum.StrEnum):
+    """How hard to strip a page before handing it back.
+
+    Scripts, inline `style`, comments, `<meta>` and `<link>` go at every
+    level; the levels differ in attributes, killed tags and data-URI
+    truncation. Pick from the table rather than stepping down through it —
+    `role`, `placeholder` and `aria-*` do not survive `medium`, but `role` and
+    `placeholder` come back at `xhigh`.
+
+    | level | attributes kept | use it for |
+    | --- | --- | --- |
+    | `low` | every attribute but `style` | the default; nothing is lost |
+    | `medium` | lxml's `safe_attrs` plus `href`, `src`, `title` | when the link is the point |
+    | `high` | `medium` without `href` and `src` | page-sized reads where links are noise |
+    | `xhigh` | `id`, `alt`, `title`, `role`, `type`, `name`, `value`, `placeholder` | structure at a glance; unwraps `div`/`span`/`section` |
+    """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

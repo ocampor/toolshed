@@ -466,7 +466,7 @@ wheels = [
 
 [[package]]
 name = "llm-browser"
-version = "0.20.0"
+version = "0.22.0"
 source = { editable = "../llm-browser" }
 dependencies = [
     { name = "click" },
@@ -501,6 +501,8 @@ provides-extras = ["camoufox", "nodriver"]
 [package.metadata.requires-dev]
 dev = [
     { name = "cssselect", specifier = ">=1.5.0" },
+    { name = "griffe-pydantic", specifier = ">=1.1" },
+    { name = "griffe2md", specifier = ">=1.5" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
@@ -510,7 +512,7 @@ dev = [
 
 [[package]]
 name = "llm-browser-conformance"
-version = "0.12.0"
+version = "0.12.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

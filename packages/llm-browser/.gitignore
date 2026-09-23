@@ -1,2 +1,5 @@
 stealth-probe/
 .claude/
+
+# Generated into the wheel by hatch_build.py.
+src/llm_browser/docs/reference/

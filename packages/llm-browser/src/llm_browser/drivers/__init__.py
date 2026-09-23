@@ -1,7 +1,36 @@
-"""Driver registry and resolver.
+"""Driver registry and resolver, and which backend to pick.
 
 Drivers plug in via object injection (BrowserSession(driver=MyDriver()))
 or by name through the registry (BrowserSession(driver="patchright")).
+
+What a driver is for
+--------------------
+``Behavior`` humanizes *timing* only — inter-key gaps, click jitter, mouse
+paths, pauses. Runtime JS fingerprints (navigator, WebGL, canvas, CDP
+detection) are the driver's job: ``patchright`` removes Playwright's
+automation fingerprints on a freshly launched Chromium, ``camoufox`` spoofs
+fingerprints at the C++ level. Against the hardest targets (Cloudflare JSD on
+a busy site, Akamai Bot Manager) a launched automation context loses whatever
+is applied to it; the supported path is attach mode — launch Chromium
+yourself with a warmed profile and connect over CDP. Generic bot-test pages
+do not predict a specific vendor's verdict; probe the real target.
+
+Backend gaps that fail quietly
+------------------------------
+Pick the driver before the selector. On ``nodriver``: an XPath selector is
+handed to a CSS query and never matches, a ``press`` chord (``Control+a``)
+types its own text into the field and reports success, and ``download`` raises
+``NotImplementedError``. A ``FallbackSelector`` works there only if both
+branches are CSS. Reach a label-anchored control with ``:has()`` and attribute
+selectors instead.
+
+Headless
+--------
+The Chromium-based drivers leak ``HeadlessChrome`` in the User-Agent and fall
+back to SwiftShader for WebGL when headless, both cheap detection signals; run
+them headed or under Xvfb. ``camoufox`` spoofs both even headless and is the
+only viable headless option against strict detectors. ``scripts/stealth_probe.py``, in the
+toolshed repo, reproduces the measurement.
 """
 
 from functools import lru_cache

@@ -12,29 +12,29 @@ first, so the rest of the pipeline never touches disk or a store again:
 
 ```
 source (file | text | store)
-   │  FlowRepository.get(ref)      FileFlowRepository · DictFlowRepository · LayeredFlowRepository
+   │  FlowRepository.get(ref)
    ▼
 resolve_flow / resolve_flow_text   inline every run-flow child (async, the only I/O)
    ▼
 load_flow_document / load_flow_text   pure pydantic validation → Flow
    ▼
-run_flow(session, flow, data, selector_map=…)   every ref: resolved per step (see docs/FLOWS.md)
+run_flow(session, flow, data, selector_map=…)   every ref: resolved per step (see `reference/steps`)
 ```
 
 Running a flow steps down through four layers, each narrower than the one above:
 
 ```
-Flow (pydantic)      steps: [GotoStep, ClickStep, WaitForStep, ReadStep, RunFlowStep(SubFlow)…]
-   │  run_flow → execute_step (capture on failure, redact, outputs)
+Flow (pydantic)
+   │  run_flow → execute_step
    ▼
-actions              registry action name → fn(session, step) -> ActionResult      one per step type
+actions
    │
    ▼
-BrowserSession       goto · find · wait_for_element · dom · probe · parse_elements · screenshot_bytes
-   │  selector resolution, waits (waits.py), sanitization (html.py), probe JS, behavior pacing
+BrowserSession
+   │
    ▼
-Driver (ABC)         resolve/count/first/is_visible/text_content · click/fill/type/press · goto/wait_for_load · evaluate · screenshot_bytes
-   │  contract: no DOM waits (only wait_for_load blocks), trusted input, JS only in evaluate/is_visible/input_value/extract_rows
+Driver (ABC)
+   │
    ▼
 patchright | camoufox | nodriver
 ```
@@ -44,10 +44,9 @@ patchright | camoufox | nodriver
 - **BrowserSession** — selector resolution, waits, sanitization, probes; decides *how* to wait.
 - **Driver (ABC)** — one abstraction over backends; only `wait_for_load` blocks; input must be trusted.
 - **patchright / camoufox / nodriver** — concrete drivers; same five-rule contract, different backend.
-- **session_input.py** — one click/fill/type/press/select_option/set_checked path every action and `BrowserSession` method shares; `tests/test_actions.py` asserts `actions.py`/`steps.py`/`flows.py` never touch `session.driver`.
+- **session_input.py** — the one input path every action and session method shares.
 
-Waiting: the five `wait_for` states are documented in [FLOWS.md](docs/FLOWS.md#waiting).
-Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (details: [DRIVERS.md](docs/DRIVERS.md)).
+Writing a driver: start from the contract in the `Driver` class docstring, `src/llm_browser/drivers/base.py` (backend gaps: `src/llm_browser/drivers/__init__.py`).
 
 ## Install
 
@@ -56,16 +55,15 @@ cd packages/llm-browser
 uv sync
 ```
 
-| Extra | Install | Adds |
-|---|---|---|
-| *(base)* | `uv sync` | `patchright` driver (Chromium) |
-| `camoufox` | `pip install llm-browser[camoufox]` | `camoufox` driver (Firefox, fingerprint spoofing) |
-| `nodriver` | `pip install llm-browser[nodriver]` | `nodriver` driver (Chromium via raw CDP) |
+The base install brings the `patchright` driver; the `camoufox` and `nodriver` extras
+(`pip install llm-browser[camoufox]`) each add theirs — see
+`[project.optional-dependencies]` in `pyproject.toml`.
 
 ## Quickstart
 
 ```python
 from llm_browser import BrowserSession
+from llm_browser.parse import parse_extract_spec
 
 session = BrowserSession()
 session.launch("https://example.com", headed=True)
@@ -79,9 +77,7 @@ session.wait_for_element("#results", state="visible", timeout=10_000)
 
 html = session.dom("body", max_depth=2, level="medium")
 
-rows = session.parse_elements("tr.row", {
-    "name": {"child_selector": "td.name", "attribute": "textContent"},
-})
+rows = session.parse_elements("tr.row", parse_extract_spec({"name": "td.name"}))
 
 session.close()
 ```
@@ -114,12 +110,12 @@ steps:
 ```
 
 Flow patterns for hard widgets (autocomplete, framework-bound inputs, hidden checkboxes, rotating ids):
-[FLOW_PATTERNS.md](docs/FLOW_PATTERNS.md).
+[guide/patterns](src/llm_browser/docs/guide/patterns.md).
 
 Authoring flows with Claude: the guidance lives in the env-sync `browser-flows` skill
 ([ocampor/env-sync](https://github.com/ocampor/env-sync), `claude/skills/browser-flows/`), which
-env-sync installs globally and which fetches these docs on demand. This package ships only the
-library docs — `docs/FLOWS.md`, `docs/FLOW_PATTERNS.md`, `docs/DRIVERS.md`.
+env-sync installs globally and which reads them through `llm_browser.docs` (or the browser-api
+`docs` tool). This package ships only the library docs.
 
 The library never writes output files: every step result comes back in `FlowSuccess.outputs`,
 and `llm-browser run` is the only thing that puts it on disk. A step's `path:` is written under
@@ -129,28 +125,20 @@ because base64 on stdout helps nobody. `read`, `parse` and `dom` results without
 inline in the JSON.
 
 Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
-`run_flow(session, flow, data, from_step="...")`. See [FLOWS.md](docs/FLOWS.md) for the full flow
-language, and [docs/API.md](docs/API.md) for typed extraction (pydantic models, YAML-declared
-schemas, the `parse` action) and the full session-method table.
+`run_flow(session, flow, data, from_step="...")`. See `reference/steps` for the full flow
+language, `reference/extract` for typed extraction (pydantic models, YAML-declared schemas,
+the `parse` action) and `reference/session` for every session method.
 
 ## Waiting
 
 `wait_for_element` / the `wait_for` step is the one wait — everything else (`find`, `find_all`,
-`frame`, `element_exists`) goes through it too, so a state means the same thing everywhere. The
-five states and their parameters: [FLOWS.md → Waiting](docs/FLOWS.md#waiting).
+`frame`, `element_exists`) goes through it too, so a state means the same thing everywhere.
+The states and their parameters: `reference/waits`.
 
 ## Drivers
 
-| Driver | Stealth model | Notes |
-|---|---|---|
-| `patchright` (default) | removes Playwright automation fingerprints | Chromium; humanization via Playwright's helpers |
-| `camoufox` | C++-level fingerprint spoofing | Firefox; stealth defaults on; the only viable **headless** option against strict detectors |
-| `nodriver` | all writes go through trusted `Input.dispatch*` CDP events | Chromium via raw CDP; a few reads use JS (see docs/DRIVERS.md) |
-
-Contract: see the `Driver` class docstring in `src/llm_browser/drivers/base.py`. Conformance
-suite: `packages/llm-browser-conformance` (separate package, in progress). Full anti-bot
-landscape, camoufox defaults and nodriver's detectable surfaces:
-[DRIVERS.md](docs/DRIVERS.md). Build-vs-buy investigation of the 2026
+`patchright` (default), `camoufox` and `nodriver`: which to pick, what each one spoofs,
+where each one falls short and the contract they implement are all in `reference/drivers`. Build-vs-buy investigation of the 2026
 landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Attach, daemon, and capture modes
@@ -158,12 +146,12 @@ landscape, and why stealth is not the differentiator: [docs/RESEARCH.md](docs/RE
 `attach` connects `llm-browser` to a Chromium you launched yourself and never kills it on
 `close()`; `daemon` spawns and manages that Chromium for you. Full details — addressing a tab by
 CDP target id, one-shot remote runs, the daemon caveat, single-process-vs-multi-invocation CLI
-behavior: [docs/ATTACH.md](docs/ATTACH.md).
+behavior: the `llm_browser.cli` module docstring.
 
 ```bash
 chromium --remote-debugging-port=9222 --user-data-dir="$HOME/.cache/llm-browser/attach-profile"
 llm-browser attach --cdp-url http://localhost:9222
-llm-browser daemon --url https://example.com   # or: manage Chromium yourself, see docs/ATTACH.md
+llm-browser daemon --url https://example.com   # or: manage Chromium yourself, see the `llm_browser.cli` docstring
 llm-browser stop
 ```
 
@@ -173,10 +161,9 @@ session.attach("http://localhost:9222")
 session.close()  # disconnects only — your Chromium keeps running
 ```
 
-`BrowserSession(capture=...)` controls what a failing flow step carries back: `"screenshot"`
-(default), `"dom"`, `"both"` or `"none"`. Nothing is written — `FlowError` holds the PNG bytes
-and the DOM text in memory, and `llm-browser run` is what puts them on disk (`--capture-dir`).
-Details: [docs/API.md](docs/API.md#capture-modes).
+`BrowserSession(capture=...)` controls what a failing flow step carries back. Nothing is
+written — `FlowError` holds it in memory, and `llm-browser run` is what puts it on disk
+(`--capture-dir`). The modes: `reference/session`.
 
 ### Conformance
 

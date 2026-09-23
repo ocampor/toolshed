@@ -37,13 +37,25 @@ class Repeat(BaseModel):
     repeats over what it matches, counted once when the step starts. ``as``
     (the field is ``bind``, because ``as`` is a keyword) names the variable
     each item is bound to for that pass, alongside ``<as>_index``.
+
+    Each pass is its own scope: a ``when:`` is re-evaluated per pass, a
+    ``save_as`` inside one is invisible outside it, and a step that needs the
+    pass's element addresses it with ``in: <as>``. ``on_error: skip`` keeps the
+    run going past a failed pass and leaves a retry hint naming the passes that
+    failed — by index for an element repeat, as data for a list param, because
+    a rerun renumbers those from zero.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
     over: str | list[RepeatItem] | None = None
     over_selector: Selector | None = None
-    bind: str = Field(..., min_length=1, alias="as")
+    bind: str = Field(
+        ...,
+        min_length=1,
+        alias="as",
+        description="Written `as:`; names the variable each pass binds its item to.",
+    )
     on_error: OnError = OnError.stop
 
     @property
@@ -70,7 +82,12 @@ class RepeatBlock(BaseModel):
     name: str = "unnamed"
     over: str | list[RepeatItem] | None = None
     over_selector: Selector | None = None
-    bind: str = Field(..., min_length=1, alias="as")
+    bind: str = Field(
+        ...,
+        min_length=1,
+        alias="as",
+        description="Written `as:`; names the variable each pass binds its item to.",
+    )
     on_error: OnError = OnError.stop
     when: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = Field(..., min_length=1)

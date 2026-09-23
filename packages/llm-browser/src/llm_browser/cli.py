@@ -1,4 +1,23 @@
-"""CLI entry point for llm-browser."""
+"""CLI entry point for llm-browser.
+
+Launched mode is single-process: ``patchright`` launches Chromium in-process
+because that is where its stealth patches are injected, so ``open`` in one
+shell command and ``screenshot`` in the next cannot work — the browser died
+with the first Python process. Use ``run`` to launch, act and close in one
+invocation, or the Python API.
+
+Attach mode survives across invocations. ``attach`` answers the ``target_id``
+of the tab it opened, and ``(--cdp-url, --target-id)`` is that tab's whole
+address: no state file, so parallel callers each own their tab. ``run
+--cdp-url`` does attach, run and release in one command. ``daemon`` spawns a
+detached Chromium instead and ``stop`` kills it — but a daemon-spawned browser
+is reached with ``connect_over_cdp``, which does not activate patchright's
+patches; its value is a *warmed* profile reused across calls.
+
+Every launch prints one Node ``DeprecationWarning`` (DEP0169) from
+patchright's vendored HTTP bundle. It is harmless and upstream-tracked; do not
+silence it with ``NODE_NO_WARNINGS=1``.
+"""
 
 import asyncio
 import json
@@ -14,6 +33,7 @@ from pydantic import ValidationError
 from pydantic_core import to_json
 
 from llm_browser.behavior import Behavior
+from llm_browser.cli_docs import docs
 from llm_browser.cli_explore import explore, survey
 from llm_browser.cli_output import output
 from llm_browser.behavior_config import BehaviorConfigError, load_behavior
@@ -1005,6 +1025,7 @@ def dom(ctx: click.Context, selector: str, max_depth: int, level: str) -> None:
     output({"html": html})
 
 
+main.add_command(docs)
 main.add_command(explore)
 main.add_command(survey)
 

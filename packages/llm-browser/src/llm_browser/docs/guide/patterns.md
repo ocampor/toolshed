@@ -1,12 +1,11 @@
 # Flow Patterns
 
 Field-tested, JavaScript-free YAML for the situations that cost the most time. Language
-reference: [FLOWS.md](FLOWS.md); driver limits: [DRIVERS.md](DRIVERS.md). `eval:` is not a
+reference: `reference/steps`; driver limits: `reference/drivers`. `eval:` is not a
 pattern here — if a page needs one, the missing primitive belongs in the library.
 
 **XPath is not portable.** Every `{ xpath: ... }` and `:has-text(...)` below needs `patchright`
-or `camoufox`; on `nodriver` only real CSS reaches the page ([DRIVERS.md → Selector and key
-support](DRIVERS.md#selector-and-key-support)). Each pattern names its CSS equivalent.
+or `camoufox`; on `nodriver` only real CSS reaches the page (see `reference/drivers`). Each pattern names its CSS equivalent.
 
 | Instead of `eval` for | Use |
 |---|---|
@@ -33,7 +32,7 @@ llm-browser explore --targets flow.yaml # every selector of the flow, one page c
 ```
 
 ```yaml
-# flow.yaml — one entry per step you are about to write
+# targets.yaml — one entry per step you are about to write
 - { selector: "tr.athing", extract: { title: ".titleline > a" } }   # from repeats
 - { selector: ".morelink", intent: click }                          # from landmarks
 ```
@@ -46,7 +45,7 @@ answers each one against its own `--intent`, exiting non-zero unless every
 verdict is `ok` — the flow failing at authoring time instead of on the run.
 Targets are CSS and at most twenty per call; one the page cannot parse answers
 `error: not css` and the rest still answer.
-See [API.md](API.md#surveying-before-exploring) for every field.
+See `reference/session` under `survey` for every field.
 
 `llm-browser explore --selector … --intent <what the step will do>` is the same
 answer for one selector, when a step is all that is in question.
@@ -83,19 +82,9 @@ schema and never opens the page.
 `dom` sanitizes; `find` does not. `find --selector … --all` returns each match's raw `outerHTML`,
 so `data-*` and `aria-*` are readable per candidate without a page-sized dump.
 
-Attributes surviving each `--level`, as rendered by `sanitize_html_fragment`:
+Which attributes each `--level` keeps, and which tags it unwraps: the
+`SanitizeLevel` table in `reference/session`.
 
-| `--level` | Attributes kept | Also |
-|---|---|---|
-| `low` | every attribute except `style` | the default |
-| `medium` | lxml's `safe_attrs` (`id`, `class`, `name`, `type`, `value`, `alt`, `title`, `for`, table attrs, …) plus `href`, `src`; no `style` | drops `data-*`, `aria-*`, `role`, `placeholder` |
-| `high` | `medium` minus `href` and `src` | for page-sized `dom` reads where links are noise |
-| `xhigh` | `id`, `name`, `role`, `type`, `value`, `placeholder`, `alt`, `title` only | unwraps `div`/`span`/`section`, so structure reads at a glance |
-
-- Scripts, inline styles, `style` attributes, comments, `<meta>` and `<link>` are stripped at
-  **every** level — the levels differ only in attributes, killed tags and data-URI truncation.
-- `role` and `placeholder` survive at `xhigh` but **not** at `medium`; `data-*` and `aria-*`
-  survive only at `low`. Pick the level from this table, not by stepping down through them.
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
 - On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
@@ -245,7 +234,7 @@ llm-browser find --selector "button" --all
 `dispatch: true` fires an untrusted DOM `click` — last resort, only for a JS-bound submit or
 confirm button. It emits `isTrusted=false` on **every** driver, camoufox included: camoufox's
 stealth is fingerprint-level and does not rewrite `Event.isTrusted` for a page-created event.
-See [DRIVERS.md](DRIVERS.md) for the escape-hatch list.
+See `reference/drivers` for the escape-hatch list.
 
 ```yaml
 - { name: continue, selector: "#btnContinuar", action: click, dispatch: true }
@@ -366,12 +355,12 @@ steps:
   step: `llm-browser explore --selector "[componentkey='SearchResultsMainContent'] p"` reports
   how many rows it matches right now and how much text they carry, and a stub shows up as a
   count far below the real list (see
-  [API.md → Exploring before writing a step](API.md#exploring-before-writing-a-step)).
+  `reference/session` under `explore`).
 - When the stub has the right shape but placeholder text, `wait_for` `state: stable` with
   `settle: 1000` on the container waits for the text to stop changing instead.
 - When hydration is what unlocks a field — an input a checkbox enables — `wait_for`
-  `state: enabled` on that field is the precise wait (see FLOWS.md's
-  [state table](FLOWS.md#waiting)).
+  `state: enabled` on that field is the precise wait (the states are in
+  `reference/waits`).
 
 ## One-shot pages
 
@@ -394,10 +383,10 @@ steps:
 ```
 
 No `extract:` needed — a bare `read` gives the default `text` field (see
-FLOWS.md's [data actions](FLOWS.md#data-actions)).
+`reference/steps` under `ReadStep`).
 
 - No `goto` in the flow. Open the link by hand in a live tab and address that tab:
-  `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` ([ATTACH.md](ATTACH.md)). A
+  `llm-browser --cdp-url … --target-id … run --flow one_shot.yaml` (see `llm-browser --help`). A
   flow that navigates itself spends the view on the rehearsal.
 - Check the shape with `llm-browser validate --flow one_shot.yaml` and rehearse the steps on a
   page you can reload; the share link gets the one real run.

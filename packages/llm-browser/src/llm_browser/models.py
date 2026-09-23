@@ -45,6 +45,29 @@ WaitState = Literal[
     "attached", "detached", "visible", "hidden", "enabled", "disabled", "stable"
 ]
 
+# What each state asks of the element, for the generated reference.
+WAIT_STATES: dict[WaitState, str] = {
+    "attached": "in the DOM, rendered or not",
+    "detached": (
+        "gone from the DOM — under a fallback selector, judged against "
+        "whichever branch matched this tick"
+    ),
+    "visible": "rendered",
+    "hidden": "not rendered, whether or not it is in the DOM",
+    "enabled": (
+        'accepting input: not `disabled`, no `aria-disabled="true"`. The '
+        "Playwright drivers ask the browser, so an ancestor's `<fieldset "
+        "disabled>` counts; nodriver reads the attribute alone and misses "
+        "the inherited case. A control locked some other way — a class, "
+        "`pointer-events`, a listener that returns early — reads as enabled "
+        "everywhere"
+    ),
+    "disabled": "locked; the inverse, same rule. One that is not there yet is neither",
+    "stable": (
+        "its text unchanged for `settle` ms; one that is not there yet never settles"
+    ),
+}
+
 # Which way a text wait points. Text is read off ``innerText``, so "there" and
 # "rendered" are the same question — the other states ask about an element.
 TEXT_STATES: dict[WaitState, bool] = {
@@ -120,26 +143,56 @@ class TargetSpec(BaseModel, extra="allow"):
 class BaseStep(BaseModel):
     """Common fields shared by all step types.
 
-    No ``selector`` here — see ``SelectorStep`` for steps that target a DOM
-    element. Goto / wait / screenshot / think / eval-only steps inherit
-    ``BaseStep`` directly.
+    No ``selector`` here — see ``SelectorStep`` for steps that target one.
 
-    ``scope`` is written ``in:`` in a flow (``in`` is a keyword): it names the
-    enclosing repeat's ``as`` and scopes this step's selector to that pass's
-    element, descendants only.
+    ``when:`` holds conditions that must all hold or the step is skipped, not
+    failed: ``{field, op: eq|is_truthy|not_null, value}`` against flow data,
+    and ``{element_exists|element_missing: {selector}}`` or
+    ``{text_present: {text}}`` against the page. They are checked when the step
+    runs — once per pass inside a ``repeat``, and before a ``run-flow``'s child
+    is loaded. ``element_missing`` is the idempotent-toggle guard: act only
+    when the post-action element is not already there.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    name: str = "unnamed"
-    scope: str | None = Field(None, alias="in", min_length=1)
-    fields: list[TargetSpec] = []
-    read: dict[str, TargetSpec] = {}
-    when: list[dict[str, Any]] = []
-    eval: str | None = None
-    wait_after: int | None = None
-    optional: bool = False
-    timeout: int = 10_000
+    name: str = Field(
+        "unnamed",
+        description="Identifies the step: keys its output, targets `--from` and a retry hint.",
+    )
+    scope: str | None = Field(
+        None,
+        alias="in",
+        min_length=1,
+        description="Written `in:`; names the enclosing repeat's `as` and confines this step's selector to that pass's element.",
+    )
+    fields: list[TargetSpec] = Field(
+        default=[],
+        description="Element targets carried for a host to act on; the runner does not execute them.",
+    )
+    read: dict[str, TargetSpec] = Field(
+        default={},
+        description="Named element targets carried for a host to act on; the runner does not execute them.",
+    )
+    when: list[dict[str, Any]] = Field(
+        default=[],
+        description="Conditions that must all hold, or the step is skipped rather than failed.",
+    )
+    eval: str | None = Field(
+        None,
+        description="Expression evaluated after the action; its value lands in flow data.",
+    )
+    wait_after: int | None = Field(
+        None,
+        description="Idle pause in ms after the step, for a page that settles late.",
+    )
+    optional: bool = Field(
+        False,
+        description="A timeout or bad value skips the step instead of failing the flow.",
+    )
+    timeout: int = Field(
+        10_000, description="Budget in ms for this step's action, waits included."
+    )
     repeat: Repeat | None = None
     # Set by ``RunFlowStep``'s after-validator on each child step in a
     # sub-flow: the parent's ``run-flow`` step name. ``None`` for
@@ -186,12 +239,31 @@ DEFAULT_EXPECT: dict[MatchTarget, ExpectCount] = {
 
 
 class MatchFields(BaseModel):
-    """``expect`` is ``None`` until the flow states one — the default comes from
-    ``match_target`` — so "stated" survives the ``model_dump`` round trip
-    :func:`llm_browser.steps.resolve_step_templates` makes."""
+    """How many elements a step's selector should match, and which one it acts
+    on.
 
-    expect: ExpectCount | None = None
-    pick: PickChoice | None = None
+    ``expect`` defaults to ``1`` for an acting step and ``many`` for ``read``,
+    ``parse``, ``dom`` and ``pick``. Without a ``pick``, a count the page does
+    not have is a ``MatchCountError`` naming what it found and sampling the
+    first few; with one, the step runs and says so in the run's ``warnings``. A
+    ``pick`` past the end is a ``PickRangeError`` either way. An acting step
+    drives one element, so an ``expect`` other than ``1`` on it needs a
+    ``pick``, and both fields are rejected where they could only be ignored —
+    on ``wait_for``, and on a ``press`` or ``screenshot`` with no selector.
+
+    ``expect`` is ``None`` until the flow states one — the default comes from
+    ``match_target`` — so "stated" survives the ``model_dump`` round trip
+    :func:`llm_browser.steps.resolve_step_templates` makes.
+    """
+
+    expect: ExpectCount | None = Field(
+        None,
+        description="How many elements the selector should match; the default follows the action.",
+    )
+    pick: PickChoice | None = Field(
+        None,
+        description="Which match to act on when there is more than one: `first`, `last` or a 0-based index.",
+    )
 
     match_target: ClassVar[MatchTarget] = MatchTarget.ONE
 
@@ -236,7 +308,10 @@ def match_rule_of(step: Step) -> MatchRule | None:
 class SelectorStep(MatchFields, BaseStep):
     """Base for steps that operate on a DOM element. Selector is required."""
 
-    selector: Selector
+    selector: Selector = Field(
+        ...,
+        description="What the step acts on: a CSS string, a selector form, or a `ref:`.",
+    )
 
 
 # Steps that target a DOM element inherit from ``SelectorStep`` (selector
@@ -247,25 +322,65 @@ class SelectorStep(MatchFields, BaseStep):
 
 
 class ClickStep(SelectorStep):
+    """A real pointer click, hit-tested: a click that lands on an overlay fails
+    instead of silently activating it.
+
+    A failure naming an interception is retried once with the target scrolled
+    to the middle of the viewport, which is what clears a fixed header or
+    footer; the "try dispatch: true" hint is added only when that second try
+    was intercepted too. Every other failure — disabled, hidden, nothing
+    matched — is reported unretried. A driver that dispatches at the element's
+    coordinates without noticing the banner raises nothing and so retries
+    nothing: that page still needs ``dispatch``.
+    """
+
     action: Literal["click"]
-    dispatch: bool = False
-    humanize: bool | None = None
+    dispatch: bool = Field(
+        False,
+        description="Fire the DOM event directly, for an element no pointer can reach.",
+    )
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
 
 class FillStep(SelectorStep):
+    """Set an input's value in one go; ``type`` is the per-key alternative for
+    a field that listens to keystrokes.
+
+    With humanization off (or ``fill_as_type: false``) this fires no keystroke
+    at all — the equivalent of a paste — and a page watching input telemetry
+    sees nothing. Prefer ``type`` where that telemetry matters: it says what it
+    does whatever the session is set to.
+    """
+
     action: Literal["fill"]
     value: str = ""
-    humanize: bool | None = None
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
 
 class TypeStep(SelectorStep):
-    """``delay`` is a constant in ms, or ``[min, max]`` for a per-key jitter —
-    a constant cadence is itself a fingerprint."""
+    """Type key by key, so a field that reacts to each keystroke (autocomplete,
+    a masked input) sees them.
+
+    A ``delay`` pair is a cadence the flow asked for, so ``humanize: false``
+    does not undo it — drop the pair for a constant cadence. The step costs
+    roughly ``len(value) × delay`` *after* its wait succeeded, which no
+    ``timeout`` bounds: an embedding caller with its own deadline needs a
+    budget that covers it.
+    """
 
     action: Literal["type"]
     value: str = ""
-    delay: int | Jitter = 0
-    humanize: bool | None = None
+    delay: int | Jitter = Field(
+        0,
+        description="Per-key gap in ms, or `[min, max]` to jitter it — a constant cadence is itself a fingerprint.",
+    )
+    humanize: bool | None = Field(
+        None, description="Override the run's humanization for this step alone."
+    )
 
     @field_validator("delay", mode="before")
     @classmethod
@@ -281,46 +396,61 @@ class TypeStep(SelectorStep):
 
 
 class SelectStep(SelectorStep):
+    """Choose an option on a native `<select>`; a custom widget is a `click`
+    then a `pick`."""
+
     action: Literal["select"]
-    value: str = ""
+    value: str = Field(
+        "", description="Option to choose, matched on its value, label or text."
+    )
 
 
 class CheckStep(SelectorStep):
+    """Drive a checkbox or radio to a state, whatever state it is already in."""
+
     action: Literal["check"]
     checked: bool = True
 
 
 class PickStep(SelectorStep):
+    """Click the one match whose text is ``value`` — the custom-dropdown
+    counterpart to ``select``, so the selector names the whole option list."""
+
     action: Literal["pick"]
-    value: str = ""
+    value: str = Field("", description="Text of the option to click.")
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
 
 class GotoStep(BaseStep):
+    """Navigate. Only http(s) and about:blank are allowed — a flow cannot be
+    talked into reading `file:` off the machine it runs on."""
+
     action: Literal["goto"]
     url: str = Field(..., min_length=1)
-    wait_until: str = "domcontentloaded"
+    wait_until: str = Field(
+        "domcontentloaded",
+        description="Load milestone to wait for: `domcontentloaded`, `load` or `networkidle`.",
+    )
 
 
 class ScreenshotStep(MatchFields, BaseStep):
-    """``path`` is a CLI instruction, not a runner one.
-
-    The step itself always comes back as a :class:`~llm_browser.results.BytesResult`
-    in ``FlowSuccess.outputs``; the library never writes a file. ``path`` is
-    where ``llm-browser run`` puts those bytes — relative to ``--out-dir`` —
-    and an embedding caller is free to ignore it.
-
-    ``selector`` crops the capture to one element; left unset, the whole
-    viewport is captured.
-    """
+    """Capture the page as PNG bytes in ``outputs``; the library never writes a
+    file, so ``path`` is an instruction to ``llm-browser run`` alone."""
 
     action: Literal["screenshot"]
-    path: str | None = None
-    selector: Selector | None = None
+    path: str | None = Field(
+        None, description="A `llm-browser run` instruction, not a runner one."
+    )
+    selector: Selector | None = Field(
+        None, description="Crop to this element; unset captures the viewport."
+    )
 
 
 class ReadStep(SelectorStep):
+    """Pull text out of the matched elements as rows of named fields — the
+    selector names the row, `extract` names the columns."""
+
     # ExtractField is a FieldInfo subclass (not a Pydantic model), so the
     # default schema generator can't introspect it. ``arbitrary_types_allowed``
     # tells Pydantic to skip schema generation and trust runtime-validated
@@ -332,13 +462,18 @@ class ReadStep(SelectorStep):
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
     extract: dict[str, ExtractField] = Field(
-        default_factory=lambda: parse_extract_spec(None)
+        default_factory=lambda: parse_extract_spec(None),
+        description="Field name to `child selector@attribute`; unset reads each row's own text as `text`.",
     )
     # CSS selectors dropped from the text, not from the DOM: the read happens
     # on a copy, and only for a property a descendant is part of.
-    exclude: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
-    # CLI-only, like every other `path:` — see ScreenshotStep.
-    path: str | None = None
+    exclude: list[Annotated[str, Field(min_length=1)]] = Field(
+        default_factory=list,
+        description="CSS selectors whose text is dropped from the read, on a copy of the DOM.",
+    )
+    path: str | None = Field(
+        None, description="A `llm-browser run` instruction, not a runner one."
+    )
     save_as: SaveAs | None = None
 
     @model_validator(mode="after")
@@ -377,62 +512,78 @@ class ReadStep(SelectorStep):
 
 
 class ParseStep(SelectorStep):
-    """Parse rows into typed instances using a YAML schema.
-
-    Like ``read``, but every row is validated against the schema and
-    coerced to a Pydantic model. ``schema_path`` is CWD-relative or
-    absolute. ``path`` is CLI-only — see :class:`ScreenshotStep`.
-    """
+    """Read rows like ``read``, then validate each one against a YAML schema
+    and hand back typed instances rather than strings."""
 
     action: Literal["parse"]
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
-    schema_path: str = Field(..., min_length=1)
-    path: str | None = None
+    schema_path: str = Field(
+        ...,
+        min_length=1,
+        description="YAML schema every row is validated against; CWD-relative or absolute.",
+    )
+    path: str | None = Field(
+        None, description="A `llm-browser run` instruction, not a runner one."
+    )
 
 
 class DomStep(SelectorStep):
+    """Return the matched element's HTML, sanitized — for reading a structure
+    no `read` has a shape for yet."""
+
     action: Literal["dom"]
 
     match_target: ClassVar[MatchTarget] = MatchTarget.MANY
 
-    max_depth: int = 0
+    max_depth: int = Field(
+        0, description="Depth to truncate the tree at; 0 keeps it whole."
+    )
     level: SanitizeLevel = SanitizeLevel.LOW
-    # CLI-only, like every other `path:` — see ScreenshotStep.
-    path: str | None = None
+    path: str | None = Field(
+        None, description="A `llm-browser run` instruction, not a runner one."
+    )
 
 
 class DownloadStep(SelectorStep):
-    """``path`` is a CLI instruction, not a runner one — see
-    :class:`ScreenshotStep`. Left unset, ``llm-browser run`` falls back to the
-    filename the server suggested.
-    """
+    """Click ``selector`` and keep what the browser downloaded, in memory; like
+    ``screenshot``, ``path`` is an instruction to ``llm-browser run`` alone."""
 
     action: Literal["download"]
-    path: str | None = None
+    path: str | None = Field(
+        None,
+        description="A `llm-browser run` instruction; unset, it uses the name the server suggested.",
+    )
 
 
 class ThinkStep(BaseStep):
+    """Pause for a random spell, so a run does not act at machine cadence."""
+
     action: Literal["think"]
     min_ms: int = 500
     max_ms: int = 2000
 
 
 class ScrollStep(BaseStep):
-    """Mouse-wheel scroll: ``times`` ticks of ``delta`` px, paced by ``pause``."""
+    """Mouse-wheel scroll, in ticks — one long jump is not a gesture a hand makes."""
 
     action: Literal["scroll"]
-    delta: int = 600
+    delta: int = Field(600, description="Negative scrolls up.")
     times: int = 1
     pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
 class PressStep(MatchFields, BaseStep):
+    """Send a key or a chord; the one step that needs no selector."""
+
     action: Literal["press"]
-    # Optional: when None, press the focused element via ``press_focused``.
-    selector: Selector | None = None
-    key: str = Field(..., min_length=1)
+    selector: Selector | None = Field(
+        None, description="Element to press on; unset presses whatever has focus."
+    )
+    key: str = Field(
+        ..., min_length=1, description="Key or chord, e.g. `Enter` or `Control+a`."
+    )
 
 
 def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
@@ -454,10 +605,7 @@ class WaitForStep(BaseStep):
 
     The one wait: four states answer "is the element there yet" and ``stable``
     answers "has its text stopped changing" — for streaming content (LLM chat
-    replies, progressive lists, a recalculating total). ``timeout`` is the
-    whole budget; ``interval`` is the nominal gap between polls, jittered;
-    ``settle`` is how long the text has to hold still, and applies to
-    ``stable`` only.
+    replies, progressive lists, a recalculating total).
 
     ``text`` waits on the page's rendered text instead — a landmark a selector
     cannot name — scoped to ``selector`` when both are given, substring unless
@@ -465,15 +613,31 @@ class WaitForStep(BaseStep):
     """
 
     action: Literal["wait_for"]
-    selector: Selector | None = None
-    text: str | None = None
-    exact: bool = False
+    selector: Selector | None = Field(
+        None, description="Element to watch; scopes `text` when both are given."
+    )
+    text: str | None = Field(
+        None, description="Rendered text to wait for — a landmark no selector names."
+    )
+    exact: bool = Field(
+        False, description="Match the whole text rather than a substring."
+    )
     state: WaitState = "attached"
-    timeout: int = Field(DEFAULT_WAIT_TIMEOUT_MS, ge=0)
+    timeout: int = Field(
+        DEFAULT_WAIT_TIMEOUT_MS, ge=0, description="Whole budget for the wait, in ms."
+    )
     # Bounded here so a typo fails at flow load with a field-named error,
     # rather than mid-poll as a ``Jitter`` ValueError ``optional`` would eat.
-    interval: int = Field(DEFAULT_POLL_INTERVAL_MS, gt=0)
-    settle: int = Field(DEFAULT_SETTLE_MS, gt=0)
+    interval: int = Field(
+        DEFAULT_POLL_INTERVAL_MS,
+        gt=0,
+        description="Nominal gap between polls in ms, jittered.",
+    )
+    settle: int = Field(
+        DEFAULT_SETTLE_MS,
+        gt=0,
+        description="How long the text must hold still for state `stable`; must be under `timeout`.",
+    )
 
     _no_match_fields = model_validator(mode="before")(reject_wait_for_match_fields)
 

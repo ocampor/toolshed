@@ -7,6 +7,16 @@ Playwright-family drivers invoke `humanized_click` / `humanized_type`
 directly; non-Playwright drivers (e.g. nodriver) use their own native
 humanization and honor only the timing fields.
 
+A step's ``humanize:`` switches this on or off for that step alone: ``true``
+takes the humanized path even when the session runs with humanization off,
+``false`` takes the plain one even when it is on, and leaving it out follows
+the session. It only switches on what is still off — a knob the session tuned
+is left as it was. On ``fill`` it switches ``fill_as_type``. A driver's own
+opt-out is applied last, to whatever the step resolved to: camoufox leaves the
+mouse path to its native engine, so nothing stacks ours on top unless the
+session's behavior YAML asked for it. ``min_gap_ms`` is a rate limit rather
+than a humanization knob and survives either way.
+
 Nothing here remembers anything between calls: `Behavior` is frozen config,
 every sample comes from the unseeded module `random`, and each mouse path
 starts fresh near its target. State that survives an action is state a
@@ -60,30 +70,69 @@ class Jitter(BaseModel):
 
 
 class Behavior(BaseModel):
+    """Timing and pointer knobs for one run.
+
+    Where a timing knob is a ``Jitter`` rather than a number, it is one
+    because a constant cadence is itself a fingerprint; the booleans switch a
+    whole tactic on or off.
+
+    Three presets: ``human()`` and ``off()`` are what ``--behavior`` takes and
+    what a run reports as its ``BehaviorProfile``; ``pace()`` is reachable from
+    Python only, and a run under it reports ``custom``.
+    """
+
     model_config = ConfigDict(frozen=True)
 
     type_char_delay: Jitter = Jitter(min_ms=30, max_ms=90)
-    type_punct_pause: Jitter = Jitter(min_ms=120, max_ms=300)
+    type_punct_pause: Jitter = Field(
+        default=Jitter(min_ms=120, max_ms=300),
+        description="Extra pause after a sentence mark — the gap a reader hears.",
+    )
     type_word_pause: Jitter = Jitter(min_ms=60, max_ms=180)
     type_word_pause_chance: float = Field(default=0.15, ge=0.0, le=1.0)
     pre_click_pause: Jitter = Jitter(min_ms=120, max_ms=400)
-    hover_dwell: Jitter = Jitter(min_ms=80, max_ms=300)
+    hover_dwell: Jitter = Field(
+        default=Jitter(min_ms=80, max_ms=300),
+        description="How long the pointer rests on the target before pressing; also when a menu it opened finishes appearing.",
+    )
     press_hold: Jitter = Jitter(min_ms=60, max_ms=140)
     post_action_pause: Jitter = Jitter(min_ms=200, max_ms=800)
-    click_offset_ratio: float = Field(default=0.3, ge=0.0, le=1.0)
-    scroll_delta_jitter: float = Field(default=0.15, ge=0.0, le=1.0)
-    mouse_move_steps: int = 20
-    mouse_move: bool = True
+    click_offset_ratio: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="How far off centre a click may land, as a fraction of the element's half-size.",
+    )
+    scroll_delta_jitter: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=1.0,
+        description="How far a wheel tick may stray from the delta asked for.",
+    )
+    mouse_move_steps: int = Field(
+        default=20, description="Upper bound on the points sampled along a mouse path."
+    )
+    mouse_move: bool = Field(
+        default=True,
+        description="Move the pointer to the target instead of clicking in place.",
+    )
     fill_as_type: bool = True
     focus_drift: bool = True
-    min_gap_ms: int = 0
+    min_gap_ms: int = Field(
+        default=0,
+        description="Floor on the gap between two actions, so no two land back to back.",
+    )
 
     @classmethod
     def off(cls) -> Self:
+        """Every knob at zero: the library adds no delay and no mouse path."""
         return BEHAVIOR_OFF  # type: ignore[return-value]
 
     @classmethod
     def pace(cls) -> Self:
+        """Human timing without the mouse path — for a driver with its own
+        pointer engine. Python-only: ``--behavior`` does not take the name, and
+        a run under it reports ``custom``."""
         return cls(mouse_move=False, focus_drift=False)
 
     @classmethod
