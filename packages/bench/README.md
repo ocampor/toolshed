@@ -18,16 +18,20 @@ pip install 'ocampor-bench[docs]' --index-url https://pypi.ocampor.com/simple/
 
 ## Quickstart
 
+The blocks below are `example/`, kept in sync by `uv run python scripts/readme.py`.
+
 `src/<package>/docgen.py` names what to document; the hook finds it by the name `REFERENCE`.
 
-```python title="src/my_package/docgen.py"
+```python title="src/sample/docgen.py"
 from bench.docs.files import Reference
 from bench.docs.render import Document
 
 REFERENCE = Reference(
-    package="my_package",
-    header="<!-- Generated; edit the docstrings, not this file. -->\n",
-    documents={"reference/models": Document("Models", "What the API returns.", ("models.Answer",))},
+    package="sample",
+    header="<!-- generated -->\n",
+    documents={
+        "reference/models": Document("Models", "The sample's models.", ("models.Answer",), (("About", "models"),))
+    },
 )
 ```
 
@@ -41,7 +45,7 @@ from bench.docs.hook import ReferenceDocsHook  # noqa: F401
 
 ```toml title="pyproject.toml"
 [project]
-name = "my-package"
+name = "sample"
 version = "0"
 
 [build-system]
@@ -49,11 +53,11 @@ requires = ["hatchling", "ocampor-bench[docs]>=0.1,<0.2"]
 
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
-package = "my_package"
+package = "sample"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/my_package"]
-artifacts = ["/src/my_package/docs/reference/*.md"]
+packages = ["src/sample"]
+artifacts = ["/src/sample/docs/reference/*.md"]
 ```
 
 A staleness test calls `stale_reference(REFERENCE, source)` from `bench.docs.files` and expects `[]`.

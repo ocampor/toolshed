@@ -33,7 +33,7 @@ packages = ["src/bench"]
 
 [tool.mypy]
 strict = true
-exclude = ["tests/fixtures/"]
+exclude = ["example/"]
 
 # griffe2md ships no py.typed.
 [[tool.mypy.overrides]]
