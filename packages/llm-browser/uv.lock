@@ -336,7 +336,7 @@ wheels = [
 
 [[package]]
 name = "llm-browser"
-version = "0.22.0"
+version = "0.23.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -358,10 +358,9 @@ nodriver = [
 [package.dev-dependencies]
 dev = [
     { name = "cssselect" },
-    { name = "griffe-pydantic" },
-    { name = "griffe2md" },
     { name = "lxml-stubs" },
     { name = "mypy" },
+    { name = "ocampor-bench", extra = ["docs"] },
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-pyyaml" },
@@ -383,10 +382,9 @@ provides-extras = ["camoufox", "nodriver"]
 [package.metadata.requires-dev]
 dev = [
     { name = "cssselect", specifier = ">=1.5.0" },
-    { name = "griffe-pydantic", specifier = ">=1.1" },
-    { name = "griffe2md", specifier = ">=1.5" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mypy", specifier = ">=1.19.1" },
+    { name = "ocampor-bench", extras = ["docs"], directory = "../bench" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.11" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
@@ -672,6 +670,33 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/ad/483d9e262f4b831000062e5d8a45e342166ec8aaa1195264982bca267e62/numpy-2.4.4-cp314-cp314t-win32.whl", hash = "sha256:dddbbd259598d7240b18c9d87c56a9d2fb3b02fe266f49a7c101532e78c1d871", size = 6155500, upload-time = "2026-03-29T13:21:28.205Z" },
     { url = "https://files.pythonhosted.org/packages/c7/03/2fc4e14c7bd4ff2964b74ba90ecb8552540b6315f201df70f137faa5c589/numpy-2.4.4-cp314-cp314t-win_amd64.whl", hash = "sha256:a7164afb23be6e37ad90b2f10426149fd75aee07ca55653d2aa41e66c4ef697e", size = 12637755, upload-time = "2026-03-29T13:21:31.107Z" },
     { url = "https://files.pythonhosted.org/packages/58/78/548fb8e07b1a341746bfbecb32f2c268470f45fa028aacdbd10d9bc73aab/numpy-2.4.4-cp314-cp314t-win_arm64.whl", hash = "sha256:ba203255017337d39f89bdd58417f03c4426f12beed0440cfd933cb15f8669c7", size = 10566643, upload-time = "2026-03-29T13:21:34.339Z" },
+]
+
+[[package]]
+name = "ocampor-bench"
+version = "0.1.0"
+source = { directory = "../bench" }
+
+[package.optional-dependencies]
+docs = [
+    { name = "griffe-pydantic" },
+    { name = "griffe2md" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "griffe-pydantic", marker = "extra == 'docs'", specifier = ">=1.1,<2" },
+    { name = "griffe2md", marker = "extra == 'docs'", specifier = ">=1.5,<2" },
+]
+provides-extras = ["docs"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hatchling", specifier = ">=1.27" },
+    { name = "mypy", specifier = ">=1.19.1" },
+    { name = "ocampor-bench", extras = ["docs"] },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "ruff", specifier = ">=0.11.0" },
 ]
 
 [[package]]

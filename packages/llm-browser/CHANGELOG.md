@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.0 — 2026-09-22
+
+### Changed
+
+- `llm_browser.docgen` names what to document as `REFERENCE`; rendering, drift
+  checks and the build hook come from `bench.docs` (`ocampor-bench[docs]`, build-time only).
+
 ## 0.22.0 — 2026-09-22
 
 ### Added

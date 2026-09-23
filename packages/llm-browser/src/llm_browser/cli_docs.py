@@ -32,13 +32,15 @@ def docs(write: bool, check: bool) -> None:
             "no source tree beside the installed package; this command only "
             "runs from a checkout of llm-browser"
         )
-    from llm_browser.docgen import stale_reference, write_reference
+    from bench.docs.files import stale_reference, write_reference
+
+    from llm_browser.docgen import REFERENCE
 
     if write:
-        changed = write_reference(source)
+        changed = write_reference(REFERENCE, source)
         click.echo("\n".join(changed) if changed else "up to date")
         return
-    stale = stale_reference(source)
+    stale = stale_reference(REFERENCE, source)
     if stale:
         raise click.ClickException(
             f"stale: {', '.join(stale)} — regenerate with `llm-browser docs --write`"
