@@ -143,13 +143,7 @@ class TargetSpec(BaseModel, extra="allow"):
 class BaseStep(BaseModel):
     """Common fields shared by all step types.
 
-    No ``selector`` here — see ``SelectorStep`` for steps that target a DOM
-    element. Goto / wait / screenshot / think / eval-only steps inherit
-    ``BaseStep`` directly.
-
-    ``scope`` is written ``in:`` in a flow (``in`` is a keyword): it names the
-    enclosing repeat's ``as`` and scopes this step's selector to that pass's
-    element, descendants only.
+    No ``selector`` here — see ``SelectorStep`` for steps that target one.
 
     ``when:`` holds conditions that must all hold or the step is skipped, not
     failed: ``{field, op: eq|is_truthy|not_null, value}`` against flow data,
@@ -199,9 +193,7 @@ class BaseStep(BaseModel):
     timeout: int = Field(
         10_000, description="Budget in ms for this step's action, waits included."
     )
-    repeat: Repeat | None = Field(
-        None, description="Run this step once per element or per list item."
-    )
+    repeat: Repeat | None = None
     # Set by ``RunFlowStep``'s after-validator on each child step in a
     # sub-flow: the parent's ``run-flow`` step name. ``None`` for
     # top-level steps. Drives ``qualified_name`` for diagnostic output
@@ -363,7 +355,7 @@ class FillStep(SelectorStep):
     """
 
     action: Literal["fill"]
-    value: str = Field("", description="Text to put in the field.")
+    value: str = ""
     humanize: bool | None = Field(
         None, description="Override the run's humanization for this step alone."
     )
@@ -381,7 +373,7 @@ class TypeStep(SelectorStep):
     """
 
     action: Literal["type"]
-    value: str = Field("", description="Text to type.")
+    value: str = ""
     delay: int | Jitter = Field(
         0,
         description="Per-key gap in ms, or `[min, max]` to jitter it — a constant cadence is itself a fingerprint.",
@@ -417,7 +409,7 @@ class CheckStep(SelectorStep):
     """Drive a checkbox or radio to a state, whatever state it is already in."""
 
     action: Literal["check"]
-    checked: bool = Field(True, description="The state to leave the control in.")
+    checked: bool = True
 
 
 class PickStep(SelectorStep):
@@ -435,7 +427,7 @@ class GotoStep(BaseStep):
     talked into reading `file:` off the machine it runs on."""
 
     action: Literal["goto"]
-    url: str = Field(..., min_length=1, description="Where to navigate.")
+    url: str = Field(..., min_length=1)
     wait_until: str = Field(
         "domcontentloaded",
         description="Load milestone to wait for: `domcontentloaded`, `load` or `networkidle`.",
@@ -448,7 +440,7 @@ class ScreenshotStep(MatchFields, BaseStep):
 
     action: Literal["screenshot"]
     path: str | None = Field(
-        None, description="Where `llm-browser run` writes the PNG, under `--out-dir`."
+        None, description="A `llm-browser run` instruction, not a runner one."
     )
     selector: Selector | None = Field(
         None, description="Crop to this element; unset captures the viewport."
@@ -480,12 +472,9 @@ class ReadStep(SelectorStep):
         description="CSS selectors whose text is dropped from the read, on a copy of the DOM.",
     )
     path: str | None = Field(
-        None, description="Where `llm-browser run` writes the rows, under `--out-dir`."
+        None, description="A `llm-browser run` instruction, not a runner one."
     )
-    save_as: SaveAs | None = Field(
-        None,
-        description="Put the rows, or one field of one row, into flow data for later steps.",
-    )
+    save_as: SaveAs | None = None
 
     @model_validator(mode="after")
     def _check_save_as(self) -> ReadStep:
@@ -536,7 +525,7 @@ class ParseStep(SelectorStep):
         description="YAML schema every row is validated against; CWD-relative or absolute.",
     )
     path: str | None = Field(
-        None, description="Where `llm-browser run` writes the rows, under `--out-dir`."
+        None, description="A `llm-browser run` instruction, not a runner one."
     )
 
 
@@ -551,12 +540,9 @@ class DomStep(SelectorStep):
     max_depth: int = Field(
         0, description="Depth to truncate the tree at; 0 keeps it whole."
     )
-    level: SanitizeLevel = Field(
-        SanitizeLevel.LOW,
-        description="How much noise to strip before returning the HTML.",
-    )
+    level: SanitizeLevel = SanitizeLevel.LOW
     path: str | None = Field(
-        None, description="Where `llm-browser run` writes the HTML, under `--out-dir`."
+        None, description="A `llm-browser run` instruction, not a runner one."
     )
 
 
@@ -567,7 +553,7 @@ class DownloadStep(SelectorStep):
     action: Literal["download"]
     path: str | None = Field(
         None,
-        description="Where `llm-browser run` writes the file, under `--out-dir`; unset uses the name the server suggested.",
+        description="A `llm-browser run` instruction; unset, it uses the name the server suggested.",
     )
 
 
@@ -575,19 +561,17 @@ class ThinkStep(BaseStep):
     """Pause for a random spell, so a run does not act at machine cadence."""
 
     action: Literal["think"]
-    min_ms: int = Field(500, description="Shortest pause in ms.")
-    max_ms: int = Field(2000, description="Longest pause in ms.")
+    min_ms: int = 500
+    max_ms: int = 2000
 
 
 class ScrollStep(BaseStep):
-    """Mouse-wheel scroll: ``times`` ticks of ``delta`` px, paced by ``pause``."""
+    """Mouse-wheel scroll, in ticks — one long jump is not a gesture a hand makes."""
 
     action: Literal["scroll"]
-    delta: int = Field(600, description="Pixels per tick; negative scrolls up.")
-    times: int = Field(1, description="How many ticks.")
-    pause: Jitter = Field(
-        Jitter(min_ms=300, max_ms=1200), description="Gap between ticks in ms."
-    )
+    delta: int = Field(600, description="Negative scrolls up.")
+    times: int = 1
+    pause: Jitter = Jitter(min_ms=300, max_ms=1200)
 
 
 class PressStep(MatchFields, BaseStep):
@@ -621,10 +605,7 @@ class WaitForStep(BaseStep):
 
     The one wait: four states answer "is the element there yet" and ``stable``
     answers "has its text stopped changing" — for streaming content (LLM chat
-    replies, progressive lists, a recalculating total). ``timeout`` is the
-    whole budget; ``interval`` is the nominal gap between polls, jittered;
-    ``settle`` is how long the text has to hold still, and applies to
-    ``stable`` only.
+    replies, progressive lists, a recalculating total).
 
     ``text`` waits on the page's rendered text instead — a landmark a selector
     cannot name — scoped to ``selector`` when both are given, substring unless
@@ -641,7 +622,7 @@ class WaitForStep(BaseStep):
     exact: bool = Field(
         False, description="Match the whole text rather than a substring."
     )
-    state: WaitState = Field("attached", description="The state to wait for.")
+    state: WaitState = "attached"
     timeout: int = Field(
         DEFAULT_WAIT_TIMEOUT_MS, ge=0, description="Whole budget for the wait, in ms."
     )
@@ -689,13 +670,8 @@ class RunFlowStep(BaseStep):
     """
 
     action: Literal["run-flow"]
-    flow: SubFlow | str = Field(
-        ...,
-        description="The child flow inline, or a reference resolved before validation.",
-    )
-    data: dict[str, Any] = Field(
-        default={}, description="Params handed to the child flow."
-    )
+    flow: SubFlow | str
+    data: dict[str, Any] = {}
 
     @model_validator(mode="after")
     def _reject_unresolved_reference(self) -> RunFlowStep:

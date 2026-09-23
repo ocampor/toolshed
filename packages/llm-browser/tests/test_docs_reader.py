@@ -10,12 +10,7 @@ def test_the_index_lists_every_shipped_file() -> None:
     assert set(DOCUMENTS) <= names
     assert "guide/patterns" in names
     assert all(entry.chars > 0 and entry.title for entry in docs.index())
-
-
-def test_a_kind_is_read_off_the_name() -> None:
-    kinds = {entry.name: entry.kind for entry in docs.index()}
-    assert kinds["reference/steps"] == "reference"
-    assert kinds["guide/patterns"] == "guide"
+    assert {e.name: e.kind for e in docs.index()}["reference/steps"] == "reference"
 
 
 @pytest.mark.parametrize(

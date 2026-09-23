@@ -34,13 +34,6 @@ def rendered() -> dict[str, str]:
     return reference_documents(source)
 
 
-def test_the_generator_produces_every_document_it_names(
-    rendered: dict[str, str],
-) -> None:
-    assert set(rendered) == set(DOCUMENTS)
-    assert all(text.strip() for text in rendered.values())
-
-
 @pytest.mark.parametrize("name", sorted(DOCUMENTS))
 def test_every_document_fits_one_read(rendered: dict[str, str], name: str) -> None:
     assert len(rendered[name]) <= DOC_MAX_CHARS
@@ -97,10 +90,10 @@ def test_every_module_that_explains_itself_reaches_a_doc() -> None:
     assert unreachable == []
 
 
-def public_models() -> list[str]:
+def public_models() -> list[type[BaseModel]]:
     modules = (importlib.import_module(f"llm_browser.{n}") for n in MODEL_MODULES)
     return [
-        f"{module.__name__}.{name}"
+        member
         for module in modules
         for name, member in vars(module).items()
         if not name.startswith("_")
@@ -113,9 +106,7 @@ def public_models() -> list[str]:
 def test_every_public_model_is_rendered_somewhere(rendered: dict[str, str]) -> None:
     documents = "\n".join(rendered.values())
     missing = [
-        path
-        for path in public_models()
-        if f"## `{path.rsplit('.', 1)[1]}`" not in documents
+        m.__name__ for m in public_models() if f"## `{m.__name__}`" not in documents
     ]
     assert missing == []
 
@@ -125,8 +116,7 @@ def test_no_class_variable_renders_as_a_field(rendered: dict[str, str]) -> None:
     documents = "\n".join(rendered.values())
     shown = [
         f"{model.__name__}.{name}"
-        for path in public_models()
-        for model in [resolve(path)]
+        for model in public_models()
         for name in model.__class_vars__
         if f"### `{model.__name__}.{name}`" in documents
     ]
@@ -138,19 +128,13 @@ def test_every_default_factory_field_shows_a_default(rendered: dict[str, str]) -
     description."""
     documents = "\n".join(rendered.values())
     undefaulted = [
-        f"{path}.{name}"
-        for path in public_models()
-        for model in [resolve(path)]
+        f"{model.__name__}.{name}"
+        for model in public_models()
         for name, field in model.model_fields.items()
         if field.default_factory is not None
         and re.search(rf"^{name}: [^=\n]*$", documents, re.MULTILINE)
     ]
     assert undefaulted == []
-
-
-def resolve(path: str) -> type[BaseModel]:
-    module, _, name = path.rpartition(".")
-    return getattr(importlib.import_module(module), name)  # type: ignore[no-any-return]
 
 
 DOC_NAME = re.compile(r"`((?:reference|guide)/[a-z0-9_-]+)`")

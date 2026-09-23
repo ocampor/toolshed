@@ -83,38 +83,20 @@ class Behavior(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    type_char_delay: Jitter = Field(
-        default=Jitter(min_ms=30, max_ms=90), description="Gap between two keystrokes."
-    )
+    type_char_delay: Jitter = Jitter(min_ms=30, max_ms=90)
     type_punct_pause: Jitter = Field(
         default=Jitter(min_ms=120, max_ms=300),
         description="Extra pause after a sentence mark — the gap a reader hears.",
     )
-    type_word_pause: Jitter = Field(
-        default=Jitter(min_ms=60, max_ms=180),
-        description="Extra pause at a word break.",
-    )
-    type_word_pause_chance: float = Field(
-        default=0.15,
-        ge=0.0,
-        le=1.0,
-        description="Share of word breaks that get that pause.",
-    )
-    pre_click_pause: Jitter = Field(
-        default=Jitter(min_ms=120, max_ms=400),
-        description="Pause before the pointer sets off.",
-    )
+    type_word_pause: Jitter = Jitter(min_ms=60, max_ms=180)
+    type_word_pause_chance: float = Field(default=0.15, ge=0.0, le=1.0)
+    pre_click_pause: Jitter = Jitter(min_ms=120, max_ms=400)
     hover_dwell: Jitter = Field(
         default=Jitter(min_ms=80, max_ms=300),
         description="How long the pointer rests on the target before pressing; also when a menu it opened finishes appearing.",
     )
-    press_hold: Jitter = Field(
-        default=Jitter(min_ms=60, max_ms=140),
-        description="How long the button stays down.",
-    )
-    post_action_pause: Jitter = Field(
-        default=Jitter(min_ms=200, max_ms=800), description="Pause after every action."
-    )
+    press_hold: Jitter = Jitter(min_ms=60, max_ms=140)
+    post_action_pause: Jitter = Jitter(min_ms=200, max_ms=800)
     click_offset_ratio: float = Field(
         default=0.3,
         ge=0.0,
@@ -134,14 +116,8 @@ class Behavior(BaseModel):
         default=True,
         description="Move the pointer to the target instead of clicking in place.",
     )
-    fill_as_type: bool = Field(
-        default=True,
-        description="Make `fill` type its value rather than set it in one go.",
-    )
-    focus_drift: bool = Field(
-        default=True,
-        description="Drift the pointer towards a field before typing into it.",
-    )
+    fill_as_type: bool = True
+    focus_drift: bool = True
     min_gap_ms: int = Field(
         default=0,
         description="Floor on the gap between two actions, so no two land back to back.",
