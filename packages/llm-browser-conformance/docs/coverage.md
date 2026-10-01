@@ -64,8 +64,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:fill.humanize` | humanized click and fill |
 | `field:goto.url` | redirect |
 | `field:goto.wait_until` | goto wait_until |
-| `field:parse.expect` | match per step |
-| `field:parse.pick` | match per step |
+| `field:parse.expect` | parse deprecation |
+| `field:parse.pick` | parse deprecation |
 | `field:parse.selector` | parse typed rows |
 | `field:parse.schema_path` | parse typed rows |
 | `field:parse.path` | parse decimal and date rows |
@@ -201,6 +201,10 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:cli.out_dir` | cli run writes outputs |
 | `api:cli.typed_rows` | cli run writes typed rows |
 | `api:error.outputs` | error keeps partial outputs |
+| `api:extract.pattern` | typed read values |
+| `api:extract.required` | typed read values, required field rot |
+| `api:extract.type` | typed read values |
+| `api:extract_warnings` | typed read values |
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |
 | `api:goto.scheme_guard` | goto scheme guard |
@@ -211,6 +215,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:outputs.shape` | outputs shape |
 | `api:params.default` | params default |
 | `api:params.required` | params required |
+| `api:parse.deprecated` | parse deprecation |
 | `api:redact` | redact |
 | `api:retry_hint` | retry hint |
 | `api:run_flow.behavior` | run-level behavior |

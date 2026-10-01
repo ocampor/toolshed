@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.24.0 — 2026-10-01
+
+### Added
+
+- `read` extract fields take `pattern` (regex; group 1 or the whole match), `type` (`str`, `int`, `float`; strips `,`) and `required`.
+- A row whose `required` field ends up null gains `_meta: {incomplete, reasons}`; the step fails with `IncompleteRowsError` only when every row is incomplete.
+- `FlowSuccess.extract_warnings` / `FlowError.extract_warnings`: `ExtractWarning` entries for values a typed field could not convert.
+- `explore` and `explore_many` samples and `empty_fields` reflect typed values.
+
+### Changed
+
+- `parse` is deprecated in favour of typed `read`; a run using it carries one `extract_warnings` entry.
+- `_meta` is rejected as an extract field name, and an invalid `pattern` or `type` fails flow validation.
+- `ExploreResult.sample` values may be `int`, `float` or the `_meta` mapping.
+
 ## 0.23.0 — 2026-09-22
 
 ### Changed

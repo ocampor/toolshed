@@ -1,8 +1,6 @@
 # One step per element-driving action, each stating the count it expects and
 # the match it acts on. The page has three of everything, so a step that
 # ignored `pick:` would act on the first row and be caught.
-params:
-  - schema_path
 steps:
   - name: click
     action: click
@@ -46,12 +44,13 @@ steps:
     extract:
       text:
         attribute: textContent
-  - name: parse
-    action: parse
+  - name: typed
+    action: read
     selector: ".label"
     expect: 3
     pick: 0
-    schema_path: "{{ schema_path }}"
+    extract:
+      text: { pattern: '\w+' }
   - name: dom
     action: dom
     selector: ".row"

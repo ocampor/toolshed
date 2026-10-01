@@ -42,6 +42,14 @@ class ExtractField(FieldInfo):
     read off the row element itself. ``attribute`` is what to read —
     one of ``constants.EXTRACT_PROPERTIES`` (``textContent`` by default)
     or any HTML attribute name.
+
+    ``pattern`` is a regex searched in the raw value: group 1 when it has
+    groups, else the whole match; no match is ``None``. ``type`` (``str``,
+    ``int``, ``float``) converts after stripping ``,``; a blank is ``None``
+    and a value that will not convert is ``None`` plus an ``extract_warnings``
+    entry. With ``required``, a row whose value ends up ``None`` is kept and
+    gains ``_meta: {incomplete: true, reasons: [...]}``; the step fails only
+    when every row is incomplete, which is how a rotted selector shows.
     """
 
     def __init__(

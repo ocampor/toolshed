@@ -16,6 +16,7 @@ from llm_browser.action_dispatch import (
     step_behavior,
 )
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep
+from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -34,7 +35,6 @@ from llm_browser.models import (
     TypeStep,
     WaitForStep,
 )
-from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.parse import build_model
 from llm_browser.results import (
     BytesResult,

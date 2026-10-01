@@ -1,0 +1,8 @@
+# A required field no row carries is selector rot: the step fails instead of
+# coming back green with nulls.
+steps:
+  - name: cards
+    action: read
+    selector: ".card"
+    extract:
+      price: { child_selector: ".gone", required: true }

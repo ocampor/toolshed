@@ -88,8 +88,17 @@ Which attributes each `--level` keeps, and which tags it unwraps: the
 - The `dom` step's `level:` defaults to `low`; the CLI's `--level` and
   `session.dom(level=)` take the same four values.
 - On an SPA that hydrates late, [explore the selector](#before-writing-a-step)
-  before writing the `read`. The run never raises that mistake — a child
-  selector matching nothing reads as `None` and the step still passes.
+  before writing the `read`. A child selector matching nothing reads as `None`
+  and the step still passes, unless the field is `required: true` and every
+  row misses it. `pattern` and `type` turn a card's text into numbers in the
+  flow itself; the rows carry `price: 48500`, not `"MN 48,500"`:
+
+  ```yaml
+  extract:
+    price:    { child_selector: "[data-qa=POSTING_CARD_PRICE]", pattern: '([\d,]+)', type: int, required: true }
+    lot_m2:   { child_selector: "[data-qa=POSTING_CARD_FEATURES]", pattern: '([\d,]+) m²', type: int }
+    bedrooms: { child_selector: "[data-qa=POSTING_CARD_FEATURES]", pattern: '(\d+) rec', type: int }
+  ```
 
 ## Autocomplete (jQuery UI and friends)
 

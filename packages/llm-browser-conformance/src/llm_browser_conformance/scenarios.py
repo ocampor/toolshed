@@ -19,6 +19,7 @@ from llm_browser_conformance.checks import (
     stealth,
     step_types,
     steps,
+    typed_read,
     waits,
 )
 from llm_browser_conformance.scenario import Scenario
@@ -32,6 +33,7 @@ ALL_SCENARIOS: list[Scenario] = [
     *controls.SCENARIOS,
     *step_types.SCENARIOS,
     *matches.SCENARIOS,
+    *typed_read.SCENARIOS,
     *popup_downloads.SCENARIOS,
     *options.SCENARIOS,
     *results.SCENARIOS,
