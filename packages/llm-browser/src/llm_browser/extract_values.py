@@ -1,12 +1,12 @@
-"""Extracted rows typed through one pydantic row model per extract map, in pure
-Python so every driver gets it without JS changes."""
+"""Extracted rows typed field by field through one cached ``TypeAdapter`` per
+spec, in pure Python so every driver gets it without JS changes."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from typing import TYPE_CHECKING, Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field, ValidationError, create_model
+from pydantic import BeforeValidator, TypeAdapter, ValidationError
 
 from llm_browser.constants import FAILED_ROWS_HINT, MATCH_SAMPLES
 from llm_browser.extract_spec import ExtractSpec
@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from llm_browser.parse import ExtractField
 
 type Row = dict[str, Any]
-type SpecKey = tuple[tuple[str, ExtractSpec], ...]
 
 
 class FailedRowsError(MatchError):
@@ -33,52 +32,40 @@ class FailedRowsError(MatchError):
         )
 
 
-@lru_cache(maxsize=64)
-def row_model(fields: SpecKey) -> type[BaseModel]:
-    # The extract name rides the alias: it need not be a Python identifier.
-    columns: dict[str, Any] = {
-        f"field_{i}": (
-            Annotated[Any, BeforeValidator(spec.checked)],
-            Field(None, alias=name),
-        )
-        for i, (name, spec) in enumerate(fields)
-    }
-    return create_model("ExtractedValues", **columns)
+@lru_cache(maxsize=256)
+def field_adapter(spec: ExtractSpec) -> TypeAdapter[Any]:
+    return TypeAdapter(Annotated[Any, BeforeValidator(spec.checked)])
 
 
-def extract_errors(index: int, exc: ValidationError) -> list[ExtractError]:
+def field_errors(index: int, name: str, exc: ValidationError) -> list[ExtractError]:
     return [
-        ExtractError(
-            row=index,
-            field=str(error["loc"][0]),
-            msg=error["msg"],
-            input=error["input"],
-        )
+        ExtractError(row=index, field=name, msg=error["msg"], input=error["input"])
         for error in exc.errors()
     ]
 
 
 def typed_row(
-    model: type[BaseModel], index: int, row: Row
+    index: int, row: Row, extract: dict[str, ExtractField]
 ) -> tuple[Row, list[ExtractError]]:
-    """A field that fails is left out and so stays at its ``None`` default."""
-    try:
-        return model.model_validate(row).model_dump(by_alias=True), []
-    except ValidationError as exc:
-        errors = extract_errors(index, exc)
-    failed = {error.field for error in errors}
-    kept = {name: value for name, value in row.items() if name not in failed}
-    return model.model_validate(kept).model_dump(by_alias=True), errors
+    """A field that fails is ``None``; the row's other fields stay typed."""
+    values: Row = {}
+    errors: list[ExtractError] = []
+    for name, field in extract.items():
+        try:
+            values[name] = field_adapter(field.spec).validate_python(row.get(name))
+        except ValidationError as exc:
+            values[name] = None
+            errors.extend(field_errors(index, name, exc))
+    return values, errors
 
 
 def typed_rows(
     rows: list[Row], extract: dict[str, ExtractField]
 ) -> tuple[list[Row], list[ExtractError]]:
-    model = row_model(tuple((name, field.spec) for name, field in extract.items()))
     typed: list[Row] = []
     errors: list[ExtractError] = []
     for index, row in enumerate(rows):
-        values, row_errors = typed_row(model, index, row)
+        values, row_errors = typed_row(index, row, extract)
         typed.append(values)
         errors.extend(row_errors)
     return typed, errors

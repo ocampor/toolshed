@@ -90,7 +90,7 @@ class NumberSpec(BaseSpec):
 
     def convert(self, text: str) -> Any:
         try:
-            return self.cast(text.replace(",", "").strip())
+            return self.cast(text.replace(",", ""))
         except ValueError:
             raise ValueError(f"could not convert {text!r} to {self.type}") from None
 

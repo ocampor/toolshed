@@ -147,11 +147,15 @@ def test_required_errors_only_the_rows_that_miss() -> None:
 
 
 def test_a_failed_field_keeps_the_rest_of_the_row() -> None:
-    extract = {"n": ExtractField(type="int"), "ok": ExtractField()}
+    extract = {
+        "n": ExtractField(type="int"),
+        "m": ExtractField(type="int"),
+        "ok": ExtractField(),
+    }
 
-    typed, errors = typed_rows([{"n": "4.5", "ok": "y"}], extract)
+    typed, errors = typed_rows([{"n": "4.5", "m": "1,200", "ok": "y"}], extract)
 
-    assert typed == [{"n": None, "ok": "y"}]
+    assert typed == [{"n": None, "m": 1200, "ok": "y"}]
     assert [error.field for error in errors] == ["n"]
 
 
