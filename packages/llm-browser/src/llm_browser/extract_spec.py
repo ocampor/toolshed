@@ -2,7 +2,6 @@
 
 import datetime
 import re
-import time
 from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
@@ -187,7 +186,9 @@ def check_format(date_format: str) -> str:
             f"date format {date_format!r} must carry day, month and year directives"
         )
     try:
-        time.strptime(time.strftime(date_format), date_format)
+        # Aware, so %z/%Z render; datetime (not time) knows %f.
+        sample = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
+        datetime.datetime.strptime(sample.strftime(date_format), date_format)
     except ValueError as exc:
         raise ValueError(f"invalid date format {date_format!r}: {exc}") from exc
     return date_format

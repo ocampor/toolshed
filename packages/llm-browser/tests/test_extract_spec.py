@@ -88,3 +88,11 @@ def test_explore_samples_keep_a_time_of_day() -> None:
     )
 
     assert result.sample[0]["t"] == moment
+
+
+@pytest.mark.parametrize(
+    "date_format",
+    ["%d/%m/%Y", "%d %b %Y", "%j %Y", "%Y-%m-%d %H:%M:%S.%f", "%d/%m/%Y %z"],
+)
+def test_a_whole_date_format_loads(date_format: str) -> None:
+    assert ExtractField(type="datetime", format=date_format).spec.format == date_format
