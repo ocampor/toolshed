@@ -1,5 +1,7 @@
 """Typed-read errors and the parse deprecation reach the flow result."""
 
+import logging
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -31,23 +33,22 @@ def test_a_failed_field_reaches_the_flow_result(mock_session: MagicMock) -> None
     assert result.extract_errors == [FAILED.model_copy(update={"step": "r"})]
 
 
-def test_parse_emits_a_deprecation_warning(
-    mock_session: MagicMock, tmp_path: Path
+def test_parse_logs_its_deprecation_once_per_run(
+    mock_session: MagicMock, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     schema = tmp_path / "row.yaml"
     schema.write_text("name: Row\nfields:\n  n: {type: str | None, default: null}\n")
     mock_session.parse_elements.return_value = []
-    parse = {
-        "name": "a",
-        "action": "parse",
-        "selector": "tr",
-        "schema_path": str(schema),
-    }
+    parse = {"action": "parse", "selector": "tr", "schema_path": str(schema)}
+    flow = load_flow_document(
+        {"steps": [{"name": "a", **parse}, {"name": "b", **parse}]}
+    )
 
-    with pytest.warns(DeprecationWarning, match=PARSE_DEPRECATED):
-        result = run_flow(mock_session, load_flow_document({"steps": [parse]}), {})
+    with caplog.at_level(logging.WARNING, logger="llm_browser.actions"):
+        run_flow(mock_session, flow, {})
+        run_flow(mock_session, flow, {})
 
-    assert isinstance(result, FlowSuccess)
+    assert [r.getMessage() for r in caplog.records] == [PARSE_DEPRECATED] * 2
 
 
 def test_a_secret_in_an_input_is_redacted(mock_session: MagicMock) -> None:

@@ -817,7 +817,7 @@ class BrowserSession:
             # whose ``nth`` keeps the selector re-reads every match from it.
             rows = rows[match.nth : match.nth + 1]
         typed, self.extract_errors = typed_rows(rows, extract)
-        require_some_valid(len(typed), self.extract_errors)
+        require_some_valid(len(typed), self.extract_errors, extract)
         return typed
 
     # --- Explore ---

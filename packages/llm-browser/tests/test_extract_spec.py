@@ -16,6 +16,8 @@ from llm_browser.extract_spec import (
     IntSpec,
     StrSpec,
 )
+from llm_browser.explore_models import ExploreResult
+from llm_browser.parse import ExtractField
 
 
 @pytest.mark.parametrize(
@@ -71,3 +73,18 @@ def test_importing_the_specs_does_not_load_dateparser() -> None:
         [sys.executable, "-c", probe], capture_output=True, text=True, check=True
     )
     assert loaded.stdout.strip() == "False"
+
+
+def test_invalid_pattern_names_the_pattern() -> None:
+    with pytest.raises(ValueError, match="invalid pattern '\\('"):
+        ExtractField(pattern="(")
+
+
+def test_explore_samples_keep_a_time_of_day() -> None:
+    moment = datetime.datetime(2026, 10, 1, 14, 30)
+
+    result = ExploreResult(
+        count=1, sample=[{"t": moment}], empty_fields=[], text_chars=0
+    )
+
+    assert result.sample[0]["t"] == moment

@@ -51,6 +51,8 @@ def typed_one(
         ),
         (ExtractField(type="date"), "01/10/2026", date(2026, 1, 10)),
         (ExtractField(type="date", date_order="DMY"), "01/10/2026", date(2026, 10, 1)),
+        (ExtractField(type="date", date_order="DMY"), "2026-10-01", date(2026, 10, 1)),
+        (ExtractField(pattern=r"(\d*) rec", type="int"), "rec", None),
         (
             ExtractField(type="datetime", format="%d/%m/%Y %H:%M"),
             "01/10/2026 14:30",
@@ -85,11 +87,6 @@ def test_typed_value(field: ExtractField, raw: str | None, expected: object) -> 
             "could not parse 'marzo 2026' as a date",
         ),
         (ExtractField(type="date"), "3", "could not parse '3' as a date"),
-        (
-            ExtractField(type="date", languages=["sp"]),
-            "1 oct 2026",
-            "Unknown language(s): 'sp'",
-        ),
     ],
 )
 def test_a_failed_field_is_null_plus_an_error(
@@ -163,11 +160,22 @@ def test_every_row_failing_raises() -> None:
     rows, errors = typed_rows([{"price": "Consultar precio"}], {"price": PRICE})
 
     with pytest.raises(FailedRowsError, match="price.*'Consultar precio'"):
-        require_some_valid(len(rows), errors)
+        require_some_valid(len(rows), errors, {"price": PRICE})
+
+
+def test_an_optional_field_failing_everywhere_keeps_the_step_green() -> None:
+    extract = {"n": ExtractField(type="int"), "ok": ExtractField()}
+    rows, errors = typed_rows(
+        [{"n": "4.5", "ok": "a"}, {"n": "7.5", "ok": "b"}], extract
+    )
+
+    require_some_valid(len(rows), errors, extract)
+
+    assert [error.row for error in errors] == [0, 1]
 
 
 def test_zero_rows_is_no_failure() -> None:
-    require_some_valid(0, [])
+    require_some_valid(0, [], {})
 
 
 @pytest.fixture
@@ -231,17 +239,16 @@ def read_flow(extract: dict[str, object]) -> dict[str, object]:
         {"price": {"pattern": "("}},
         {"price": {"type": "bool"}},
         {"price": {"type": "int", "format": "%d"}},
+        {"due": {"type": "date", "format": "%m/%Y"}},
+        {"due": {"type": "date", "format": "%d/%m"}},
+        {"due": {"type": "date", "format": "%Q %d/%m/%Y"}},
+        {"due": {"type": "date", "languages": ["sp"]}},
         {"price": {"child": "td"}},
     ],
 )
 def test_invalid_extract_rejected_at_validation(extract: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         Flow.model_validate(read_flow(extract))
-
-
-def test_invalid_pattern_names_the_pattern() -> None:
-    with pytest.raises(ValueError, match="invalid pattern '\\('"):
-        ExtractField(pattern="(")
 
 
 def test_explore_previews_the_rows_a_typed_read_returns(

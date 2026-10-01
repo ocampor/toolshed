@@ -20,7 +20,7 @@ type Row = dict[str, Any]
 
 
 class FailedRowsError(MatchError):
-    """Every row failed validation: the rot a green run with nulls hides."""
+    """A required field failed on every row: the rot a green run with nulls hides."""
 
     def __init__(self, errors: list[ExtractError], rows: int) -> None:
         first = errors[0]
@@ -71,11 +71,15 @@ def typed_rows(
     return typed, errors
 
 
-def require_some_valid(rows: int, errors: list[ExtractError]) -> None:
-    """Raises when every row failed; zero rows is no failure."""
-    failed_rows = {error.row for error in errors}
-    if rows and len(failed_rows) == rows:
-        raise FailedRowsError(errors, rows)
+def require_some_valid(
+    rows: int, errors: list[ExtractError], extract: dict[str, ExtractField]
+) -> None:
+    """Raises when a ``required`` field failed on every row; an optional
+    field's error never fails the step, and zero rows is no failure."""
+    required = {name for name, field in extract.items() if field.spec.required}
+    failed = [error for error in errors if error.field in required]
+    if rows and len({error.row for error in failed}) == rows:
+        raise FailedRowsError(failed, rows)
 
 
 def is_typed(field: ExtractField) -> bool:

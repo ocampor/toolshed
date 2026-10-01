@@ -13,6 +13,7 @@ reaching the page as literal braces.
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from llm_browser.actions import parse_warned
 from llm_browser.behavior import Behavior, profile
 from llm_browser.flow_passes import unindexed
 from llm_browser.flow_pipeline import parse_flow_yaml
@@ -78,16 +79,20 @@ def run_flow(
     keyed by step name — what a previous run's ``retry_hint.only`` carries.
     Outputs keep the original indices."""
     secrets = clean_secrets(redact)
-    with redacting_logs(secrets):
-        result = run_loaded_flow(
-            session,
-            flow,
-            data,
-            from_step=from_step,
-            behavior=behavior,
-            selector_map=selector_map,
-            only=only,
-        )
+    fresh_run = parse_warned.set(False)
+    try:
+        with redacting_logs(secrets):
+            result = run_loaded_flow(
+                session,
+                flow,
+                data,
+                from_step=from_step,
+                behavior=behavior,
+                selector_map=selector_map,
+                only=only,
+            )
+    finally:
+        parse_warned.reset(fresh_run)
     ran_as = profile(behavior if behavior is not None else session.behavior)
     iterations = redact_secrets(result.iterations, secrets)
     clean_data = redact_secrets(data, secrets)

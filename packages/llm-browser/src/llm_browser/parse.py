@@ -47,12 +47,13 @@ class ExtractField(FieldInfo):
     spec that converts it: ``str`` (default), ``int`` and ``float`` (default
     pattern ``-?\d[\d,]*(?:\.\d+)?``, US ``,`` separators stripped), and
     ``date`` / ``datetime`` (a strptime ``format``, else ``dateparser`` in
-    ``languages`` with a day and month required; ``date_order`` only for
-    ambiguous numeric dates, since it reorders ISO too). Each row validates
-    through one pydantic model: a field that fails, or a ``required`` one that
-    read nothing, is ``None`` in the row and an ``extract_errors`` entry
-    (row, field, pydantic's ``msg`` and ``input``). The step fails only when
-    every row has an error, which is how a rotted selector shows. A key the
+    ``languages`` with a day and month required; ISO always reads as ISO, and
+    ``date_order`` settles ambiguous numeric dates; a ``format`` must carry
+    day, month and year). Each field validates on its own: one that fails,
+    or a ``required`` one that read nothing, is ``None`` in the row and an
+    ``extract_errors`` entry (row, field, pydantic's ``msg`` and ``input``).
+    The step fails only when a ``required`` field failed on every row, which
+    is how a rotted selector shows; an optional field never fails it. A key the
     chosen ``type`` does not take fails flow validation.
     """
 

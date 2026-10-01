@@ -2,7 +2,7 @@
 errors, and the deprecated ``parse`` path's warning, as a run reports them."""
 
 import datetime
-import warnings
+import logging
 from pathlib import Path
 
 from llm_browser.constants import PARSE_DEPRECATED
@@ -73,22 +73,31 @@ def a_required_field_no_row_has_fails_the_step(ctx: Context) -> None:
 
 
 def parse_warns_deprecated(ctx: Context) -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    logged = RecordedLogs()
+    logger = logging.getLogger("llm_browser.actions")
+    logger.addHandler(logged)
+    try:
         result = run(
             ctx,
             "parse-table.html",
             "parse-deprecated",
             schema_path=str(SCHEMAS_DIR / "table-row.yaml"),
         )
+    finally:
+        logger.removeHandler(logged)
 
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     assert [row["name"] for row in result.outputs["first"]] == ["widget"]  # type: ignore[attr-defined]
-    assert any(
-        issubclass(w.category, DeprecationWarning)
-        and str(w.message) == PARSE_DEPRECATED
-        for w in caught
-    )
+    assert logged.messages == [PARSE_DEPRECATED], logged.messages
+
+
+class RecordedLogs(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
 
 
 SCENARIOS = [

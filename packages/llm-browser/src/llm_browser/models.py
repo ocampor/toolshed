@@ -463,7 +463,7 @@ class ReadStep(SelectorStep):
 
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None),
-        description="Field name to `child selector@attribute`, or a mapping that may add `pattern`, `type` (`str`, `int`, `float`, `date`), `required` and the date options `format`, `date_order`, `languages`; unset reads each row's own text as `text`.",
+        description="Field name to `child selector@attribute`, or a mapping that may add `pattern`, `type` (`str`, `int`, `float`, `date`, `datetime`), `required` and the date options `format`, `date_order`, `languages`; unset reads each row's own text as `text`.",
     )
     # CSS selectors dropped from the text, not from the DOM: the read happens
     # on a copy, and only for a property a descendant is part of.

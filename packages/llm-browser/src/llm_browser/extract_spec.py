@@ -2,6 +2,7 @@
 
 import datetime
 import re
+import time
 from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
@@ -45,7 +46,7 @@ class BaseSpec(BaseModel):
             raise ValueError(f"invalid pattern {value!r}: {exc}") from exc
 
     def checked(self, raw: str | None) -> Any:
-        """The value, as a row model's validator; ``required`` turns nothing read into an error."""
+        """The value, as the field's validator; ``required`` turns nothing read into an error."""
         value = self.value(raw)
         if value is None and self.required:
             raise ValueError(f"required, nothing read from {raw!r}")
@@ -89,6 +90,8 @@ class NumberSpec(BaseSpec):
         raise NotImplementedError
 
     def convert(self, text: str) -> Any:
+        if not text.strip():
+            return None
         try:
             return self.cast(text.replace(",", ""))
         except ValueError:
@@ -110,13 +113,22 @@ class FloatSpec(NumberSpec):
 
 
 class MomentSpec(BaseSpec):
-    """``format`` reads that strptime format only; without it dateparser reads
-    the text in ``languages``. Set ``date_order`` only for ambiguous numeric
-    dates: dateparser applies it to ISO too."""
+    """``format`` reads that strptime format only; without it ISO reads as
+    ISO, then dateparser reads the text in ``languages`` with ``date_order``."""
 
     format: str | None = Field(None, max_length=64)
     languages: tuple[str, ...] = Field(("en",), min_length=1, max_length=8)
     date_order: Literal["MDY", "DMY", "YMD"] | None = None
+
+    @field_validator("format")
+    @classmethod
+    def whole_date_format(cls, value: str | None) -> str | None:
+        return None if value is None else check_format(value)
+
+    @field_validator("languages")
+    @classmethod
+    def known_languages(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return check_languages(value)
 
     def convert(self, text: str) -> Any:
         if not text.strip():
@@ -129,6 +141,11 @@ class MomentSpec(BaseSpec):
     def parsed(self, text: str) -> datetime.datetime | None:
         if self.format:
             return strict_datetime(text, self.format)
+        try:
+            # ISO first: dateparser would apply ``date_order`` to it too.
+            return datetime.datetime.fromisoformat(text)
+        except ValueError:
+            pass
         # Imported here: dateparser costs ~80 ms an import that reads no date skips.
         import dateparser
 
@@ -155,6 +172,36 @@ def strict_datetime(text: str, date_format: str) -> datetime.datetime | None:
         return datetime.datetime.strptime(text, date_format)
     except ValueError:
         return None
+
+
+# strptime fills a part the format lacks with 1900 or 1: each set needs a directive.
+DATE_PARTS = ({"d", "j"}, {"m", "b", "B", "j"}, {"Y", "y"})
+
+
+def check_format(date_format: str) -> str:
+    """A format that cannot yield a whole date, or a directive strptime does
+    not know, fails here, at flow load."""
+    directives = set(re.findall(r"%(.)", date_format.replace("%%", "")))
+    if not all(directives & part for part in DATE_PARTS):
+        raise ValueError(
+            f"date format {date_format!r} must carry day, month and year directives"
+        )
+    try:
+        time.strptime(time.strftime(date_format), date_format)
+    except ValueError as exc:
+        raise ValueError(f"invalid date format {date_format!r}: {exc}") from exc
+    return date_format
+
+
+def check_languages(languages: tuple[str, ...]) -> tuple[str, ...]:
+    # Imported here: dateparser costs ~80 ms an import that reads no date skips.
+    from dateparser.languages.loader import default_loader
+
+    try:
+        default_loader.get_locale_map(languages=list(languages))
+    except ValueError as exc:
+        raise ValueError(f"invalid date languages {list(languages)}: {exc}") from exc
+    return languages
 
 
 def spec_type(value: Any) -> str:
