@@ -47,10 +47,11 @@ class ExtractField(FieldInfo):
     ``int``, ``float`` or ``date``; ``int`` and ``float`` default to the
     pattern ``-?\d[\d,]*(?:\.\d+)?`` and strip ``,`` (US separators only),
     so ``"MN 48,500"`` is 48500 and ``"4.5"`` as ``int`` is a conversion
-    failure, not 4. ``date`` reads ISO first, then ``dateparser`` with
-    ``languages`` (default ``[en]``), ``date_order`` (``MDY``; never applied
-    to ISO) and an optional strptime ``format``; relative dates resolve
-    against the run's clock. A value that will not convert is ``None`` plus an
+    failure, not 4. ``date`` with a strptime ``format`` reads that format
+    only; without one it reads ISO first, then ``dateparser`` with
+    ``languages`` (default ``[en]``) and ``date_order`` (``MDY``; never
+    applied to ISO), and needs a day and a month ("marzo 2026" is no date).
+    Relative dates resolve against the run's clock. A value that will not convert is ``None`` plus an
     ``extract_warnings`` entry. With ``required``, a row whose value ends up
     ``None`` is kept and gains ``_meta: {incomplete: true, reasons: [...]}``;
     the step fails only when every row is incomplete, which is how a rotted

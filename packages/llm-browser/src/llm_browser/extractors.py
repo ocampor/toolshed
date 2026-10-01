@@ -55,7 +55,7 @@ def failure_reason(exc: ValidationError, fallback: str) -> str:
 @dataclass(frozen=True)
 class Extractor:
     """Per-field state for pydantic: the field's extract name and spec.
-    ``context`` carries the raw row, the warnings and the miss reasons."""
+    The validation context carries the row's warnings and miss reasons."""
 
     name: str
     spec: ExtractSpec

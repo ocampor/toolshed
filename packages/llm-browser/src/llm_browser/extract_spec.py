@@ -1,6 +1,8 @@
 """What one typed ``read`` field asks for, validated once at flow load."""
 
 import re
+import time
+import warnings
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -36,3 +38,35 @@ class ExtractSpec(BaseModel):
         if stray and self.type != "date":
             raise ValueError(f"{stray} apply only to type: date, not {self.type}")
         return self
+
+    @field_validator("format")
+    @classmethod
+    def known_format(cls, value: str | None) -> str | None:
+        return None if value is None else check_format(value)
+
+    @field_validator("languages")
+    @classmethod
+    def known_languages(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return check_languages(value)
+
+
+def check_format(date_format: str) -> str:
+    """A directive strptime does not know fails here, at flow load."""
+    try:
+        # A year-less format like "%d" warns on 3.13; only its directives matter here.
+        with warnings.catch_warnings(action="ignore", category=DeprecationWarning):
+            time.strptime(time.strftime(date_format), date_format)
+    except ValueError as exc:
+        raise ValueError(f"invalid date format {date_format!r}: {exc}") from exc
+    return date_format
+
+
+def check_languages(languages: tuple[str, ...]) -> tuple[str, ...]:
+    # Imported here: dateparser costs ~80 ms an import that reads no date skips.
+    from dateparser.languages.loader import default_loader
+
+    try:
+        default_loader.get_locale_map(languages=list(languages))
+    except ValueError as exc:
+        raise ValueError(f"invalid date languages {list(languages)}: {exc}") from exc
+    return languages

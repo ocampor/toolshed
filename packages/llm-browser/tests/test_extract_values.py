@@ -69,6 +69,18 @@ def test_typed_value(field: ExtractField, raw: str | None, expected: object) -> 
     [
         (ExtractField(type="int"), "4.5", "could not convert '4.5' to int"),
         (ExtractField(type="date"), "n/a", "could not parse 'n/a' as a date"),
+        (
+            ExtractField(type="date", format="%d/%m/%Y"),
+            "05/10/26",
+            "could not parse '05/10/26' as a date",
+        ),
+        (
+            ExtractField(type="date", languages=["es"]),
+            "marzo 2026",
+            "could not parse 'marzo 2026' as a date",
+        ),
+        (ExtractField(type="date"), "3", "could not parse '3' as a date"),
+        (ExtractField(type="date"), "2026", "could not parse '2026' as a date"),
     ],
 )
 def test_failed_conversion_warns(field: ExtractField, raw: str, reason: str) -> None:
@@ -199,6 +211,8 @@ def read_flow(extract: dict[str, object]) -> dict[str, object]:
         {"price": {"pattern": "("}},
         {"price": {"type": "bool"}},
         {"price": {"type": "int", "format": "%d"}},
+        {"due": {"type": "date", "format": "%Q"}},
+        {"due": {"type": "date", "languages": ["sp"]}},
         {"price": {"child": "td"}},
         {META_KEY: "td"},
     ],

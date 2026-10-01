@@ -70,7 +70,7 @@ def typed_row(
 ) -> Row:
     model = row_model(tuple((name, field.spec) for name, field in extract.items()))
     reasons: dict[str, str] = {}
-    context = {"row": row, "reasons": reasons, "warnings": warnings}
+    context = {"reasons": reasons, "warnings": warnings}
     typed = model.model_validate(row, context=context).model_dump(by_alias=True)
     return with_meta(typed, incomplete_reasons(typed, extract, reasons))
 
