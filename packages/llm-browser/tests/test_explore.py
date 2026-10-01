@@ -8,7 +8,7 @@ import pytest
 from llm_browser import constants
 from llm_browser.explore import explore_many
 from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
-from tests.test_extract_values import CARD_EXTRACT, CARDS, TYPED_CARDS
+from tests.extract_helpers import CARD_EXTRACT, CARDS, TYPED_CARDS
 
 
 def element(**over: object) -> dict[str, object]:

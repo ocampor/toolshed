@@ -10,15 +10,18 @@ from pydantic import ValidationError
 from llm_browser.constants import META_KEY
 from llm_browser.extract_values import (
     IncompleteRowsError,
+    TypedValue,
     require_complete,
     typed_rows,
     typed_value,
 )
-from llm_browser.models import Flow
-from llm_browser.parse import ExtractField, parse_extract_spec
+from llm_browser.flows import run_flow
+from llm_browser.models import Flow, FlowSuccess
+from llm_browser.parse import ExtractField, build_model, parse_extract_spec
 from llm_browser.results import ExtractWarning
 from llm_browser.session import BrowserSession
 from tests.conftest import ExploringSession
+from tests.extract_helpers import CARD_EXTRACT, CARDS, TYPED_CARDS, serve_rows
 
 PRICE = ExtractField(pattern=r"([\d,]+)", type="int", required=True)
 
@@ -38,6 +41,20 @@ PRICE = ExtractField(pattern=r"([\d,]+)", type="int", required=True)
 )
 def test_typed_value(field: ExtractField, raw: str | None, expected: object) -> None:
     assert typed_value(field, raw).value == expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "raw"), [(r"(\d+)? ?rec", "rec"), (r"(\d+)|n/a", "n/a")]
+)
+@pytest.mark.parametrize("value_type", ["int", "str"])
+def test_an_unmatched_group_is_no_match(
+    pattern: str, raw: str, value_type: str
+) -> None:
+    field = ExtractField(pattern=pattern, type=value_type)
+
+    assert typed_value(field, raw) == TypedValue(
+        None, f"no match for pattern {pattern!r} in {raw!r}"
+    )
 
 
 def test_blank_converts_to_null_without_warning() -> None:
@@ -104,12 +121,6 @@ def session(tmp_path: Path) -> BrowserSession:
     return s
 
 
-def serve_rows(session: BrowserSession, rows: list[dict[str, str | None]]) -> None:
-    locator = MagicMock()
-    locator.evaluate_all.return_value = rows
-    session._page.locator.return_value = locator  # type: ignore[union-attr]
-
-
 @pytest.mark.parametrize(
     "spec",
     [
@@ -131,18 +142,20 @@ def test_untyped_spec_is_byte_identical(
     assert json.dumps(rows) == json.dumps(baseline)
 
 
-def test_parse_elements_types_rows_and_keeps_warnings(session: BrowserSession) -> None:
+def test_each_parse_elements_call_replaces_the_warnings(
+    session: BrowserSession,
+) -> None:
+    """Outside any step (a `find`), the list must not grow without bound."""
+    extract = {"n": ExtractField(type="int")}
     serve_rows(session, [{"n": "1,200"}, {"n": "x"}])
+    first = session.parse_elements("tr", extract)
+    serve_rows(session, [{"n": "y"}])
+    session.parse_elements("tr", extract)
 
-    with session.matching(None):
-        rows = session.parse_elements("tr", {"n": ExtractField(type="int")})
-        warnings = list(session.extract_warnings)
-
-    assert rows == [{"n": 1200}, {"n": None}]
-    assert warnings == [
-        ExtractWarning(field="n", raw="x", reason="could not convert 'x' to int")
+    assert first == [{"n": 1200}, {"n": None}]
+    assert session.extract_warnings == [
+        ExtractWarning(field="n", raw="y", reason="could not convert 'y' to int")
     ]
-    assert session.extract_warnings == []
 
 
 def read_flow(extract: dict[str, object]) -> dict[str, object]:
@@ -169,35 +182,6 @@ def test_invalid_pattern_names_the_pattern() -> None:
         ExtractField(pattern="(")
 
 
-# What a typed read returns for CARDS, and so what explore must preview.
-CARDS = [
-    {".price": "MN 48,500", ".label": "Casa 3 rec"},
-    {".price": "Consultar precio", ".label": "Casa"},
-]
-CARD_EXTRACT = {
-    "price": {
-        "child_selector": ".price",
-        "pattern": r"([\d,]+)",
-        "type": "int",
-        "required": True,
-    },
-    "rooms": {"child_selector": ".label", "pattern": r"(\d+) baños"},
-}
-TYPED_CARDS = [
-    {"price": 48500, "rooms": None},
-    {
-        "price": None,
-        "rooms": None,
-        META_KEY: {
-            "incomplete": True,
-            "reasons": [
-                r"price: required, no match for pattern '([\\d,]+)' in 'Consultar precio'"
-            ],
-        },
-    },
-]
-
-
 def test_explore_previews_the_rows_a_typed_read_returns(
     session: BrowserSession, exploring_session: ExploringSession
 ) -> None:
@@ -209,3 +193,39 @@ def test_explore_previews_the_rows_a_typed_read_returns(
     assert session.parse_elements(".card", extract) == TYPED_CARDS
     assert result.sample == TYPED_CARDS
     assert result.empty_fields == ["rooms"]
+
+
+def test_an_unmatched_group_leaves_the_run_green(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    serve_rows(session, [{"beds": "rec"}, {"beds": "3 rec"}])
+    extract = {"beds": {"pattern": r"(\d+)? ?rec", "type": "int"}}
+    flow = Flow.model_validate(read_flow(extract))
+
+    result = run_flow(session, flow, {})
+
+    assert isinstance(result, FlowSuccess), result
+    assert result.outputs["s"] == [None, {"beds": 3}]
+
+
+def test_explore_cuts_the_raw_text_its_reasons_quote(
+    exploring_session: ExploringSession,
+) -> None:
+    extract = parse_extract_spec(
+        {"n": {"child_selector": ".n", "type": "int", "required": True}}
+    )
+    rows = [{".n": "x" * 5000}, {".n": "7"}]
+
+    (incomplete, _) = (
+        exploring_session(rows).explore(".row", extract=extract, sample_chars=40).sample
+    )
+
+    assert all(len(reason) <= 40 for reason in incomplete[META_KEY]["reasons"])
+
+
+def test_a_schema_pattern_is_still_a_constraint(tmp_path: Path) -> None:
+    schema = tmp_path / "row.yaml"
+    schema.write_text("name: Row\nfields:\n  id: {type: str, pattern: '^[A-Z]{3}$'}\n")
+
+    with pytest.raises(ValidationError):
+        build_model(schema).model_validate({"id": "id ABC-12"})

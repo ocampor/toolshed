@@ -12,6 +12,7 @@
 ### Changed
 
 - `parse` is deprecated in favour of typed `read`; a run using it carries one `extract_warnings` entry.
+- A `parse` schema's `pattern` is unchanged: still a pydantic string constraint. Only `read` extract fields treat `pattern` as extraction.
 - `_meta` is rejected as an extract field name, and an invalid `pattern` or `type` fails flow validation.
 - `ExploreResult.sample` values may be `int`, `float` or the `_meta` mapping.
 

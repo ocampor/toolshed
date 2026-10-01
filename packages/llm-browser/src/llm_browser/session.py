@@ -130,7 +130,7 @@ class BrowserSession:
         # its ``pick`` accepted are collected — both owned by ``matching``.
         self.match_rule: MatchRule | None = None
         self.accepted_matches: list[AcceptedMatch] = []
-        # Conversions a typed ``read`` gave up on, collected per step the same way.
+        # What the last ``parse_elements`` could not convert; each call replaces it.
         self.extract_warnings: list[ExtractWarning] = []
 
     @contextmanager
@@ -141,17 +141,13 @@ class BrowserSession:
         step's ``expect``/``pick`` reaches the element lookup its action
         happens to make.
         """
-        previous = self.match_rule, self.accepted_matches, self.extract_warnings
+        previous_rule, previous_accepted = self.match_rule, self.accepted_matches
         accepted: list[AcceptedMatch] = []
-        self.match_rule, self.accepted_matches, self.extract_warnings = (
-            rule,
-            accepted,
-            [],
-        )
+        self.match_rule, self.accepted_matches = rule, accepted
         try:
             yield accepted
         finally:
-            self.match_rule, self.accepted_matches, self.extract_warnings = previous
+            self.match_rule, self.accepted_matches = previous_rule, previous_accepted
 
     # --- Lifecycle ---
 
@@ -820,9 +816,8 @@ class BrowserSession:
             # Sliced here rather than extracted off ``match.locator``: a driver
             # whose ``nth`` keeps the selector re-reads every match from it.
             rows = rows[match.nth : match.nth + 1]
-        typed, warnings = typed_rows(rows, extract)
+        typed, self.extract_warnings = typed_rows(rows, extract)
         require_complete(typed)
-        self.extract_warnings.extend(warnings)
         return typed
 
     # --- Explore ---

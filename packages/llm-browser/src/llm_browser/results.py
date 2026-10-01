@@ -146,7 +146,8 @@ class TextResult(ActionResult):
 
 class ExtractedRow(BaseModel, extra="allow"):
     """A single row of data extracted by ``read``. Field set is dynamic — keys
-    come from the step's ``extract`` config; values are ``str`` or ``None``.
+    come from the step's ``extract`` config; values are ``str``, ``int``,
+    ``float`` or ``None``, plus a ``_meta`` mapping on an incomplete row.
     Modeled with ``extra='allow'`` so it serializes uniformly while staying
     schema-free.
     """
@@ -156,7 +157,7 @@ class ParsedResult(ActionResult):
     """Action extracted structured rows.
 
     For ``read`` action: rows are ``ExtractedRow`` (dynamic-fields BaseModel),
-    or ``None`` if every field was empty for that row.
+    or ``None`` if every field read null and the row carries no ``_meta``.
 
     For ``parse`` action: rows are typed instances of the schema model
     (``ParseBase`` subclass), with values coerced by Pydantic.

@@ -48,11 +48,15 @@ def typed_value(field: ExtractField, raw: str | None) -> TypedValue:
     value = raw
     if field.pattern is not None:
         found = field.pattern.search(raw)
-        if found is None:
+        picked = None
+        if found is not None:
+            picked = found.group(1) if field.pattern.groups else found.group(0)
+        # An optional group 1 can match nothing: that is no match too.
+        if picked is None:
             return TypedValue(
                 None, f"no match for pattern {field.pattern.pattern!r} in {raw!r}"
             )
-        value = found.group(1) if field.pattern.groups else found.group(0)
+        value = picked
     if field.value_type == "str":
         return TypedValue(value)
     digits = value.replace(",", "").strip()
@@ -111,4 +115,13 @@ def preview_rows(
 
 
 def cut(value: Any, limit: int) -> Any:
-    return value[:limit] if isinstance(value, str) else value
+    """Every string, however deep — ``_meta`` reasons quote the raw value whole."""
+    match value:
+        case str():
+            return value[:limit]
+        case dict():
+            return {key: cut(item, limit) for key, item in value.items()}
+        case list():
+            return [cut(item, limit) for item in value]
+        case _:
+            return value

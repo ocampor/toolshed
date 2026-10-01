@@ -23,10 +23,10 @@ raw ``{child_selector, attribute}`` mapping, both through
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 
 from llm_browser import constants, schema_types
@@ -211,6 +211,10 @@ def build_model(yaml_path):
         spec = dict(fspec)
         type_str = spec.pop("type")
         py_type = schema_types.resolve_type(type_str)
+        # A schema's `pattern` stays pydantic's string constraint, not extraction.
+        schema_pattern = spec.pop("pattern", None)
+        if schema_pattern is not None:
+            py_type = Annotated[py_type, Field(pattern=schema_pattern)]
         # Remaining keys (child_selector, attribute, default) flow to
         # ExtractField. FieldInfo recognises `default` natively; an absent
         # default leaves the field required (PydanticUndefined sentinel).
