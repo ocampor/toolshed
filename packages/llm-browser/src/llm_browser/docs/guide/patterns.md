@@ -91,13 +91,15 @@ Which attributes each `--level` keeps, and which tags it unwraps: the
   before writing the `read`. A child selector matching nothing reads as `None`
   and the step still passes, unless the field is `required: true` and every
   row misses it. `pattern` and `type` turn a card's text into numbers in the
-  flow itself; the rows carry `price: 48500`, not `"MN 48,500"`:
+  flow itself; the rows carry `price: 48500`, not `"MN 48,500"` — `int` finds the
+  number on its own:
 
   ```yaml
   extract:
-    price:    { child_selector: "[data-qa=POSTING_CARD_PRICE]", pattern: '([\d,]+)', type: int, required: true }
+    price:    { child_selector: "[data-qa=POSTING_CARD_PRICE]", type: int, required: true }
     lot_m2:   { child_selector: "[data-qa=POSTING_CARD_FEATURES]", pattern: '([\d,]+) m²', type: int }
     bedrooms: { child_selector: "[data-qa=POSTING_CARD_FEATURES]", pattern: '(\d+) rec', type: int }
+    published: { child_selector: ".date", type: date, languages: [es] }
   ```
 
 ## Autocomplete (jQuery UI and friends)

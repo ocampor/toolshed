@@ -201,6 +201,9 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:cli.out_dir` | cli run writes outputs |
 | `api:cli.typed_rows` | cli run writes typed rows |
 | `api:error.outputs` | error keeps partial outputs |
+| `api:extract.date_order` | typed read values |
+| `api:extract.format` | typed read values |
+| `api:extract.languages` | typed read values |
 | `api:extract.pattern` | typed read values |
 | `api:extract.required` | typed read values, required field rot |
 | `api:extract.type` | typed read values |

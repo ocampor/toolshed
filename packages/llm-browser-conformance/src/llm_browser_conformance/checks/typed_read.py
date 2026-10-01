@@ -1,9 +1,10 @@
 """Typed ``read`` fields — ``pattern``, ``type``, ``required`` — and the
 deprecated ``parse`` path's warning, as a run reports them."""
 
+import datetime
 from pathlib import Path
 
-from llm_browser.constants import PARSE_DEPRECATED
+from llm_browser.constants import NUMBER_PATTERN, PARSE_DEPRECATED
 from llm_browser.models import FlowSuccess
 from llm_browser.results import ExtractWarning
 
@@ -14,17 +15,34 @@ PAGE = "typed-read.html"
 SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
 
 TYPED_CARDS = [
-    {"price": 48500, "lot": "252 m²", "bedrooms": 3, "rating": 4.5, "units": 1024},
+    {
+        "price": 48500,
+        "lot": "252 m²",
+        "bedrooms": 3,
+        "rating": 4.5,
+        "units": 1024,
+        "published": datetime.date(2026, 10, 1),
+        "updated": datetime.date(2026, 9, 30),
+        "listed": datetime.date(2026, 10, 1),
+        "due": datetime.date(2026, 10, 5),
+    },
     {
         "price": None,
         "lot": "180 m²",
         "bedrooms": None,
         "rating": None,
         "units": None,
+        "published": None,
+        "updated": datetime.date(2026, 9, 15),
+        "listed": datetime.date(2026, 9, 15),
+        "due": datetime.date(2026, 10, 20),
         "_meta": {
             "incomplete": True,
             "reasons": [
-                r"price: required, no match for pattern '([\\d,]+)' in 'Consultar precio'"
+                (
+                    f"price: required, no match for pattern {NUMBER_PATTERN!r} "
+                    "in 'Consultar precio'"
+                )
             ],
         },
     },
@@ -39,9 +57,9 @@ def typed_fields_come_back_converted(ctx: Context) -> None:
     assert result.extract_warnings == [
         ExtractWarning(
             step="cards",
-            field="units",
+            field="published",
             raw="n/a",
-            reason="could not convert 'n/a' to int",
+            reason="could not parse 'n/a' as a date",
         )
     ]
 
@@ -78,6 +96,9 @@ SCENARIOS = [
                 "api:extract.type",
                 "api:extract.required",
                 "api:extract_warnings",
+                "api:extract.format",
+                "api:extract.date_order",
+                "api:extract.languages",
             }
         ),
     ),

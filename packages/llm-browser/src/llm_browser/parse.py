@@ -20,22 +20,21 @@ raw ``{child_selector, attribute}`` mapping, both through
 ``ExtractField.coerce``.
 """
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Self
 
 import yaml
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
 from llm_browser import constants, schema_types
-from llm_browser.extract_values import VALUE_CONVERTERS
+from llm_browser.extract_spec import ExtractSpec
 from llm_browser.selectors import Selector
 
 
 class ExtractField(FieldInfo):
-    """A model field marked for HTML extraction.
+    r"""A model field marked for HTML extraction.
 
     Use as a default value, like Pydantic's ``Field()``. ``child_selector``
     descends into a child of the matched row; if ``None``, the value is
@@ -44,36 +43,27 @@ class ExtractField(FieldInfo):
     or any HTML attribute name.
 
     ``pattern`` is a regex searched in the raw value: group 1 when it has
-    groups, else the whole match; no match is ``None``. ``type`` (``str``,
-    ``int``, ``float``) converts after stripping ``,``; a blank is ``None``
-    and a value that will not convert is ``None`` plus an ``extract_warnings``
-    entry. With ``required``, a row whose value ends up ``None`` is kept and
-    gains ``_meta: {incomplete: true, reasons: [...]}``; the step fails only
-    when every row is incomplete, which is how a rotted selector shows.
+    groups, else the whole match; no match is ``None``. ``type`` is ``str``,
+    ``int``, ``float`` or ``date``; ``int`` and ``float`` default to the
+    pattern ``-?\d[\d,]*(?:\.\d+)?`` and strip ``,`` (US separators only),
+    so ``"MN 48,500"`` is 48500 and ``"4.5"`` as ``int`` is a conversion
+    failure, not 4. ``date`` reads ISO first, then ``dateparser`` with
+    ``languages`` (default ``[en]``), ``date_order`` (``MDY``; never applied
+    to ISO) and an optional strptime ``format``; relative dates resolve
+    against the run's clock. A value that will not convert is ``None`` plus an
+    ``extract_warnings`` entry. With ``required``, a row whose value ends up
+    ``None`` is kept and gains ``_meta: {incomplete: true, reasons: [...]}``;
+    the step fails only when every row is incomplete, which is how a rotted
+    selector shows. A key not listed here fails flow validation.
     """
 
-    def __init__(
-        self,
-        *,
-        child_selector: str | None = None,
-        attribute: str = constants.DEFAULT_EXTRACT_ATTRIBUTE,
-        pattern: str | None = None,
-        type: Literal["str", "int", "float"] = "str",
-        required: bool = False,
-        schema_pattern: str | None = None,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, *, schema_pattern: str | None = None, **kwargs: Any) -> None:
         # `schema_pattern` is pydantic's string constraint; `pattern` extracts.
+        spec_keys = kwargs.keys() & ExtractSpec.model_fields.keys()
+        self.spec = ExtractSpec(**{key: kwargs.pop(key) for key in spec_keys})
         super().__init__(pattern=schema_pattern, **kwargs)
-        self.child_selector = child_selector
-        self.attribute = attribute
-        if type not in VALUE_CONVERTERS:
-            raise ValueError(
-                f"invalid type {type!r}: expected one of {sorted(VALUE_CONVERTERS)}"
-            )
-        self.pattern = compile_pattern(pattern)
-        self.value_type = type
-        self.required = required
+        self.child_selector = self.spec.child_selector
+        self.attribute = self.spec.attribute
 
     @classmethod
     def parse(cls, spec: str) -> "ExtractField":
@@ -103,22 +93,13 @@ class ExtractField(FieldInfo):
         if isinstance(spec, str):
             return cls.parse(spec)
         if isinstance(spec, Mapping):
-            try:
-                return cls(**spec)
-            except TypeError as exc:
-                raise ValueError(f"invalid extract spec {spec!r}: {exc}") from exc
+            # Validated alone first, so a key it does not know fails here
+            # rather than vanishing into `FieldInfo`.
+            ExtractSpec.model_validate(spec)
+            return cls(**spec)
         raise ValueError(
             f"invalid extract spec {spec!r}: expected a string or a mapping"
         )
-
-
-def compile_pattern(pattern: str | None) -> re.Pattern[str] | None:
-    if pattern is None:
-        return None
-    try:
-        return re.compile(pattern)
-    except re.error as exc:
-        raise ValueError(f"invalid pattern {pattern!r}: {exc}") from exc
 
 
 def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None]]:

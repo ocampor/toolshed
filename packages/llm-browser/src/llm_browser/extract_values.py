@@ -3,30 +3,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, NamedTuple
+from functools import lru_cache
+from typing import TYPE_CHECKING, Annotated, Any
+
+from pydantic import BaseModel, Field, create_model
 
 from llm_browser.constants import INCOMPLETE_ROWS_HINT, MATCH_SAMPLES, META_KEY
+from llm_browser.extract_spec import ExtractSpec
+from llm_browser.extractors import get_extractors
 from llm_browser.results import ExtractWarning
 from llm_browser.selectors import MatchError
 
 if TYPE_CHECKING:
     from llm_browser.parse import ExtractField
 
-type Value = str | int | float | None
 type Row = dict[str, Any]
-
-VALUE_CONVERTERS: dict[str, Callable[[str], Value]] = {
-    "str": str,
-    "int": int,
-    "float": float,
-}
-
-
-class TypedValue(NamedTuple):
-    value: Value
-    failure: str = ""
-    conversion_failed: bool = False
+type SpecKey = tuple[tuple[str, ExtractSpec], ...]
 
 
 class IncompleteRowsError(MatchError):
@@ -42,48 +34,45 @@ class IncompleteRowsError(MatchError):
         )
 
 
-def typed_value(field: ExtractField, raw: str | None) -> TypedValue:
-    if raw is None:
-        return TypedValue(None, "value was null")
-    value = raw
-    if field.pattern is not None:
-        found = field.pattern.search(raw)
-        picked = None
-        if found is not None:
-            picked = found.group(1) if field.pattern.groups else found.group(0)
-        # An optional group 1 can match nothing: that is no match too.
-        if picked is None:
-            return TypedValue(
-                None, f"no match for pattern {field.pattern.pattern!r} in {raw!r}"
-            )
-        value = picked
-    if field.value_type == "str":
-        return TypedValue(value)
-    digits = value.replace(",", "").strip()
-    if not digits:
-        return TypedValue(None, f"blank value {raw!r}")
-    try:
-        return TypedValue(VALUE_CONVERTERS[field.value_type](digits))
-    except ValueError:
-        failure = f"could not convert {value!r} to {field.value_type}"
-        return TypedValue(None, failure, conversion_failed=True)
+def row_field(name: str, spec: ExtractSpec) -> Any:
+    extractor = get_extractors().get(spec.type)(name, spec)
+    optional: Any = extractor.py_type | None
+    # The extract name rides the alias: it need not be a Python identifier.
+    return (Annotated[optional, extractor], Field(None, alias=name))
+
+
+@lru_cache(maxsize=64)
+def row_model(fields: SpecKey) -> type[BaseModel]:
+    columns = {
+        f"field_{i}": row_field(name, spec) for i, (name, spec) in enumerate(fields)
+    }
+    return create_model("ExtractedValues", **columns)
+
+
+def incomplete_reasons(
+    row: Row, extract: dict[str, ExtractField], reasons: dict[str, str]
+) -> list[str]:
+    return [
+        f"{name}: required, {reasons.get(name, 'value was null')}"
+        for name, field in extract.items()
+        if field.spec.required and row.get(name) is None
+    ]
+
+
+def with_meta(row: Row, reasons: list[str]) -> Row:
+    if not reasons:
+        return row
+    return {**row, META_KEY: {"incomplete": True, "reasons": reasons}}
 
 
 def typed_row(
     row: Row, extract: dict[str, ExtractField], warnings: list[ExtractWarning]
 ) -> Row:
-    typed: Row = {}
-    reasons: list[str] = []
-    for name, raw in row.items():
-        result = typed_value(extract[name], raw)
-        typed[name] = result.value
-        if result.conversion_failed:
-            warnings.append(ExtractWarning(field=name, raw=raw, reason=result.failure))
-        if result.value is None and extract[name].required:
-            reasons.append(f"{name}: required, {result.failure}")
-    if reasons:
-        typed[META_KEY] = {"incomplete": True, "reasons": reasons}
-    return typed
+    model = row_model(tuple((name, field.spec) for name, field in extract.items()))
+    reasons: dict[str, str] = {}
+    context = {"row": row, "reasons": reasons, "warnings": warnings}
+    typed = model.model_validate(row, context=context).model_dump(by_alias=True)
+    return with_meta(typed, incomplete_reasons(typed, extract, reasons))
 
 
 def typed_rows(
@@ -103,7 +92,7 @@ def require_complete(rows: list[Row]) -> None:
 
 def is_typed(field: ExtractField) -> bool:
     """A field whose raw value must reach Python whole, uncut, to be typed."""
-    return field.pattern is not None or field.value_type != "str"
+    return field.spec.pattern is not None or field.spec.type != "str"
 
 
 def preview_rows(

@@ -57,6 +57,10 @@ MATCH_TOO_FEW_HINT = (
     "or not rendered yet"
 )
 
+# The default pattern of `int` and `float` fields: US separators only. `int`
+# takes the decimal part too, so "4.5" fails conversion instead of truncating.
+NUMBER_PATTERN = r"-?\d[\d,]*(?:\.\d+)?"
+
 # Reserved row key a typed ``read`` adds to a row whose required field is null.
 META_KEY = "_meta"
 

@@ -1,5 +1,6 @@
 """What ``explore`` reports: the first match, its locators, and the verdict."""
 
+import datetime
 import enum
 from typing import Any
 
@@ -132,7 +133,7 @@ class ExploreResult(BaseModel):
     """
 
     count: int
-    sample: list[dict[str, str | int | float | dict[str, Any] | None]]
+    sample: list[dict[str, str | int | float | datetime.date | dict[str, Any] | None]]
     empty_fields: list[str]
     text_chars: int
     first: FirstMatch | None = None
