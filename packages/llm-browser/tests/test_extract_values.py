@@ -16,9 +16,10 @@ from llm_browser.extract_values import (
     typed_value,
 )
 from llm_browser.flows import run_flow
-from llm_browser.models import Flow, FlowSuccess
+from llm_browser.actions import execute_action
+from llm_browser.models import Flow, FlowSuccess, ParseStep
 from llm_browser.parse import ExtractField, build_model, parse_extract_spec
-from llm_browser.results import ExtractWarning
+from llm_browser.results import ExtractWarning, ParsedResult
 from llm_browser.session import BrowserSession
 from tests.conftest import ExploringSession
 from tests.extract_helpers import CARD_EXTRACT, CARDS, TYPED_CARDS, serve_rows
@@ -223,9 +224,21 @@ def test_explore_cuts_the_raw_text_its_reasons_quote(
     assert all(len(reason) <= 40 for reason in incomplete[META_KEY]["reasons"])
 
 
-def test_a_schema_pattern_is_still_a_constraint(tmp_path: Path) -> None:
+def test_a_schema_pattern_constrains_a_parse_step(
+    session: BrowserSession, tmp_path: Path
+) -> None:
     schema = tmp_path / "row.yaml"
-    schema.write_text("name: Row\nfields:\n  id: {type: str, pattern: '^[A-Z]{3}$'}\n")
+    schema.write_text(
+        "name: Row\nfields:\n  id: {type: str, pattern: '^[A-Z]{3}$', child_selector: .a}\n"
+    )
+    Row = build_model(schema)
+    serve_rows(session, [{"id": "ABC"}])
+    step = ParseStep(name="s", action="parse", selector="tr", schema_path=str(schema))
 
+    assert isinstance(Row._spec()["id"], ExtractField)
+    assert Row.model_validate({"id": "ABC"}).id == "ABC"
     with pytest.raises(ValidationError):
-        build_model(schema).model_validate({"id": "id ABC-12"})
+        Row.model_validate({"id": "id ABC-12"})
+    result = execute_action(session, step)
+    assert isinstance(result, ParsedResult), result
+    assert [row.id for row in result.rows] == ["ABC"]
