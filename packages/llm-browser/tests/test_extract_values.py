@@ -9,14 +9,16 @@ from pydantic import ValidationError
 
 from llm_browser.constants import META_KEY
 from llm_browser.extract_values import (
-    ExtractWarning,
     IncompleteRowsError,
+    require_complete,
     typed_rows,
     typed_value,
 )
 from llm_browser.models import Flow
 from llm_browser.parse import ExtractField, parse_extract_spec
+from llm_browser.results import ExtractWarning
 from llm_browser.session import BrowserSession
+from tests.conftest import ExploringSession
 
 PRICE = ExtractField(pattern=r"([\d,]+)", type="int", required=True)
 
@@ -49,7 +51,9 @@ def test_failed_conversion_warns() -> None:
     rows, warnings = typed_rows([{"n": "abc"}], {"n": ExtractField(type="float")})
 
     assert rows == [{"n": None}]
-    assert warnings == [ExtractWarning("n", "abc", "could not convert 'abc' to float")]
+    assert warnings == [
+        ExtractWarning(field="n", raw="abc", reason="could not convert 'abc' to float")
+    ]
 
 
 def test_required_marks_only_incomplete_rows() -> None:
@@ -83,12 +87,14 @@ def test_required_conversion_failure_reason() -> None:
 
 
 def test_every_row_incomplete_raises() -> None:
+    rows, _ = typed_rows([{"price": "Consultar precio"}], {"price": PRICE})
+
     with pytest.raises(IncompleteRowsError, match="price.*'Consultar precio'"):
-        typed_rows([{"price": "Consultar precio"}], {"price": PRICE})
+        require_complete(rows)
 
 
 def test_zero_rows_is_no_failure() -> None:
-    assert typed_rows([], {"price": PRICE}) == ([], [])
+    require_complete([])
 
 
 @pytest.fixture
@@ -133,7 +139,9 @@ def test_parse_elements_types_rows_and_keeps_warnings(session: BrowserSession) -
         warnings = list(session.extract_warnings)
 
     assert rows == [{"n": 1200}, {"n": None}]
-    assert warnings == [ExtractWarning("n", "x", "could not convert 'x' to int")]
+    assert warnings == [
+        ExtractWarning(field="n", raw="x", reason="could not convert 'x' to int")
+    ]
     assert session.extract_warnings == []
 
 
@@ -159,3 +167,45 @@ def test_invalid_extract_rejected_at_validation(extract: dict[str, object]) -> N
 def test_invalid_pattern_names_the_pattern() -> None:
     with pytest.raises(ValueError, match="invalid pattern '\\('"):
         ExtractField(pattern="(")
+
+
+# What a typed read returns for CARDS, and so what explore must preview.
+CARDS = [
+    {".price": "MN 48,500", ".label": "Casa 3 rec"},
+    {".price": "Consultar precio", ".label": "Casa"},
+]
+CARD_EXTRACT = {
+    "price": {
+        "child_selector": ".price",
+        "pattern": r"([\d,]+)",
+        "type": "int",
+        "required": True,
+    },
+    "rooms": {"child_selector": ".label", "pattern": r"(\d+) baños"},
+}
+TYPED_CARDS = [
+    {"price": 48500, "rooms": None},
+    {
+        "price": None,
+        "rooms": None,
+        META_KEY: {
+            "incomplete": True,
+            "reasons": [
+                r"price: required, no match for pattern '([\\d,]+)' in 'Consultar precio'"
+            ],
+        },
+    },
+]
+
+
+def test_explore_previews_the_rows_a_typed_read_returns(
+    session: BrowserSession, exploring_session: ExploringSession
+) -> None:
+    serve_rows(session, [{"price": r[".price"], "rooms": r[".label"]} for r in CARDS])
+    extract = parse_extract_spec(CARD_EXTRACT)
+
+    result = exploring_session(CARDS).explore(".card", extract=extract)
+
+    assert session.parse_elements(".card", extract) == TYPED_CARDS
+    assert result.sample == TYPED_CARDS
+    assert result.empty_fields == ["rooms"]

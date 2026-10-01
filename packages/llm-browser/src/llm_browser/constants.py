@@ -60,6 +60,8 @@ MATCH_TOO_FEW_HINT = (
 # Reserved row key a typed ``read`` adds to a row whose required field is null.
 META_KEY = "_meta"
 
+PARSE_DEPRECATED = "parse is deprecated; use read with pattern, type and required"
+
 INCOMPLETE_ROWS_HINT = (
     "every row missed a required field; the selector or pattern may have rotted"
 )

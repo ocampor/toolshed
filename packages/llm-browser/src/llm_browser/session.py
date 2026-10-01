@@ -31,8 +31,8 @@ from llm_browser.constants import (
     PROBE_TEXT_MAX_CHARS,
     SURVEY_MAX_ITEMS,
 )
-from llm_browser.extract_values import ExtractWarning, Row, typed_rows
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
+from llm_browser.extract_values import Row, require_complete, typed_rows
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.explore_models import (
     ExploreRead,
@@ -50,7 +50,7 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField, row_spec
-from llm_browser.results import AcceptedMatch, BytesResult, HitTarget
+from llm_browser.results import AcceptedMatch, BytesResult, ExtractWarning, HitTarget
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
@@ -821,6 +821,7 @@ class BrowserSession:
             # whose ``nth`` keeps the selector re-reads every match from it.
             rows = rows[match.nth : match.nth + 1]
         typed, warnings = typed_rows(rows, extract)
+        require_complete(typed)
         self.extract_warnings.extend(warnings)
         return typed
 

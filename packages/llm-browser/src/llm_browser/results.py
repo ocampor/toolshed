@@ -76,6 +76,16 @@ class AcceptedMatch(BaseModel):
     picked: PickSpec
 
 
+class ExtractWarning(BaseModel):
+    """A value a typed ``read`` could not convert, or a deprecated step that
+    ran; ``step`` is filled in when the run records it."""
+
+    step: str = ""
+    field: str
+    raw: str
+    reason: str
+
+
 class ActionResult(BaseModel):
     """Base for everything ``execute_action`` returns.
 
@@ -155,6 +165,7 @@ class ParsedResult(ActionResult):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     rows: list[SerializeAsAny[BaseModel] | None]
+    extract_warnings: list[ExtractWarning] = []
 
 
 class SkippedResult(ActionResult):

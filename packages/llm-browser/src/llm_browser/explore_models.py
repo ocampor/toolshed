@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, computed_field, ConfigDict, Field, field_validator
 
 from llm_browser.constants import EXPLORE_NON_BLOCKING
-from llm_browser.parse import ExtractField
+from llm_browser.parse import ExtractField, parse_extract_spec
 
 
 class Intent(enum.StrEnum):
@@ -132,7 +132,7 @@ class ExploreResult(BaseModel):
     """
 
     count: int
-    sample: list[dict[str, str | None]]
+    sample: list[dict[str, str | int | float | dict[str, Any] | None]]
     empty_fields: list[str]
     text_chars: int
     first: FirstMatch | None = None
@@ -163,7 +163,7 @@ class ExploreTarget(BaseModel):
     def coerce_extract(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
-        return {name: ExtractField.coerce(spec) for name, spec in value.items()}
+        return parse_extract_spec(value)
 
 
 class ExploreManyRead(BaseModel):

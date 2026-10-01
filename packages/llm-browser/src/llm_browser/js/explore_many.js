@@ -31,7 +31,9 @@ async (el) => {
     const value = batch.properties.includes(field.attribute)
       ? node[field.attribute]
       : node.getAttribute(field.attribute);
-    return value == null ? null : String(value).slice(0, batch.sample_chars);
+    // A typed field is cut in Python, after its pattern and type see it whole.
+    const limit = field.whole ? undefined : batch.sample_chars;
+    return value == null ? null : String(value).slice(0, limit);
   };
 
   const results = [];

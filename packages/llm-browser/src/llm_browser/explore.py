@@ -21,6 +21,7 @@ from llm_browser.explore_models import (
     Verdict,
 )
 from llm_browser.explore_selectors import candidate_selectors, selector_stability
+from llm_browser.extract_values import Row, is_typed, preview_rows
 from llm_browser.parse import ExtractField, parse_extract_spec, row_spec
 from llm_browser.scripts import explore_first_js, explore_many_js
 from llm_browser.selectors import Selector, describe_selector
@@ -63,18 +64,20 @@ def accepted_counts(intent: Intent, count: int) -> set[int]:
     return {count} if intent is Intent.READ else {1}
 
 
-def cut(value: str | None, limit: int) -> str | None:
-    """A sampled field, shortened. `None` and `""` stay themselves."""
-    return value[:limit] if value else value
-
-
-def empty_everywhere(
-    rows: list[dict[str, str | None]], fields: Collection[str]
-) -> list[str]:
+def empty_everywhere(rows: list[Row], fields: Collection[str]) -> list[str]:
     """Fields that no sampled row filled in — missing and blank both count."""
     if not rows:
         return []
-    return [name for name in fields if not any(row[name] for row in rows)]
+    return [name for name in fields if all(row[name] in (None, "") for row in rows)]
+
+
+def explore_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, Any]]:
+    """``row_spec``; a typed field is read ``whole`` and cut after typing."""
+    spec = row_spec(extract)
+    return {
+        name: {**spec[name], "whole": True} if is_typed(extract[name]) else spec[name]
+        for name in spec
+    }
 
 
 def explore(
@@ -110,17 +113,16 @@ def explore(
         )
     since_call_ms = round((time.monotonic() - started) * 1000)
     count = session.driver.count(locator)
-    spec = row_spec(extract or parse_extract_spec(None))
+    fields = extract or parse_extract_spec(None)
+    spec = row_spec(fields)
     # Only the sampled elements are read: `sample x (fields + 1)`
     # per-element reads (the +1 is `text_chars`), whatever `count` is.
     elements = [session.driver.nth(locator, i) for i in range(min(sample, count))]
-    rows = [
-        {
-            name: cut(session.driver.read_field(element, field), sample_chars)
-            for name, field in spec.items()
-        }
-        for element in elements
+    read_field = session.driver.read_field
+    raw = [
+        {name: read_field(el, field) for name, field in spec.items()} for el in elements
     ]
+    rows = preview_rows(raw, fields, sample_chars)
     return explore_result(
         session,
         read=session.first_match(locator) if count else None,
@@ -141,7 +143,7 @@ def explore_result(
     *,
     read: ExploreRead | None,
     count: int,
-    rows: list[dict[str, str | None]],
+    rows: list[Row],
     spec: Collection[str],
     text_chars: int,
     intent: Intent,
@@ -209,14 +211,14 @@ def explore_many(
             f"explore_many takes at most {constants.EXPLORE_MANY_MAX_TARGETS} "
             f"targets in one call, got {len(targets)}"
         )
-    specs = [row_spec(target.extract or parse_extract_spec(None)) for target in targets]
+    extracts = [target.extract or parse_extract_spec(None) for target in targets]
     reads = [
         ExploreManyRead.model_validate(answer)
         for answer in session.evaluate_document(
             explore_many_js(
                 [
-                    {"selector": target.selector, "extract": dict(spec)}
-                    for target, spec in zip(targets, specs)
+                    {"selector": target.selector, "extract": explore_spec(extract)}
+                    for target, extract in zip(targets, extracts)
                 ],
                 sample,
                 sample_chars,
@@ -232,14 +234,14 @@ def explore_many(
             session,
             read=read.element,
             count=read.count,
-            rows=read.sample,
-            spec=spec,
+            rows=preview_rows(read.sample, extract, sample_chars),
+            spec=extract,
             text_chars=read.text_chars,
             intent=target.intent,
             stability=selector_stability(target.selector),
             since_call_ms=read.since_call_ms,
         )
-        for target, spec, read in zip(targets, specs, reads)
+        for target, extract, read in zip(targets, extracts, reads)
     ]
 
 

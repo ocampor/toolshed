@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from llm_browser.constants import INCOMPLETE_ROWS_HINT, MATCH_SAMPLES, META_KEY
+from llm_browser.results import ExtractWarning
 from llm_browser.selectors import MatchError
 
 if TYPE_CHECKING:
@@ -20,12 +21,6 @@ VALUE_CONVERTERS: dict[str, Callable[[str], Value]] = {
     "int": int,
     "float": float,
 }
-
-
-class ExtractWarning(NamedTuple):
-    field: str
-    raw: str
-    reason: str
 
 
 class TypedValue(NamedTuple):
@@ -79,7 +74,7 @@ def typed_row(
         result = typed_value(extract[name], raw)
         typed[name] = result.value
         if result.conversion_failed:
-            warnings.append(ExtractWarning(name, raw, result.failure))
+            warnings.append(ExtractWarning(field=name, raw=raw, reason=result.failure))
         if result.value is None and extract[name].required:
             reasons.append(f"{name}: required, {result.failure}")
     if reasons:
@@ -90,10 +85,30 @@ def typed_row(
 def typed_rows(
     rows: list[Row], extract: dict[str, ExtractField]
 ) -> tuple[list[Row], list[ExtractWarning]]:
-    """Raises when every row misses a required field; zero rows is no failure."""
     warnings: list[ExtractWarning] = []
     typed = [typed_row(row, extract, warnings) for row in rows]
-    incomplete = [row for row in typed if META_KEY in row]
-    if typed and len(incomplete) == len(typed):
-        raise IncompleteRowsError(incomplete)
     return typed, warnings
+
+
+def require_complete(rows: list[Row]) -> None:
+    """Raises when every row misses a required field; zero rows is no failure."""
+    incomplete = [row for row in rows if META_KEY in row]
+    if rows and len(incomplete) == len(rows):
+        raise IncompleteRowsError(incomplete)
+
+
+def is_typed(field: ExtractField) -> bool:
+    """A field whose raw value must reach Python whole, uncut, to be typed."""
+    return field.pattern is not None or field.value_type != "str"
+
+
+def preview_rows(
+    rows: list[Row], extract: dict[str, ExtractField], limit: int
+) -> list[Row]:
+    """Rows as a real run types them, each string then cut to ``limit``."""
+    typed, _ = typed_rows(rows, extract)
+    return [{name: cut(value, limit) for name, value in row.items()} for row in typed]
+
+
+def cut(value: Any, limit: int) -> Any:
+    return value[:limit] if isinstance(value, str) else value

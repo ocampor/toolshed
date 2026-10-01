@@ -8,6 +8,7 @@ import pytest
 from llm_browser import constants
 from llm_browser.explore import explore_many
 from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
+from tests.test_extract_values import CARD_EXTRACT, CARDS, TYPED_CARDS
 
 
 def element(**over: object) -> dict[str, object]:
@@ -131,6 +132,19 @@ def test_the_sample_and_its_empty_fields_come_back_per_target() -> None:
     # The page reads the fields, so it is told the resolved spec.
     spec = {"title": {"child_selector": "a", "attribute": "textContent"}}
     assert json.dumps(spec)[1:-1] in session.scripts[0]
+
+
+def test_a_typed_target_is_sampled_whole_then_typed_like_a_read() -> None:
+    sample = [{"price": row[".price"], "rooms": row[".label"]} for row in CARDS]
+    session = FakeSession([answer(".card", 2, sample=sample)], counts={})
+
+    (result,) = explore_many(
+        session, [ExploreTarget(selector=".card", extract=CARD_EXTRACT)]
+    )
+
+    assert result.sample == TYPED_CARDS
+    assert result.empty_fields == ["rooms"]
+    assert '"whole": true' in session.scripts[0]
 
 
 def test_a_timeout_is_a_page_with_none_of_them_on_it() -> None:

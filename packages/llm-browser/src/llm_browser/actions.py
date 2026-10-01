@@ -34,10 +34,12 @@ from llm_browser.models import (
     TypeStep,
     WaitForStep,
 )
+from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.parse import build_model
 from llm_browser.results import (
     BytesResult,
     ExtractedRow,
+    ExtractWarning,
     ParsedResult,
     TextResult,
     VoidResult,
@@ -209,7 +211,7 @@ def action_read(
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows)
+    return ParsedResult(rows=rows, extract_warnings=list(session.extract_warnings))
 
 
 @_registry.register("parse")
@@ -223,7 +225,8 @@ def action_parse(
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows)
+    deprecated = ExtractWarning(field="parse", raw="", reason=PARSE_DEPRECATED)
+    return ParsedResult(rows=rows, extract_warnings=[deprecated])
 
 
 @_registry.register("dom")
