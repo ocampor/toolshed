@@ -1,17 +1,16 @@
-"""Post-processing of extracted rows: each field's ``pattern``, ``type`` and
-``required``, in pure Python so every driver gets it without JS changes."""
+"""Extracted rows typed through one pydantic row model per extract map, in pure
+Python so every driver gets it without JS changes."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from typing import TYPE_CHECKING, Annotated, Any
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, BeforeValidator, Field, ValidationError, create_model
 
-from llm_browser.constants import INCOMPLETE_ROWS_HINT, MATCH_SAMPLES, META_KEY
+from llm_browser.constants import FAILED_ROWS_HINT, MATCH_SAMPLES
 from llm_browser.extract_spec import ExtractSpec
-from llm_browser.extractors import get_extractors
-from llm_browser.results import ExtractWarning
+from llm_browser.results import ExtractError
 from llm_browser.selectors import MatchError
 
 if TYPE_CHECKING:
@@ -21,73 +20,75 @@ type Row = dict[str, Any]
 type SpecKey = tuple[tuple[str, ExtractSpec], ...]
 
 
-class IncompleteRowsError(MatchError):
-    """Every row missed a required field: the rot a green run with nulls hides."""
+class FailedRowsError(MatchError):
+    """Every row failed validation: the rot a green run with nulls hides."""
 
-    def __init__(self, incomplete: list[Row]) -> None:
-        first_reasons = incomplete[0][META_KEY]["reasons"]
+    def __init__(self, errors: list[ExtractError], rows: int) -> None:
+        first = errors[0]
         super().__init__(
-            f"every row is incomplete, first row: {'; '.join(first_reasons)}",
-            found=len(incomplete),
-            samples=[row[META_KEY]["reasons"][0] for row in incomplete[:MATCH_SAMPLES]],
-            hint=INCOMPLETE_ROWS_HINT,
+            f"every row failed, first row: {first.field}: {first.msg}",
+            found=rows,
+            samples=[f"{error.field}: {error.msg}" for error in errors[:MATCH_SAMPLES]],
+            hint=FAILED_ROWS_HINT,
         )
-
-
-def row_field(name: str, spec: ExtractSpec) -> Any:
-    extractor = get_extractors().get(spec.type)(name, spec)
-    optional: Any = extractor.py_type | None
-    # The extract name rides the alias: it need not be a Python identifier.
-    return (Annotated[optional, extractor], Field(None, alias=name))
 
 
 @lru_cache(maxsize=64)
 def row_model(fields: SpecKey) -> type[BaseModel]:
-    columns = {
-        f"field_{i}": row_field(name, spec) for i, (name, spec) in enumerate(fields)
+    # The extract name rides the alias: it need not be a Python identifier.
+    columns: dict[str, Any] = {
+        f"field_{i}": (
+            Annotated[Any, BeforeValidator(spec.checked)],
+            Field(None, alias=name),
+        )
+        for i, (name, spec) in enumerate(fields)
     }
     return create_model("ExtractedValues", **columns)
 
 
-def incomplete_reasons(
-    row: Row, extract: dict[str, ExtractField], reasons: dict[str, str]
-) -> list[str]:
+def extract_errors(index: int, exc: ValidationError) -> list[ExtractError]:
     return [
-        f"{name}: required, {reasons.get(name, 'value was null')}"
-        for name, field in extract.items()
-        if field.spec.required and row.get(name) is None
+        ExtractError(
+            row=index,
+            field=str(error["loc"][0]),
+            msg=error["msg"],
+            input=error["input"],
+        )
+        for error in exc.errors()
     ]
 
 
-def with_meta(row: Row, reasons: list[str]) -> Row:
-    if not reasons:
-        return row
-    return {**row, META_KEY: {"incomplete": True, "reasons": reasons}}
-
-
 def typed_row(
-    row: Row, extract: dict[str, ExtractField], warnings: list[ExtractWarning]
-) -> Row:
-    model = row_model(tuple((name, field.spec) for name, field in extract.items()))
-    reasons: dict[str, str] = {}
-    context = {"reasons": reasons, "warnings": warnings}
-    typed = model.model_validate(row, context=context).model_dump(by_alias=True)
-    return with_meta(typed, incomplete_reasons(typed, extract, reasons))
+    model: type[BaseModel], index: int, row: Row
+) -> tuple[Row, list[ExtractError]]:
+    """A field that fails is left out and so stays at its ``None`` default."""
+    try:
+        return model.model_validate(row).model_dump(by_alias=True), []
+    except ValidationError as exc:
+        errors = extract_errors(index, exc)
+    failed = {error.field for error in errors}
+    kept = {name: value for name, value in row.items() if name not in failed}
+    return model.model_validate(kept).model_dump(by_alias=True), errors
 
 
 def typed_rows(
     rows: list[Row], extract: dict[str, ExtractField]
-) -> tuple[list[Row], list[ExtractWarning]]:
-    warnings: list[ExtractWarning] = []
-    typed = [typed_row(row, extract, warnings) for row in rows]
-    return typed, warnings
+) -> tuple[list[Row], list[ExtractError]]:
+    model = row_model(tuple((name, field.spec) for name, field in extract.items()))
+    typed: list[Row] = []
+    errors: list[ExtractError] = []
+    for index, row in enumerate(rows):
+        values, row_errors = typed_row(model, index, row)
+        typed.append(values)
+        errors.extend(row_errors)
+    return typed, errors
 
 
-def require_complete(rows: list[Row]) -> None:
-    """Raises when every row misses a required field; zero rows is no failure."""
-    incomplete = [row for row in rows if META_KEY in row]
-    if rows and len(incomplete) == len(rows):
-        raise IncompleteRowsError(incomplete)
+def require_some_valid(rows: int, errors: list[ExtractError]) -> None:
+    """Raises when every row failed; zero rows is no failure."""
+    failed_rows = {error.row for error in errors}
+    if rows and len(failed_rows) == rows:
+        raise FailedRowsError(errors, rows)
 
 
 def is_typed(field: ExtractField) -> bool:
@@ -104,13 +105,4 @@ def preview_rows(
 
 
 def cut(value: Any, limit: int) -> Any:
-    """Every string, however deep — ``_meta`` reasons quote the raw value whole."""
-    match value:
-        case str():
-            return value[:limit]
-        case dict():
-            return {key: cut(item, limit) for key, item in value.items()}
-        case list():
-            return [cut(item, limit) for item in value]
-        case _:
-            return value
+    return value[:limit] if isinstance(value, str) else value

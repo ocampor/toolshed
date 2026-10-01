@@ -1,12 +1,13 @@
-"""Typed ``read`` fields — ``pattern``, ``type``, ``required`` — and the
-deprecated ``parse`` path's warning, as a run reports them."""
+"""Typed ``read`` fields — ``pattern``, ``type``, ``required`` — their
+errors, and the deprecated ``parse`` path's warning, as a run reports them."""
 
 import datetime
+import warnings
 from pathlib import Path
 
-from llm_browser.constants import NUMBER_PATTERN, PARSE_DEPRECATED
+from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.models import FlowSuccess
-from llm_browser.results import ExtractWarning
+from llm_browser.results import ExtractError
 
 from llm_browser_conformance.checks.support import error_message, expect_failure, run
 from llm_browser_conformance.scenario import Context, Scenario, Section
@@ -36,16 +37,24 @@ TYPED_CARDS = [
         "updated": datetime.date(2026, 9, 15),
         "listed": datetime.date(2026, 9, 15),
         "due": datetime.date(2026, 10, 20),
-        "_meta": {
-            "incomplete": True,
-            "reasons": [
-                (
-                    f"price: required, no match for pattern {NUMBER_PATTERN!r} "
-                    "in 'Consultar precio'"
-                )
-            ],
-        },
     },
+]
+
+CARD_ERRORS = [
+    ExtractError(
+        step="cards",
+        row=1,
+        field="price",
+        msg="Value error, required, nothing read from 'Consultar precio'",
+        input="Consultar precio",
+    ),
+    ExtractError(
+        step="cards",
+        row=1,
+        field="published",
+        msg="Value error, could not parse 'n/a' as a date",
+        input="n/a",
+    ),
 ]
 
 
@@ -54,35 +63,32 @@ def typed_fields_come_back_converted(ctx: Context) -> None:
 
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     assert result.outputs["cards"] == TYPED_CARDS
-    assert result.extract_warnings == [
-        ExtractWarning(
-            step="cards",
-            field="published",
-            raw="n/a",
-            reason="could not parse 'n/a' as a date",
-        )
-    ]
+    assert result.extract_errors == CARD_ERRORS
 
 
 def a_required_field_no_row_has_fails_the_step(ctx: Context) -> None:
     failure = expect_failure(ctx, PAGE, "typed-read-rot")
     assert failure.step == "cards"
-    assert "price: required, value was null" in error_message(failure)
+    assert "price: Value error, required" in error_message(failure)
 
 
-def parse_warns_once_per_run(ctx: Context) -> None:
-    result = run(
-        ctx,
-        "parse-table.html",
-        "parse-deprecated",
-        schema_path=str(SCHEMAS_DIR / "table-row.yaml"),
-    )
+def parse_warns_deprecated(ctx: Context) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = run(
+            ctx,
+            "parse-table.html",
+            "parse-deprecated",
+            schema_path=str(SCHEMAS_DIR / "table-row.yaml"),
+        )
 
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     assert [row["name"] for row in result.outputs["first"]] == ["widget"]  # type: ignore[attr-defined]
-    assert result.extract_warnings == [
-        ExtractWarning(step="first", field="parse", raw="", reason=PARSE_DEPRECATED)
-    ]
+    assert any(
+        issubclass(w.category, DeprecationWarning)
+        and str(w.message) == PARSE_DEPRECATED
+        for w in caught
+    )
 
 
 SCENARIOS = [
@@ -95,7 +101,7 @@ SCENARIOS = [
                 "api:extract.pattern",
                 "api:extract.type",
                 "api:extract.required",
-                "api:extract_warnings",
+                "api:extract_errors",
                 "api:extract.format",
                 "api:extract.date_order",
                 "api:extract.languages",
@@ -111,7 +117,7 @@ SCENARIOS = [
     Scenario(
         "parse deprecation",
         Section.STEPS,
-        parse_warns_once_per_run,
+        parse_warns_deprecated,
         covers=frozenset(
             {"api:parse.deprecated", "field:parse.expect", "field:parse.pick"}
         ),

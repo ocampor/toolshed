@@ -76,14 +76,15 @@ class AcceptedMatch(BaseModel):
     picked: PickSpec
 
 
-class ExtractWarning(BaseModel):
-    """A value a typed ``read`` could not convert, or a deprecated step that
-    ran; ``step`` is filled in when the run records it."""
+class ExtractError(BaseModel):
+    """A field a typed ``read`` could not fill, as pydantic reported it;
+    ``step`` is filled in when the run records it."""
 
     step: str = ""
+    row: int
     field: str
-    raw: str
-    reason: str
+    msg: str
+    input: str | None = None
 
 
 class ActionResult(BaseModel):
@@ -147,7 +148,7 @@ class TextResult(ActionResult):
 class ExtractedRow(BaseModel, extra="allow"):
     """A single row of data extracted by ``read``. Field set is dynamic — keys
     come from the step's ``extract`` config; values are ``str``, ``int``,
-    ``float`` or ``None``, plus a ``_meta`` mapping on an incomplete row.
+    ``float``, ``date``, ``datetime`` or ``None``.
     Modeled with ``extra='allow'`` so it serializes uniformly while staying
     schema-free.
     """
@@ -157,7 +158,7 @@ class ParsedResult(ActionResult):
     """Action extracted structured rows.
 
     For ``read`` action: rows are ``ExtractedRow`` (dynamic-fields BaseModel),
-    or ``None`` if every field read null and the row carries no ``_meta``.
+    or ``None`` if every field read null.
 
     For ``parse`` action: rows are typed instances of the schema model
     (``ParseBase`` subclass), with values coerced by Pydantic.
@@ -166,7 +167,7 @@ class ParsedResult(ActionResult):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     rows: list[SerializeAsAny[BaseModel] | None]
-    extract_warnings: list[ExtractWarning] = []
+    extract_errors: list[ExtractError] = []
 
 
 class SkippedResult(ActionResult):

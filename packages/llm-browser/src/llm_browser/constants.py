@@ -61,13 +61,10 @@ MATCH_TOO_FEW_HINT = (
 # takes the decimal part too, so "4.5" fails conversion instead of truncating.
 NUMBER_PATTERN = r"-?\d[\d,]*(?:\.\d+)?"
 
-# Reserved row key a typed ``read`` adds to a row whose required field is null.
-META_KEY = "_meta"
-
 PARSE_DEPRECATED = "parse is deprecated; use read with pattern, type and required"
 
-INCOMPLETE_ROWS_HINT = (
-    "every row missed a required field; the selector or pattern may have rotted"
+FAILED_ROWS_HINT = (
+    "every row failed validation; the selector or pattern may have rotted"
 )
 
 PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"

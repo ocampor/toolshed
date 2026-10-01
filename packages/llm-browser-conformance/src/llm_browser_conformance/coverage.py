@@ -61,7 +61,7 @@ REQUIRED_API = (
     "extract.pattern",
     "extract.required",
     "extract.type",
-    "extract_warnings",
+    "extract_errors",
     "flow_repository",
     "from_step",
     "goto.scheme_guard",

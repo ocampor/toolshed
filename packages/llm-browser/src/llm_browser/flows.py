@@ -14,7 +14,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from llm_browser.behavior import Behavior, profile
-from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.flow_passes import unindexed
 from llm_browser.flow_pipeline import parse_flow_yaml
 from llm_browser.flow_runner import run_loaded_flow
@@ -27,7 +26,7 @@ from llm_browser.models import (
     RetryHint,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
-from llm_browser.results import ExtractWarning
+from llm_browser.results import ExtractError
 from llm_browser.selector_map import SelectorMap
 from llm_browser.session import BrowserSession
 
@@ -98,7 +97,7 @@ def run_flow(
             outputs=redact_secrets(result.outputs, secrets),
             skipped=redact_secrets(result.skipped, secrets),
             warnings=redact_secrets(result.warnings, secrets),
-            extract_warnings=redacted_extract_warnings(result, secrets),
+            extract_errors=redacted_extract_errors(result, secrets),
             behavior=ran_as,
             iterations=iterations,
             retry_hint=rerun_hint(iterations, clean_data),
@@ -114,7 +113,7 @@ def run_flow(
         outputs=redact_secrets(result.outputs, secrets),
         skipped=redact_secrets(result.skipped, secrets),
         warnings=redact_secrets(result.warnings, secrets),
-        extract_warnings=redacted_extract_warnings(result, secrets),
+        extract_errors=redacted_extract_errors(result, secrets),
         screenshot=result.screenshot,
         dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
@@ -125,14 +124,11 @@ def run_flow(
     )
 
 
-def redacted_extract_warnings(
+def redacted_extract_errors(
     result: FlowResult, secrets: Sequence[str]
-) -> list[ExtractWarning]:
-    """A deprecation is reported once per run, however many steps hit it."""
-    deprecated = [w for w in result.extract_warnings if w.reason == PARSE_DEPRECATED]
-    kept = [w for w in result.extract_warnings if w.reason != PARSE_DEPRECATED]
-    once: list[ExtractWarning] = redact_secrets(kept + deprecated[:1], secrets)
-    return once
+) -> list[ExtractError]:
+    redacted: list[ExtractError] = redact_secrets(result.extract_errors, secrets)
+    return redacted
 
 
 def rerun_hint(

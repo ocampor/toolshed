@@ -32,7 +32,7 @@ from llm_browser.html import SanitizeLevel
 from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
 from llm_browser.repeat import Repeat, RepeatBlock, check_scope
-from llm_browser.results import AcceptedMatch, ExtractWarning, PayloadBytes
+from llm_browser.results import AcceptedMatch, ExtractError, PayloadBytes
 from llm_browser.selectors import MatchRule, Selector
 
 # --- Step types ---
@@ -927,8 +927,8 @@ class FlowSuccess(BaseModel):
 
     ``skipped`` names every step the run passed over, in the order it did,
     ``warnings`` every step that ran on a match count its ``expect`` did not
-    ask for, and ``extract_warnings`` every value a typed ``read`` could not
-    convert, plus one entry when the run used the deprecated ``parse``.
+    ask for, and ``extract_errors`` every field a typed ``read`` could not
+    fill, as pydantic reported it.
 
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
@@ -943,7 +943,7 @@ class FlowSuccess(BaseModel):
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
-    extract_warnings: list[ExtractWarning] = []
+    extract_errors: list[ExtractError] = []
     behavior: BehaviorProfile | None = None
     iterations: dict[str, IterationReport] = {}
     retry_hint: RetryHint | None = None
@@ -981,7 +981,7 @@ class FlowError(BaseModel):
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
-    extract_warnings: list[ExtractWarning] = []
+    extract_errors: list[ExtractError] = []
     behavior: BehaviorProfile | None = None
     iterations: dict[str, IterationReport] = {}
 

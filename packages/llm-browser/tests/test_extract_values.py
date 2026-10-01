@@ -1,24 +1,19 @@
 """Tests for typed extract fields: pattern, type and required."""
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from llm_browser.constants import META_KEY
-from llm_browser.extract_values import (
-    IncompleteRowsError,
-    require_complete,
-    typed_rows,
-)
+from llm_browser.extract_values import FailedRowsError, require_some_valid, typed_rows
 from llm_browser.flows import run_flow
 from llm_browser.actions import execute_action
 from llm_browser.models import Flow, FlowSuccess, ParseStep
 from llm_browser.parse import ExtractField, build_model, parse_extract_spec
-from llm_browser.results import ExtractWarning, ParsedResult
+from llm_browser.results import ExtractError, ParsedResult
 from llm_browser.session import BrowserSession
 from tests.conftest import ExploringSession
 from tests.extract_helpers import CARD_EXTRACT, CARDS, TYPED_CARDS, serve_rows
@@ -28,7 +23,7 @@ PRICE = ExtractField(pattern=r"([\d,]+)", type="int", required=True)
 
 def typed_one(
     field: ExtractField, raw: str | None
-) -> tuple[object, list[ExtractWarning]]:
+) -> tuple[object, list[ExtractError]]:
     rows, warnings = typed_rows([{"v": raw}], {"v": field})
     return rows[0]["v"], warnings
 
@@ -56,7 +51,17 @@ def typed_one(
         ),
         (ExtractField(type="date"), "01/10/2026", date(2026, 1, 10)),
         (ExtractField(type="date", date_order="DMY"), "01/10/2026", date(2026, 10, 1)),
-        (ExtractField(type="date", date_order="DMY"), "2026-10-01", date(2026, 10, 1)),
+        (
+            ExtractField(type="datetime", format="%d/%m/%Y %H:%M"),
+            "01/10/2026 14:30",
+            datetime(2026, 10, 1, 14, 30),
+        ),
+        (
+            ExtractField(type="datetime"),
+            "2026-10-01 14:30",
+            datetime(2026, 10, 1, 14, 30),
+        ),
+        (ExtractField(type="date"), " ", None),
         (ExtractField(type="date", format="%d/%m/%Y"), "01/10/2026", date(2026, 10, 1)),
     ],
 )
@@ -65,7 +70,7 @@ def test_typed_value(field: ExtractField, raw: str | None, expected: object) -> 
 
 
 @pytest.mark.parametrize(
-    ("field", "raw", "reason"),
+    ("field", "raw", "msg"),
     [
         (ExtractField(type="int"), "4.5", "could not convert '4.5' to int"),
         (ExtractField(type="date"), "n/a", "could not parse 'n/a' as a date"),
@@ -80,13 +85,19 @@ def test_typed_value(field: ExtractField, raw: str | None, expected: object) -> 
             "could not parse 'marzo 2026' as a date",
         ),
         (ExtractField(type="date"), "3", "could not parse '3' as a date"),
-        (ExtractField(type="date"), "2026", "could not parse '2026' as a date"),
+        (
+            ExtractField(type="date", languages=["sp"]),
+            "1 oct 2026",
+            "Unknown language(s): 'sp'",
+        ),
     ],
 )
-def test_failed_conversion_warns(field: ExtractField, raw: str, reason: str) -> None:
+def test_a_failed_field_is_null_plus_an_error(
+    field: ExtractField, raw: str, msg: str
+) -> None:
     assert typed_one(field, raw) == (
         None,
-        [ExtractWarning(field="v", raw=raw, reason=reason)],
+        [ExtractError(row=0, field="v", msg=f"Value error, {msg}", input=raw)],
     )
 
 
@@ -99,22 +110,22 @@ def test_an_unmatched_group_is_no_match(
 ) -> None:
     field = ExtractField(pattern=pattern, type=value_type, required=True)
 
-    (row,), warnings = typed_rows([{"v": raw}], {"v": field})
+    (row,), errors = typed_rows([{"v": raw}], {"v": field})
 
-    assert row["v"] is None and warnings == []
-    assert row[META_KEY]["reasons"] == [
-        f"v: required, no match for pattern {pattern!r} in {raw!r}"
+    assert row["v"] is None
+    assert [error.msg for error in errors] == [
+        f"Value error, required, nothing read from {raw!r}"
     ]
 
 
-def test_blank_converts_to_null_without_warning() -> None:
+def test_blank_converts_to_null_without_error() -> None:
     assert typed_rows([{"n": ""}], {"n": ExtractField(type="int")}) == (
         [{"n": None}],
         [],
     )
 
 
-def test_required_marks_only_incomplete_rows() -> None:
+def test_required_errors_only_the_rows_that_miss() -> None:
     extract = {"price": PRICE, "name": ExtractField()}
     rows = [
         {"price": "MN 48,500", "name": "a"},
@@ -122,37 +133,37 @@ def test_required_marks_only_incomplete_rows() -> None:
         {"price": None, "name": "c"},
     ]
 
-    typed, _ = typed_rows(rows, extract)
+    typed, errors = typed_rows(rows, extract)
 
-    assert typed[0] == {"price": 48500, "name": "a"}
-    assert typed[1][META_KEY] == {
-        "incomplete": True,
-        "reasons": [
-            r"price: required, no match for pattern '([\\d,]+)' in 'Consultar precio'"
-        ],
-    }
-    assert typed[2][META_KEY]["reasons"] == ["price: required, value was null"]
-
-
-def test_required_conversion_failure_reason() -> None:
-    extract = {"n": ExtractField(type="int", required=True), "ok": ExtractField()}
-
-    typed, _ = typed_rows([{"n": "4.5", "ok": "y"}, {"n": "1", "ok": "y"}], extract)
-
-    assert typed[0][META_KEY]["reasons"] == [
-        "n: required, could not convert '4.5' to int"
+    assert typed == [
+        {"price": 48500, "name": "a"},
+        {"price": None, "name": "b"},
+        {"price": None, "name": "c"},
+    ]
+    assert [(error.row, error.field, error.input) for error in errors] == [
+        (1, "price", "Consultar precio"),
+        (2, "price", None),
     ]
 
 
-def test_every_row_incomplete_raises() -> None:
-    rows, _ = typed_rows([{"price": "Consultar precio"}], {"price": PRICE})
+def test_a_failed_field_keeps_the_rest_of_the_row() -> None:
+    extract = {"n": ExtractField(type="int"), "ok": ExtractField()}
 
-    with pytest.raises(IncompleteRowsError, match="price.*'Consultar precio'"):
-        require_complete(rows)
+    typed, errors = typed_rows([{"n": "4.5", "ok": "y"}], extract)
+
+    assert typed == [{"n": None, "ok": "y"}]
+    assert [error.field for error in errors] == ["n"]
+
+
+def test_every_row_failing_raises() -> None:
+    rows, errors = typed_rows([{"price": "Consultar precio"}], {"price": PRICE})
+
+    with pytest.raises(FailedRowsError, match="price.*'Consultar precio'"):
+        require_some_valid(len(rows), errors)
 
 
 def test_zero_rows_is_no_failure() -> None:
-    require_complete([])
+    require_some_valid(0, [])
 
 
 @pytest.fixture
@@ -183,19 +194,24 @@ def test_untyped_spec_is_byte_identical(
     assert json.dumps(rows) == json.dumps(baseline)
 
 
-def test_each_parse_elements_call_replaces_the_warnings(
+def test_each_parse_elements_call_replaces_the_errors(
     session: BrowserSession,
 ) -> None:
     """Outside any step (a `find`), the list must not grow without bound."""
     extract = {"n": ExtractField(type="int")}
     serve_rows(session, [{"n": "1,200"}, {"n": "4.5"}])
     first = session.parse_elements("tr", extract)
-    serve_rows(session, [{"n": "7.5"}])
+    serve_rows(session, [{"n": "8"}, {"n": "7.5"}])
     session.parse_elements("tr", extract)
 
     assert first == [{"n": 1200}, {"n": None}]
-    assert session.extract_warnings == [
-        ExtractWarning(field="n", raw="7.5", reason="could not convert '7.5' to int")
+    assert session.extract_errors == [
+        ExtractError(
+            row=1,
+            field="n",
+            msg="Value error, could not convert '7.5' to int",
+            input="7.5",
+        )
     ]
 
 
@@ -211,24 +227,12 @@ def read_flow(extract: dict[str, object]) -> dict[str, object]:
         {"price": {"pattern": "("}},
         {"price": {"type": "bool"}},
         {"price": {"type": "int", "format": "%d"}},
-        {"due": {"type": "date", "format": "%Q %d/%m/%Y"}},
-        {"due": {"type": "date", "format": "%d/%m"}},
-        {"due": {"type": "date", "format": "%d"}},
-        {"due": {"type": "date", "format": "%Y"}},
-        {"due": {"type": "date", "format": "abc"}},
-        {"due": {"type": "date", "languages": ["sp"]}},
         {"price": {"child": "td"}},
-        {META_KEY: "td"},
     ],
 )
 def test_invalid_extract_rejected_at_validation(extract: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         Flow.model_validate(read_flow(extract))
-
-
-@pytest.mark.parametrize("date_format", ["%d/%m/%Y", "%d %b %Y", "%j %Y"])
-def test_a_whole_date_format_loads(date_format: str) -> None:
-    Flow.model_validate(read_flow({"due": {"type": "date", "format": date_format}}))
 
 
 def test_invalid_pattern_names_the_pattern() -> None:
@@ -260,21 +264,6 @@ def test_an_unmatched_group_leaves_the_run_green(
 
     assert isinstance(result, FlowSuccess), result
     assert result.outputs["s"] == [None, {"beds": 3}]
-
-
-def test_explore_cuts_the_raw_text_its_reasons_quote(
-    exploring_session: ExploringSession,
-) -> None:
-    extract = parse_extract_spec(
-        {"n": {"child_selector": ".n", "type": "int", "required": True}}
-    )
-    rows = [{".n": "x" * 5000}, {".n": "7"}]
-
-    (incomplete, _) = (
-        exploring_session(rows).explore(".row", extract=extract, sample_chars=40).sample
-    )
-
-    assert all(len(reason) <= 40 for reason in incomplete[META_KEY]["reasons"])
 
 
 def test_a_schema_pattern_constrains_a_parse_step(

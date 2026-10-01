@@ -29,7 +29,7 @@ from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
 from llm_browser import constants, schema_types
-from llm_browser.extract_spec import ExtractSpec
+from llm_browser.extract_spec import EXTRACT_SPEC, SPEC_KEYS
 from llm_browser.selectors import Selector
 
 
@@ -43,25 +43,25 @@ class ExtractField(FieldInfo):
     or any HTML attribute name.
 
     ``pattern`` is a regex searched in the raw value: group 1 when it has
-    groups, else the whole match; no match is ``None``. ``type`` is ``str``,
-    ``int``, ``float`` or ``date``; ``int`` and ``float`` default to the
-    pattern ``-?\d[\d,]*(?:\.\d+)?`` and strip ``,`` (US separators only),
-    so ``"MN 48,500"`` is 48500 and ``"4.5"`` as ``int`` is a conversion
-    failure, not 4. ``date`` with a strptime ``format`` (day, month and year
-    directives required) reads that format only; without one it reads ISO first, then ``dateparser`` with
-    ``languages`` (default ``[en]``) and ``date_order`` (``MDY``; never
-    applied to ISO), and needs a day and a month ("marzo 2026" is no date).
-    Relative dates resolve against the run's clock. A value that will not convert is ``None`` plus an
-    ``extract_warnings`` entry. With ``required``, a row whose value ends up
-    ``None`` is kept and gains ``_meta: {incomplete: true, reasons: [...]}``;
-    the step fails only when every row is incomplete, which is how a rotted
-    selector shows. A key not listed here fails flow validation.
+    groups, else the whole match; no match is ``None``. ``type`` picks the
+    spec that converts it: ``str`` (default), ``int`` and ``float`` (default
+    pattern ``-?\d[\d,]*(?:\.\d+)?``, US ``,`` separators stripped), and
+    ``date`` / ``datetime`` (a strptime ``format``, else ``dateparser`` in
+    ``languages`` with a day and month required; ``date_order`` only for
+    ambiguous numeric dates, since it reorders ISO too). Each row validates
+    through one pydantic model: a field that fails, or a ``required`` one that
+    read nothing, is ``None`` in the row and an ``extract_errors`` entry
+    (row, field, pydantic's ``msg`` and ``input``). The step fails only when
+    every row has an error, which is how a rotted selector shows. A key the
+    chosen ``type`` does not take fails flow validation.
     """
 
     def __init__(self, *, schema_pattern: str | None = None, **kwargs: Any) -> None:
         # `schema_pattern` is pydantic's string constraint; `pattern` extracts.
-        spec_keys = kwargs.keys() & ExtractSpec.model_fields.keys()
-        self.spec = ExtractSpec(**{key: kwargs.pop(key) for key in spec_keys})
+        spec_keys = kwargs.keys() & SPEC_KEYS
+        self.spec = EXTRACT_SPEC.validate_python(
+            {key: kwargs.pop(key) for key in spec_keys}
+        )
         super().__init__(pattern=schema_pattern, **kwargs)
         self.child_selector = self.spec.child_selector
         self.attribute = self.spec.attribute
@@ -96,7 +96,7 @@ class ExtractField(FieldInfo):
         if isinstance(spec, Mapping):
             # Validated alone first, so a key it does not know fails here
             # rather than vanishing into `FieldInfo`.
-            ExtractSpec.model_validate(spec)
+            EXTRACT_SPEC.validate_python(spec)
             return cls(**spec)
         raise ValueError(
             f"invalid extract spec {spec!r}: expected a string or a mapping"
@@ -118,10 +118,6 @@ def parse_extract_spec(spec: Mapping[str, Any] | None) -> dict[str, ExtractField
     """
     if spec is None:
         return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
-    if constants.META_KEY in spec:
-        raise ValueError(
-            f"{constants.META_KEY!r} is reserved, not an extract field name"
-        )
     return {name: ExtractField.coerce(value) for name, value in spec.items()}
 
 

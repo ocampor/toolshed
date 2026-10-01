@@ -4,17 +4,17 @@
 
 ### Added
 
-- `read` extract fields take `pattern` (regex; group 1 or the whole match), `type` (`str`, `int`, `float`, `date`) and `required`.
-- `int` and `float` fields default to the pattern `-?\d[\d,]*(?:\.\d+)?` and strip `,` (US separators only); `"4.5"` as `int` is a conversion failure.
-- `type: date` reads ISO, then `dateparser` with `languages` and `date_order` (day and month required); `format` reads that strptime format only and must carry day, month and year directives. Relative dates resolve against the run's clock; `format` and `languages` are checked at flow load.
+- `read` extract fields take `pattern` (regex; group 1 or the whole match), `type` and `required`.
+- `type` selects one spec per kind: `StrSpec` (default), `IntSpec`, `FloatSpec`, `DateSpec`, `DateTimeSpec`; each converts its own value, and a key its type does not take fails flow validation.
+- `int` and `float` default to the pattern `-?\d[\d,]*(?:\.\d+)?` and strip `,` (US separators only); `"4.5"` as `int` is an error.
+- `date` / `datetime`: a strptime `format`, else `dateparser` with `languages` (day and month required); `date_order` only for ambiguous numeric dates, since it reorders ISO too.
 - `dateparser>=1.4,<2` runtime dependency.
-- A row whose `required` field ends up null gains `_meta: {incomplete, reasons}`; the step fails with `IncompleteRowsError` only when every row is incomplete.
-- `FlowSuccess.extract_warnings` / `FlowError.extract_warnings`: `ExtractWarning` entries for values a typed field could not convert.
+- Each row validates through one pydantic model: a field that fails, or a `required` one that read nothing, is `None` plus an `ExtractError` (`row`, `field`, `msg`, `input`) in `FlowSuccess.extract_errors` / `FlowError.extract_errors`; the step fails with `FailedRowsError` only when every row has an error.
 - `explore` and `explore_many` samples and `empty_fields` reflect typed values.
 
 ### Breaking
 
-- An extract mapping key `ExtractSpec` does not know now fails flow validation instead of being ignored. Closes [#79](https://github.com/ocampor/toolshed/issues/79).
+- An extract mapping key its `type` does not take now fails flow validation instead of being ignored. Closes [#79](https://github.com/ocampor/toolshed/issues/79).
 
 Migration:
 
@@ -22,10 +22,9 @@ Migration:
 
 ### Changed
 
-- `parse` is deprecated in favour of typed `read`; a run using it carries one `extract_warnings` entry.
+- `parse` is deprecated in favour of typed `read` and emits a `DeprecationWarning`.
 - A `parse` schema's `pattern` is unchanged: still a pydantic string constraint. Only `read` extract fields treat `pattern` as extraction.
-- `_meta` is rejected as an extract field name, and an invalid `pattern` or `type` fails flow validation.
-- `ExploreResult.sample` values may be `int`, `float` or the `_meta` mapping.
+- `ExploreResult.sample` values may be `int`, `float`, `date` or `datetime`.
 
 ## 0.23.0 — 2026-09-22
 

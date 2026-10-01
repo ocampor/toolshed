@@ -207,7 +207,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:extract.pattern` | typed read values |
 | `api:extract.required` | typed read values, required field rot |
 | `api:extract.type` | typed read values |
-| `api:extract_warnings` | typed read values |
+| `api:extract_errors` | typed read values |
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |
 | `api:goto.scheme_guard` | goto scheme guard |

@@ -133,7 +133,7 @@ class ExploreResult(BaseModel):
     """
 
     count: int
-    sample: list[dict[str, str | int | float | datetime.date | dict[str, Any] | None]]
+    sample: list[dict[str, str | int | float | datetime.date | None]]
     empty_fields: list[str]
     text_chars: int
     first: FirstMatch | None = None

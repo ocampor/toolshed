@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock
 
-from llm_browser.constants import META_KEY
 from llm_browser.session import BrowserSession
 
 
@@ -26,16 +25,4 @@ CARD_EXTRACT = {
     },
     "rooms": {"child_selector": ".label", "pattern": r"(\d+) baños"},
 }
-TYPED_CARDS = [
-    {"price": 48500, "rooms": None},
-    {
-        "price": None,
-        "rooms": None,
-        META_KEY: {
-            "incomplete": True,
-            "reasons": [
-                r"price: required, no match for pattern '([\\d,]+)' in 'Consultar precio'"
-            ],
-        },
-    },
-]
+TYPED_CARDS = [{"price": 48500, "rooms": None}, {"price": None, "rooms": None}]

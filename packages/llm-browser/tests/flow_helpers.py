@@ -35,5 +35,5 @@ def stub_matching(session: MagicMock) -> MagicMock:
     a step accepted; a bare mock yields a truthy mock instead of a list."""
     session.matching.return_value.__enter__.return_value = []
     # Set in ``__init__``, so ``spec=BrowserSession`` does not know it.
-    session.extract_warnings = []
+    session.extract_errors = []
     return session

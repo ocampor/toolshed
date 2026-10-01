@@ -6,6 +6,7 @@ holds the registry and runs them.
 """
 
 import time
+import warnings
 
 from pydantic import BaseModel
 
@@ -39,7 +40,6 @@ from llm_browser.parse import build_model
 from llm_browser.results import (
     BytesResult,
     ExtractedRow,
-    ExtractWarning,
     ParsedResult,
     TextResult,
     VoidResult,
@@ -211,7 +211,7 @@ def action_read(
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows, extract_warnings=list(session.extract_warnings))
+    return ParsedResult(rows=rows, extract_errors=list(session.extract_errors))
 
 
 @_registry.register("parse")
@@ -225,8 +225,8 @@ def action_parse(
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    deprecated = ExtractWarning(field="parse", raw="", reason=PARSE_DEPRECATED)
-    return ParsedResult(rows=rows, extract_warnings=[deprecated])
+    warnings.warn(PARSE_DEPRECATED, DeprecationWarning, stacklevel=2)
+    return ParsedResult(rows=rows)
 
 
 @_registry.register("dom")

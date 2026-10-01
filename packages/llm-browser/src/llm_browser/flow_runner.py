@@ -86,7 +86,7 @@ def run_loaded_flow(
         outputs=state.outputs,
         skipped=state.skipped,
         warnings=state.warnings,
-        extract_warnings=state.extract_warnings,
+        extract_errors=state.extract_errors,
         iterations=state.iterations,
     )
 
@@ -208,9 +208,9 @@ def stopped_at(failure: FlowError, index: int | None, state: RunState) -> FlowEr
                     for w in failure.warnings
                 ),
             ],
-            "extract_warnings": [
-                *state.extract_warnings,
-                *(stepped(w, indexed(w.step, index)) for w in failure.extract_warnings),
+            "extract_errors": [
+                *state.extract_errors,
+                *(stepped(w, indexed(w.step, index)) for w in failure.extract_errors),
             ],
             "iterations": {
                 **state.iterations,
@@ -228,7 +228,7 @@ def folded_failure(name: str, failure: FlowError, reason: str) -> FlowSuccess:
         outputs=failure.outputs,
         skipped=[*failure.skipped, SkippedStep(name=name, reason=reason)],
         warnings=failure.warnings,
-        extract_warnings=failure.extract_warnings,
+        extract_errors=failure.extract_errors,
         iterations=failure.iterations,
     )
 
