@@ -6,7 +6,7 @@
 
 - `read` extract fields take `pattern` (regex; group 1 or the whole match), `type` (`str`, `int`, `float`, `date`) and `required`.
 - `int` and `float` fields default to the pattern `-?\d[\d,]*(?:\.\d+)?` and strip `,` (US separators only); `"4.5"` as `int` is a conversion failure.
-- `type: date` reads ISO, then `dateparser` with `languages` and `date_order` (day and month required); `format` reads that strptime format only. Relative dates resolve against the run's clock; `format` and `languages` are checked at flow load.
+- `type: date` reads ISO, then `dateparser` with `languages` and `date_order` (day and month required); `format` reads that strptime format only and must carry day, month and year directives. Relative dates resolve against the run's clock; `format` and `languages` are checked at flow load.
 - `dateparser>=1.4,<2` runtime dependency.
 - A row whose `required` field ends up null gains `_meta: {incomplete, reasons}`; the step fails with `IncompleteRowsError` only when every row is incomplete.
 - `FlowSuccess.extract_warnings` / `FlowError.extract_warnings`: `ExtractWarning` entries for values a typed field could not convert.

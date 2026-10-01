@@ -211,7 +211,11 @@ def read_flow(extract: dict[str, object]) -> dict[str, object]:
         {"price": {"pattern": "("}},
         {"price": {"type": "bool"}},
         {"price": {"type": "int", "format": "%d"}},
-        {"due": {"type": "date", "format": "%Q"}},
+        {"due": {"type": "date", "format": "%Q %d/%m/%Y"}},
+        {"due": {"type": "date", "format": "%d/%m"}},
+        {"due": {"type": "date", "format": "%d"}},
+        {"due": {"type": "date", "format": "%Y"}},
+        {"due": {"type": "date", "format": "abc"}},
         {"due": {"type": "date", "languages": ["sp"]}},
         {"price": {"child": "td"}},
         {META_KEY: "td"},
@@ -220,6 +224,11 @@ def read_flow(extract: dict[str, object]) -> dict[str, object]:
 def test_invalid_extract_rejected_at_validation(extract: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         Flow.model_validate(read_flow(extract))
+
+
+@pytest.mark.parametrize("date_format", ["%d/%m/%Y", "%d %b %Y", "%j %Y"])
+def test_a_whole_date_format_loads(date_format: str) -> None:
+    Flow.model_validate(read_flow({"due": {"type": "date", "format": date_format}}))
 
 
 def test_invalid_pattern_names_the_pattern() -> None:

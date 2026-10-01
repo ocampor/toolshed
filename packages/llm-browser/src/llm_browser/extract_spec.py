@@ -2,7 +2,6 @@
 
 import re
 import time
-import warnings
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -50,12 +49,20 @@ class ExtractSpec(BaseModel):
         return check_languages(value)
 
 
+# strptime fills a part the format lacks with 1900 or 1: each set needs a directive.
+DATE_PARTS = ({"d", "j"}, {"m", "b", "B", "j"}, {"Y", "y"})
+
+
 def check_format(date_format: str) -> str:
-    """A directive strptime does not know fails here, at flow load."""
+    """A format that cannot yield a whole date, or a directive strptime does
+    not know, fails here, at flow load."""
+    directives = set(re.findall(r"%(.)", date_format.replace("%%", "")))
+    if not all(directives & part for part in DATE_PARTS):
+        raise ValueError(
+            f"date format {date_format!r} must carry day, month and year directives"
+        )
     try:
-        # A year-less format like "%d" warns on 3.13; only its directives matter here.
-        with warnings.catch_warnings(action="ignore", category=DeprecationWarning):
-            time.strptime(time.strftime(date_format), date_format)
+        time.strptime(time.strftime(date_format), date_format)
     except ValueError as exc:
         raise ValueError(f"invalid date format {date_format!r}: {exc}") from exc
     return date_format
