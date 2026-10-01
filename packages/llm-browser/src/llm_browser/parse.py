@@ -20,15 +20,17 @@ raw ``{child_selector, attribute}`` mapping, both through
 ``ExtractField.coerce``.
 """
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
 from llm_browser import constants, schema_types
+from llm_browser.extract_values import VALUE_CONVERTERS
 from llm_browser.selectors import Selector
 
 
@@ -47,11 +49,21 @@ class ExtractField(FieldInfo):
         *,
         child_selector: str | None = None,
         attribute: str = constants.DEFAULT_EXTRACT_ATTRIBUTE,
+        pattern: str | None = None,
+        type: Literal["str", "int", "float"] = "str",
+        required: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.child_selector = child_selector
         self.attribute = attribute
+        if type not in VALUE_CONVERTERS:
+            raise ValueError(
+                f"invalid type {type!r}: expected one of {sorted(VALUE_CONVERTERS)}"
+            )
+        self.pattern = compile_pattern(pattern)
+        self.value_type = type
+        self.required = required
 
     @classmethod
     def parse(cls, spec: str) -> "ExtractField":
@@ -90,6 +102,15 @@ class ExtractField(FieldInfo):
         )
 
 
+def compile_pattern(pattern: str | None) -> re.Pattern[str] | None:
+    if pattern is None:
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"invalid pattern {pattern!r}: {exc}") from exc
+
+
 def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None]]:
     """The driver-facing form of an extract map, as ``extract_rows`` wants it."""
     return {
@@ -105,6 +126,10 @@ def parse_extract_spec(spec: Mapping[str, Any] | None) -> dict[str, ExtractField
     """
     if spec is None:
         return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
+    if constants.META_KEY in spec:
+        raise ValueError(
+            f"{constants.META_KEY!r} is reserved, not an extract field name"
+        )
     return {name: ExtractField.coerce(value) for name, value in spec.items()}
 
 

@@ -57,6 +57,13 @@ MATCH_TOO_FEW_HINT = (
     "or not rendered yet"
 )
 
+# Reserved row key a typed ``read`` adds to a row whose required field is null.
+META_KEY = "_meta"
+
+INCOMPLETE_ROWS_HINT = (
+    "every row missed a required field; the selector or pattern may have rotted"
+)
+
 PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"
 
 # Every action whose result the flow runner keeps in ``outputs``.
