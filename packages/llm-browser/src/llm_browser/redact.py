@@ -3,11 +3,15 @@
 import logging
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel
 
 from llm_browser.constants import LOGGER_NAME, REDACTED
+
+TYPED_LEAF = (int, float, Decimal, date)
 
 
 def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
@@ -18,8 +22,17 @@ def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
     match value:
         case str():
             return _redact_text(value, secrets)
+        case bool():
+            return value
+        case _ if isinstance(value, TYPED_LEAF):
+            return REDACTED if _leaks(leaf_text(value), secrets) else value
         case BaseModel():
-            updates = {k: redact_secrets(v, secrets) for k, v in value}
+            # A model's own numbers are schema (row, found), never page data.
+            updates = {
+                k: redact_secrets(v, secrets)
+                for k, v in value
+                if not isinstance(v, TYPED_LEAF)
+            }
             return value.model_copy(update=updates)
         case dict():
             return {k: redact_secrets(v, secrets) for k, v in value.items()}
@@ -35,6 +48,15 @@ def _redact_text(text: str, secrets: Sequence[str]) -> str:
     for secret in secrets:
         text = text.replace(secret, REDACTED)
     return text
+
+
+def leaf_text(value: float | Decimal | date) -> str:
+    return value.isoformat() if isinstance(value, date) else str(value)
+
+
+def _leaks(text: str, secrets: Sequence[str]) -> bool:
+    # A typed read stores "4,180" as 4180, so compare the secret without commas.
+    return any(s in text or s.replace(",", "") in text for s in secrets)
 
 
 def clean_secrets(secrets: Any) -> list[str]:

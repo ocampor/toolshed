@@ -1,6 +1,8 @@
 """Tests for stage two (`load_flow_text`), `run_flow`, outputs, redaction."""
 
 import logging
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -9,9 +11,9 @@ import pytest
 import yaml
 
 from llm_browser.flows import load_flow_text, run_flow
-from llm_browser.models import Flow, FlowError, FlowSuccess
+from llm_browser.models import Flow, FlowError, FlowSuccess, match_warning
 from llm_browser.redact import redact_secrets
-from llm_browser.results import BytesResult
+from llm_browser.results import AcceptedMatch, BytesResult, ExtractError
 from tests.conftest import PNG
 
 CHILD = {"steps": [{"name": "c1", "action": "click", "selector": "#child"}]}
@@ -198,6 +200,49 @@ def test_outputs_from_subflow_are_qualified(mock_session: MagicMock) -> None:
 )
 def test_redact_secrets_walks_values(value: object, expected: object) -> None:
     assert redact_secrets(value, ["s3cret"]) == expected
+
+
+@pytest.mark.parametrize(
+    "value, secret, expected",
+    [
+        (4180, "4180", "***"),
+        (4180, "4,180", "***"),
+        (4180.0, "4180", "***"),
+        (Decimal("4180"), "4180", "***"),
+        (date(1990, 5, 17), "1990-05-17", "***"),
+        (datetime(1990, 5, 17, 8, tzinfo=UTC), "1990-05-17", "***"),
+        ([{"pin": 4180, "n": 7}], "4180", [{"pin": "***", "n": 7}]),
+        (7, "4180", 7),
+        (True, "True", True),
+    ],
+)
+def test_redact_secrets_masks_typed_leaves(
+    value: object, secret: str, expected: object
+) -> None:
+    assert redact_secrets(value, [secret]) == expected
+
+
+def test_run_flow_redacts_a_typed_read(mock_session: MagicMock) -> None:
+    mock_session.parse_elements.return_value = [{"pin": 4180}]
+    step = _read_step(extract={"pin": {"type": "int", "child_selector": "td"}})
+    flow = load_flow_text(_flow_yaml([step]))
+    result = run_flow(mock_session, flow, {}, redact=["4180"])
+    assert isinstance(result, FlowSuccess)
+    assert result.outputs == {"grab": [{"pin": "***"}]}
+
+
+def test_run_flow_masks_rows_but_not_model_numbers(mock_session: MagicMock) -> None:
+    error = ExtractError(step="grab", row=1, field="f", msg="x", input="y")
+    accepted = AcceptedMatch(expected=2, found=1, picked=1)
+    mock_session.parse_elements.return_value = [{"qty": 1}]
+    mock_session.extract_errors = [error]
+    mock_session.matching.return_value.__enter__.return_value = [accepted]
+    flow = load_flow_text(_flow_yaml([_read_step()]))
+    result = run_flow(mock_session, flow, {}, redact=["1"])
+    assert isinstance(result, FlowSuccess)
+    assert result.outputs == {"grab": [{"qty": "***"}]}
+    assert result.extract_errors == [error]
+    assert result.warnings == [match_warning("grab", accepted)]
 
 
 def test_redact_secrets_ignores_empty_secret_list() -> None:
