@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- `redact_secrets` masks an `int`, `float`, `Decimal`, `date` or `datetime` in page data whose text form contains a secret, so typed `read` fields no longer leak; a model's own number fields (`row`, `found`) are kept.
+- `redact_secrets` masks page text before typed `read` conversion and typed values in run data; a model's declared number fields are kept.
 
 ## 0.24.0 — 2026-10-01
 

@@ -5,7 +5,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypeAliasType, get_args
 
 from pydantic import BaseModel
 
@@ -27,11 +27,10 @@ def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
         case _ if isinstance(value, TYPED_LEAF):
             return REDACTED if _leaks(leaf_text(value), secrets) else value
         case BaseModel():
-            # A model's own numbers are schema (row, found), never page data.
             updates = {
                 k: redact_secrets(v, secrets)
                 for k, v in value
-                if not isinstance(v, TYPED_LEAF)
+                if not declared_number(value, k)
             }
             return value.model_copy(update=updates)
         case dict():
@@ -42,6 +41,19 @@ def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
             return tuple(redact_secrets(v, secrets) for v in value)
         case _:
             return value
+
+
+def declared_number(model: BaseModel, name: str) -> bool:
+    """A field typed as a number (``row``, ``found``) is schema, never page
+    data; ``object`` fields and extras still carry page or caller values."""
+    field = type(model).model_fields.get(name)
+    if field is None:
+        return False
+    annotation = field.annotation
+    if isinstance(annotation, TypeAliasType):
+        annotation = annotation.__value__
+    members = get_args(annotation) or (annotation,)
+    return any(isinstance(m, type) and issubclass(m, TYPED_LEAF) for m in members)
 
 
 def _redact_text(text: str, secrets: Sequence[str]) -> str:
@@ -71,8 +83,9 @@ class RedactingFilter(logging.Filter):
         self.secrets = secrets
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact_secrets(record.msg, self.secrets)
-        record.args = redact_secrets(record.args, self.secrets)
+        # Formatted first: a masked number arg would break a ``%d``.
+        record.msg = redact_secrets(record.getMessage(), self.secrets)
+        record.args = None
         return True
 
 

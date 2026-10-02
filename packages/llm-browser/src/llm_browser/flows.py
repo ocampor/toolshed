@@ -80,6 +80,7 @@ def run_flow(
     Outputs keep the original indices."""
     secrets = clean_secrets(redact)
     fresh_run = parse_warned.set(False)
+    previous_secrets, session.secrets = session.secrets, secrets
     try:
         with redacting_logs(secrets):
             result = run_loaded_flow(
@@ -93,6 +94,7 @@ def run_flow(
             )
     finally:
         parse_warned.reset(fresh_run)
+        session.secrets = previous_secrets
     ran_as = profile(behavior if behavior is not None else session.behavior)
     iterations = redact_secrets(result.iterations, secrets)
     clean_data = redact_secrets(data, secrets)

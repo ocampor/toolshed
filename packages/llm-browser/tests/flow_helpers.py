@@ -36,4 +36,5 @@ def stub_matching(session: MagicMock) -> MagicMock:
     session.matching.return_value.__enter__.return_value = []
     # Set in ``__init__``, so ``spec=BrowserSession`` does not know it.
     session.extract_errors = []
+    session.secrets = ()
     return session
