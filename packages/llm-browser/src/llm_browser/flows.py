@@ -10,9 +10,10 @@ into a mapping. A name flow data does not carry fails its step rather than
 reaching the page as literal braces.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from llm_browser.actions import parse_warned
 from llm_browser.behavior import Behavior, profile
 from llm_browser.flow_passes import unindexed
 from llm_browser.flow_pipeline import parse_flow_yaml
@@ -26,6 +27,7 @@ from llm_browser.models import (
     RetryHint,
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
+from llm_browser.results import ExtractError
 from llm_browser.selector_map import SelectorMap
 from llm_browser.session import BrowserSession
 
@@ -77,16 +79,20 @@ def run_flow(
     keyed by step name — what a previous run's ``retry_hint.only`` carries.
     Outputs keep the original indices."""
     secrets = clean_secrets(redact)
-    with redacting_logs(secrets):
-        result = run_loaded_flow(
-            session,
-            flow,
-            data,
-            from_step=from_step,
-            behavior=behavior,
-            selector_map=selector_map,
-            only=only,
-        )
+    fresh_run = parse_warned.set(False)
+    try:
+        with redacting_logs(secrets):
+            result = run_loaded_flow(
+                session,
+                flow,
+                data,
+                from_step=from_step,
+                behavior=behavior,
+                selector_map=selector_map,
+                only=only,
+            )
+    finally:
+        parse_warned.reset(fresh_run)
     ran_as = profile(behavior if behavior is not None else session.behavior)
     iterations = redact_secrets(result.iterations, secrets)
     clean_data = redact_secrets(data, secrets)
@@ -96,6 +102,7 @@ def run_flow(
             outputs=redact_secrets(result.outputs, secrets),
             skipped=redact_secrets(result.skipped, secrets),
             warnings=redact_secrets(result.warnings, secrets),
+            extract_errors=redacted_extract_errors(result, secrets),
             behavior=ran_as,
             iterations=iterations,
             retry_hint=rerun_hint(iterations, clean_data),
@@ -111,6 +118,7 @@ def run_flow(
         outputs=redact_secrets(result.outputs, secrets),
         skipped=redact_secrets(result.skipped, secrets),
         warnings=redact_secrets(result.warnings, secrets),
+        extract_errors=redacted_extract_errors(result, secrets),
         screenshot=result.screenshot,
         dom=redact_secrets(result.dom, secrets),
         human_needed=result.human_needed,
@@ -119,6 +127,13 @@ def run_flow(
         behavior=ran_as,
         iterations=iterations,
     )
+
+
+def redacted_extract_errors(
+    result: FlowResult, secrets: Sequence[str]
+) -> list[ExtractError]:
+    redacted: list[ExtractError] = redact_secrets(result.extract_errors, secrets)
+    return redacted
 
 
 def rerun_hint(

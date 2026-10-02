@@ -1,0 +1,14 @@
+# Two `parse` steps, one deprecation entry for the run.
+params:
+  - schema_path
+steps:
+  - name: first
+    action: parse
+    selector: "tr.item"
+    expect: 2
+    pick: 0
+    schema_path: "{{ schema_path }}"
+  - name: again
+    action: parse
+    selector: "tr.item"
+    schema_path: "{{ schema_path }}"

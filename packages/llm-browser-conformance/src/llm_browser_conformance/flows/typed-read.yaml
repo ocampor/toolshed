@@ -1,0 +1,18 @@
+# `read` fields typed in the flow: `type` finds and converts a number on its
+# own, `pattern` picks a value out of the text, a date reads in the page's
+# language, ISO reads without `date_order`, and `required` errors the row a
+# value went missing from.
+steps:
+  - name: cards
+    action: read
+    selector: ".card"
+    extract:
+      price: { child_selector: ".price", type: int, required: true }
+      lot: { child_selector: ".features", pattern: '\d+ m²' }
+      bedrooms: { child_selector: ".features", pattern: '(\d+) rec', type: int }
+      rating: { child_selector: ".rating", type: float }
+      units: { child_selector: ".units", type: int }
+      published: { child_selector: ".published", type: date, languages: [es] }
+      updated: { child_selector: ".updated", type: date }
+      listed: { child_selector: ".listed", type: date, date_order: DMY }
+      due: { child_selector: ".due", type: date, format: "%d/%m/%Y" }

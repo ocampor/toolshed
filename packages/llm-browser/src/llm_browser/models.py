@@ -32,7 +32,7 @@ from llm_browser.html import SanitizeLevel
 from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
 from llm_browser.repeat import Repeat, RepeatBlock, check_scope
-from llm_browser.results import AcceptedMatch, PayloadBytes
+from llm_browser.results import AcceptedMatch, ExtractError, PayloadBytes
 from llm_browser.selectors import MatchRule, Selector
 
 # --- Step types ---
@@ -463,7 +463,7 @@ class ReadStep(SelectorStep):
 
     extract: dict[str, ExtractField] = Field(
         default_factory=lambda: parse_extract_spec(None),
-        description="Field name to `child selector@attribute`; unset reads each row's own text as `text`.",
+        description="Field name to `child selector@attribute`, or a mapping that may add `pattern`, `type` (`str`, `int`, `float`, `date`, `datetime`), `required` and the date options `format`, `date_order`, `languages`; unset reads each row's own text as `text`.",
     )
     # CSS selectors dropped from the text, not from the DOM: the read happens
     # on a copy, and only for a property a descendant is part of.
@@ -513,7 +513,10 @@ class ReadStep(SelectorStep):
 
 class ParseStep(SelectorStep):
     """Read rows like ``read``, then validate each one against a YAML schema
-    and hand back typed instances rather than strings."""
+    and hand back typed instances rather than strings.
+
+    Deprecated: use ``read`` with ``pattern``, ``type`` and ``required`` on its
+    extract fields, which needs no schema file."""
 
     action: Literal["parse"]
 
@@ -922,9 +925,10 @@ class FlowSuccess(BaseModel):
     :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
-    ``skipped`` names every step the run passed over, in the order it did, and
+    ``skipped`` names every step the run passed over, in the order it did,
     ``warnings`` every step that ran on a match count its ``expect`` did not
-    ask for.
+    ask for, and ``extract_errors`` every field a typed ``read`` could not
+    fill, as pydantic reported it.
 
     ``behavior`` names the humanization profile the run actually ran under —
     ``"custom"`` when a knob differs from both presets, ``None`` on a sub-flow
@@ -939,6 +943,7 @@ class FlowSuccess(BaseModel):
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
+    extract_errors: list[ExtractError] = []
     behavior: BehaviorProfile | None = None
     iterations: dict[str, IterationReport] = {}
     retry_hint: RetryHint | None = None
@@ -976,6 +981,7 @@ class FlowError(BaseModel):
     outputs: dict[str, object] = {}
     skipped: list[SkippedStep] = []
     warnings: list[MatchWarning] = []
+    extract_errors: list[ExtractError] = []
     behavior: BehaviorProfile | None = None
     iterations: dict[str, IterationReport] = {}
 

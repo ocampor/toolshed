@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.24.0 — 2026-10-01
+
+### Added
+
+- `read` extract fields take `pattern` (regex; group 1 or the whole match), `type` and `required`.
+- `type` selects one spec per kind: `StrSpec` (default), `IntSpec`, `FloatSpec`, `DateSpec`, `DateTimeSpec`; each converts its own value, and a key its type does not take fails flow validation.
+- `int` and `float` default to the pattern `-?\d[\d,]*(?:\.\d+)?` and strip `,` (US separators only); `"4.5"` as `int` is an error.
+- `date` / `datetime`: a strptime `format` (day, month and year directives required), else ISO, else `dateparser` with `languages` (day and month required) and `date_order`; `format` and `languages` are checked at flow load.
+- `dateparser>=1.4,<2` runtime dependency.
+- Each field validates on its own: one that fails, or a `required` one that read nothing, is `None` plus an `ExtractError` (`row`, `field`, `msg`, `input`) in `FlowSuccess.extract_errors` / `FlowError.extract_errors`; the step fails with `FailedRowsError` only when a `required` field failed on every row.
+- `explore` and `explore_many` samples and `empty_fields` reflect typed values.
+
+### Breaking
+
+- An extract mapping key its `type` does not take now fails flow validation instead of being ignored. Closes [#79](https://github.com/ocampor/toolshed/issues/79).
+
+Migration:
+
+- Remove unknown keys from `extract` mappings; `manage_flows save` now reports them.
+
+### Changed
+
+- `parse` is deprecated in favour of typed `read`; a run that uses it logs one warning on the `llm_browser.actions` logger.
+- A `parse` schema's `pattern` is unchanged: still a pydantic string constraint. Only `read` extract fields treat `pattern` as extraction.
+- `ExploreResult.sample` values may be `int`, `float`, `date` or `datetime`.
+
 ## 0.23.0 — 2026-09-22
 
 ### Changed

@@ -25,6 +25,7 @@ from llm_browser.results import (
     ActionResult,
     BytesResult,
     ErrorResult,
+    ExtractError,
     ParsedResult,
     SkippedResult,
     TextResult,
@@ -40,6 +41,7 @@ class RunState:
     skipped: list[SkippedStep] = field(default_factory=list)
     iterations: dict[str, IterationReport] = field(default_factory=dict)
     warnings: list[MatchWarning] = field(default_factory=list)
+    extract_errors: list[ExtractError] = field(default_factory=list)
 
 
 def step_output(step: Step, result: ActionResult) -> object | None:
@@ -174,6 +176,7 @@ def repeat_data_error(step: Step, exc: ValueError, state: RunState) -> FlowError
         outputs=dict(state.outputs),
         skipped=list(state.skipped),
         warnings=list(state.warnings),
+        extract_errors=list(state.extract_errors),
         iterations=dict(state.iterations),
     )
 
@@ -190,6 +193,11 @@ def record_outcome(
         state.warnings.append(
             match_warning(indexed(step.qualified_name, index), outcome.accepted)
         )
+    if isinstance(outcome, ParsedResult):
+        state.extract_errors.extend(
+            stepped(w, indexed(step.qualified_name, index))
+            for w in outcome.extract_errors
+        )
     match outcome:
         case FlowSuccess():
             state.outputs.update(
@@ -202,6 +210,9 @@ def record_outcome(
             state.warnings.extend(
                 w.model_copy(update={"step": indexed(w.step, index)})
                 for w in outcome.warnings
+            )
+            state.extract_errors.extend(
+                stepped(w, indexed(w.step, index)) for w in outcome.extract_errors
             )
             state.iterations.update(
                 {indexed(k, index): v for k, v in outcome.iterations.items()}
@@ -216,6 +227,10 @@ def record_outcome(
             output = step_output(step, outcome)
             if output is not None:
                 state.outputs[indexed(step.qualified_name, index)] = output
+
+
+def stepped(warning: ExtractError, step: str) -> ExtractError:
+    return warning.model_copy(update={"step": step})
 
 
 def child_data(parent: FlowData, bindings: dict[str, Any]) -> dict[str, object]:

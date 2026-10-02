@@ -29,29 +29,43 @@ from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
 from llm_browser import constants, schema_types
+from llm_browser.extract_spec import EXTRACT_SPEC, SPEC_KEYS
 from llm_browser.selectors import Selector
 
 
 class ExtractField(FieldInfo):
-    """A model field marked for HTML extraction.
+    r"""A model field marked for HTML extraction.
 
     Use as a default value, like Pydantic's ``Field()``. ``child_selector``
     descends into a child of the matched row; if ``None``, the value is
     read off the row element itself. ``attribute`` is what to read —
     one of ``constants.EXTRACT_PROPERTIES`` (``textContent`` by default)
     or any HTML attribute name.
+
+    ``pattern`` is a regex searched in the raw value: group 1 when it has
+    groups, else the whole match; no match is ``None``. ``type`` picks the
+    spec that converts it: ``str`` (default), ``int`` and ``float`` (default
+    pattern ``-?\d[\d,]*(?:\.\d+)?``, US ``,`` separators stripped), and
+    ``date`` / ``datetime`` (a strptime ``format``, else ``dateparser`` in
+    ``languages`` with a day and month required; ISO always reads as ISO, and
+    ``date_order`` settles ambiguous numeric dates; a ``format`` must carry
+    day, month and year). Each field validates on its own: one that fails,
+    or a ``required`` one that read nothing, is ``None`` in the row and an
+    ``extract_errors`` entry (row, field, pydantic's ``msg`` and ``input``).
+    The step fails only when a ``required`` field failed on every row, which
+    is how a rotted selector shows; an optional field never fails it. A key the
+    chosen ``type`` does not take fails flow validation.
     """
 
-    def __init__(
-        self,
-        *,
-        child_selector: str | None = None,
-        attribute: str = constants.DEFAULT_EXTRACT_ATTRIBUTE,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.child_selector = child_selector
-        self.attribute = attribute
+    def __init__(self, *, schema_pattern: str | None = None, **kwargs: Any) -> None:
+        # `schema_pattern` is pydantic's string constraint; `pattern` extracts.
+        spec_keys = kwargs.keys() & SPEC_KEYS
+        self.spec = EXTRACT_SPEC.validate_python(
+            {key: kwargs.pop(key) for key in spec_keys}
+        )
+        super().__init__(pattern=schema_pattern, **kwargs)
+        self.child_selector = self.spec.child_selector
+        self.attribute = self.spec.attribute
 
     @classmethod
     def parse(cls, spec: str) -> "ExtractField":
@@ -81,10 +95,10 @@ class ExtractField(FieldInfo):
         if isinstance(spec, str):
             return cls.parse(spec)
         if isinstance(spec, Mapping):
-            try:
-                return cls(**spec)
-            except TypeError as exc:
-                raise ValueError(f"invalid extract spec {spec!r}: {exc}") from exc
+            # Validated alone first, so a key it does not know fails here
+            # rather than vanishing into `FieldInfo`.
+            EXTRACT_SPEC.validate_python(spec)
+            return cls(**spec)
         raise ValueError(
             f"invalid extract spec {spec!r}: expected a string or a mapping"
         )
@@ -178,6 +192,9 @@ def build_model(yaml_path):
         spec = dict(fspec)
         type_str = spec.pop("type")
         py_type = schema_types.resolve_type(type_str)
+        # A schema's `pattern` stays pydantic's string constraint, not extraction.
+        if "pattern" in spec:
+            spec["schema_pattern"] = spec.pop("pattern")
         # Remaining keys (child_selector, attribute, default) flow to
         # ExtractField. FieldInfo recognises `default` natively; an absent
         # default leaves the field required (PydanticUndefined sentinel).

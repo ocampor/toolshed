@@ -32,6 +32,7 @@ from llm_browser.constants import (
     SURVEY_MAX_ITEMS,
 )
 from llm_browser.drivers import Driver, DriverHandle, resolve_driver
+from llm_browser.extract_values import Row, require_some_valid, typed_rows
 from llm_browser.html import SanitizeLevel, sanitize_page_html
 from llm_browser.explore_models import (
     ExploreRead,
@@ -49,7 +50,7 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField, row_spec
-from llm_browser.results import AcceptedMatch, BytesResult, HitTarget
+from llm_browser.results import AcceptedMatch, BytesResult, ExtractError, HitTarget
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import (
@@ -129,6 +130,8 @@ class BrowserSession:
         # its ``pick`` accepted are collected — both owned by ``matching``.
         self.match_rule: MatchRule | None = None
         self.accepted_matches: list[AcceptedMatch] = []
+        # What the last ``parse_elements`` could not convert; each call replaces it.
+        self.extract_errors: list[ExtractError] = []
 
     @contextmanager
     def matching(self, rule: MatchRule | None) -> Iterator[list[AcceptedMatch]]:
@@ -794,7 +797,7 @@ class BrowserSession:
         extract: dict[str, ExtractField],
         exclude: Sequence[str] = (),
         timeout: int = DEFAULT_FIND_TIMEOUT_MS,
-    ) -> list[dict[str, str | None]]:
+    ) -> list[Row]:
         """Extract structured data from matching elements.
 
         ``extract`` maps output field names to ``ExtractField`` specs that say
@@ -809,11 +812,13 @@ class BrowserSession:
         match = self.matched_rows(selector, self.match_rule or MANY, timeout)
         locator = resolve_selector(self.driver, self.get_page(), selector)
         rows = self.driver.extract_rows(locator, row_spec(extract), exclude)
-        if match.nth is None:
-            return rows
-        # Sliced here rather than extracted off ``match.locator``: a driver
-        # whose ``nth`` keeps the selector re-reads every match from it.
-        return rows[match.nth : match.nth + 1]
+        if match.nth is not None:
+            # Sliced here rather than extracted off ``match.locator``: a driver
+            # whose ``nth`` keeps the selector re-reads every match from it.
+            rows = rows[match.nth : match.nth + 1]
+        typed, self.extract_errors = typed_rows(rows, extract)
+        require_some_valid(len(typed), self.extract_errors, extract)
+        return typed
 
     # --- Explore ---
     #

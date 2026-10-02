@@ -126,8 +126,9 @@ inline in the JSON.
 
 Re-enter a flow partway through with `llm-browser run --flow x.yaml --from <step name>` or
 `run_flow(session, flow, data, from_step="...")`. See `reference/steps` for the full flow
-language, `reference/extract` for typed extraction (pydantic models, YAML-declared schemas,
-the `parse` action) and `reference/session` for every session method.
+language, `reference/extract` for typed extraction (`read` fields with `pattern`, `type` and
+`required`; pydantic models; the deprecated `parse` action) and `reference/session` for every
+session method.
 
 ## Waiting
 

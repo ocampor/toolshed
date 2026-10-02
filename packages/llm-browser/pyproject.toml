@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser"
-version = "0.23.0"
+version = "0.24.0"
 description = "Playwright browser automation with declarative YAML flows for LLM agents."
 requires-python = ">=3.13"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml>=6.0",
     "yaml-engine>=0.2.0",
     "lxml[html_clean]>=5.0",
+    "dateparser>=1.4,<2",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +41,7 @@ dev = [
     "ocampor-bench[docs]>=0.1,<0.2",
     "pytest>=9.0.2",
     "ruff>=0.11",
+    "types-dateparser>=1.2",
     "types-pyyaml>=6.0.12.20250915",
 ]
 

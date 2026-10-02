@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.0 — 2026-10-01
+
+Tracks `llm-browser` 0.24.0.
+
+### Added
+
+- `typed read values`, `required field rot` and `parse deprecation`, on `site/typed-read.html` and `flows/typed-read.yaml`, `flows/typed-read-rot.yaml`, `flows/parse-deprecated.yaml`.
+- `api:extract.pattern`, `api:extract.type`, `api:extract.required`, `api:extract.format`, `api:extract.date_order`, `api:extract.languages`, `api:extract_warnings` and `api:parse.deprecated` coverage keys.
+- `typed read values` reads four date columns (Spanish long form, ISO under `DMY`, `DMY`, `format`) and an untyped-pattern `int` price.
+- `tests/test_flow_specs.py`: an unknown extract key fails flow validation.
+
+### Changed
+
+- `flows/match-rules.yaml` drives a typed `read` where it drove `parse`; `field:parse.expect` and `field:parse.pick` moved to `parse deprecation`.
+
+### Removed
+
+- `schemas/label-row.yaml`, which only `match-rules` used.
+
 ## 0.12.1 — 2026-09-22
 
 Tracks `llm-browser` 0.22.0.

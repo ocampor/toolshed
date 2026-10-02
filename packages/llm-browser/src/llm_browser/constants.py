@@ -57,6 +57,16 @@ MATCH_TOO_FEW_HINT = (
     "or not rendered yet"
 )
 
+# The default pattern of `int` and `float` fields: US separators only. `int`
+# takes the decimal part too, so "4.5" fails conversion instead of truncating.
+NUMBER_PATTERN = r"-?\d[\d,]*(?:\.\d+)?"
+
+PARSE_DEPRECATED = "parse is deprecated; use read with pattern, type and required"
+
+FAILED_ROWS_HINT = (
+    "every row failed validation; the selector or pattern may have rotted"
+)
+
 PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"
 
 # Every action whose result the flow runner keeps in ``outputs``.

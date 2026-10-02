@@ -7,9 +7,6 @@ away. The failure path is its own scenario: the count, the index and the text
 samples in the message are exactly what drivers report differently.
 """
 
-from pathlib import Path
-from typing import Any
-
 from llm_browser.results import BytesResult
 
 from llm_browser_conformance.checks.support import (
@@ -20,7 +17,6 @@ from llm_browser_conformance.checks.support import (
 from llm_browser_conformance.scenario import Context, Scenario, Section
 
 PAGE = "match-rules.html"
-SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
 
 # The actions `flows/match-rules.yaml` drives, one step each.
 MATCH_STEPS = (
@@ -28,7 +24,6 @@ MATCH_STEPS = (
     "click",
     "dom",
     "fill",
-    "parse",
     "press",
     "read",
     "select",
@@ -46,9 +41,7 @@ def png_height(data: bytes) -> int:
 
 
 def every_step_acts_on_the_match_its_pick_names(ctx: Context) -> None:
-    outputs = expect_success(
-        ctx, PAGE, "match-rules", schema_path=str(SCHEMAS_DIR / "label-row.yaml")
-    )
+    outputs = expect_success(ctx, PAGE, "match-rules")
 
     assert ctx.text("#clicked") == "Gamma", "click took a match other than `last`"
     assert row_value(ctx, 0) == "filled"
@@ -59,8 +52,7 @@ def every_step_acts_on_the_match_its_pick_names(ctx: Context) -> None:
     assert ctx.value(".row:nth-child(1) .choice") == "two"
 
     assert texts(outputs, "read") == ["Gamma"]
-    parsed: Any = outputs["parse"]
-    assert [row["text"] for row in parsed] == ["Alpha"]
+    assert texts(outputs, "typed") == ["Alpha"]
     assert "Beta" in str(outputs["dom"]), outputs["dom"]
 
 

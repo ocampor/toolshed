@@ -5,7 +5,9 @@ Importing this module is what registers them; :mod:`llm_browser.action_dispatch`
 holds the registry and runs them.
 """
 
+import logging
 import time
+from contextvars import ContextVar
 
 from pydantic import BaseModel
 
@@ -16,6 +18,7 @@ from llm_browser.action_dispatch import (
     step_behavior,
 )
 from llm_browser.behavior import Behavior, Jitter, jittered_sleep
+from llm_browser.constants import PARSE_DEPRECATED
 from llm_browser.models import (
     CheckStep,
     ClickStep,
@@ -53,6 +56,11 @@ __all__ = [
     "is_step_failure",
     "step_behavior",
 ]
+
+logger = logging.getLogger(__name__)
+
+# Reset by ``run_flow`` so each run logs the deprecation once.
+parse_warned: ContextVar[bool] = ContextVar("parse_warned", default=False)
 
 _registry = get_registry()
 
@@ -209,7 +217,7 @@ def action_read(
         ExtractedRow(**row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
-    return ParsedResult(rows=rows)
+    return ParsedResult(rows=rows, extract_errors=list(session.extract_errors))
 
 
 @_registry.register("parse")
@@ -223,7 +231,16 @@ def action_parse(
         Model.model_validate(row) if any(v is not None for v in row.values()) else None
         for row in raw
     ]
+    warn_parse_deprecated()
     return ParsedResult(rows=rows)
+
+
+def warn_parse_deprecated() -> None:
+    """Once per ``run_flow``, however many ``parse`` steps or passes it runs."""
+    if parse_warned.get():
+        return
+    parse_warned.set(True)
+    logger.warning(PARSE_DEPRECATED)
 
 
 @_registry.register("dom")
