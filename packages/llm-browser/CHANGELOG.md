@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.1 — 2026-10-01
+
+### Fixed
+
+- `redact_secrets` masks page text before typed `read` conversion and typed values in run data; a model's declared number fields are kept.
+
 ## 0.24.0 — 2026-10-01
 
 ### Added

@@ -50,6 +50,7 @@ from llm_browser.models import (
     WaitState,
 )
 from llm_browser.parse import ExtractField, row_spec
+from llm_browser.redact import redact_secrets
 from llm_browser.results import AcceptedMatch, BytesResult, ExtractError, HitTarget
 from llm_browser.state import STATE_FILENAME, SessionState
 from llm_browser.scripts import page_probe_js
@@ -132,6 +133,8 @@ class BrowserSession:
         self.accepted_matches: list[AcceptedMatch] = []
         # What the last ``parse_elements`` could not convert; each call replaces it.
         self.extract_errors: list[ExtractError] = []
+        # Set by ``run_flow`` so page text is masked before a typed read parses it.
+        self.secrets: Sequence[str] = ()
 
     @contextmanager
     def matching(self, rule: MatchRule | None) -> Iterator[list[AcceptedMatch]]:
@@ -816,6 +819,7 @@ class BrowserSession:
             # Sliced here rather than extracted off ``match.locator``: a driver
             # whose ``nth`` keeps the selector re-reads every match from it.
             rows = rows[match.nth : match.nth + 1]
+        rows = redact_secrets(rows, self.secrets)
         typed, self.extract_errors = typed_rows(rows, extract)
         require_some_valid(len(typed), self.extract_errors, extract)
         return typed

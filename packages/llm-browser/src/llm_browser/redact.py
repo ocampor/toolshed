@@ -3,11 +3,16 @@
 import logging
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any
+from datetime import date
+from decimal import Decimal
+from types import UnionType
+from typing import Annotated, Any, TypeAliasType, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
 from llm_browser.constants import LOGGER_NAME, REDACTED
+
+TYPED_LEAF = (int, float, Decimal, date)
 
 
 def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
@@ -18,8 +23,16 @@ def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
     match value:
         case str():
             return _redact_text(value, secrets)
+        case bool():
+            return value
+        case _ if isinstance(value, TYPED_LEAF):
+            return REDACTED if _leaks(leaf_text(value), secrets) else value
         case BaseModel():
-            updates = {k: redact_secrets(v, secrets) for k, v in value}
+            updates = {
+                k: redact_secrets(v, secrets)
+                for k, v in value
+                if not declared_number(value, k)
+            }
             return value.model_copy(update=updates)
         case dict():
             return {k: redact_secrets(v, secrets) for k, v in value.items()}
@@ -31,10 +44,36 @@ def redact_secrets(value: Any, secrets: Sequence[str]) -> Any:
             return value
 
 
+def declared_number(model: BaseModel, name: str) -> bool:
+    """A field typed as a number (``row``, ``found``) is schema, never page
+    data; ``object`` fields and extras still carry page or caller values."""
+    field = type(model).model_fields.get(name)
+    if field is None:
+        return False
+    annotation = field.annotation
+    if isinstance(annotation, TypeAliasType):
+        annotation = annotation.__value__
+    if get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    # Only unions are unwrapped: a ``list[int]`` field holds data, not schema.
+    is_union = get_origin(annotation) in (Union, UnionType)
+    members = get_args(annotation) if is_union else (annotation,)
+    return any(isinstance(m, type) and issubclass(m, TYPED_LEAF) for m in members)
+
+
 def _redact_text(text: str, secrets: Sequence[str]) -> str:
     for secret in secrets:
         text = text.replace(secret, REDACTED)
     return text
+
+
+def leaf_text(value: float | Decimal | date) -> str:
+    return value.isoformat() if isinstance(value, date) else str(value)
+
+
+def _leaks(text: str, secrets: Sequence[str]) -> bool:
+    # A typed read stores "4,180" as 4180, so compare the secret without commas.
+    return any(s in text or s.replace(",", "") in text for s in secrets)
 
 
 def clean_secrets(secrets: Any) -> list[str]:
@@ -49,8 +88,13 @@ class RedactingFilter(logging.Filter):
         self.secrets = secrets
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact_secrets(record.msg, self.secrets)
-        record.args = redact_secrets(record.args, self.secrets)
+        # Formatted first: a masked number arg would break a ``%d``.
+        try:
+            message = record.getMessage()
+        except TypeError:
+            message = str(record.msg)
+        record.msg = redact_secrets(message, self.secrets)
+        record.args = None
         return True
 
 
