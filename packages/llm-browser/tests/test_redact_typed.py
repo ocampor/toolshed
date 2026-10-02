@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from llm_browser.flows import load_flow_text, run_flow
 from llm_browser.models import FlowError, FlowSuccess, match_warning
@@ -121,3 +122,17 @@ def test_a_number_log_arg_is_masked() -> None:
     record = logging.LogRecord("t", logging.INFO, "", 0, "pin=%d", (4180,), None)
     RedactingFilter(["4180"]).filter(record)
     assert record.getMessage() == "pin=***"
+
+
+def test_a_bad_log_call_does_not_raise() -> None:
+    record = logging.LogRecord("t", logging.INFO, "", 0, "x %d", ("s",), None)
+    RedactingFilter(["s"]).filter(record)
+    assert record.getMessage() == "x %d"
+
+
+class Numbers(BaseModel):
+    d: list[int]
+
+
+def test_a_declared_number_list_is_masked() -> None:
+    assert redact_secrets(Numbers(d=[4180]), ["4180"]).d == ["***"]

@@ -5,7 +5,8 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from typing import Any, TypeAliasType, get_args
+from types import UnionType
+from typing import Annotated, Any, TypeAliasType, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -52,7 +53,11 @@ def declared_number(model: BaseModel, name: str) -> bool:
     annotation = field.annotation
     if isinstance(annotation, TypeAliasType):
         annotation = annotation.__value__
-    members = get_args(annotation) or (annotation,)
+    if get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    # Only unions are unwrapped: a ``list[int]`` field holds data, not schema.
+    is_union = get_origin(annotation) in (Union, UnionType)
+    members = get_args(annotation) if is_union else (annotation,)
     return any(isinstance(m, type) and issubclass(m, TYPED_LEAF) for m in members)
 
 
@@ -84,7 +89,11 @@ class RedactingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         # Formatted first: a masked number arg would break a ``%d``.
-        record.msg = redact_secrets(record.getMessage(), self.secrets)
+        try:
+            message = record.getMessage()
+        except TypeError:
+            message = str(record.msg)
+        record.msg = redact_secrets(message, self.secrets)
         record.args = None
         return True
 
