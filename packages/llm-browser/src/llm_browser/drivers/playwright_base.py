@@ -68,7 +68,7 @@ class PwDownloadInfo(Protocol):
 class PwDownload(Protocol):
     @property
     def suggested_filename(self) -> str: ...
-    def path(self) -> str: ...
+    def path(self) -> Path | str: ...
     def delete(self) -> None: ...
 
 
@@ -110,6 +110,26 @@ def _pw_page(page: Any) -> PwPage:
 
 def _pw_loc(locator: Any) -> PwLocator:
     return cast(PwLocator, locator)
+
+
+def read_download(download: PwDownload) -> BytesResult:
+    """Playwright spools a download to a temp file of its own; ``delete()``
+    removes it once the bytes are in memory, on the failing path too.
+
+    A failed or cancelled download makes ``path()`` raise Playwright's own
+    ``Error``, which would unwind out of ``run_flow``; as a ``ValueError`` it
+    comes back as the failed step the caller is promised.
+    """
+    try:
+        content = Path(download.path()).read_bytes()
+    except Exception as exc:
+        raise ValueError(
+            f"download did not complete: {' '.join(str(exc).split())[:200]}"
+        ) from exc
+    finally:
+        download.delete()
+    name = download.suggested_filename
+    return BytesResult(name=name, content=content, media_type=guess_media_type(name))
 
 
 class PlaywrightDriverBase(Driver):
@@ -291,31 +311,9 @@ class PlaywrightDriverBase(Driver):
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:
-        """Playwright always spools the download to a temp file of its own;
-        ``delete()`` removes it once the bytes are in memory, on the failing
-        path as much as the succeeding one.
-
-        A download that fails or is cancelled makes ``path()`` raise
-        Playwright's own ``Error``, which is neither a timeout nor a
-        ``ValueError`` and so would unwind out of ``run_flow`` instead of
-        coming back as a failed step. Restated as a ``ValueError`` here, it is
-        the step result the caller is promised.
-        """
         with _pw_page(page).expect_download(timeout=timeout_ms) as info:
             trigger()
-        download = info.value
-        try:
-            content = Path(download.path()).read_bytes()
-        except Exception as exc:
-            raise ValueError(
-                f"download did not complete: {' '.join(str(exc).split())[:200]}"
-            ) from exc
-        finally:
-            download.delete()
-        name = download.suggested_filename
-        return BytesResult(
-            name=name, content=content, media_type=guess_media_type(name)
-        )
+        return read_download(info.value)
 
     def enter_frame(self, locator: Any) -> Any:
         handle = _pw_loc(locator).element_handle()
@@ -327,4 +325,4 @@ class PlaywrightDriverBase(Driver):
         return frame
 
 
-__all__ = ["PlaywrightDriverBase"]
+__all__ = ["PlaywrightDriverBase", "read_download"]
