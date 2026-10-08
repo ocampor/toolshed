@@ -59,7 +59,7 @@ def watch(page: Page, arrivals: Arrivals) -> Callable[[], None]:
         popup.on("download", on_download)
 
     def on_route(route: Route) -> None:
-        intercept(route, arrivals)
+        intercept(route, page, arrivals)
 
     page.on("download", on_download)
     page.on("popup", on_popup)
@@ -75,8 +75,8 @@ def watch(page: Page, arrivals: Arrivals) -> Callable[[], None]:
     return stop
 
 
-def intercept(route: Route, arrivals: Arrivals) -> None:
-    if not is_top_level_navigation(route.request):
+def intercept(route: Route, page: Page, arrivals: Arrivals) -> None:
+    if not is_own_navigation(route.request, page, arrivals.popups):
         route.continue_()
         return
     # A fetch that outlives the step's budget hands the request back, so a real
@@ -98,14 +98,18 @@ def intercept(route: Route, arrivals: Arrivals) -> None:
     route.fulfill(response=response)
 
 
-def is_top_level_navigation(request: Request) -> bool:
+def is_own_navigation(request: Request, page: Page, popups: list[Page]) -> bool:
+    """A top-level navigation of the clicking page or a popup it opened; other
+    tabs sharing the context (concurrent runs) pass through untouched."""
     if not request.is_navigation_request():
         return False
-    # A popup's first navigation has no frame yet: it is a new top-level document.
+    # A popup's first navigation has no frame yet: it is the tab the click opened.
+    # debt: another run's tab opened in that same instant would be taken as ours.
     try:
-        return request.frame.parent_frame is None
+        frame = request.frame
     except Exception:
         return True
+    return frame.parent_frame is None and (frame.page == page or frame.page in popups)
 
 
 def file_name(content_disposition: str, url: str) -> str:
