@@ -1,11 +1,3 @@
-"""Catch the file a click produces wherever Chromium delivers it.
-
-A file arrives as a download event, on the clicking page or on a popup it opens,
-or as a top-level navigation to a non-HTML response that Chromium then shows in
-its PDF or image viewer. That navigation's bytes are taken at the network layer,
-before a viewer replaces them.
-"""
-
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
