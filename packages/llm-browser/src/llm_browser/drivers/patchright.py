@@ -14,7 +14,7 @@ DOES survive across CLI invocations — a fresh driver instance will
 reconnect to the persisted CDP endpoint on first ``page(handle)`` call.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, ClassVar
@@ -27,8 +27,10 @@ from patchright.sync_api import (
 )
 
 from llm_browser.drivers.handle import DriverHandle
+from llm_browser.drivers.patchright_download import catch_file
 from llm_browser.drivers.patchright_shim import start_playwright
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
+from llm_browser.results import BytesResult
 
 
 class PatchrightDriver(PlaywrightDriverBase):
@@ -101,6 +103,11 @@ class PatchrightDriver(PlaywrightDriverBase):
             raise RuntimeError("No tabs open.")
         self._page = self._context.pages[-1]
         return self._page
+
+    def download_bytes(
+        self, page: Any, trigger: Callable[[], None], timeout_ms: int
+    ) -> BytesResult:
+        return catch_file(page, trigger, timeout_ms)
 
     def close(self, handle: DriverHandle) -> None:
         if _is_attached(handle):

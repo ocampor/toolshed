@@ -22,7 +22,6 @@ An unimplemented API is not a gap — it reports `skip` with the driver's own
 | match on a pick step | nodriver | NodriverDriver.nth keeps the whole selector, so the narrowed locator still counts three and `pick` falls back to matching `value:` — it clicks Beta, not the third option: see #59 |
 | popup to inline pdf | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | blank form post | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
-| popup renders then fetches | patchright | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | popup renders then fetches | camoufox | download_bytes listens on the page the trigger was clicked on, so a file the browser delivers to another tab is never seen: see #40 |
 | behavior human paces input | camoufox | the plain locator.type() path already spends ~70ms a key on Camoufox's patched Firefox, inside Behavior.human()'s own 30-90ms jitter band, so the humanized path is not measurably slower |
 | behavior human paces input | nodriver | NodriverDriver leaves humanized_type defaulted because its native CDP input already types like a person, so Behavior.human() adds paced()'s post-action pause and no per-key delay |

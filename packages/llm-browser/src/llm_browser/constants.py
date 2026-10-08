@@ -268,3 +268,10 @@ SCHEMA_TYPE_NAMES = {
     "date": datetime.date,
     "datetime": datetime.datetime,
 }
+
+# --- Downloads ---
+
+# How often a download step looks for a file between event dispatches.
+DOWNLOAD_POLL_MS = 100
+# A top-level navigation answered with one of these is a page, not a file.
+PAGE_MEDIA_TYPES = frozenset({"text/html", "application/xhtml+xml"})

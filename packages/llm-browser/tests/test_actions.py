@@ -2,6 +2,7 @@
 
 import ast
 import base64
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -462,10 +463,6 @@ def test_dom_path_is_ignored_by_the_runner(
 
 def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> MagicMock:
     """A Playwright ``Download`` whose spool file really exists on disk."""
-    from contextlib import contextmanager
-
-    page = session._page
-
     spooled = tmp_path / "spool" / "download.bin"
     spooled.parent.mkdir()
     spooled.write_bytes(payload)
@@ -475,12 +472,11 @@ def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> Ma
     mock_download.path.return_value = str(spooled)
     mock_download.delete.side_effect = spooled.unlink
 
-    @contextmanager
-    def fake_expect_download(timeout=None):  # type: ignore[no-untyped-def]
-        page.expect_download_timeout = timeout
-        yield MagicMock(value=mock_download)
+    def deliver(event: str, handler: Callable[[MagicMock], None]) -> None:
+        if event == "download":
+            handler(mock_download)
 
-    session._page.expect_download = fake_expect_download  # type: ignore[union-attr]
+    session._page.on = deliver  # type: ignore[union-attr]
     return mock_download
 
 
@@ -505,15 +501,16 @@ def test_download_leaves_no_spool_file_behind(
     assert list((tmp_path / "spool").iterdir()) == []
 
 
-def test_download_honours_the_step_timeout(
-    session: BrowserSession, tmp_path: Path
-) -> None:
+def test_download_honours_the_step_timeout(session: BrowserSession) -> None:
     """Without this the step's budget bounds `find` only and Playwright's own
     30s default takes over for the wait that matters."""
-    _arm_download(session, tmp_path, b"payload")
-    step = DownloadStep(name="s", action="download", selector="#dl", timeout=2500)
-    execute_action(session, step)
-    assert session._page.expect_download_timeout == 2500  # type: ignore[union-attr]
+    from llm_browser.results import ErrorResult
+
+    step = DownloadStep(name="s", action="download", selector="#dl", timeout=200)
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert result.error == "TimeoutError"
+    assert "200ms" in result.message
 
 
 def test_a_download_that_fails_is_a_step_failure(
