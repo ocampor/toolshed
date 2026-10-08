@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1 — 2026-10-07
+
+Tracks `llm-browser` 0.24.2.
+
+### Fixed
+
+- `popup renders then fetches` is no longer a known gap for patchright.
+
 ## 0.13.0 — 2026-10-01
 
 Tracks `llm-browser` 0.24.0.

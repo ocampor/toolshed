@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.2 — 2026-10-07
+
+### Fixed
+
+- patchright `download` catches a file wherever Chromium delivers it: a download on the clicking page or a popup it opens, or a top-level navigation to a non-HTML response (inline PDF, image, text, archive) read before the viewer replaces it. Closes [#40](https://github.com/ocampor/toolshed/issues/40).
+- patchright `download` names an inline file from its `Content-Disposition` filename, else the URL's last segment.
+- patchright `download` closes the popups its click opened.
+
 ## 0.24.1 — 2026-10-01
 
 ### Fixed

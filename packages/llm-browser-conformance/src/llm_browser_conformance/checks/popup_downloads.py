@@ -182,10 +182,7 @@ SCENARIOS = [
         "popup renders then fetches",
         Section.STEPS,
         a_popup_that_renders_before_downloading_is_captured,
-        known_gaps={
-            "patchright": POPUP_DOWNLOAD_GAP,
-            "camoufox": POPUP_DOWNLOAD_GAP,
-        },
+        known_gaps={"camoufox": POPUP_DOWNLOAD_GAP},
     ),
     Scenario(
         "popup with no file",
