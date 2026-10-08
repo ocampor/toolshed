@@ -113,13 +113,7 @@ def _pw_loc(locator: Any) -> PwLocator:
 
 
 def read_download(download: PwDownload) -> BytesResult:
-    """Playwright spools a download to a temp file of its own; ``delete()``
-    removes it once the bytes are in memory, on the failing path too.
-
-    A failed or cancelled download makes ``path()`` raise Playwright's own
-    ``Error``, which would unwind out of ``run_flow``; as a ``ValueError`` it
-    comes back as the failed step the caller is promised.
-    """
+    # Playwright's own error from a cancelled download would unwind out of run_flow.
     try:
         content = Path(download.path()).read_bytes()
     except Exception as exc:

@@ -462,8 +462,7 @@ def test_dom_path_is_ignored_by_the_runner(
 
 
 def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> MagicMock:
-    """A Playwright ``Download`` whose spool file really exists on disk, handed
-    to whatever listens for the page's ``download`` event."""
+    """A Playwright ``Download`` whose spool file really exists on disk."""
     spooled = tmp_path / "spool" / "download.bin"
     spooled.parent.mkdir()
     spooled.write_bytes(payload)

@@ -48,9 +48,7 @@ def catch_file(page: Page, trigger: Callable[[], None], timeout_ms: int) -> Byte
 
 
 def watch(page: Page, arrivals: Arrivals) -> Callable[[], None]:
-    """Playwright tags every handler with an attribute, so they are closures,
-    not bound methods."""
-
+    # Closures, not bound methods: Playwright sets an attribute on each handler.
     def on_download(download: Download) -> None:
         arrivals.downloads.append(download)
 
@@ -99,8 +97,6 @@ def intercept(route: Route, page: Page, arrivals: Arrivals) -> None:
 
 
 def is_own_navigation(request: Request, page: Page, popups: list[Page]) -> bool:
-    """A top-level navigation of the clicking page or a popup it opened; other
-    tabs sharing the context (concurrent runs) pass through untouched."""
     if not request.is_navigation_request():
         return False
     # A popup's first navigation has no frame yet: it is the tab the click opened.
