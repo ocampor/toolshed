@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.25.0 — 2026-10-10
+
+### Added
+
+- `DownloadStep.extract` takes `TextExtract` or `ImageExtract`, sharing `PageSelection.pages` (`"1-3,7"`). Closes [#83](https://github.com/ocampor/toolshed/issues/83).
+- A `download` with `extract:` puts a `DocumentResult` of `TextPage` / `ImagePage` in `FlowSuccess.outputs` instead of a `BytesResult`.
+- PDFs are read per page; images are EXIF-transposed, stripped of metadata and re-encoded as JPEG; multi-frame TIFFs give one page per frame; text files are chunked; other types return metadata only.
+- `DocumentResult.truncated` with `next_pages` continues a run cut by `max_chars` or `max_images`; `TextPage.clipped` marks a page cut at `max_chars`.
+- `ImageExtract.max_long_side` shrinks rendered pages, capped at 1568 px.
+- `documents` extra (`pypdfium2`, `Pillow`, `pillow-heif`); `extract:` without it fails with an install hint.
+- `guide/migrating.md`: the retired step spellings table, moved out of `guide/patterns.md`.
+
+### Breaking
+
+- `extract:` on a `download` step is validated at flow load instead of silently ignored.
+
+Migration:
+
+- Remove or fix any `extract:` on a `download` step that the 0.24.x loader ignored.
+
+### Changed
+
+- `guide/patterns.md` "Migrating older flows" is now "Reading a downloaded document".
+
 ## 0.24.2 — 2026-10-07
 
 ### Fixed
