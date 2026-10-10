@@ -34,8 +34,14 @@ def select_pages(spec: str | None, page_count: int) -> list[int]:
     """The pages ``spec`` names that the file has; naming none of them raises."""
     if spec is None:
         return list(range(1, page_count + 1))
-    named = {page for start, end in page_ranges(spec) for page in range(start, end + 1)}
-    pages = sorted(page for page in named if page <= page_count)
+    # Clamped before expanding: "1-100000000" on a 3-page file must not build 1e8 ints.
+    pages = sorted(
+        {
+            page
+            for start, end in page_ranges(spec)
+            for page in range(start, min(end, page_count) + 1)
+        }
+    )
     if not pages:
         raise ValueError(f"pages {spec!r} are all past the last page ({page_count})")
     return pages
@@ -89,10 +95,13 @@ class ImageExtract(PageSelection):
         EXTRACT_MAX_LONG_SIDE,
         ge=1,
         le=EXTRACT_LONG_SIDE_CEILING,
-        description="Pixels; images shrink to it, PDF pages render at it.",
+        description="Pixels, ≤ 1568; images shrink to it, PDF pages render at it.",
     )
     quality: int = Field(
-        EXTRACT_JPEG_QUALITY, ge=1, le=95, description="JPEG quality of each image."
+        EXTRACT_JPEG_QUALITY,
+        ge=1,
+        le=95,
+        description="JPEG quality of each image, 1–95.",
     )
 
 

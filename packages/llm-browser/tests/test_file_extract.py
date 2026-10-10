@@ -186,6 +186,11 @@ def test_pages_past_the_end_are_clamped() -> None:
     assert result.next_pages is None
 
 
+def test_a_huge_range_is_clamped_without_expanding_it() -> None:
+    result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages="1-100000000"))
+    assert texts(result) == ["a", "b"]
+
+
 def docx_like() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
