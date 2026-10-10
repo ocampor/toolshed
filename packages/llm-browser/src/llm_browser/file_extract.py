@@ -70,7 +70,8 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
         sha256=hashlib.sha256(file.content).hexdigest(),
         mode=spec.mode,
         page_count=batch.page_count,
-        truncated=bool(batch.rest) or any(map(is_clipped, batch.pages)),
+        truncated=bool(batch.rest)
+        or any(isinstance(p, TextPage) and p.clipped for p in batch.pages),
         next_pages=format_pages(batch.rest) or None,
         pages=batch.pages,
     )
@@ -115,10 +116,6 @@ def sniffed(content: bytes) -> Iterator[Source]:
         return
     text = decode_text(content)
     yield None if text is None else Text(text)
-
-
-def is_clipped(page: TextPage | ImagePage) -> bool:
-    return isinstance(page, TextPage) and page.clipped
 
 
 def require_documents_extra() -> None:
