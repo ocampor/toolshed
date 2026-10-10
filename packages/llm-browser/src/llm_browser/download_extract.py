@@ -20,52 +20,44 @@ from llm_browser.constants import (
 )
 
 
-def page_ranges(spec: str) -> list[tuple[int, int]]:
-    """``"1-3,7"`` as 1-based inclusive ranges; any malformed part raises."""
-    ranges = []
-    for part in spec.split(","):
-        first, dash, last = part.strip().partition("-")
-        if not dash:
-            last = first
-        if not first.isdecimal() or not last.isdecimal():
-            raise ValueError(f"invalid page range {part!r}; use N or N-M, e.g. '1-3,7'")
-        start, end = int(first), int(last)
-        if start < 1 or end < start:
-            raise ValueError(
-                f"invalid page range {part!r}; pages start at 1, N-M needs N <= M"
-            )
-        ranges.append((start, end))
-    return ranges
-
-
-def select_pages(spec: str | None, page_count: int) -> list[int]:
-    """The pages ``spec`` names that the file has; naming none of them raises."""
-    if spec is None:
-        return list(range(1, page_count + 1))
-    named: set[int] = set()
-    for start, end in page_ranges(spec):
-        # Clamped before expanding: "1-100000000" must not build 1e8 ints.
-        last = min(end, page_count)
-        named.update(range(start, last + 1))
-    pages = sorted(named)
-    if not pages:
-        raise ValueError(f"pages {spec!r} are all past the last page ({page_count})")
+def pages_named(spec: str, last_page: int) -> list[int]:
+    """``"1-3,7"`` is ``[1, 2, 3, 7]``, without pages past ``last_page``."""
+    # gotcha: recursion depth is bounded by EXTRACT_PAGES_MAX_LENGTH (at most 100 parts)
+    head, comma, rest = spec.partition(",")
+    first, last = bounds_of(head)
+    pages = list(range(first, min(last, last_page) + 1))
+    if comma:
+        pages += pages_named(rest, last_page)
     return pages
 
 
-def format_pages(pages: list[int]) -> str:
-    """The inverse of ``page_ranges``: ``[1, 2, 3, 7]`` is ``"1-3,7"``."""
-    runs: list[list[int]] = []
-    for page in pages:
-        if runs and page == runs[-1][-1] + 1:
-            runs[-1].append(page)
-        else:
-            runs.append([page])
-    parts = []
-    for run in runs:
-        first, last = run[0], run[-1]
-        parts.append(str(first) if first == last else f"{first}-{last}")
-    return ",".join(parts)
+def spec_of(pages: list[int]) -> str:
+    """``[1, 2, 3, 7]`` is ``"1-3,7"``, the inverse of ``pages_named``; ``pages`` is not empty."""
+    run, rest = leading_run(pages)
+    head = str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}"
+    if rest:
+        head += "," + spec_of(rest)
+    return head
+
+
+def bounds_of(part: str) -> tuple[int, int]:
+    first, dash, last = part.strip().partition("-")
+    if not dash:
+        last = first
+    if not (first.isdecimal() and last.isdecimal()):
+        raise ValueError(f"invalid page range {part!r}; use N or N-M, e.g. '1-3,7'")
+    if int(first) < 1 or int(last) < int(first):
+        raise ValueError(
+            f"invalid page range {part!r}; pages start at 1, N-M needs N <= M"
+        )
+    return int(first), int(last)
+
+
+def leading_run(pages: list[int]) -> tuple[list[int], list[int]]:
+    end = 1
+    while end < len(pages) and pages[end] == pages[end - 1] + 1:
+        end += 1
+    return pages[:end], pages[end:]
 
 
 class PageSelection(BaseModel, extra="forbid"):
@@ -80,7 +72,7 @@ class PageSelection(BaseModel, extra="forbid"):
     def _check_pages(cls, pages: str | None) -> str | None:
         # A templated value is checked again once ``resolve_step_templates`` fills it.
         if pages is not None and not template_names(pages):
-            page_ranges(pages)
+            pages_named(pages, last_page=0)
         return pages
 
 

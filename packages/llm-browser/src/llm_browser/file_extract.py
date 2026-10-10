@@ -16,8 +16,8 @@ from llm_browser.download_extract import (
     Extract,
     ImageExtract,
     TextExtract,
-    format_pages,
-    select_pages,
+    pages_named,
+    spec_of,
 )
 from llm_browser.page_images import Frame, image_frame, open_image, shrink
 from llm_browser.results import BytesResult, DocumentResult, ImagePage, TextPage
@@ -72,7 +72,7 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
         page_count=batch.page_count,
         truncated=bool(batch.rest)
         or any(isinstance(p, TextPage) and p.clipped for p in batch.pages),
-        next_pages=format_pages(batch.rest) or None,
+        next_pages=spec_of(batch.rest) if batch.rest else None,
         pages=batch.pages,
     )
 
@@ -130,6 +130,17 @@ def require_documents_extra() -> None:
 # --- budgets ---
 
 
+def selected_pages(spec: Extract, page_count: int) -> list[int]:
+    if spec.pages is None:
+        return list(range(1, page_count + 1))
+    selected = sorted(set(pages_named(spec.pages, page_count)))
+    if not selected:
+        raise ValueError(
+            f"pages {spec.pages!r} are all past the last page ({page_count})"
+        )
+    return selected
+
+
 def take_text(
     page_count: int, page_text: Callable[[int], str], spec: TextExtract
 ) -> PageBatch:
@@ -137,7 +148,7 @@ def take_text(
     ``EXTRACT_PAGE_OVERHEAD_CHARS`` of it: a first page longer than what is
     left is clipped, and a later page that does not fit is left for
     ``next_pages``."""
-    selected = select_pages(spec.pages, page_count)
+    selected = selected_pages(spec, page_count)
     pages: list[TextPage | ImagePage] = []
     used = 0
     for i, page in enumerate(selected):
@@ -159,7 +170,7 @@ def take_text(
 def take_images(
     page_count: int, frame: Callable[[int], Frame], spec: ImageExtract
 ) -> PageBatch:
-    selected = select_pages(spec.pages, page_count)
+    selected = selected_pages(spec, page_count)
     shown = selected[: spec.max_images]
     pages: list[TextPage | ImagePage] = [
         shrink(page, frame(page), spec) for page in shown
