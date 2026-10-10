@@ -34,14 +34,12 @@ def select_pages(spec: str | None, page_count: int) -> list[int]:
     """The pages ``spec`` names that the file has; naming none of them raises."""
     if spec is None:
         return list(range(1, page_count + 1))
-    # Clamped before expanding: "1-100000000" on a 3-page file must not build 1e8 ints.
-    pages = sorted(
-        {
-            page
-            for start, end in page_ranges(spec)
-            for page in range(start, min(end, page_count) + 1)
-        }
-    )
+    named: set[int] = set()
+    for start, end in page_ranges(spec):
+        # Clamped before expanding: "1-100000000" must not build 1e8 ints.
+        last = min(end, page_count)
+        named.update(range(start, last + 1))
+    pages = sorted(named)
     if not pages:
         raise ValueError(f"pages {spec!r} are all past the last page ({page_count})")
     return pages
@@ -55,15 +53,11 @@ def format_pages(pages: list[int]) -> str:
             runs[-1].append(page)
         else:
             runs.append([page])
-    return ",".join(
-        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in runs
-    )
-
-
-def checked_pages(pages: str | None) -> str | None:
-    if pages is not None:
-        page_ranges(pages)
-    return pages
+    parts = []
+    for run in runs:
+        first, last = run[0], run[-1]
+        parts.append(str(first) if first == last else f"{first}-{last}")
+    return ",".join(parts)
 
 
 class PageSelection(BaseModel, extra="forbid"):
@@ -71,7 +65,12 @@ class PageSelection(BaseModel, extra="forbid"):
         None, description="1-based pages, e.g. `1-3,7`; unset means all."
     )
 
-    _pages = field_validator("pages")(checked_pages)
+    @field_validator("pages")
+    @classmethod
+    def _check_pages(cls, pages: str | None) -> str | None:
+        if pages is not None:
+            page_ranges(pages)
+        return pages
 
 
 class TextExtract(PageSelection):
@@ -95,13 +94,13 @@ class ImageExtract(PageSelection):
         EXTRACT_MAX_LONG_SIDE,
         ge=1,
         le=EXTRACT_LONG_SIDE_CEILING,
-        description="Pixels, ≤ 1568; images shrink to it, PDF pages render at it.",
+        description="Pixels; images shrink to it, PDF pages render at it.",
     )
     quality: int = Field(
         EXTRACT_JPEG_QUALITY,
         ge=1,
         le=95,
-        description="JPEG quality of each image, 1–95.",
+        description="JPEG quality of each image.",
     )
 
 

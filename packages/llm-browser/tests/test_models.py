@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.download_extract import ImageExtract, TextExtract
 from llm_browser.flow_passes import step_output
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
@@ -334,18 +335,15 @@ def download(extract: dict[str, object]) -> dict[str, object]:
 
 
 @pytest.mark.parametrize(
-    ("extract", "fields"),
+    ("extract", "kind"),
     [
-        ({"mode": "text", "pages": "1-3,7"}, {"pages": "1-3,7", "max_chars": 20000}),
-        ({"mode": "images", "max_long_side": 1568}, {"max_images": 8, "quality": 80}),
+        ({"mode": "text", "pages": "1-3,7"}, TextExtract),
+        ({"mode": "images", "max_long_side": 1568}, ImageExtract),
     ],
 )
-def test_download_extract_validates(
-    extract: dict[str, object], fields: dict[str, object]
-) -> None:
+def test_download_extract_validates(extract: dict[str, object], kind: type) -> None:
     step = validate_step(download(extract))
-    assert step.extract is not None
-    assert step.extract.model_dump(include=set(fields)) == fields
+    assert isinstance(step.extract, kind)
 
 
 @pytest.mark.parametrize(

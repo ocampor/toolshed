@@ -6,6 +6,7 @@ import random
 import sys
 import zipfile
 
+import pillow_heif
 import pypdfium2
 import pytest
 from PIL import ExifTags, Image, ImageCms
@@ -70,8 +71,14 @@ def exif_jpeg() -> bytes:
     gps[ExifTags.GPS.GPSLatitudeRef] = "N"
     gps[ExifTags.GPS.GPSLatitude] = (19.0, 25.0, 0.0)
     icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    xmp = b'<x:xmpmeta xmlns:x="adobe:ns:meta/">GPS 19.4N</x:xmpmeta>'
     return image_bytes(
-        red_left_blue_right(), "JPEG", exif=exif, comment=b"GPS 19.4N", icc_profile=icc
+        red_left_blue_right(),
+        "JPEG",
+        exif=exif,
+        comment=b"GPS 19.4N",
+        icc_profile=icc,
+        xmp=xmp,
     )
 
 
@@ -146,7 +153,7 @@ def test_images_strip_exif_and_turn_the_photo_upright() -> None:
     content = exif_jpeg()
     source = Image.open(io.BytesIO(content))
     assert source.getexif().get_ifd(ExifTags.IFD.GPSInfo)
-    assert {"comment", "icc_profile"} <= set(source.info)
+    assert {"comment", "icc_profile", "xmp"} <= set(source.info)
 
     [page] = images(run(content, ImageExtract(mode="images")))
     out = Image.open(io.BytesIO(page.image))
@@ -171,6 +178,13 @@ def test_images_give_one_page_per_tiff_frame() -> None:
     assert result.page_count == 2
 
 
+def test_heic_is_read_as_an_image() -> None:
+    pillow_heif.register_heif_opener()
+    content = image_bytes(Image.new("RGB", (64, 32), "red"), "HEIF")
+    [page] = images(run(content, ImageExtract(mode="images")))
+    assert (page.original_width, page.original_height) == (64, 32)
+
+
 def test_transparency_is_flattened_onto_white() -> None:
     ink = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
     ink.paste((0, 0, 0, 255), (5, 5, 15, 15))
@@ -180,15 +194,14 @@ def test_transparency_is_flattened_onto_white() -> None:
     assert max(out.getpixel((10, 10))) < 20
 
 
-def test_pages_past_the_end_are_clamped() -> None:
-    result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages="2-10"))
-    assert texts(result) == ["b"]
+@pytest.mark.parametrize(
+    ("pages", "expected"), [("2-10", ["b"]), ("1-100000000", ["a", "b"])]
+)
+def test_pages_past_the_end_are_clamped(pages: str, expected: list[str]) -> None:
+    """The huge range also proves clamping happens before expanding."""
+    result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages=pages))
+    assert texts(result) == expected
     assert result.next_pages is None
-
-
-def test_a_huge_range_is_clamped_without_expanding_it() -> None:
-    result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages="1-100000000"))
-    assert texts(result) == ["a", "b"]
 
 
 def docx_like() -> bytes:

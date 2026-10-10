@@ -286,6 +286,3 @@ EXTRACT_JPEG_QUALITY = 80
 MISSING_DOCUMENTS_EXTRA = (
     "download extract needs the documents extra: pip install 'llm-browser[documents]'"
 )
-
-# The most a host serves of one shipped doc in a single read.
-DOC_MAX_CHARS = 20_000

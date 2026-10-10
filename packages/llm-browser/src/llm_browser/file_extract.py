@@ -8,6 +8,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import cache, partial
 from typing import TYPE_CHECKING
 
 from llm_browser.constants import MISSING_DOCUMENTS_EXTRA
@@ -27,12 +28,19 @@ if TYPE_CHECKING:
 # debt: process-wide pdfium lock; pdfium is not thread-safe
 PDFIUM_LOCK = threading.Lock()
 
-# A page as pixels, with the size it had before any shrinking.
-type Frame = tuple["Image", tuple[int, int]]
+
+@dataclass
+class Frame:
+    """A page as pixels, with the size it had before any shrinking."""
+
+    image: "Image"
+    original_width: int
+    original_height: int
 
 
 @dataclass
-class Budgeted:
+class PageBatch:
+    page_count: int | None
     pages: list[TextPage | ImagePage]
     rest: list[int]
     clipped: bool = False
@@ -59,36 +67,41 @@ type Source = Pdf | Picture | Text | None
 def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
     require_documents_extra()
     with sniffed(file.content) as source:
-        page_count, budgeted = read_pages(source, spec)
-    return document(file, spec, page_count, budgeted)
+        batch = read_pages(source, spec)
+    return DocumentResult(
+        filename=file.name,
+        content_type=file.media_type,
+        size=len(file.content),
+        sha256=hashlib.sha256(file.content).hexdigest(),
+        mode=spec.mode,
+        page_count=batch.page_count,
+        truncated=bool(batch.rest) or batch.clipped,
+        next_pages=format_pages(batch.rest) or None,
+        pages=batch.pages,
+    )
 
 
-def read_pages(source: Source, spec: Extract) -> tuple[int | None, Budgeted]:
-    """``(None, nothing)`` when the file has nothing ``spec.mode`` reads."""
+def read_pages(source: Source, spec: Extract) -> PageBatch:
+    """An empty batch when the file has nothing ``spec.mode`` reads."""
     match source, spec:
         case Pdf(pdf), TextExtract():
-            selected = select_pages(spec.pages, len(pdf))
-            return len(pdf), take_text(
-                selected, lambda n: pdf_text(pdf, n), spec.max_chars
-            )
+            return take_text(len(pdf), partial(pdf_text, pdf), spec)
         case Text(text), TextExtract():
             size = spec.max_chars
             chunks = [text[i : i + size] for i in range(0, len(text), size)]
-            selected = select_pages(spec.pages, len(chunks))
-            return len(chunks), take_text(selected, lambda n: chunks[n - 1], size)
+            return take_text(len(chunks), lambda page: chunks[page - 1], spec)
         case Pdf(pdf), ImageExtract():
-            selected = select_pages(spec.pages, len(pdf))
-            return len(pdf), take_images(
-                selected, lambda n: pdf_frame(pdf, n, spec), spec
-            )
+            return take_images(len(pdf), partial(pdf_frame, pdf, spec), spec)
         case Picture(image), ImageExtract():
-            with image_errors():
+            try:
                 frame_count: int = getattr(image, "n_frames", 1)
-                selected = select_pages(spec.pages, frame_count)
-                return frame_count, take_images(
-                    selected, lambda n: image_frame(image, n), spec
-                )
-    return None, Budgeted(pages=[], rest=[])
+                return take_images(frame_count, partial(image_frame, image), spec)
+            except ValueError:
+                raise
+            # Untrusted parse: Pillow raises OSError, EOFError, struct.error, SyntaxError...
+            except Exception as exc:
+                raise ValueError(f"not a readable image: {exc!r}") from exc
+    return PageBatch(page_count=None, pages=[], rest=[])
 
 
 @contextmanager
@@ -108,22 +121,6 @@ def sniffed(content: bytes) -> Iterator[Source]:
     yield None if text is None else Text(text)
 
 
-def document(
-    file: BytesResult, spec: Extract, page_count: int | None, budgeted: Budgeted
-) -> DocumentResult:
-    return DocumentResult(
-        filename=file.name,
-        content_type=file.media_type,
-        size=len(file.content),
-        sha256=hashlib.sha256(file.content).hexdigest(),
-        mode=spec.mode,
-        page_count=page_count,
-        truncated=bool(budgeted.rest) or budgeted.clipped,
-        next_pages=format_pages(budgeted.rest) or None,
-        pages=budgeted.pages,
-    )
-
-
 def require_documents_extra() -> None:
     try:
         import PIL  # noqa: F401
@@ -137,35 +134,37 @@ def require_documents_extra() -> None:
 
 
 def take_text(
-    selected: list[int], page_text: Callable[[int], str], max_chars: int
-) -> Budgeted:
+    page_count: int, page_text: Callable[[int], str], spec: TextExtract
+) -> PageBatch:
     """``max_chars`` is a hard ceiling: a first page longer than it is clipped,
     and a later page that does not fit is left for ``next_pages``."""
+    selected = select_pages(spec.pages, page_count)
     pages: list[TextPage | ImagePage] = []
     used = 0
     for i, page in enumerate(selected):
         text = page_text(page)
-        room = max_chars - used
+        room = spec.max_chars - used
         if len(text) <= room:
             pages.append(TextPage(page=page, text=text))
             used += len(text)
         elif pages:
-            return Budgeted(pages, selected[i:])
+            return PageBatch(page_count, pages, rest=selected[i:])
         else:
-            return Budgeted(
-                [TextPage(page=page, text=text[:room])], selected[i + 1 :], clipped=True
-            )
-    return Budgeted(pages, [])
+            clipped = TextPage(page=page, text=text[:room])
+            rest = selected[i + 1 :]
+            return PageBatch(page_count, [clipped], rest, clipped=True)
+    return PageBatch(page_count, pages, rest=[])
 
 
 def take_images(
-    selected: list[int], frame: Callable[[int], Frame], spec: ImageExtract
-) -> Budgeted:
+    page_count: int, frame: Callable[[int], Frame], spec: ImageExtract
+) -> PageBatch:
+    selected = select_pages(spec.pages, page_count)
     shown = selected[: spec.max_images]
     pages: list[TextPage | ImagePage] = [
         shrink(page, frame(page), spec) for page in shown
     ]
-    return Budgeted(pages, selected[spec.max_images :])
+    return PageBatch(page_count, pages, rest=selected[spec.max_images :])
 
 
 # --- PDF ---
@@ -202,7 +201,7 @@ def pdf_text(pdf: "pypdfium2.PdfDocument", page: int) -> str:
     return text
 
 
-def pdf_frame(pdf: "pypdfium2.PdfDocument", page: int, spec: ImageExtract) -> Frame:
+def pdf_frame(pdf: "pypdfium2.PdfDocument", spec: ImageExtract, page: int) -> Frame:
     """Rendered with the long side at ``max_long_side``, since PDF points are
     too coarse to read at 1:1; the original size is in points."""
     with page_errors(page):
@@ -210,7 +209,7 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", page: int, spec: ImageExtract) -> Fr
         width, height = pdf_page.get_size()
         scale = spec.max_long_side / max(width, height)
         image: Image = pdf_page.render(scale=scale).to_pil()
-    return image, (round(width), round(height))
+    return Frame(image, round(width), round(height))
 
 
 # --- images ---
@@ -218,10 +217,9 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", page: int, spec: ImageExtract) -> Fr
 
 def open_image(content: bytes) -> "Image | None":
     """``None`` unless Pillow can read the header; no pixels are decoded yet."""
-    import pillow_heif
     from PIL import Image as PILImage
 
-    pillow_heif.register_heif_opener()
+    register_heif()
     try:
         return PILImage.open(io.BytesIO(content))
     except PILImage.DecompressionBombError as exc:
@@ -231,25 +229,19 @@ def open_image(content: bytes) -> "Image | None":
         return None
 
 
-@contextmanager
-def image_errors() -> Iterator[None]:
-    """Decoding pixels is where a corrupt image surfaces; that is a step failure."""
-    try:
-        yield
-    except ValueError:
-        raise
-    # Untrusted parse: Pillow raises OSError, EOFError, struct.error, SyntaxError...
-    except Exception as exc:
-        raise ValueError(f"not a readable image: {exc!r}") from exc
+@cache
+def register_heif() -> None:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
 
 
 def image_frame(image: "Image", page: int) -> Frame:
-    """One frame, turned upright by its EXIF orientation."""
     from PIL import ImageOps
 
     image.seek(page - 1)
     upright = ImageOps.exif_transpose(image)
-    return upright, upright.size
+    return Frame(upright, upright.width, upright.height)
 
 
 def flatten(image: "Image") -> "Image":
@@ -265,8 +257,7 @@ def flatten(image: "Image") -> "Image":
 
 
 def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
-    image, (original_width, original_height) = frame
-    rgb = flatten(image)
+    rgb = flatten(frame.image)
     rgb.thumbnail((spec.max_long_side, spec.max_long_side))
     buffer = io.BytesIO()
     rgb.save(buffer, format="JPEG", quality=spec.quality)
@@ -275,8 +266,8 @@ def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
         image=buffer.getvalue(),
         width=rgb.width,
         height=rgb.height,
-        original_width=original_width,
-        original_height=original_height,
+        original_width=frame.original_width,
+        original_height=frame.original_height,
     )
 
 
@@ -284,7 +275,6 @@ def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
 
 
 def decode_text(content: bytes) -> str | None:
-    """Text, CSV, JSON and the like; ``None`` for any other binary."""
     if b"\x00" in content:
         return None
     try:

@@ -31,9 +31,13 @@ def rendered() -> dict[str, str]:
     return reference_documents(REFERENCE, source)
 
 
-@pytest.mark.parametrize("name", sorted(DOCUMENTS))
+GUIDES = [name for name in docs.doc_names() if name.startswith("guide/")]
+
+
+@pytest.mark.parametrize("name", sorted(DOCUMENTS) + GUIDES)
 def test_every_document_fits_one_read(rendered: dict[str, str], name: str) -> None:
-    assert len(rendered[name]) <= DOC_MAX_CHARS
+    text = rendered[name] if name in rendered else docs.read(name)
+    assert len(text) <= DOC_MAX_CHARS
 
 
 def test_every_step_type_reaches_the_reference(rendered: dict[str, str]) -> None:
