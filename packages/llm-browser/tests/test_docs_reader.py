@@ -2,6 +2,7 @@
 
 import pytest
 from llm_browser import docs
+from llm_browser.constants import DOC_MAX_CHARS
 from llm_browser.docgen import DOCUMENTS
 
 
@@ -40,3 +41,9 @@ def test_a_heading_inside_a_fence_is_not_a_section() -> None:
 def test_every_section_of_a_document_adds_back_up_to_it() -> None:
     joined = "".join(section.text for section in docs.sections("guide/patterns"))
     assert joined == docs.read("guide/patterns")
+
+
+def test_every_doc_fits_one_read() -> None:
+    """A host serves each doc whole; past this it no longer fits one read."""
+    oversized = {e.name: e.chars for e in docs.index() if e.chars > DOC_MAX_CHARS}
+    assert oversized == {}

@@ -2,12 +2,13 @@
 
 import hashlib
 import io
+import random
 import sys
 import zipfile
 
 import pypdfium2
 import pytest
-from PIL import ExifTags, Image
+from PIL import ExifTags, Image, ImageCms
 
 from llm_browser.download_extract import ImageExtract, TextExtract
 from llm_browser.file_extract import extract_file
@@ -61,13 +62,17 @@ def red_left_blue_right() -> Image.Image:
 
 
 def exif_jpeg() -> bytes:
-    """Orientation 6 (shown rotated 90 degrees clockwise) plus a GPS fix."""
+    """Orientation 6 (shown rotated 90 degrees clockwise), a GPS fix, a comment
+    repeating it, and an ICC profile."""
     exif = Image.Exif()
     exif[ExifTags.Base.Orientation] = 6
     gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
     gps[ExifTags.GPS.GPSLatitudeRef] = "N"
     gps[ExifTags.GPS.GPSLatitude] = (19.0, 25.0, 0.0)
-    return image_bytes(red_left_blue_right(), "JPEG", exif=exif)
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    return image_bytes(
+        red_left_blue_right(), "JPEG", exif=exif, comment=b"GPS 19.4N", icc_profile=icc
+    )
 
 
 def run(
@@ -139,12 +144,14 @@ def test_images_shrink_a_large_image() -> None:
 
 def test_images_strip_exif_and_turn_the_photo_upright() -> None:
     content = exif_jpeg()
-    assert Image.open(io.BytesIO(content)).getexif().get_ifd(ExifTags.IFD.GPSInfo)
+    source = Image.open(io.BytesIO(content))
+    assert source.getexif().get_ifd(ExifTags.IFD.GPSInfo)
+    assert {"comment", "icc_profile"} <= set(source.info)
 
     [page] = images(run(content, ImageExtract(mode="images")))
     out = Image.open(io.BytesIO(page.image))
     assert not out.getexif()
-    assert "exif" not in out.info
+    assert not {"exif", "comment", "icc_profile", "xmp"} & set(out.info)
     assert out.size == (20, 40)
     red, green, blue = out.getpixel((10, 5))
     assert red > 200 and blue < 60
@@ -156,8 +163,27 @@ def test_images_give_one_page_per_tiff_frame() -> None:
     frames = [Image.new("RGB", (10, 10), color) for color in ("red", "blue")]
     content = image_bytes(frames[0], "TIFF", save_all=True, append_images=frames[1:])
     result = run(content, ImageExtract(mode="images"))
+    colours = [
+        Image.open(io.BytesIO(page.image)).getpixel((5, 5)) for page in images(result)
+    ]
     assert [page.page for page in images(result)] == [1, 2]
+    assert colours[0][0] > 200 and colours[1][2] > 200
     assert result.page_count == 2
+
+
+def test_transparency_is_flattened_onto_white() -> None:
+    ink = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
+    ink.paste((0, 0, 0, 255), (5, 5, 15, 15))
+    [page] = images(run(image_bytes(ink, "PNG"), ImageExtract(mode="images")))
+    out = Image.open(io.BytesIO(page.image))
+    assert min(out.getpixel((0, 0))) > 240
+    assert max(out.getpixel((10, 10))) < 20
+
+
+def test_pages_past_the_end_are_clamped() -> None:
+    result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages="2-10"))
+    assert texts(result) == ["b"]
+    assert result.next_pages is None
 
 
 def docx_like() -> bytes:
@@ -189,7 +215,7 @@ def test_a_mode_the_file_cannot_serve_returns_metadata_only(
     ("content", "pages", "match"),
     [
         (b"%PDF-1.4 garbage", None, "not a readable PDF"),
-        (pdf_bytes(["a"]), "2", "past the last page"),
+        (pdf_bytes(["a"]), "2-5", "past the last page"),
     ],
 )
 def test_unreadable_input_is_a_step_failure(
@@ -215,6 +241,40 @@ def test_a_page_pdfium_cannot_read_is_a_step_failure(
     monkeypatch.setattr(pypdfium2.PdfPage, method, broken)
     with pytest.raises(ValueError, match="page 1 unreadable"):
         run(pdf_bytes(["a"]), spec)
+
+
+def fuzzed(seed: bytes, salt: int) -> bytes:
+    rng = random.Random(salt)
+    data = bytearray(seed)
+    for _ in range(8):
+        data[rng.randrange(16, len(data))] = rng.randrange(256)
+    return bytes(data)
+
+
+PNG = image_bytes(Image.new("RGB", (64, 48), "red"), "PNG")
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        exif_jpeg()[:200],
+        exif_jpeg()[:-80],
+        *(fuzzed(PNG, salt) for salt in range(3)),
+        *(fuzzed(exif_jpeg(), salt) for salt in range(3)),
+    ],
+)
+@pytest.mark.parametrize(
+    "spec", [TextExtract(mode="text"), ImageExtract(mode="images")]
+)
+def test_a_corrupt_image_fails_the_step_or_returns_metadata(
+    content: bytes, spec: TextExtract | ImageExtract
+) -> None:
+    try:
+        result = run(content, spec)
+    except ValueError:
+        assert spec.mode == "images"
+        return
+    assert spec.mode == "images" or result.pages == []
 
 
 def test_extracted_text_is_redacted() -> None:

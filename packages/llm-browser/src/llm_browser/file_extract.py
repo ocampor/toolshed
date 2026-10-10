@@ -4,18 +4,28 @@ what the budget lets through."""
 
 import hashlib
 import io
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from llm_browser.constants import MISSING_DOCUMENTS_EXTRA
-from llm_browser.download_extract import Extract, ImageExtract, TextExtract, page_ranges
+from llm_browser.download_extract import (
+    Extract,
+    ImageExtract,
+    TextExtract,
+    format_pages,
+    select_pages,
+)
 from llm_browser.results import BytesResult, DocumentResult, ImagePage, TextPage
 
 if TYPE_CHECKING:
     import pypdfium2
     from PIL.Image import Image
+
+# debt: process-wide pdfium lock; pdfium is not thread-safe
+PDFIUM_LOCK = threading.Lock()
 
 # A page as pixels, with the size it had before any shrinking.
 type Frame = tuple["Image", tuple[int, int]]
@@ -72,37 +82,30 @@ def read_pages(source: Source, spec: Extract) -> tuple[int | None, Budgeted]:
                 selected, lambda n: pdf_frame(pdf, n, spec), spec
             )
         case Picture(image), ImageExtract():
-            frame_count: int = getattr(image, "n_frames", 1)
-            selected = select_pages(spec.pages, frame_count)
-            return frame_count, take_images(
-                selected, lambda n: image_frame(image, n), spec
-            )
+            with image_errors():
+                frame_count: int = getattr(image, "n_frames", 1)
+                selected = select_pages(spec.pages, frame_count)
+                return frame_count, take_images(
+                    selected, lambda n: image_frame(image, n), spec
+                )
     return None, Budgeted(pages=[], rest=[])
-
-
-def sniff(content: bytes) -> Source:
-    """By content, not media type: servers mislabel downloads."""
-    if content.startswith(b"%PDF"):
-        return Pdf(open_pdf(content))
-    image = open_image(content)
-    if image is not None:
-        return Picture(image)
-    text = decode_text(content)
-    return None if text is None else Text(text)
 
 
 @contextmanager
 def sniffed(content: bytes) -> Iterator[Source]:
-    """Closes what ``sniff`` opened, so a long-lived server leaks no pdfium handle."""
-    source = sniff(content)
-    try:
-        yield source
-    finally:
-        match source:
-            case Pdf(pdf):
-                pdf.close()
-            case Picture(image):
-                image.close()
+    """By content, not media type, since servers mislabel downloads; closes
+    what it opened, so a long-lived server leaks no pdfium handle."""
+    if content.startswith(b"%PDF"):
+        with PDFIUM_LOCK, opened_pdf(content) as pdf:
+            yield Pdf(pdf)
+        return
+    image = open_image(content)
+    if image is not None:
+        with image:
+            yield Picture(image)
+        return
+    text = decode_text(content)
+    yield None if text is None else Text(text)
 
 
 def document(
@@ -128,35 +131,6 @@ def require_documents_extra() -> None:
         import pypdfium2  # noqa: F401
     except ImportError as exc:
         raise ValueError(MISSING_DOCUMENTS_EXTRA) from exc
-
-
-# --- page selection ---
-
-
-def select_pages(spec: str | None, page_count: int) -> list[int]:
-    if spec is None:
-        return list(range(1, page_count + 1))
-    pages: set[int] = set()
-    for start, end in page_ranges(spec):
-        if end > page_count:
-            raise ValueError(
-                f"pages {spec!r} asks past the last page; the file has {page_count}"
-            )
-        pages.update(range(start, end + 1))
-    return sorted(pages)
-
-
-def format_pages(pages: list[int]) -> str:
-    """The inverse of ``page_ranges``: ``[1, 2, 3, 7]`` is ``"1-3,7"``."""
-    runs: list[list[int]] = []
-    for page in pages:
-        if runs and page == runs[-1][-1] + 1:
-            runs[-1].append(page)
-        else:
-            runs.append([page])
-    return ",".join(
-        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in runs
-    )
 
 
 # --- budgets ---
@@ -197,13 +171,18 @@ def take_images(
 # --- PDF ---
 
 
-def open_pdf(content: bytes) -> "pypdfium2.PdfDocument":
+@contextmanager
+def opened_pdf(content: bytes) -> Iterator["pypdfium2.PdfDocument"]:
     import pypdfium2
 
     try:
-        return pypdfium2.PdfDocument(content)
+        pdf = pypdfium2.PdfDocument(content)
     except pypdfium2.PdfiumError as exc:
         raise ValueError(f"not a readable PDF: {exc}") from exc
+    try:
+        yield pdf
+    finally:
+        pdf.close()
 
 
 @contextmanager
@@ -238,36 +217,56 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", page: int, spec: ImageExtract) -> Fr
 
 
 def open_image(content: bytes) -> "Image | None":
-    """``None`` when Pillow does not recognise the bytes as an image at all."""
+    """``None`` unless Pillow can read the header; no pixels are decoded yet."""
     import pillow_heif
     from PIL import Image as PILImage
-    from PIL import UnidentifiedImageError
 
     pillow_heif.register_heif_opener()
     try:
         return PILImage.open(io.BytesIO(content))
-    except UnidentifiedImageError:
-        return None
     except PILImage.DecompressionBombError as exc:
         raise ValueError(f"image too large to open: {exc}") from exc
+    # Untrusted parse: Pillow raises far more than OSError on a mangled header.
+    except Exception:
+        return None
+
+
+@contextmanager
+def image_errors() -> Iterator[None]:
+    """Decoding pixels is where a corrupt image surfaces; that is a step failure."""
+    try:
+        yield
+    except ValueError:
+        raise
+    # Untrusted parse: Pillow raises OSError, EOFError, struct.error, SyntaxError...
+    except Exception as exc:
+        raise ValueError(f"not a readable image: {exc!r}") from exc
 
 
 def image_frame(image: "Image", page: int) -> Frame:
     """One frame, turned upright by its EXIF orientation."""
     from PIL import ImageOps
 
-    try:
-        image.seek(page - 1)
-        upright = ImageOps.exif_transpose(image)
-    except OSError as exc:
-        raise ValueError(f"not a readable image: {exc}") from exc
+    image.seek(page - 1)
+    upright = ImageOps.exif_transpose(image)
     return upright, upright.size
 
 
-def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
-    """Re-encoded from pixels alone, so no EXIF (GPS included) survives."""
-    image, (original_width, original_height) = frame
+def flatten(image: "Image") -> "Image":
+    """RGB pixels on white and nothing else: no EXIF, comment, ICC or XMP."""
+    from PIL import Image as PILImage
+
+    if image.has_transparency_data:
+        backdrop = PILImage.new("RGBA", image.size, "white")
+        backdrop.alpha_composite(image.convert("RGBA"))
+        image = backdrop
     rgb = image.convert("RGB")
+    return PILImage.frombytes("RGB", rgb.size, rgb.tobytes())
+
+
+def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
+    image, (original_width, original_height) = frame
+    rgb = flatten(image)
     rgb.thumbnail((spec.max_long_side, spec.max_long_side))
     buffer = io.BytesIO()
     rgb.save(buffer, format="JPEG", quality=spec.quality)

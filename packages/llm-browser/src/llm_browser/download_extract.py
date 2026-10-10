@@ -30,17 +30,42 @@ def page_ranges(spec: str) -> list[tuple[int, int]]:
     return ranges
 
 
+def select_pages(spec: str | None, page_count: int) -> list[int]:
+    """The pages ``spec`` names that the file has; naming none of them raises."""
+    if spec is None:
+        return list(range(1, page_count + 1))
+    named = {page for start, end in page_ranges(spec) for page in range(start, end + 1)}
+    pages = sorted(page for page in named if page <= page_count)
+    if not pages:
+        raise ValueError(f"pages {spec!r} are all past the last page ({page_count})")
+    return pages
+
+
+def format_pages(pages: list[int]) -> str:
+    """The inverse of ``page_ranges``: ``[1, 2, 3, 7]`` is ``"1-3,7"``."""
+    runs: list[list[int]] = []
+    for page in pages:
+        if runs and page == runs[-1][-1] + 1:
+            runs[-1].append(page)
+        else:
+            runs.append([page])
+    return ",".join(
+        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in runs
+    )
+
+
+def checked_pages(pages: str | None) -> str | None:
+    if pages is not None:
+        page_ranges(pages)
+    return pages
+
+
 class PageSelection(BaseModel, extra="forbid"):
     pages: str | None = Field(
         None, description="1-based pages, e.g. `1-3,7`; unset means all."
     )
 
-    @field_validator("pages")
-    @classmethod
-    def check_pages(cls, pages: str | None) -> str | None:
-        if pages is not None:
-            page_ranges(pages)
-        return pages
+    _pages = field_validator("pages")(checked_pages)
 
 
 class TextExtract(PageSelection):
@@ -54,14 +79,21 @@ class TextExtract(PageSelection):
 
 
 class ImageExtract(PageSelection):
-    """Each page rendered as a JPEG, shrunk server-side, EXIF stripped."""
+    """Each page rendered as a JPEG, shrunk server-side, with no metadata."""
 
     mode: Literal["images"]
-    max_images: int = Field(EXTRACT_MAX_IMAGES, ge=1)
-    max_long_side: int = Field(
-        EXTRACT_MAX_LONG_SIDE, ge=1, le=EXTRACT_LONG_SIDE_CEILING
+    max_images: int = Field(
+        EXTRACT_MAX_IMAGES, ge=1, description="Images returned per step, at most."
     )
-    quality: int = Field(EXTRACT_JPEG_QUALITY, ge=1, le=95)
+    max_long_side: int = Field(
+        EXTRACT_MAX_LONG_SIDE,
+        ge=1,
+        le=EXTRACT_LONG_SIDE_CEILING,
+        description="Pixels; images shrink to it, PDF pages render at it.",
+    )
+    quality: int = Field(
+        EXTRACT_JPEG_QUALITY, ge=1, le=95, description="JPEG quality of each image."
+    )
 
 
 Extract = Annotated[TextExtract | ImageExtract, Field(discriminator="mode")]

@@ -153,7 +153,9 @@ class DocumentResult(ActionResult):
     the bytes. ``pages`` is empty when the file has nothing the mode reads.
 
     ``truncated`` means a budget cut the run short; ``next_pages`` is the
-    ``pages`` value that picks up where it stopped.
+    ``pages`` value that picks up where it stopped. ``truncated`` with no
+    ``next_pages`` means the last page alone was longer than ``max_chars`` and
+    was clipped: raise ``max_chars`` or read that page in ``images`` mode.
     """
 
     filename: str
