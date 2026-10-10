@@ -28,6 +28,7 @@ from llm_browser.constants import (
     DEFAULT_WAIT_TIMEOUT_MS,
     DELAY_SHAPE,
 )
+from llm_browser.download_extract import Extract
 from llm_browser.html import SanitizeLevel
 from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
@@ -557,6 +558,10 @@ class DownloadStep(SelectorStep):
     path: str | None = Field(
         None,
         description="A `llm-browser run` instruction; unset, it uses the name the server suggested.",
+    )
+    extract: Extract | None = Field(
+        None,
+        description="Return pages as text or shrunk images, not the bytes; needs `llm-browser[documents]`.",
     )
 
 

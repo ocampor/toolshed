@@ -134,6 +134,39 @@ class BytesResult(ActionResult):
     media_type: str = DEFAULT_MEDIA_TYPE
 
 
+class TextPage(BaseModel):
+    page: int
+    text: str
+
+
+class ImagePage(BaseModel):
+    page: int
+    image: PayloadBytes
+    width: int
+    height: int
+    original_width: int
+    original_height: int
+
+
+class DocumentResult(ActionResult):
+    """A download's ``extract:`` output: file metadata plus pages, instead of
+    the bytes. ``pages`` is empty when the file has nothing the mode reads.
+
+    ``truncated`` means a budget cut the run short; ``next_pages`` is the
+    ``pages`` value that picks up where it stopped.
+    """
+
+    filename: str
+    content_type: str
+    size: int
+    sha256: str
+    mode: Literal["text", "images"]
+    page_count: int | None
+    truncated: bool
+    next_pages: str | None
+    pages: list[TextPage | ImagePage]
+
+
 def guess_media_type(name: str) -> str:
     """The media type ``name``'s extension implies, or the generic one."""
     return mimetypes.guess_type(name)[0] or DEFAULT_MEDIA_TYPE

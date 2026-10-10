@@ -24,6 +24,7 @@ from llm_browser.repeat import ElementScope
 from llm_browser.results import (
     ActionResult,
     BytesResult,
+    DocumentResult,
     ErrorResult,
     ExtractError,
     ParsedResult,
@@ -57,7 +58,7 @@ def step_output(step: Step, result: ActionResult) -> object | None:
             ]
         case TextResult():
             return result.text
-        case BytesResult():
+        case BytesResult() | DocumentResult():
             return result
         case _:
             return None
