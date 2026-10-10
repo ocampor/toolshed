@@ -5,6 +5,7 @@ import io
 import sys
 import zipfile
 
+import pypdfium2
 import pytest
 from PIL import ExifTags, Image
 
@@ -196,6 +197,24 @@ def test_unreadable_input_is_a_step_failure(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         run(content, TextExtract(mode="text", pages=pages))
+
+
+@pytest.mark.parametrize(
+    ("method", "spec"),
+    [
+        ("get_textpage", TextExtract(mode="text")),
+        ("render", ImageExtract(mode="images")),
+    ],
+)
+def test_a_page_pdfium_cannot_read_is_a_step_failure(
+    monkeypatch: pytest.MonkeyPatch, method: str, spec: TextExtract | ImageExtract
+) -> None:
+    def broken(*args: object, **kwargs: object) -> None:
+        raise pypdfium2.PdfiumError("bad page")
+
+    monkeypatch.setattr(pypdfium2.PdfPage, method, broken)
+    with pytest.raises(ValueError, match="page 1 unreadable"):
+        run(pdf_bytes(["a"]), spec)
 
 
 def test_extracted_text_is_redacted() -> None:

@@ -4,7 +4,8 @@ what the budget lets through."""
 
 import hashlib
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -27,53 +28,81 @@ class Budgeted:
     clipped: bool = False
 
 
+@dataclass
+class Pdf:
+    document: "pypdfium2.PdfDocument"
+
+
+@dataclass
+class Picture:
+    image: "Image"
+
+
+@dataclass
+class Text:
+    text: str
+
+
+type Source = Pdf | Picture | Text | None
+
+
 def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
     require_documents_extra()
-    content = file.content
-    pdf, image, text = None, None, None
-    if content.startswith(b"%PDF"):
-        pdf = open_pdf(content)
-    else:
-        image = open_image(content)
-        if image is None:
-            text = decode_text(content)
-
-    budgeted = Budgeted(pages=[], rest=[])
-    page_count: int | None = None
-    match spec:
-        case TextExtract() if pdf is not None:
-            page_count = len(pdf)
-            budgeted = take_text(
-                select_pages(spec.pages, page_count),
-                lambda n: pdf_text(pdf, n),
-                spec.max_chars,
-            )
-        case TextExtract() if text is not None:
-            chunks = [
-                text[i : i + spec.max_chars]
-                for i in range(0, len(text), spec.max_chars)
-            ]
-            page_count = len(chunks)
-            budgeted = take_text(
-                select_pages(spec.pages, page_count),
-                lambda n: chunks[n - 1],
-                spec.max_chars,
-            )
-        case ImageExtract() if pdf is not None:
-            page_count = len(pdf)
-            budgeted = take_images(
-                select_pages(spec.pages, page_count),
-                lambda n: pdf_frame(pdf, n, spec),
-                spec,
-            )
-        case ImageExtract() if image is not None:
-            page_count = getattr(image, "n_frames", 1)
-            budgeted = take_images(
-                select_pages(spec.pages, page_count),
-                lambda n: image_frame(image, n),
-                spec,
-            )
+    with sniffed(file.content) as source:
+        page_count, budgeted = read_pages(source, spec)
     return document(file, spec, page_count, budgeted)
+
+
+def read_pages(source: Source, spec: Extract) -> tuple[int | None, Budgeted]:
+    """``(None, nothing)`` when the file has nothing ``spec.mode`` reads."""
+    match source, spec:
+        case Pdf(pdf), TextExtract():
+            selected = select_pages(spec.pages, len(pdf))
+            return len(pdf), take_text(
+                selected, lambda n: pdf_text(pdf, n), spec.max_chars
+            )
+        case Text(text), TextExtract():
+            size = spec.max_chars
+            chunks = [text[i : i + size] for i in range(0, len(text), size)]
+            selected = select_pages(spec.pages, len(chunks))
+            return len(chunks), take_text(selected, lambda n: chunks[n - 1], size)
+        case Pdf(pdf), ImageExtract():
+            selected = select_pages(spec.pages, len(pdf))
+            return len(pdf), take_images(
+                selected, lambda n: pdf_frame(pdf, n, spec), spec
+            )
+        case Picture(image), ImageExtract():
+            frame_count: int = getattr(image, "n_frames", 1)
+            selected = select_pages(spec.pages, frame_count)
+            return frame_count, take_images(
+                selected, lambda n: image_frame(image, n), spec
+            )
+    return None, Budgeted(pages=[], rest=[])
+
+
+def sniff(content: bytes) -> Source:
+    """By content, not media type: servers mislabel downloads."""
+    if content.startswith(b"%PDF"):
+        return Pdf(open_pdf(content))
+    image = open_image(content)
+    if image is not None:
+        return Picture(image)
+    text = decode_text(content)
+    return None if text is None else Text(text)
+
+
+@contextmanager
+def sniffed(content: bytes) -> Iterator[Source]:
+    """Closes what ``sniff`` opened, so a long-lived server leaks no pdfium handle."""
+    source = sniff(content)
+    try:
+        yield source
+    finally:
+        match source:
+            case Pdf(pdf):
+                pdf.close()
+            case Picture(image):
+                image.close()
 
 
 def document(
@@ -177,19 +206,31 @@ def open_pdf(content: bytes) -> "pypdfium2.PdfDocument":
         raise ValueError(f"not a readable PDF: {exc}") from exc
 
 
+@contextmanager
+def page_errors(page: int) -> Iterator[None]:
+    """pdfium can fail on one page of a file it opened; that is a step failure."""
+    import pypdfium2
+
+    try:
+        yield
+    except pypdfium2.PdfiumError as exc:
+        raise ValueError(f"page {page} unreadable: {exc}") from exc
+
+
 def pdf_text(pdf: "pypdfium2.PdfDocument", page: int) -> str:
-    text: str = pdf[page - 1].get_textpage().get_text_bounded()
+    with page_errors(page):
+        text: str = pdf[page - 1].get_textpage().get_text_bounded()
     return text
 
 
 def pdf_frame(pdf: "pypdfium2.PdfDocument", page: int, spec: ImageExtract) -> Frame:
     """Rendered with the long side at ``max_long_side``, since PDF points are
     too coarse to read at 1:1; the original size is in points."""
-    pdf_page = pdf[page - 1]
-    width, height = pdf_page.get_size()
-    image: Image = pdf_page.render(
-        scale=spec.max_long_side / max(width, height)
-    ).to_pil()
+    with page_errors(page):
+        pdf_page = pdf[page - 1]
+        width, height = pdf_page.get_size()
+        scale = spec.max_long_side / max(width, height)
+        image: Image = pdf_page.render(scale=scale).to_pil()
     return image, (round(width), round(height))
 
 
