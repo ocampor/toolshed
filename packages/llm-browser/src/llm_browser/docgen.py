@@ -54,7 +54,14 @@ def classes_named(where: str, suffix: str) -> Members:
 
 
 def step_models(module: griffe.Module) -> list[str]:
-    extra = ["models.MatchFields", "models.SaveAs", "models.TargetSpec"]
+    extra = [
+        "models.MatchFields",
+        "models.SaveAs",
+        "models.TargetSpec",
+        "download_extract.PageSelection",
+        "download_extract.TextExtract",
+        "download_extract.ImageExtract",
+    ]
     flow = ["models.Flow", "models.SubFlow", "models.Param", "models.FlowData"]
     return classes_named("models", "Step")(module) + extra + flow
 

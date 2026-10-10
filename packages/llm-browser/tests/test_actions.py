@@ -491,6 +491,21 @@ def test_download_returns_bytes(session: BrowserSession, tmp_path: Path) -> None
     mock_download.delete.assert_called_once()
 
 
+def test_download_with_extract_returns_pages(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    from llm_browser.results import DocumentResult
+
+    _arm_download(session, tmp_path, b"col\n1\n")
+    step = DownloadStep(
+        name="s", action="download", selector="#dl", extract={"mode": "text"}
+    )
+    result = execute_action(session, step)
+    assert isinstance(result, DocumentResult)
+    assert result.filename == "report.csv"
+    assert [page.text for page in result.pages] == ["col\n1\n"]
+
+
 def test_download_leaves_no_spool_file_behind(
     session: BrowserSession, tmp_path: Path
 ) -> None:

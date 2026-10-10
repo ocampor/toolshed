@@ -927,7 +927,9 @@ class FlowSuccess(BaseModel):
 
     ``outputs`` holds every step result the flow produced, keyed by qualified
     step name: rows for ``read`` / ``parse``, text for ``dom``, and a
-    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
+    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``
+    (a :class:`~llm_browser.results.DocumentResult` for a ``download`` with
+    ``extract:``).
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
     ``skipped`` names every step the run passed over, in the order it did,

@@ -283,3 +283,6 @@ EXTRACT_MAX_IMAGES = 8
 EXTRACT_MAX_LONG_SIDE = 1000
 EXTRACT_LONG_SIDE_CEILING = 1568
 EXTRACT_JPEG_QUALITY = 80
+MISSING_DOCUMENTS_EXTRA = (
+    "download extract needs the documents extra: pip install 'llm-browser[documents]'"
+)

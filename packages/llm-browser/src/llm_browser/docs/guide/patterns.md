@@ -409,6 +409,20 @@ No `extract:` needed — a bare `read` gives the default `text` field (see
   since 0.13.0), but both hand back the whole page. Once you know where the fields sit, read
   the smallest container holding them.
 
+## Reading a downloaded document
+
+A `download` returns the whole file as base64, so a large PDF does not fit in one tool result.
+Add `extract:` to get pages back instead (needs `llm-browser[documents]`). Ask for text first,
+then render as images only the pages that came back empty (scans):
+
+```yaml
+- {name: report, action: download, ref: chat.doc_row, extract: {mode: text, pages: "1-10"}}
+# pages 3-4 had text "" → render just those
+- {name: scans, action: download, ref: chat.doc_row, extract: {mode: images, pages: "3-4"}}
+```
+
+When `truncated` is true, run again with `pages: <next_pages>`.
+
 ## Migrating older flows
 
 What `llm-browser validate` does with each retired spelling — the middle column is the dangerous
