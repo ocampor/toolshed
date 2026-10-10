@@ -77,15 +77,16 @@ class PageSelection(BaseModel, extra="forbid"):
 
 
 class TextExtract(PageSelection):
-    """Each page's text layer (``""`` for a page with none); text files are cut
-    into pages of ``max_chars``."""
+    """Each page's text layer (``""`` for a page with none). Text files (CSV,
+    JSON, plain text) are cut into fixed-size chunks, never ``clipped``, so
+    ``next_pages`` only lines up when the next call uses the same ``max_chars``."""
 
     mode: Literal["text"]
     max_chars: int = Field(
         EXTRACT_MAX_CHARS,
         ge=EXTRACT_PAGE_OVERHEAD_CHARS + 1,
         le=EXTRACT_MAX_CHARS_CEILING,
-        description="Hard ceiling on text returned per step, each page's overhead included.",
+        description="Characters of page text returned per step, each page's fixed overhead included.",
     )
 
 

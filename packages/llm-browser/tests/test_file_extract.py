@@ -178,6 +178,36 @@ def test_images_render_requested_pdf_pages_within_budget() -> None:
     assert (result.truncated, result.next_pages) == (True, "3")
 
 
+@pytest.mark.parametrize("side", [1, 155, 204, 666, 799, 995, 1000, 1568])
+@pytest.mark.parametrize("size", [(200, 300), (300, 200), (612, 792)])
+def test_pdf_renders_exactly_at_max_long_side(side: int, size: tuple[int, int]) -> None:
+    content = pdf_bytes(["a"]).replace(
+        b"[0 0 200 300]", f"[0 0 {size[0]} {size[1]}]".encode()
+    )
+    spec = ImageExtract(mode="images", max_long_side=side)
+    [page] = images(run(content, spec))
+    assert max(page.width, page.height) == side
+
+
+@pytest.mark.parametrize(
+    ("content", "label", "expected"),
+    [
+        (pdf_bytes(["a"]), "application/octet-stream", "application/pdf"),
+        (
+            image_bytes(Image.new("RGB", (4, 4)), "PNG"),
+            "application/octet-stream",
+            "image/png",
+        ),
+        (b"a,b\n", "text/csv", "text/csv"),
+    ],
+)
+def test_content_type_is_sniffed_before_the_label(
+    content: bytes, label: str, expected: str
+) -> None:
+    file = BytesResult(name="f", content=content, media_type=label)
+    assert extract_file(file, TextExtract(mode="text")).content_type == expected
+
+
 def test_images_shrink_a_large_image() -> None:
     content = image_bytes(Image.new("RGB", (3000, 1500)), "PNG")
     [page] = images(run(content, ImageExtract(mode="images")))

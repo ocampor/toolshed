@@ -289,8 +289,8 @@ MISSING_DOCUMENTS_EXTRA = (
 EXTRACT_MAX_CHARS_CEILING = 100_000
 EXTRACT_MAX_IMAGES_CEILING = 50
 EXTRACT_PAGES_MAX_LENGTH = 200
-# What one page costs against ``max_chars`` before its text: roughly its JSON
-# wrapper, so blank pages of a scan still run the budget down.
+# What one page costs against ``max_chars`` before its text: a flat allowance
+# for its wrapper, so blank pages of a scan still run the budget down.
 EXTRACT_PAGE_OVERHEAD_CHARS = 40
 # EXIF orientations that turn the image a quarter, swapping width and height.
 TURNED_SIDEWAYS = frozenset({5, 6, 7, 8})

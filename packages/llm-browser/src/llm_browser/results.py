@@ -168,7 +168,9 @@ class DocumentResult(ActionResult):
     """
 
     filename: str = Field(description="The server's suggested name; remote input.")
-    content_type: str
+    content_type: str = Field(
+        description="Detected from the file's content; the server's label when the type isn't recognised."
+    )
     size: int = Field(description="Bytes of the downloaded file.")
     sha256: str = Field(description="Hex digest of the downloaded file.")
     mode: Literal["text", "images"]

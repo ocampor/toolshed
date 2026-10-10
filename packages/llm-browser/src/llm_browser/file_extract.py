@@ -58,6 +58,7 @@ type Source = Pdf | Picture | Text | None
 def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
     require_documents_extra()
     with sniffed(file.content) as source:
+        content_type = detected_type(source, file.media_type)
         unreadable = source is None or isinstance(source, Text)
         labelled_image = file.media_type.startswith("image/")
         if isinstance(spec, ImageExtract) and labelled_image and unreadable:
@@ -65,7 +66,7 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
         batch = read_pages(source, spec)
     return DocumentResult(
         filename=file.name,
-        content_type=file.media_type,
+        content_type=content_type,
         size=len(file.content),
         sha256=hashlib.sha256(file.content).hexdigest(),
         mode=spec.mode,
@@ -75,6 +76,18 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
         next_pages=spec_of(batch.rest) if batch.rest else None,
         pages=batch.pages,
     )
+
+
+def detected_type(source: Source, label: str) -> str:
+    """The type the content shows; the download's label when it shows none."""
+    from PIL import Image as PILImage
+
+    match source:
+        case Pdf():
+            return "application/pdf"
+        case Picture(image):
+            return PILImage.MIME.get(image.format or "", label)
+    return label
 
 
 def read_pages(source: Source, spec: Extract) -> PageBatch:
@@ -144,8 +157,8 @@ def selected_pages(spec: Extract, page_count: int) -> list[int]:
 def take_text(
     page_count: int, page_text: Callable[[int], str], spec: TextExtract
 ) -> PageBatch:
-    """``max_chars`` is a hard ceiling and every page, blank or not, costs
-    ``EXTRACT_PAGE_OVERHEAD_CHARS`` of it: a first page longer than what is
+    """``max_chars`` caps the characters of page text; every page, blank or
+    not, also costs ``EXTRACT_PAGE_OVERHEAD_CHARS`` of it: a first page longer than what is
     left is clipped, and a later page that does not fit is left for
     ``next_pages``."""
     selected = selected_pages(spec, page_count)
@@ -218,7 +231,8 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", spec: ImageExtract, page: int) -> Fr
     with page_errors(page):
         pdf_page = pdf[page - 1]
         width, height = pdf_page.get_size()
-        scale = spec.max_long_side / max(width, height)
+        # pdfium rounds the size up, so aim half a pixel short to land on max_long_side, never over.
+        scale = (spec.max_long_side - 0.5) / max(width, height)
         image: Image = pdf_page.render(scale=scale).to_pil()
     return Frame(image, round(width), round(height))
 
