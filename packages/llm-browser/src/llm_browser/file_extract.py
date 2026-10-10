@@ -2,16 +2,16 @@
 asks for. Only requested pages are read or rendered, so a huge PDF costs
 what the budget lets through."""
 
+import codecs
 import hashlib
-import io
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from functools import cache, partial
+from functools import partial
 from typing import TYPE_CHECKING
 
-from llm_browser.constants import MISSING_DOCUMENTS_EXTRA
+from llm_browser.constants import EXTRACT_PAGE_OVERHEAD_CHARS, MISSING_DOCUMENTS_EXTRA
 from llm_browser.download_extract import (
     Extract,
     ImageExtract,
@@ -19,6 +19,7 @@ from llm_browser.download_extract import (
     format_pages,
     select_pages,
 )
+from llm_browser.page_images import Frame, image_frame, open_image, shrink
 from llm_browser.results import BytesResult, DocumentResult, ImagePage, TextPage
 
 if TYPE_CHECKING:
@@ -27,15 +28,6 @@ if TYPE_CHECKING:
 
 # debt: process-wide pdfium lock; pdfium is not thread-safe
 PDFIUM_LOCK = threading.Lock()
-
-
-@dataclass
-class Frame:
-    """A page as pixels, with the size it had before any shrinking."""
-
-    image: "Image"
-    original_width: int
-    original_height: int
 
 
 @dataclass
@@ -67,6 +59,10 @@ type Source = Pdf | Picture | Text | None
 def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
     require_documents_extra()
     with sniffed(file.content) as source:
+        unreadable = source is None or isinstance(source, Text)
+        labelled_image = file.media_type.startswith("image/")
+        if isinstance(spec, ImageExtract) and labelled_image and unreadable:
+            raise ValueError(f"{file.media_type} file is not a readable image")
         batch = read_pages(source, spec)
     return DocumentResult(
         filename=file.name,
@@ -87,7 +83,7 @@ def read_pages(source: Source, spec: Extract) -> PageBatch:
         case Pdf(pdf), TextExtract():
             return take_text(len(pdf), partial(pdf_text, pdf), spec)
         case Text(text), TextExtract():
-            size = spec.max_chars
+            size = max(spec.max_chars - EXTRACT_PAGE_OVERHEAD_CHARS, 1)
             chunks = [text[i : i + size] for i in range(0, len(text), size)]
             return take_text(len(chunks), lambda page: chunks[page - 1], spec)
         case Pdf(pdf), ImageExtract():
@@ -95,7 +91,8 @@ def read_pages(source: Source, spec: Extract) -> PageBatch:
         case Picture(image), ImageExtract():
             try:
                 frame_count: int = getattr(image, "n_frames", 1)
-                return take_images(frame_count, partial(image_frame, image), spec)
+                frame = partial(image_frame, image, spec)
+                return take_images(frame_count, frame, spec)
             except ValueError:
                 raise
             # Untrusted parse: Pillow raises OSError, EOFError, struct.error, SyntaxError...
@@ -136,21 +133,24 @@ def require_documents_extra() -> None:
 def take_text(
     page_count: int, page_text: Callable[[int], str], spec: TextExtract
 ) -> PageBatch:
-    """``max_chars`` is a hard ceiling: a first page longer than it is clipped,
-    and a later page that does not fit is left for ``next_pages``."""
+    """``max_chars`` is a hard ceiling and every page, blank or not, costs
+    ``EXTRACT_PAGE_OVERHEAD_CHARS`` of it: a first page longer than what is
+    left is clipped, and a later page that does not fit is left for
+    ``next_pages``."""
     selected = select_pages(spec.pages, page_count)
     pages: list[TextPage | ImagePage] = []
     used = 0
     for i, page in enumerate(selected):
         text = page_text(page)
-        room = spec.max_chars - used
+        room = spec.max_chars - used - EXTRACT_PAGE_OVERHEAD_CHARS
         if len(text) <= room:
             pages.append(TextPage(page=page, text=text))
-            used += len(text)
+            used += EXTRACT_PAGE_OVERHEAD_CHARS + len(text)
         elif pages:
             return PageBatch(page_count, pages, rest=selected[i:])
         else:
-            clipped = TextPage(page=page, text=text[:room])
+            kept = text[: max(room, 0)]
+            clipped = TextPage(page=page, text=kept, clipped=True)
             rest = selected[i + 1 :]
             return PageBatch(page_count, [clipped], rest, clipped=True)
     return PageBatch(page_count, pages, rest=[])
@@ -212,72 +212,19 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", spec: ImageExtract, page: int) -> Fr
     return Frame(image, round(width), round(height))
 
 
-# --- images ---
-
-
-def open_image(content: bytes) -> "Image | None":
-    """``None`` unless Pillow can read the header; no pixels are decoded yet."""
-    from PIL import Image as PILImage
-
-    register_heif()
-    try:
-        return PILImage.open(io.BytesIO(content))
-    except PILImage.DecompressionBombError as exc:
-        raise ValueError(f"image too large to open: {exc}") from exc
-    # Untrusted parse: Pillow raises far more than OSError on a mangled header.
-    except Exception:
-        return None
-
-
-@cache
-def register_heif() -> None:
-    import pillow_heif
-
-    pillow_heif.register_heif_opener()
-
-
-def image_frame(image: "Image", page: int) -> Frame:
-    from PIL import ImageOps
-
-    image.seek(page - 1)
-    upright = ImageOps.exif_transpose(image)
-    return Frame(upright, upright.width, upright.height)
-
-
-def flatten(image: "Image") -> "Image":
-    """RGB pixels on white and nothing else: no EXIF, comment, ICC or XMP."""
-    from PIL import Image as PILImage
-
-    if image.has_transparency_data:
-        backdrop = PILImage.new("RGBA", image.size, "white")
-        backdrop.alpha_composite(image.convert("RGBA"))
-        image = backdrop
-    rgb = image.convert("RGB")
-    return PILImage.frombytes("RGB", rgb.size, rgb.tobytes())
-
-
-def shrink(page: int, frame: Frame, spec: ImageExtract) -> ImagePage:
-    rgb = flatten(frame.image)
-    rgb.thumbnail((spec.max_long_side, spec.max_long_side))
-    buffer = io.BytesIO()
-    rgb.save(buffer, format="JPEG", quality=spec.quality)
-    return ImagePage(
-        page=page,
-        image=buffer.getvalue(),
-        width=rgb.width,
-        height=rgb.height,
-        original_width=frame.original_width,
-        original_height=frame.original_height,
-    )
-
-
 # --- plain text ---
 
 
 def decode_text(content: bytes) -> str | None:
+    if content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return decoded(content, "utf-16")
     if b"\x00" in content:
         return None
+    return decoded(content, "utf-8-sig") or decoded(content, "cp1252")
+
+
+def decoded(content: bytes, encoding: str) -> str | None:
     try:
-        return content.decode("utf-8")
+        return content.decode(encoding)
     except UnicodeDecodeError:
         return None

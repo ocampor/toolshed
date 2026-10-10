@@ -24,6 +24,7 @@ from llm_browser.models import (
     validate_step,
 )
 from llm_browser.results import DocumentResult, TextPage
+from llm_browser.steps import resolve_step_templates
 
 
 def test_session_info_round_trip() -> None:
@@ -356,6 +357,10 @@ def test_download_extract_validates(extract: dict[str, object], kind: type) -> N
         {"mode": "ocr"},
         {"mode": "text", "pages": "0"},
         {"mode": "text", "pages": "3-1"},
+        {"mode": "text", "pages": "3-"},
+        {"mode": "text", "max_chars": 100_001},
+        {"mode": "images", "max_images": 51},
+        {"mode": "text", "pages": "1," * 101},
         {"mode": "text", "pages": "1,x"},
     ],
 )
@@ -378,3 +383,11 @@ def test_step_output_keeps_a_document_result() -> None:
     )
     step = validate_step(download({"mode": "text"}))
     assert step_output(step, result) is result
+
+
+def test_a_templated_page_range_is_checked_once_filled() -> None:
+    step = validate_step(download({"mode": "text", "pages": "{{ p }}"}))
+    resolve = resolve_step_templates
+    assert resolve(step, FlowData(p="2-3")).extract.pages == "2-3"
+    with pytest.raises(ValidationError):
+        resolve(step, FlowData(p="3-"))

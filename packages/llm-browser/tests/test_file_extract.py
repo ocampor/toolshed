@@ -1,5 +1,6 @@
 """download ``extract:`` over files generated in the test."""
 
+import codecs
 import hashlib
 import io
 import random
@@ -9,12 +10,19 @@ import zipfile
 import pillow_heif
 import pypdfium2
 import pytest
-from PIL import ExifTags, Image, ImageCms
+from PIL import ExifTags, Image, ImageCms, JpegImagePlugin
 
+from llm_browser.constants import EXTRACT_PAGE_OVERHEAD_CHARS as OVERHEAD
 from llm_browser.download_extract import ImageExtract, TextExtract
 from llm_browser.file_extract import extract_file
 from llm_browser.redact import redact_secrets
-from llm_browser.results import BytesResult, DocumentResult, ImagePage, TextPage
+from llm_browser.results import (
+    guess_media_type,
+    BytesResult,
+    DocumentResult,
+    ImagePage,
+    TextPage,
+)
 
 
 def pdf_bytes(texts: list[str]) -> bytes:
@@ -85,7 +93,8 @@ def exif_jpeg() -> bytes:
 def run(
     content: bytes, spec: TextExtract | ImageExtract, name: str = "f"
 ) -> DocumentResult:
-    return extract_file(BytesResult(name=name, content=content), spec)
+    file = BytesResult(name=name, content=content, media_type=guess_media_type(name))
+    return extract_file(file, spec)
 
 
 def texts(result: DocumentResult) -> list[str]:
@@ -108,27 +117,54 @@ def test_text_reads_each_pdf_page() -> None:
 @pytest.mark.parametrize(
     ("max_chars", "pages", "expected", "next_pages"),
     [
-        (9, None, ["aaaa", "bbbb"], "3"),
-        (9, "3", ["cccc"], None),
-        (2, None, ["aa"], "2-3"),
+        (2 * (OVERHEAD + 4) + 1, None, [("aaaa", False), ("bbbb", False)], "3"),
+        (OVERHEAD + 4, "3", [("cccc", False)], None),
+        (OVERHEAD + 2, None, [("aa", True)], "2-3"),
     ],
 )
 def test_text_stops_at_max_chars(
-    max_chars: int, pages: str | None, expected: list[str], next_pages: str | None
+    max_chars: int,
+    pages: str | None,
+    expected: list[tuple[str, bool]],
+    next_pages: str | None,
 ) -> None:
-    """``max_chars`` is a hard ceiling: an over-long first page is clipped."""
+    """``max_chars`` is a hard ceiling: an over-long first page is clipped and
+    says so."""
     spec = TextExtract(mode="text", max_chars=max_chars, pages=pages)
     result = run(pdf_bytes(["aaaa", "bbbb", "cccc"]), spec)
-    assert texts(result) == expected
+    got = [
+        (page.text, page.clipped) for page in result.pages if isinstance(page, TextPage)
+    ]
+    assert got == expected
     assert result.next_pages == next_pages
-    assert result.truncated == (expected != ["cccc"])
+    assert result.truncated == (next_pages is not None or expected[0][1])
     assert sum(map(len, texts(result))) <= max_chars
 
 
+def test_blank_pages_run_the_text_budget_down() -> None:
+    spec = TextExtract(mode="text", max_chars=10 * OVERHEAD)
+    result = run(pdf_bytes([""] * 30), spec)
+    assert texts(result) == [""] * 10
+    assert (result.truncated, result.next_pages) == (True, "11-30")
+
+
 def test_text_file_is_cut_into_pages_of_max_chars() -> None:
-    result = run(b"col\n1\n2\n", TextExtract(mode="text", max_chars=5), "r.csv")
+    spec = TextExtract(mode="text", max_chars=OVERHEAD + 5)
+    result = run(b"col\n1\n2\n", spec, "r.csv")
     assert texts(result) == ["col\n1"]
     assert (result.page_count, result.next_pages) == (2, "2")
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "café;crème\n".encode("cp1252"),
+        "café;crème\n".encode("utf-16"),
+        codecs.BOM_UTF8 + "café;crème\n".encode(),
+    ],
+)
+def test_text_files_decode_beyond_plain_utf8(content: bytes) -> None:
+    assert texts(run(content, TextExtract(mode="text"), "r.csv")) == ["café;crème\n"]
 
 
 def test_images_render_requested_pdf_pages_within_budget() -> None:
@@ -183,6 +219,45 @@ def test_heic_is_read_as_an_image() -> None:
     content = image_bytes(Image.new("RGB", (64, 32), "red"), "HEIF")
     [page] = images(run(content, ImageExtract(mode="images")))
     assert (page.original_width, page.original_height) == (64, 32)
+
+
+def test_a_large_jpeg_decodes_at_reduced_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    drafts = []
+    original = JpegImagePlugin.JpegImageFile.draft
+
+    def spy(self: Image.Image, mode: str, size: tuple[int, int]) -> object:
+        drafts.append(size)
+        return original(self, mode, size)
+
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft", spy)
+    content = image_bytes(Image.new("RGB", (4000, 3000)), "JPEG")
+    [page] = images(run(content, ImageExtract(mode="images", max_long_side=500)))
+    assert drafts[0] == (500, 500)
+    assert (page.width, page.original_width) == (500, 4000)
+
+
+def test_an_image_over_the_pixel_limit_fails_the_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 300)
+    with pytest.raises(ValueError, match="decompression limit"):
+        run(image_bytes(Image.new("RGB", (20, 20)), "PNG"), ImageExtract(mode="images"))
+
+
+def test_sixteen_bit_grey_keeps_its_tones() -> None:
+    grey = Image.new("I;16", (8, 8), 32768)
+    [page] = images(run(image_bytes(grey, "PNG"), ImageExtract(mode="images")))
+    red, green, blue = Image.open(io.BytesIO(page.image)).getpixel((4, 4))
+    assert 100 < red < 160
+
+
+def test_images_mode_on_an_image_pillow_cannot_read_fails_the_step() -> None:
+    with pytest.raises(ValueError, match="not a readable image"):
+        run(
+            b"<svg xmlns='http://www.w3.org/2000/svg'/>",
+            ImageExtract(mode="images"),
+            "a.svg",
+        )
 
 
 def test_transparency_is_flattened_onto_white() -> None:
@@ -287,12 +362,16 @@ PNG = image_bytes(Image.new("RGB", (64, 48), "red"), "PNG")
 def test_a_corrupt_image_fails_the_step_or_returns_metadata(
     content: bytes, spec: TextExtract | ImageExtract
 ) -> None:
+    """Images mode reads it or fails the step; text mode never decodes it."""
     try:
-        result = run(content, spec)
+        result = run(content, spec, "photo.jpg")
     except ValueError:
         assert spec.mode == "images"
         return
-    assert spec.mode == "images" or result.pages == []
+    if spec.mode == "images":
+        assert images(result)
+    else:
+        assert result.pages == []
 
 
 def test_extracted_text_is_redacted() -> None:

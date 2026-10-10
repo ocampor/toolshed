@@ -419,7 +419,7 @@ No `extract:` needed — a bare `read` gives the default `text` field (see
 - {name: scans, action: download, ref: chat.doc_row, extract: {mode: images, pages: "3-4"}}
 ```
 
-`truncated` with a `next_pages`: rerun with `pages: <next_pages>`. `truncated` without one: the
-last page was clipped at `max_chars`; raise it or read that page as images.
+`truncated`: rerun with `pages: <next_pages>`. A page marked `clipped` was cut at `max_chars`;
+request it alone with a larger `max_chars`, or as images.
 
 Retired step spellings and what replaces them: `guide/migrating`.

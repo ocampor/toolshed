@@ -5,12 +5,17 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from yaml_engine.template import template_names
+
 from llm_browser.constants import (
     EXTRACT_JPEG_QUALITY,
     EXTRACT_LONG_SIDE_CEILING,
     EXTRACT_MAX_CHARS,
+    EXTRACT_MAX_CHARS_CEILING,
     EXTRACT_MAX_IMAGES,
+    EXTRACT_MAX_IMAGES_CEILING,
     EXTRACT_MAX_LONG_SIDE,
+    EXTRACT_PAGES_MAX_LENGTH,
 )
 
 
@@ -18,10 +23,12 @@ def page_ranges(spec: str) -> list[tuple[int, int]]:
     """``"1-3,7"`` as 1-based inclusive ranges; any malformed part raises."""
     ranges = []
     for part in spec.split(","):
-        first, _, last = part.strip().partition("-")
-        if not first.isdigit() or not (last or first).isdigit():
+        first, dash, last = part.strip().partition("-")
+        if not dash:
+            last = first
+        if not first.isdecimal() or not last.isdecimal():
             raise ValueError(f"invalid page range {part!r}; use N or N-M, e.g. '1-3,7'")
-        start, end = int(first), int(last or first)
+        start, end = int(first), int(last)
         if start < 1 or end < start:
             raise ValueError(
                 f"invalid page range {part!r}; pages start at 1, N-M needs N <= M"
@@ -62,13 +69,16 @@ def format_pages(pages: list[int]) -> str:
 
 class PageSelection(BaseModel, extra="forbid"):
     pages: str | None = Field(
-        None, description="1-based pages, e.g. `1-3,7`; unset means all."
+        None,
+        max_length=EXTRACT_PAGES_MAX_LENGTH,
+        description="1-based pages, e.g. `1-3,7`; unset means all.",
     )
 
     @field_validator("pages")
     @classmethod
     def _check_pages(cls, pages: str | None) -> str | None:
-        if pages is not None:
+        # A templated value is checked again once ``resolve_step_templates`` fills it.
+        if pages is not None and not template_names(pages):
             page_ranges(pages)
         return pages
 
@@ -79,7 +89,10 @@ class TextExtract(PageSelection):
 
     mode: Literal["text"]
     max_chars: int = Field(
-        EXTRACT_MAX_CHARS, ge=1, description="Hard ceiling on text returned per step."
+        EXTRACT_MAX_CHARS,
+        ge=1,
+        le=EXTRACT_MAX_CHARS_CEILING,
+        description="Hard ceiling on text returned per step, each page's overhead included.",
     )
 
 
@@ -88,7 +101,10 @@ class ImageExtract(PageSelection):
 
     mode: Literal["images"]
     max_images: int = Field(
-        EXTRACT_MAX_IMAGES, ge=1, description="Images returned per step, at most."
+        EXTRACT_MAX_IMAGES,
+        ge=1,
+        le=EXTRACT_MAX_IMAGES_CEILING,
+        description="Images returned per step, at most.",
     )
     max_long_side: int = Field(
         EXTRACT_MAX_LONG_SIDE,
