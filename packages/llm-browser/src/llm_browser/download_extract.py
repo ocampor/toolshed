@@ -15,6 +15,7 @@ from llm_browser.constants import (
     EXTRACT_MAX_IMAGES,
     EXTRACT_MAX_IMAGES_CEILING,
     EXTRACT_MAX_LONG_SIDE,
+    EXTRACT_PAGE_OVERHEAD_CHARS,
     EXTRACT_PAGES_MAX_LENGTH,
 )
 
@@ -90,7 +91,7 @@ class TextExtract(PageSelection):
     mode: Literal["text"]
     max_chars: int = Field(
         EXTRACT_MAX_CHARS,
-        ge=1,
+        ge=EXTRACT_PAGE_OVERHEAD_CHARS + 1,
         le=EXTRACT_MAX_CHARS_CEILING,
         description="Hard ceiling on text returned per step, each page's overhead included.",
     )
@@ -110,11 +111,7 @@ class ImageExtract(PageSelection):
         EXTRACT_MAX_LONG_SIDE,
         ge=1,
         le=EXTRACT_LONG_SIDE_CEILING,
-        description=(
-            "Pixels; images shrink to it, PDF pages render at it. PNG and other formats"
-            " without reduced-size decoding are decoded at full size before shrinking,"
-            " so peak memory follows the source pixel count."
-        ),
+        description="Pixels; images shrink to it, PDF pages render at it.",
     )
     quality: int = Field(
         EXTRACT_JPEG_QUALITY,

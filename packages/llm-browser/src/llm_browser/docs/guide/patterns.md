@@ -422,7 +422,7 @@ No `extract:` needed — a bare `read` gives the default `text` field (see
 `truncated`: rerun with `pages: <next_pages>`. A page marked `clipped` was cut at `max_chars`;
 request it alone with a larger `max_chars`, or as images.
 
-Image cost scales with pixels, not bytes: the server returns each page as an image block
-(about width×height/750 tokens), not as base64 text.
+Image cost scales with pixels (≈ width×height/750 tokens), so prefer a smaller `max_long_side`
+over more pages.
 
 Retired step spellings and what replaces them: `guide/migrating`.

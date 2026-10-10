@@ -17,11 +17,11 @@ from llm_browser.download_extract import ImageExtract, TextExtract
 from llm_browser.file_extract import extract_file
 from llm_browser.redact import redact_secrets
 from llm_browser.results import (
-    guess_media_type,
     BytesResult,
     DocumentResult,
     ImagePage,
     TextPage,
+    guess_media_type,
 )
 
 
@@ -212,6 +212,35 @@ def test_images_give_one_page_per_tiff_frame() -> None:
     assert [page.page for page in images(result)] == [1, 2]
     assert colours[0][0] > 200 and colours[1][2] > 200
     assert result.page_count == 2
+
+
+def partial_frames() -> list[Image.Image]:
+    """Red, then a blue corner, then a green corner: an encoder stores frames
+    2 and 3 as the changed corner alone, drawn over the previous canvas."""
+    frames = [Image.new("RGB", (1200, 800), "red") for _ in range(3)]
+    frames[1].paste("blue", (0, 0, 300, 300))
+    frames[2].paste("blue", (0, 0, 300, 300))
+    frames[2].paste("lime", (900, 500, 1200, 800))
+    return frames
+
+
+@pytest.mark.parametrize("fmt", ["PNG", "GIF"])
+def test_partial_update_frames_keep_their_size_and_content(fmt: str) -> None:
+    frames = partial_frames()
+    content = image_bytes(frames[0], fmt, save_all=True, append_images=frames[1:])
+    result = run(content, ImageExtract(mode="images", max_long_side=100))
+    pages = images(result)
+    assert [(page.width, page.height) for page in pages] == [(100, 67)] * 3
+    shown = [Image.open(io.BytesIO(page.image)) for page in pages]
+    corners = [
+        (dominant(image.getpixel((5, 5))), dominant(image.getpixel((95, 62))))
+        for image in shown
+    ]
+    assert corners == [("red", "red"), ("blue", "red"), ("blue", "green")]
+
+
+def dominant(rgb: tuple[int, int, int]) -> str:
+    return ("red", "green", "blue")[rgb.index(max(rgb))]
 
 
 def test_heic_is_read_as_an_image() -> None:

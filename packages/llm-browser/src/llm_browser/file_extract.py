@@ -35,7 +35,6 @@ class PageBatch:
     page_count: int | None
     pages: list[TextPage | ImagePage]
     rest: list[int]
-    clipped: bool = False
 
 
 @dataclass
@@ -71,7 +70,7 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
         sha256=hashlib.sha256(file.content).hexdigest(),
         mode=spec.mode,
         page_count=batch.page_count,
-        truncated=bool(batch.rest) or batch.clipped,
+        truncated=bool(batch.rest) or any(map(is_clipped, batch.pages)),
         next_pages=format_pages(batch.rest) or None,
         pages=batch.pages,
     )
@@ -118,6 +117,10 @@ def sniffed(content: bytes) -> Iterator[Source]:
     yield None if text is None else Text(text)
 
 
+def is_clipped(page: TextPage | ImagePage) -> bool:
+    return isinstance(page, TextPage) and page.clipped
+
+
 def require_documents_extra() -> None:
     try:
         import PIL  # noqa: F401
@@ -152,7 +155,7 @@ def take_text(
             kept = text[: max(room, 0)]
             clipped = TextPage(page=page, text=kept, clipped=True)
             rest = selected[i + 1 :]
-            return PageBatch(page_count, [clipped], rest, clipped=True)
+            return PageBatch(page_count, [clipped], rest)
     return PageBatch(page_count, pages, rest=[])
 
 

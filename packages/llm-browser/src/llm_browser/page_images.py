@@ -45,8 +45,8 @@ def register_heif() -> None:
 
 
 def image_frame(image: "Image", spec: ImageExtract, page: int) -> Frame:
-    """Shrunk before anything else touches the pixels: a JPEG decodes at the
-    reduced size, and no full-size copy is ever made."""
+    """Shrunk before anything else touches the pixels; a JPEG decodes at the
+    reduced size."""
     from PIL import ExifTags, ImageOps
     from PIL import Image as PILImage
 
@@ -61,9 +61,15 @@ def image_frame(image: "Image", spec: ImageExtract, page: int) -> Frame:
         width, height = height, width
     # The box is square, so the 90-degree turn that follows cannot overflow it.
     box = (spec.max_long_side, spec.max_long_side)
-    image.draft("RGB", box)
-    image.thumbnail(box)
-    upright = ImageOps.exif_transpose(image)
+    if image.format == "JPEG":
+        # Single-frame, so decoding it reduced in place cannot spoil a later seek.
+        image.draft("RGB", box)
+    # debt: PNG and others decode at full size first; peak memory follows source pixels.
+    # A new image, never the source: later frames of a GIF/APNG build on its canvas.
+    small = image
+    if max(image.size) > spec.max_long_side:
+        small = ImageOps.contain(image, box)
+    upright = ImageOps.exif_transpose(small)
     return Frame(upright, width, height)
 
 
@@ -73,7 +79,9 @@ def flatten(image: "Image") -> "Image":
 
     if image.mode.startswith("I"):
         # 16-bit grey (I;16, or I from a 16-bit PNG) clips to white in RGB.
-        image = image.convert("I").point(lambda value: value * (1 / 256)).convert("L")
+        wide = image.convert("I")
+        scaled = wide.point(lambda value: value * (1 / 256))
+        image = scaled.convert("L")
     if image.has_transparency_data:
         backdrop = PILImage.new("RGBA", image.size, "white")
         backdrop.alpha_composite(image.convert("RGBA"))

@@ -360,7 +360,8 @@ def test_download_extract_validates(extract: dict[str, object], kind: type) -> N
         {"mode": "text", "pages": "3-"},
         {"mode": "text", "max_chars": 100_001},
         {"mode": "images", "max_images": 51},
-        {"mode": "text", "pages": "1," * 101},
+        {"mode": "text", "pages": "1," * 100 + "1"},
+        {"mode": "text", "max_chars": 40},
         {"mode": "text", "pages": "1,x"},
     ],
 )
@@ -387,7 +388,7 @@ def test_step_output_keeps_a_document_result() -> None:
 
 def test_a_templated_page_range_is_checked_once_filled() -> None:
     step = validate_step(download({"mode": "text", "pages": "{{ p }}"}))
-    resolve = resolve_step_templates
-    assert resolve(step, FlowData(p="2-3")).extract.pages == "2-3"
+    filled = resolve_step_templates(step, FlowData(p="2-3"))
+    assert filled.extract.pages == "2-3"
     with pytest.raises(ValidationError):
-        resolve(step, FlowData(p="3-"))
+        resolve_step_templates(step, FlowData(p="3-"))
