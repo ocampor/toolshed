@@ -110,7 +110,11 @@ class ImageExtract(PageSelection):
         EXTRACT_MAX_LONG_SIDE,
         ge=1,
         le=EXTRACT_LONG_SIDE_CEILING,
-        description="Pixels; images shrink to it, PDF pages render at it.",
+        description=(
+            "Pixels; images shrink to it, PDF pages render at it. PNG and other formats"
+            " without reduced-size decoding are decoded at full size before shrinking,"
+            " so peak memory follows the source pixel count."
+        ),
     )
     quality: int = Field(
         EXTRACT_JPEG_QUALITY,
