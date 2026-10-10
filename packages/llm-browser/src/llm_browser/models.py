@@ -28,6 +28,7 @@ from llm_browser.constants import (
     DEFAULT_WAIT_TIMEOUT_MS,
     DELAY_SHAPE,
 )
+from llm_browser.download_extract import Extract
 from llm_browser.html import SanitizeLevel
 from llm_browser.iterations import IterationReport
 from llm_browser.parse import ExtractField, parse_extract_spec
@@ -558,6 +559,10 @@ class DownloadStep(SelectorStep):
         None,
         description="A `llm-browser run` instruction; unset, it uses the name the server suggested.",
     )
+    extract: Extract | None = Field(
+        None,
+        description="Return pages as text or shrunk images, not the bytes; needs `llm-browser[documents]`.",
+    )
 
 
 class ThinkStep(BaseStep):
@@ -922,7 +927,9 @@ class FlowSuccess(BaseModel):
 
     ``outputs`` holds every step result the flow produced, keyed by qualified
     step name: rows for ``read`` / ``parse``, text for ``dom``, and a
-    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``.
+    :class:`~llm_browser.results.BytesResult` for ``screenshot`` / ``download``
+    (a :class:`~llm_browser.results.DocumentResult` for a ``download`` with
+    ``extract:``).
     Bytes stay bytes; ``model_dump(mode="json")`` base64-encodes them.
 
     ``skipped`` names every step the run passed over, in the order it did,

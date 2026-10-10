@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 camoufox = ["camoufox>=0.4"]
+documents = ["pypdfium2>=5.0", "Pillow>=11.0", "pillow-heif>=1.0"]
 nodriver = [
     "nodriver>=0.40",
 ]
@@ -36,6 +37,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "cssselect>=1.5.0",
+    "llm-browser[documents]",
     "lxml-stubs>=0.5.1",
     "mypy>=1.19.1",
     "ocampor-bench[docs]>=0.1,<0.2",
@@ -76,5 +78,5 @@ module = "camoufox.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "nodriver.*"
+module = ["nodriver.*", "pypdfium2.*", "pillow_heif.*"]
 ignore_missing_imports = true

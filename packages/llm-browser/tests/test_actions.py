@@ -12,7 +12,12 @@ from pydantic import ValidationError
 from llm_browser import actions, flow_runner, flows, steps
 from llm_browser import session as session_module
 from llm_browser.actions import execute_action
-from llm_browser.results import BytesResult, ParsedResult, TextResult
+from llm_browser.results import (
+    BytesResult,
+    DocumentResult,
+    ParsedResult,
+    TextResult,
+)
 from llm_browser.behavior import Behavior, Jitter
 from llm_browser.models import (
     CheckStep,
@@ -489,6 +494,19 @@ def test_download_returns_bytes(session: BrowserSession, tmp_path: Path) -> None
     assert result.name == "report.csv"
     assert result.media_type == "text/csv"
     mock_download.delete.assert_called_once()
+
+
+def test_download_with_extract_returns_pages(
+    session: BrowserSession, tmp_path: Path
+) -> None:
+    _arm_download(session, tmp_path, b"col\n1\n")
+    step = DownloadStep(
+        name="s", action="download", selector="#dl", extract={"mode": "text"}
+    )
+    result = execute_action(session, step)
+    assert isinstance(result, DocumentResult)
+    assert result.filename == "report.csv"
+    assert [page.text for page in result.pages] == ["col\n1\n"]
 
 
 def test_download_leaves_no_spool_file_behind(

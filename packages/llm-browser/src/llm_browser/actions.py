@@ -37,9 +37,11 @@ from llm_browser.models import (
     TypeStep,
     WaitForStep,
 )
+from llm_browser.file_extract import extract_file
 from llm_browser.parse import build_model
 from llm_browser.results import (
     BytesResult,
+    DocumentResult,
     ExtractedRow,
     ParsedResult,
     TextResult,
@@ -258,10 +260,13 @@ def action_dom(
 @_registry.register("download")
 def action_download(
     session: BrowserSession, step: DownloadStep, behavior: Behavior
-) -> BytesResult:
+) -> BytesResult | DocumentResult:
     """``step.path`` is not consulted: the runner returns the bytes and the
     CLI is what writes them."""
-    return session.download_file(step.selector, behavior=behavior, timeout=step.timeout)
+    file = session.download_file(step.selector, behavior=behavior, timeout=step.timeout)
+    if step.extract is None:
+        return file
+    return extract_file(file, step.extract)
 
 
 # --- Pacing actions ---

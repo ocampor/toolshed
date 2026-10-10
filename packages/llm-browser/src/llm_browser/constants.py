@@ -275,3 +275,22 @@ SCHEMA_TYPE_NAMES = {
 DOWNLOAD_POLL_MS = 100
 # A top-level navigation answered with one of these is a page, not a file.
 PAGE_MEDIA_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+
+# ``download`` ``extract:`` defaults; 1568 px is the largest long side a vision
+# model takes without downscaling it again.
+EXTRACT_MAX_CHARS = 20000
+EXTRACT_MAX_IMAGES = 8
+EXTRACT_MAX_LONG_SIDE = 1000
+EXTRACT_LONG_SIDE_CEILING = 1568
+EXTRACT_JPEG_QUALITY = 80
+MISSING_DOCUMENTS_EXTRA = (
+    "download extract needs the documents extra: pip install 'llm-browser[documents]'"
+)
+EXTRACT_MAX_CHARS_CEILING = 100_000
+EXTRACT_MAX_IMAGES_CEILING = 50
+EXTRACT_PAGES_MAX_LENGTH = 200
+# What one page costs against ``max_chars`` before its text: a flat allowance
+# for its wrapper, so blank pages of a scan still run the budget down.
+EXTRACT_PAGE_OVERHEAD_CHARS = 40
+# EXIF orientations that turn the image a quarter, swapping width and height.
+TURNED_SIDEWAYS = frozenset({5, 6, 7, 8})

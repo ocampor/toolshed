@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
+    Field,
     PlainSerializer,
     SerializeAsAny,
 )
@@ -132,6 +133,53 @@ class BytesResult(ActionResult):
     name: str
     content: PayloadBytes
     media_type: str = DEFAULT_MEDIA_TYPE
+
+
+class TextPage(BaseModel):
+    page: int = Field(description="1-based.")
+    text: str = Field(description='The page\'s text layer; "" when it has none.')
+    clipped: bool = Field(
+        default=False,
+        description="`max_chars` cut this page short; request it alone with a larger one.",
+    )
+
+
+class ImagePage(BaseModel):
+    page: int = Field(description="1-based; a frame, for a multi-frame image.")
+    image: PayloadBytes = Field(description="JPEG bytes; base64 in JSON.")
+    width: int
+    height: int
+    original_width: int = Field(
+        description="PDF points for a PDF, pixels for an image."
+    )
+    original_height: int = Field(
+        description="PDF points for a PDF, pixels for an image."
+    )
+
+
+class DocumentResult(ActionResult):
+    """A download's ``extract:`` output: file metadata plus pages, instead of
+    the bytes. ``pages`` is empty when the file has nothing the mode reads.
+
+    ``truncated`` means a budget cut the run short: ``next_pages`` is the
+    ``pages`` value that picks up where it stopped, and a page marked
+    ``clipped`` is read in full only by requesting it alone with a larger
+    ``max_chars`` (or in ``images`` mode).
+    """
+
+    filename: str = Field(description="The server's suggested name; remote input.")
+    content_type: str = Field(
+        description="Detected from the file's content; the server's label when the type isn't recognised."
+    )
+    size: int = Field(description="Bytes of the downloaded file.")
+    sha256: str = Field(description="Hex digest of the downloaded file.")
+    mode: Literal["text", "images"]
+    page_count: int | None = Field(
+        description="Pages (or frames, or text chunks) in the file; null with no pages."
+    )
+    truncated: bool
+    next_pages: str | None = Field(description="Feed back as `pages` to continue.")
+    pages: list[TextPage | ImagePage]
 
 
 def guess_media_type(name: str) -> str:

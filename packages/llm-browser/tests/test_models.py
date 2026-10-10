@@ -4,6 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from llm_browser.behavior import Jitter
+from llm_browser.download_extract import ImageExtract, TextExtract
+from llm_browser.flow_passes import step_output
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import (
     ClickStep,
@@ -21,6 +23,8 @@ from llm_browser.models import (
     TypeStep,
     validate_step,
 )
+from llm_browser.results import DocumentResult, TextPage
+from llm_browser.steps import resolve_step_templates
 
 
 def test_session_info_round_trip() -> None:
@@ -325,3 +329,66 @@ def test_fill_takes_humanize() -> None:
         {"name": "s", "action": "fill", "selector": "#x", "humanize": False}
     )
     assert isinstance(plain, FillStep) and plain.humanize is False
+
+
+def download(extract: dict[str, object]) -> dict[str, object]:
+    return {"action": "download", "selector": "a", "extract": extract}
+
+
+@pytest.mark.parametrize(
+    ("extract", "kind"),
+    [
+        ({"mode": "text", "pages": "1-3,7"}, TextExtract),
+        ({"mode": "images", "max_long_side": 1568}, ImageExtract),
+    ],
+)
+def test_download_extract_validates(extract: dict[str, object], kind: type) -> None:
+    step = validate_step(download(extract))
+    assert isinstance(step.extract, kind)
+
+
+@pytest.mark.parametrize(
+    "extract",
+    [
+        {"mode": "images", "max_chars": 5},
+        {"mode": "text", "max_images": 2},
+        {"mode": "images", "max_long_side": 1569},
+        {"mode": "images", "quality": 96},
+        {"mode": "ocr"},
+        {"mode": "text", "pages": "0"},
+        {"mode": "text", "pages": "3-1"},
+        {"mode": "text", "pages": "3-"},
+        {"mode": "text", "max_chars": 100_001},
+        {"mode": "images", "max_images": 51},
+        {"mode": "text", "pages": "1," * 100 + "1"},
+        {"mode": "text", "max_chars": 40},
+        {"mode": "text", "pages": "1,x"},
+    ],
+)
+def test_download_extract_rejects(extract: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        validate_step(download(extract))
+
+
+def test_step_output_keeps_a_document_result() -> None:
+    result = DocumentResult(
+        filename="r.pdf",
+        content_type="application/pdf",
+        size=3,
+        sha256="ab",
+        mode="text",
+        page_count=1,
+        truncated=False,
+        next_pages=None,
+        pages=[TextPage(page=1, text="hi")],
+    )
+    step = validate_step(download({"mode": "text"}))
+    assert step_output(step, result) is result
+
+
+def test_a_templated_page_range_is_checked_once_filled() -> None:
+    step = validate_step(download({"mode": "text", "pages": "{{ p }}"}))
+    filled = resolve_step_templates(step, FlowData(p="2-3"))
+    assert filled.extract.pages == "2-3"
+    with pytest.raises(ValidationError):
+        resolve_step_templates(step, FlowData(p="3-"))
