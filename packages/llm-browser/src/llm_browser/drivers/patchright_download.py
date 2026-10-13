@@ -16,6 +16,7 @@ from llm_browser.constants import (
 from llm_browser.drivers.playwright_base import read_download
 from llm_browser.results import BytesResult
 
+
 @dataclass(frozen=True)
 class Deadline:
     """One budget for a download step: the wait for a file and its transfer."""
