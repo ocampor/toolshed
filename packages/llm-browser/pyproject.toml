@@ -56,6 +56,9 @@ artifacts = ["/src/llm_browser/docs/reference/*.md"]
 path = "hatch_build.py"
 package = "llm_browser"
 
+[tool.pytest.ini_options]
+markers = ["real_browser: drives a real Chromium; skipped when none is installed"]
+
 [tool.mypy]
 strict = true
 

@@ -31,6 +31,7 @@ from llm_browser.drivers.patchright_download import catch_file
 from llm_browser.drivers.patchright_shim import start_playwright
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 from llm_browser.results import BytesResult
+from llm_browser.scripts import load_script
 
 
 class PatchrightDriver(PlaywrightDriverBase):
@@ -107,7 +108,7 @@ class PatchrightDriver(PlaywrightDriverBase):
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:
-        return catch_file(page, trigger, timeout_ms)
+        return catch_file(page, trigger, timeout_ms, self._browser)
 
     def close(self, handle: DriverHandle) -> None:
         if _is_attached(handle):
@@ -178,6 +179,9 @@ class PatchrightDriver(PlaywrightDriverBase):
         assert self._playwright is not None
         if self._browser is None or not self._browser.is_connected():
             self._browser = self._playwright.chromium.connect_over_cdp(cdp_url)
+            context = _first_context_or_new(self._browser)
+            # A blob revoked right after its click must outlive the in-page read.
+            context.add_init_script(load_script("keep_blobs"))
         self._context = _first_context_or_new(self._browser)
         return self._context
 
