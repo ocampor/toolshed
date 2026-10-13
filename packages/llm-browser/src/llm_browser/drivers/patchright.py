@@ -27,7 +27,8 @@ from patchright.sync_api import (
 )
 
 from llm_browser.drivers.handle import DriverHandle
-from llm_browser.drivers.patchright_download import catch_file
+from llm_browser.drivers.patchright_download import Deadline, catch_download
+from llm_browser.drivers.patchright_inpage import catch_in_page
 from llm_browser.drivers.patchright_shim import start_playwright
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 from llm_browser.results import BytesResult
@@ -107,7 +108,10 @@ class PatchrightDriver(PlaywrightDriverBase):
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:
-        return catch_file(page, trigger, timeout_ms, self._browser)
+        deadline = Deadline.start(timeout_ms)
+        if self._browser is None:
+            return catch_download(page, trigger, deadline)
+        return catch_in_page(self._browser, page, trigger, deadline)
 
     def close(self, handle: DriverHandle) -> None:
         if _is_attached(handle):

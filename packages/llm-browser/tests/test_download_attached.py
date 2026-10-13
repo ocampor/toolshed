@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from llm_browser.actions import execute_action
-from llm_browser.drivers import patchright_download
+from llm_browser.drivers import patchright_inpage
 from llm_browser.models import DownloadStep
 from llm_browser.results import ErrorResult
 from llm_browser.scripts import load_script
@@ -220,7 +220,7 @@ def test_attached_download_is_read_in_page(
 def test_these_blobs_need_the_keep_blob_script(
     session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
-    monkeypatch.setattr(patchright_download, "keep_blobs", lambda page: None)
+    monkeypatch.setattr(patchright_inpage, "keep_blobs", lambda page: None)
     page = session.get_page()
     page.goto(f"{site}{path}?mb=1")
     page.locator('[aria-label="Download"]').wait_for()
@@ -265,7 +265,7 @@ def test_an_idle_session_does_not_stall_other_clients(
 def test_a_transfer_past_the_deadline_fails_the_step(
     session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(patchright_download, "DOWNLOAD_SLICE_BYTES", 1024)
+    monkeypatch.setattr(patchright_inpage, "DOWNLOAD_SLICE_BYTES", 1024)
     session.get_page().goto(f"{site}/top.html?mb=15")
     step = DownloadStep(
         name="s", action="download", selector='[aria-label="Download"]', timeout=2000
