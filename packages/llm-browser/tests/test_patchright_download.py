@@ -62,29 +62,36 @@ def fake_frame(url: str, tree: dict[str, Any] | None) -> SimpleNamespace:
     return SimpleNamespace(url=url, page=SimpleNamespace(context=context))
 
 
+def detached_frame() -> SimpleNamespace:
+    """A frame that goes away between its session opening and answering."""
+
+    def gone(*args: object) -> None:
+        raise RuntimeError("Target closed")
+
+    session = SimpleNamespace(send=gone, detach=gone)
+    context = SimpleNamespace(new_cdp_session=lambda frame: session)
+    return SimpleNamespace(
+        url="https://pay.test/gone", page=SimpleNamespace(context=context)
+    )
+
+
 def fake_tab() -> SimpleNamespace:
     main = fake_frame("https://bank.test/", TREE)
     leaf = fake_frame("https://bank.test/leaf", None)
     oopif = fake_frame(
         "https://pay.test/", {"frame": {"id": "OOPIF", "url": "https://pay.test/"}}
     )
-    return SimpleNamespace(frames=[main, leaf, oopif])
+    return SimpleNamespace(frames=[detached_frame(), main, leaf, oopif])
 
 
 @pytest.mark.parametrize(
-    ("frame_id", "url", "expected"),
-    [
-        ("ROOT", "blob:https://bank.test/x", 0),
-        ("OOPIF", "blob:https://pay.test/x", 2),
-        ("LEAF", "blob:https://bank.test/x", 1),
-        ("ELSEWHERE", "blob:https://pay.test/x", 2),
-        ("ELSEWHERE", "blob:https://other.test/x", None),
-    ],
-    ids=["root", "out-of-process", "in-process child", "origin", "not this tab"],
+    ("frame_id", "expected"),
+    [("ROOT", 1), ("OOPIF", 3), ("LEAF", 2), ("ELSEWHERE", None)],
+    ids=["root", "out-of-process", "in-process child", "not this tab"],
 )
 def test_frame_for_maps_a_download_to_this_tab_only(
-    frame_id: str, url: str, expected: int | None
+    frame_id: str, expected: int | None
 ) -> None:
     tab = fake_tab()
-    frame = frame_for([tab], frame_id, url)
+    frame = frame_for([tab], frame_id)
     assert frame is (None if expected is None else tab.frames[expected])

@@ -412,10 +412,9 @@ No `extract:` needed — a bare `read` gives the default `text` field (see
 ## Reading a downloaded document
 
 `download` returns the file as base64; for a large PDF add `extract:` (needs
-`llm-browser[documents]`). On an attached browser the bytes are read inside the page: a POST or
-one-time-token download cannot be refetched and fails, and a blob the page revokes right after
-the click is caught only in a tab loaded after attach. Read text first, then render only the
-pages that came back empty:
+`llm-browser[documents]`). On an attached browser the bytes are read inside the page, with the
+limits in `reference/steps` under `DownloadStep`. Read text first, then render only the pages
+that came back empty:
 
 ```yaml
 - {name: report, action: download, ref: chat.doc_row, extract: {mode: text, pages: "1-10"}}

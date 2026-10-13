@@ -7,6 +7,7 @@ import http.server
 import random
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -17,14 +18,19 @@ import pytest
 
 from llm_browser.actions import execute_action
 from llm_browser.drivers import patchright_download
-from llm_browser.drivers.patchright_download import catch_file
 from llm_browser.models import DownloadStep
 from llm_browser.results import ErrorResult
 from llm_browser.scripts import load_script
 from llm_browser.session import BrowserSession
 
-pytestmark = pytest.mark.real_browser
-
+# Another process's client: its goto must not wait on our idle connection.
+OTHER_CLIENT = """
+import sys
+from patchright.sync_api import sync_playwright
+with sync_playwright() as p:
+    page = p.chromium.connect_over_cdp(sys.argv[1]).contexts[0].new_page()
+    page.goto(sys.argv[2], timeout=5000)
+"""
 SIZES_MB = (1, 15)
 DATA = {mb: random.Random(mb).randbytes(mb << 20) for mb in SIZES_MB}
 BUTTON = """<button aria-label="Download" onclick="
@@ -189,19 +195,48 @@ def test_attached_download_is_read_in_page(
     assert hashlib.sha256(result.content).digest() == hashlib.sha256(DATA[mb]).digest()
 
 
-def test_a_revoked_blob_needs_the_init_script(
+def test_a_revoked_blob_needs_the_keep_blob_script(
+    session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(patchright_download, "keep_blobs", lambda page: None)
+    page = session.get_page()
+    page.goto(f"{site}/revoke.html?mb=1")
+    click = page.locator('[aria-label="Download"]').click
+    with pytest.raises(ValueError, match="did not complete"):
+        session.driver.download_bytes(page, click, 10000)
+
+
+def test_a_download_in_another_tab_is_not_ours(
     session: BrowserSession, site: str
 ) -> None:
-    browser = session.get_page().context.browser
-    bare = browser.new_context()  # no keep-blob init script
+    page = session.get_page()
+    page.goto(f"{site}/top.html")
+    other = page.context.new_page()
     try:
-        page = bare.new_page()
-        page.goto(f"{site}/revoke.html?mb=1")
-        click = page.locator('[aria-label="Download"]').click
-        with pytest.raises(ValueError, match="did not complete"):
-            catch_file(page, click, 10000, browser)
+        other.goto(f"{site}/top.html")
+        click = other.locator('[aria-label="Download"]').click
+        with pytest.raises(ValueError, match="outside this tab"):
+            session.driver.download_bytes(page, click, 3000)
     finally:
-        bare.close()
+        other.close()
+
+
+def test_an_idle_session_does_not_stall_other_clients(
+    session: BrowserSession, site: str, chrome: tuple[str, Path]
+) -> None:
+    """An init script would leave a context-wide route that only an active
+    sync call services, hanging every other client's navigation."""
+    page = session.get_page()
+    page.goto(f"{site}/top.html")
+    button = page.locator('[aria-label="Download"]')
+    session.driver.download_bytes(page, button.click, 10000)
+    other_client = subprocess.run(
+        [sys.executable, "-c", OTHER_CLIENT, chrome[0], f"{site}/top.html"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert other_client.returncode == 0, other_client.stderr[-500:]
 
 
 def test_a_transfer_past_the_deadline_fails_the_step(
@@ -234,7 +269,7 @@ def test_a_hung_refetch_times_out_within_the_step(
 def test_the_keep_blob_script_runs_twice_without_error(
     session: BrowserSession, site: str
 ) -> None:
-    """browser-api attaches once per tab, and each connection adds the script."""
+    """Every download step evaluates the script again in the same document."""
     page = session.get_page()
     page.goto(f"{site}/top.html")
     page.evaluate(load_script("keep_blobs"), isolated_context=False)

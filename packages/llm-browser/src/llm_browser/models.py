@@ -555,8 +555,9 @@ class DownloadStep(SelectorStep):
     ``screenshot``, ``path`` is an instruction to ``llm-browser run`` alone.
 
     On an attached browser the bytes are read inside the page, so a POST or
-    one-time-token download that cannot be refetched fails; holding revoked
-    blobs takes an init script, a small fingerprint cost."""
+    one-time-token download that cannot be refetched fails, and a blob that a
+    popup revokes right after the click is lost; holding revoked blobs patches
+    the tab's ``URL`` functions for the step, a small fingerprint cost."""
 
     action: Literal["download"]
     path: str | None = Field(

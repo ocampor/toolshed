@@ -67,6 +67,7 @@ def catch_file(
     try:
         if browser is not None:
             cdp = watch_begins(browser, arrivals)
+            keep_blobs(page)
         trigger()
         own = wait_for_arrival(page, arrivals)
         # Inside the try: the popup a download began in closes in the finally.
@@ -95,7 +96,7 @@ def wait_for_arrival(
         while arrivals.begins:
             begin = arrivals.begins.pop(0)
             pages = [page, *arrivals.popups]
-            frame = frame_for(pages, begin["frameId"], begin["url"])
+            frame = frame_for(pages, begin["frameId"])
             if frame is not None:
                 return begin, frame
             arrivals.foreign_begins += 1
@@ -114,8 +115,21 @@ def watch_begins(browser: Browser, arrivals: Arrivals) -> CDPSession:
 
     cdp.on("Browser.downloadWillBegin", on_begin)
     behavior = {"behavior": "deny", "eventsEnabled": True}
-    cdp.send("Browser.setDownloadBehavior", behavior)
+    try:
+        cdp.send("Browser.setDownloadBehavior", behavior)
+    except Exception as exc:
+        with suppress(Exception):
+            cdp.detach()
+        reason = " ".join(str(exc).split())[:200]
+        raise ValueError(f"download did not complete: {reason}") from exc
     return cdp
+
+
+def keep_blobs(page: Page) -> None:
+    # Per step, not an init script: patchright routes the whole context for one.
+    for frame in page.frames:
+        with suppress(Exception):
+            frame.evaluate(load_script("keep_blobs"), isolated_context=False)
 
 
 def stop_begins(cdp: CDPSession) -> None:
@@ -169,7 +183,7 @@ def transfer_left_ms(deadline: float) -> int:
     return left
 
 
-def frame_for(pages: list[Page], frame_id: str, url: str) -> Frame | None:
+def frame_for(pages: list[Page], frame_id: str) -> Frame | None:
     """The frame of these tabs a download began in; None when it is not theirs."""
     frames = [frame for page in pages for frame in page.frames]
     for frame in frames:
@@ -183,8 +197,7 @@ def frame_for(pages: list[Page], frame_id: str, url: str) -> Frame | None:
         same_url = [other for other in frames if other.url == child_url]
         if child_url and same_url:
             return same_url[0]
-    origin = url_origin(url)
-    return next((frame for frame in frames if url_origin(frame.url) == origin), None)
+    return None
 
 
 def frame_tree(frame: Frame) -> dict[str, Any] | None:
@@ -196,8 +209,11 @@ def frame_tree(frame: Frame) -> dict[str, Any] | None:
     try:
         tree: dict[str, Any] = session.send("Page.getFrameTree")["frameTree"]
         return tree
+    except Exception:
+        return None
     finally:
-        session.detach()
+        with suppress(Exception):
+            session.detach()
 
 
 def find_url(tree: dict[str, Any], frame_id: str) -> str | None:
@@ -208,11 +224,6 @@ def find_url(tree: dict[str, Any], frame_id: str) -> str | None:
         if url:
             return url
     return None
-
-
-def url_origin(url: str) -> tuple[str, str]:
-    parts = urlsplit(url.removeprefix("blob:"))
-    return parts.scheme, parts.netloc
 
 
 def watch(page: Page, arrivals: Arrivals, listen_downloads: bool) -> Callable[[], None]:

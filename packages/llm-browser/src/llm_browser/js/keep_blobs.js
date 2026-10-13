@@ -1,8 +1,8 @@
-// Init script for attached browsers: a page that revokes its blob URL right
-// after the click leaves the in-page download read nothing to fetch, so each
+// Run before an attached download's click: a page that revokes its blob URL
+// right after the click leaves the in-page read nothing to fetch, so each
 // Blob is held ~30 s past its revoke. Non-enumerable to stay out of sight.
 (() => {
-  // One CDP connection per tab adds this once each; wrap URL.* only once.
+  // Every download step runs this again; wrap URL.* only once per document.
   if (window.__k7b) return;
   const kept = new Map();
   const create = URL.createObjectURL;
