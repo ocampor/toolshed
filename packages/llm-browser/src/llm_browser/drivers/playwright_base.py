@@ -10,6 +10,7 @@ drivers (e.g. nodriver) don't need to — they implement `Driver` directly
 and never touch these Protocols.
 """
 
+from contextlib import suppress
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Protocol, cast
@@ -121,7 +122,9 @@ def read_download(download: PwDownload) -> BytesResult:
             f"download did not complete: {' '.join(str(exc).split())[:200]}"
         ) from exc
     finally:
-        download.delete()
+        # A canceled download raises here too, which would hide the ValueError.
+        with suppress(Exception):
+            download.delete()
     name = download.suggested_filename
     return BytesResult(name=name, content=content, media_type=guess_media_type(name))
 
