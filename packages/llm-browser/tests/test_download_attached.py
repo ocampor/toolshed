@@ -39,11 +39,27 @@ fetch('/blob.bin?mb={mb}').then(r => r.blob()).then(b => {{
   a.href = window.URL.createObjectURL(b); a.download = 'doc.pdf'; document.body.append(a);
   a.click(); {after}
 }});">Download</button>"""
+# The blob URL exists before the step; the button shows once it does.
+EARLY_BLOB = """<script>
+fetch('/blob.bin?mb={mb}').then(r => r.blob()).then(b => {{
+  const url = URL.createObjectURL(b);
+  const button = document.createElement('button');
+  button.setAttribute('aria-label', 'Download');
+  button.onclick = () => {{
+    const a = document.createElement('a');
+    a.href = url; a.download = 'doc.pdf'; document.body.append(a);
+    a.click(); URL.revokeObjectURL(url);
+  }};
+  document.body.append(button);
+}});
+</script>"""
 
 
 def page_html(path: str, mb: int, other: str) -> str:
     if path == "/revoke.html":
         return BUTTON.format(mb=mb, after="window.URL.revokeObjectURL(a.href);")
+    if path == "/early.html":
+        return EARLY_BLOB.format(mb=mb)
     if path == "/frame-host.html":
         return f'<iframe id="f" src="{other}/top.html?mb={mb}"></iframe>'
     if path in ("/link.html", "/hang-link.html"):
@@ -177,6 +193,7 @@ CASES = {
     "a top-frame blob, sliced": ("/top.html", 15, False),
     "b cross-origin iframe blob": ("/frame-host.html", 1, True),
     "c revoked right after the click": ("/revoke.html", 1, False),
+    "c made before the step, revoked on the click": ("/early.html", 1, False),
     "d direct link": ("/link.html", 1, False),
 }
 
@@ -195,12 +212,14 @@ def test_attached_download_is_read_in_page(
     assert hashlib.sha256(result.content).digest() == hashlib.sha256(DATA[mb]).digest()
 
 
+@pytest.mark.parametrize("path", ["/revoke.html", "/early.html"])
 def test_a_revoked_blob_needs_the_keep_blob_script(
-    session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch
+    session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
     monkeypatch.setattr(patchright_download, "keep_blobs", lambda page: None)
     page = session.get_page()
-    page.goto(f"{site}/revoke.html?mb=1")
+    page.goto(f"{site}{path}?mb=1")
+    page.locator('[aria-label="Download"]').wait_for()
     click = page.locator('[aria-label="Download"]').click
     with pytest.raises(ValueError, match="did not complete"):
         session.driver.download_bytes(page, click, 10000)
