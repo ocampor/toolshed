@@ -156,7 +156,7 @@ def read_in_page(
 
 
 def read_bytes(frame: Frame, url: str, key: str, deadline: float) -> bytes:
-    # Main world: the deferred revoke from keep_blobs is patched in there.
+    # Main world: keep_blobs' kept Blobs and deferred revokes live there.
     read = [url, key, transfer_left_ms(deadline)]
     size = frame.evaluate(load_script("download_read"), read, isolated_context=False)
     if size < 0:

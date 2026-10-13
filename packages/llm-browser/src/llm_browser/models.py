@@ -556,9 +556,10 @@ class DownloadStep(SelectorStep):
 
     On an attached browser the bytes are read inside the page, so a POST or
     one-time-token download that cannot be refetched fails, and a blob that a
-    popup revokes right after the click is lost; keeping blobs readable defers
-    the tab's ``URL.revokeObjectURL`` until the page reloads, a small
-    fingerprint cost."""
+    popup revokes right after the click is lost, as is a blob made before the
+    step on a page whose CSP blocks ``blob:`` fetches. Keeping blobs readable
+    wraps the tab's ``URL.createObjectURL`` and ``URL.revokeObjectURL`` until
+    the page reloads, a small fingerprint cost."""
 
     action: Literal["download"]
     path: str | None = Field(

@@ -88,7 +88,10 @@ def handler(other: list[str]) -> type[http.server.BaseHTTPRequestHandler]:
                     "content-disposition": 'attachment; filename="file.pdf"',
                 }
             else:
-                body = page_html(path, mb, other[0]).encode()
+                body = page_html(path.removeprefix("/csp"), mb, other[0]).encode()
+            if path.startswith("/csp/"):
+                # blob: is not 'self', so a refetch of the page's blob is refused.
+                headers["content-security-policy"] = "connect-src 'self'"
             self.send_response(200)
             for name, value in headers.items():
                 self.send_header(name, value)
@@ -195,6 +198,7 @@ CASES = {
     "c revoked right after the click": ("/revoke.html", 1, False),
     "c made before the step, revoked on the click": ("/early.html", 1, False),
     "d direct link": ("/link.html", 1, False),
+    "blob under CSP connect-src 'self'": ("/csp/top.html", 1, False),
 }
 
 
@@ -212,8 +216,8 @@ def test_attached_download_is_read_in_page(
     assert hashlib.sha256(result.content).digest() == hashlib.sha256(DATA[mb]).digest()
 
 
-@pytest.mark.parametrize("path", ["/revoke.html", "/early.html"])
-def test_a_revoked_blob_needs_the_keep_blob_script(
+@pytest.mark.parametrize("path", ["/revoke.html", "/early.html", "/csp/top.html"])
+def test_these_blobs_need_the_keep_blob_script(
     session: BrowserSession, site: str, monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
     monkeypatch.setattr(patchright_download, "keep_blobs", lambda page: None)
@@ -285,10 +289,30 @@ def test_a_hung_refetch_times_out_within_the_step(
     assert time.monotonic() - started < 5
 
 
-def test_the_keep_blob_script_runs_twice_without_error(
+def test_the_keep_blob_script_wraps_a_document_once(
     session: BrowserSession, site: str
 ) -> None:
-    """Every download step evaluates the script again in the same document."""
+    """Every download step evaluates the script again in the same document;
+    a revoke must still happen once, and only after the deferral."""
     page = session.get_page()
     page.goto(f"{site}/top.html")
-    page.evaluate(load_script("keep_blobs"), isolated_context=False)
+    page.evaluate(FAKE_REVOKE_AND_TIMERS, isolated_context=False)
+    for _ in range(2):
+        page.evaluate(load_script("keep_blobs"), isolated_context=False)
+    revokes = page.evaluate(REVOKE_THEN_FIRE_TIMERS, isolated_context=False)
+    assert revokes == {"at_call": 0, "after_timers": 1}
+
+
+FAKE_REVOKE_AND_TIMERS = """() => {
+  window.revoked = [];
+  window.timers = [];
+  URL.revokeObjectURL = (url) => window.revoked.push(url);
+  window.setTimeout = (callback) => window.timers.push(callback);
+}"""
+# One round of timers: a double wrap would need two to reach the real revoke.
+REVOKE_THEN_FIRE_TIMERS = """() => {
+  URL.revokeObjectURL("blob:x");
+  const at_call = window.revoked.length;
+  window.timers.splice(0).forEach((callback) => callback());
+  return { at_call, after_timers: window.revoked.length };
+}"""
