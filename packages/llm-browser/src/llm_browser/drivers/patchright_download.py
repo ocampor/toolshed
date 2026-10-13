@@ -8,12 +8,13 @@ from urllib.parse import urlsplit
 
 from patchright.sync_api import Download, Page, Request, Route
 
-from llm_browser.constants import DOWNLOAD_POLL_MS, PAGE_MEDIA_TYPES
+from llm_browser.constants import (
+    DOWNLOAD_POLL_MS,
+    PAGE_MEDIA_TYPES,
+    TRANSFER_EXCEEDED,
+)
 from llm_browser.drivers.playwright_base import read_download
 from llm_browser.results import BytesResult
-
-TRANSFER_EXCEEDED = "download transfer exceeded the step's timeout"
-
 
 @dataclass(frozen=True)
 class Deadline:
@@ -52,13 +53,12 @@ def catch_download(
 ) -> BytesResult:
     arrivals = Arrivals(deadline)
     stop_listening = listen_for_downloads(page, arrivals)
-    stop_watching = watch(page, arrivals)
+    stop_watching = watch(page, arrivals, after_unroute=stop_listening)
     try:
         trigger()
         while not (arrivals.downloads or arrivals.files) and deadline.remaining_ms():
             page.wait_for_timeout(DOWNLOAD_POLL_MS)
     finally:
-        stop_listening()
         stop_watching()
     if arrivals.downloads:
         return read_download(arrivals.downloads[0])
@@ -85,9 +85,11 @@ def listen_for_downloads(page: Page, arrivals: Arrivals) -> Callable[[], None]:
     return stop
 
 
-def watch(page: Page, arrivals: Arrivals) -> Callable[[], None]:
-    """Track popups and catch a navigation answered with a file; stopping
-    closes the popups."""
+def watch(
+    page: Page, arrivals: Arrivals, after_unroute: Callable[[], None] = lambda: None
+) -> Callable[[], None]:
+    """Stopping closes the popups. ``after_unroute`` runs once the route is
+    gone, so events queued during the unroute round trip still land."""
 
     def on_popup(popup: Page) -> None:
         arrivals.popups.append(popup)
@@ -100,6 +102,7 @@ def watch(page: Page, arrivals: Arrivals) -> Callable[[], None]:
 
     def stop() -> None:
         page.context.unroute("**/*", on_route)
+        after_unroute()
         page.remove_listener("popup", on_popup)
         for popup in arrivals.popups:
             popup.close()

@@ -9,13 +9,12 @@ from typing import Any, TypedDict
 
 from patchright.sync_api import Browser, CDPSession, Frame, Page
 
-from llm_browser.constants import DOWNLOAD_POLL_MS, DOWNLOAD_SLICE_BYTES
-from llm_browser.drivers.patchright_download import (
+from llm_browser.constants import (
+    DOWNLOAD_POLL_MS,
+    DOWNLOAD_SLICE_BYTES,
     TRANSFER_EXCEEDED,
-    Arrivals,
-    Deadline,
-    watch,
 )
+from llm_browser.drivers.patchright_download import Arrivals, Deadline, watch
 from llm_browser.results import BytesResult, guess_media_type
 from llm_browser.scripts import load_script
 
