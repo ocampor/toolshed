@@ -27,8 +27,9 @@ from patchright.sync_api import (
 )
 
 from llm_browser.drivers.handle import DriverHandle
-from llm_browser.drivers.patchright_download import Deadline, catch_download
-from llm_browser.drivers.patchright_inpage import catch_in_page
+from llm_browser.drivers.patchright_download import Deadline
+from llm_browser.drivers.patchright_download_cdp import catch_cdp_download
+from llm_browser.drivers.patchright_download_launched import catch_launched_download
 from llm_browser.drivers.patchright_shim import start_playwright
 from llm_browser.drivers.playwright_base import PlaywrightDriverBase
 from llm_browser.results import BytesResult
@@ -110,8 +111,9 @@ class PatchrightDriver(PlaywrightDriverBase):
     ) -> BytesResult:
         deadline = Deadline.start(timeout_ms)
         if self._browser is None:
-            return catch_download(page, trigger, deadline)
-        return catch_in_page(self._browser, page, trigger, deadline)
+            return catch_launched_download(page, trigger, deadline)
+        # Attached means CDP: the remote Chrome can't write Playwright's download dir.
+        return catch_cdp_download(self._browser, page, trigger, deadline)
 
     def close(self, handle: DriverHandle) -> None:
         if _is_attached(handle):

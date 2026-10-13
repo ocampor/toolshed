@@ -1,5 +1,9 @@
+"""Shared by both download modes: the step's deadline, popup tracking and
+the route that catches a navigation answered with a file."""
+
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
@@ -13,7 +17,6 @@ from llm_browser.constants import (
     PAGE_MEDIA_TYPES,
     TRANSFER_EXCEEDED,
 )
-from llm_browser.drivers.playwright_base import read_download
 from llm_browser.results import BytesResult
 
 
@@ -32,7 +35,7 @@ class Deadline:
         return max(0.0, (self.at - time.monotonic()) * 1000)
 
     def left_ms(self) -> int:
-        left = int((self.at - time.monotonic()) * 1000)
+        left = int(self.remaining_ms())
         if left <= 0:
             raise TimeoutError(TRANSFER_EXCEEDED)
         return left
@@ -49,45 +52,46 @@ class Arrivals:
     popups: list[Page] = field(default_factory=list)
 
 
-def catch_download(
-    page: Page, trigger: Callable[[], None], deadline: Deadline
-) -> BytesResult:
+type Listen = Callable[[Page, Arrivals], Callable[[], None]]
+
+
+@contextmanager
+def watching(
+    page: Page, deadline: Deadline, listen: Listen | None = None
+) -> Iterator[Arrivals]:
+    """``listen`` adds a mode's own listeners; they go after the route, before
+    the popups close."""
     arrivals = Arrivals(deadline)
-    stop_listening = listen_for_downloads(page, arrivals)
+    stop_listening = listen(page, arrivals) if listen else (lambda: None)
     stop_watching = watch(page, arrivals, after_unroute=stop_listening)
     try:
-        trigger()
-        while not (arrivals.downloads or arrivals.files) and deadline.remaining_ms():
-            page.wait_for_timeout(DOWNLOAD_POLL_MS)
+        yield arrivals
     finally:
         stop_watching()
-    if arrivals.downloads:
-        return read_download(arrivals.downloads[0])
+
+
+def poll_until[T](
+    page: Page, arrivals: Arrivals, ready: Callable[[], T | None]
+) -> T | None:
+    """What ``ready`` found; None once a route caught a file or time ran out."""
+    while arrivals.deadline.remaining_ms():
+        if arrivals.files:
+            return None
+        found = ready()
+        if found is not None:
+            return found
+        page.wait_for_timeout(DOWNLOAD_POLL_MS)
+    return None
+
+
+def caught_file(arrivals: Arrivals) -> BytesResult:
     if arrivals.files:
         return arrivals.files[0]
-    raise deadline.nothing_arrived()
-
-
-def listen_for_downloads(page: Page, arrivals: Arrivals) -> Callable[[], None]:
-    # Closures, not bound methods: Playwright sets an attribute on each handler.
-    def on_download(download: Download) -> None:
-        arrivals.downloads.append(download)
-
-    def on_popup(popup: Page) -> None:
-        popup.on("download", on_download)
-
-    page.on("download", on_download)
-    page.on("popup", on_popup)
-
-    def stop() -> None:
-        page.remove_listener("download", on_download)
-        page.remove_listener("popup", on_popup)
-
-    return stop
+    raise arrivals.deadline.nothing_arrived()
 
 
 def watch(
-    page: Page, arrivals: Arrivals, after_unroute: Callable[[], None] = lambda: None
+    page: Page, arrivals: Arrivals, after_unroute: Callable[[], None]
 ) -> Callable[[], None]:
     """Stopping closes the popups. ``after_unroute`` runs once the route is
     gone, so events queued during the unroute round trip still land."""

@@ -1,5 +1,6 @@
-"""Downloads on an attached Chrome: it cannot write to Playwright's download
-dir, so the bytes are read inside the page the download began in."""
+"""CDP mode (attached Chrome): it cannot write to Playwright's download dir, so
+the step denies the download, takes ``downloadWillBegin`` and reads the bytes
+inside the page."""
 
 import base64
 from collections.abc import Callable, Iterator
@@ -9,12 +10,14 @@ from typing import Any, TypedDict
 
 from patchright.sync_api import Browser, CDPSession, Frame, Page
 
-from llm_browser.constants import (
-    DOWNLOAD_POLL_MS,
-    DOWNLOAD_SLICE_BYTES,
-    TRANSFER_EXCEEDED,
+from llm_browser.constants import DOWNLOAD_SLICE_BYTES, TRANSFER_EXCEEDED
+from llm_browser.drivers.patchright_download import (
+    Deadline,
+    caught_file,
+    poll_until,
+    watching,
 )
-from llm_browser.drivers.patchright_download import Arrivals, Deadline, watch
+from llm_browser.drivers.playwright_base import incomplete_download
 from llm_browser.results import BytesResult, guess_media_type
 from llm_browser.scripts import load_script
 
@@ -31,30 +34,31 @@ class DownloadBegin(TypedDict):
 type OwnBegin = tuple[DownloadBegin, Frame]
 
 
-def catch_in_page(
+def catch_cdp_download(
     browser: Browser, page: Page, trigger: Callable[[], None], deadline: Deadline
 ) -> BytesResult:
-    arrivals = Arrivals(deadline)
-    stop_watching = watch(page, arrivals)
-    try:
-        with download_events(browser) as (cdp, begins):
-            keep_blobs(page)
-            trigger()
-            own, foreign = wait_for_begin(page, arrivals, begins)
-            # Inside the try: the popup a download began in closes in the finally.
-            if own is not None:
-                return read_in_page(cdp, *own, deadline)
-    finally:
-        stop_watching()
-    if arrivals.files:
-        return arrivals.files[0]
-    if foreign:
+    foreign: list[DownloadBegin] = []
+    with (
+        watching(page, deadline) as arrivals,
+        cdp_download_events(browser) as (cdp, begins),
+    ):
+        keep_blobs(page)
+        trigger()
+
+        def own_begin() -> OwnBegin | None:
+            return take_own_begin([page, *arrivals.popups], begins, foreign)
+
+        own = poll_until(page, arrivals, own_begin)
+        # Inside the with: the popup a download began in closes on its exit.
+        if own is not None:
+            return read_in_page(cdp, *own, deadline)
+    if foreign and not arrivals.files:
         raise ValueError("download started outside this tab")
-    raise deadline.nothing_arrived()
+    return caught_file(arrivals)
 
 
 @contextmanager
-def download_events(
+def cdp_download_events(
     browser: Browser,
 ) -> Iterator[tuple[CDPSession, list[DownloadBegin]]]:
     # Only the session that set the behavior receives downloadWillBegin, and
@@ -73,7 +77,7 @@ def download_events(
     except Exception as exc:
         with suppress(Exception):
             cdp.detach()
-        raise ValueError(f"download did not complete: {brief(exc)}") from exc
+        raise incomplete_download(exc) from exc
     try:
         yield cdp, begins
     finally:
@@ -90,23 +94,17 @@ def keep_blobs(page: Page) -> None:
             frame.evaluate(load_script("keep_blobs"), isolated_context=False)
 
 
-def wait_for_begin(
-    page: Page, arrivals: Arrivals, begins: list[DownloadBegin]
-) -> tuple[OwnBegin | None, int]:
-    """The first download begun in this tab, or None once a file arrives or
-    time runs out; with how many begun elsewhere were skipped."""
-    foreign = 0
-    while arrivals.deadline.remaining_ms():
-        if arrivals.files:
-            return None, foreign
-        while begins:
-            begin = begins.pop(0)
-            frame = frame_for([page, *arrivals.popups], begin["frameId"])
-            if frame is not None:
-                return (begin, frame), foreign
-            foreign += 1
-        page.wait_for_timeout(DOWNLOAD_POLL_MS)
-    return None, foreign
+def take_own_begin(
+    pages: list[Page], begins: list[DownloadBegin], foreign: list[DownloadBegin]
+) -> OwnBegin | None:
+    """The first queued download begun in these tabs; the rest go to ``foreign``."""
+    while begins:
+        begin = begins.pop(0)
+        frame = frame_for(pages, begin["frameId"])
+        if frame is not None:
+            return begin, frame
+        foreign.append(begin)
+    return None
 
 
 def read_in_page(
@@ -119,7 +117,7 @@ def read_in_page(
     except TimeoutError:
         raise
     except Exception as exc:
-        raise ValueError(f"download did not complete: {brief(exc)}") from exc
+        raise incomplete_download(exc) from exc
     name = Path(begin["suggestedFilename"]).name
     return BytesResult(name=name, content=content, media_type=guess_media_type(name))
 
@@ -143,10 +141,6 @@ def read_bytes(frame: Frame, url: str, key: str, deadline: Deadline) -> bytes:
         with suppress(Exception):
             frame.evaluate(load_script("download_drop"), key, isolated_context=False)
     return b"".join(chunks)
-
-
-def brief(exc: Exception) -> str:
-    return " ".join(str(exc).split())[:200]
 
 
 def frame_for(pages: list[Page], frame_id: str) -> Frame | None:

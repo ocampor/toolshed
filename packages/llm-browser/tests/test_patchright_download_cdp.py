@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from llm_browser.drivers.patchright_inpage import find_url, frame_for
+from llm_browser.drivers.patchright_download_cdp import find_url, frame_for
 
 TREE = {
     "frame": {"id": "ROOT", "url": "https://bank.test/"},
