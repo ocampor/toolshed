@@ -20,6 +20,7 @@ from llm_browser.drivers import patchright_download
 from llm_browser.drivers.patchright_download import catch_file
 from llm_browser.models import DownloadStep
 from llm_browser.results import ErrorResult
+from llm_browser.scripts import load_script
 from llm_browser.session import BrowserSession
 
 pytestmark = pytest.mark.real_browser
@@ -39,18 +40,26 @@ def page_html(path: str, mb: int, other: str) -> str:
         return BUTTON.format(mb=mb, after="window.URL.revokeObjectURL(a.href);")
     if path == "/frame-host.html":
         return f'<iframe id="f" src="{other}/top.html?mb={mb}"></iframe>'
-    if path == "/link.html":
-        return f'<a aria-label="Download" download href="/file.pdf?mb={mb}">Get</a>'
+    if path in ("/link.html", "/hang-link.html"):
+        file = "file.pdf" if path == "/link.html" else "hang.pdf"
+        return f'<a aria-label="Download" download href="/{file}?mb={mb}">Get</a>'
     return BUTTON.format(mb=mb, after="")
 
 
 def handler(other: list[str]) -> type[http.server.BaseHTTPRequestHandler]:
+    served_hang = threading.Event()
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             path, _, query = self.path.partition("?")
             mb = int(query.removeprefix("mb=") or 1)
             headers = {"content-type": "text/html"}
-            if path in ("/blob.bin", "/file.pdf"):
+            if path == "/hang.pdf":
+                if served_hang.is_set():
+                    time.sleep(30)  # the in-page refetch never gets an answer
+                    return
+                served_hang.set()
+            if path in ("/blob.bin", "/file.pdf", "/hang.pdf"):
                 body = DATA[mb]
                 headers = {
                     "content-type": "application/pdf",
@@ -206,3 +215,26 @@ def test_a_transfer_past_the_deadline_fails_the_step(
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert "transfer exceeded" in result.message
+
+
+def test_a_hung_refetch_times_out_within_the_step(
+    session: BrowserSession, site: str
+) -> None:
+    session.get_page().goto(f"{site}/hang-link.html")
+    step = DownloadStep(
+        name="s", action="download", selector='[aria-label="Download"]', timeout=3000
+    )
+    started = time.monotonic()
+    result = execute_action(session, step)
+    assert isinstance(result, ErrorResult)
+    assert "transfer exceeded" in result.message
+    assert time.monotonic() - started < 5
+
+
+def test_the_keep_blob_script_runs_twice_without_error(
+    session: BrowserSession, site: str
+) -> None:
+    """browser-api attaches once per tab, and each connection adds the script."""
+    page = session.get_page()
+    page.goto(f"{site}/top.html")
+    page.evaluate(load_script("keep_blobs"), isolated_context=False)

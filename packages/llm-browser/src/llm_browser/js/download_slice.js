@@ -4,5 +4,5 @@
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(",") + 1));
     reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(window.__lbDownloads.get(key).slice(start, end));
+    reader.readAsDataURL(window.__k7d.get(key).slice(start, end));
   })

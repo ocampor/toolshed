@@ -1,1 +1,1 @@
-(key) => { window.__lbDownloads && window.__lbDownloads.delete(key); }
+(key) => { window.__k7d && window.__k7d.delete(key); }

@@ -28,6 +28,9 @@ from llm_browser.results import BytesResult, guess_media_type
 from llm_browser.scripts import load_script
 
 
+TRANSFER_EXCEEDED = "download transfer exceeded the step's timeout"
+
+
 class DownloadBegin(TypedDict):
     """CDP ``Browser.downloadWillBegin``, the fields read here."""
 
@@ -140,14 +143,14 @@ def read_in_page(
 
 def read_bytes(frame: Frame, url: str, key: str, deadline: float) -> bytes:
     # Main world: the keep-blob init script's Blobs live there.
-    size = frame.evaluate(
-        load_script("download_read"), [url, key], isolated_context=False
-    )
+    read = [url, key, transfer_left_ms(deadline)]
+    size = frame.evaluate(load_script("download_read"), read, isolated_context=False)
+    if size < 0:
+        raise TimeoutError(TRANSFER_EXCEEDED)
     chunks = []
     try:
         for start in range(0, size, DOWNLOAD_SLICE_BYTES):
-            if time.monotonic() > deadline:
-                raise TimeoutError("download transfer exceeded the step's timeout")
+            transfer_left_ms(deadline)
             span = [key, start, start + DOWNLOAD_SLICE_BYTES]
             chunk = frame.evaluate(
                 load_script("download_slice"), span, isolated_context=False
@@ -157,6 +160,13 @@ def read_bytes(frame: Frame, url: str, key: str, deadline: float) -> bytes:
         with suppress(Exception):
             frame.evaluate(load_script("download_drop"), key, isolated_context=False)
     return b"".join(chunks)
+
+
+def transfer_left_ms(deadline: float) -> int:
+    left = int((deadline - time.monotonic()) * 1000)
+    if left <= 0:
+        raise TimeoutError(TRANSFER_EXCEEDED)
+    return left
 
 
 def frame_for(pages: list[Page], frame_id: str, url: str) -> Frame | None:

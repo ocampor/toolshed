@@ -10,8 +10,8 @@ drivers (e.g. nodriver) don't need to — they implement `Driver` directly
 and never touch these Protocols.
 """
 
-from contextlib import suppress
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Protocol, cast
 
