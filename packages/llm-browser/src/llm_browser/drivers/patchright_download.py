@@ -1,253 +1,113 @@
-import base64
+"""Shared by both download modes: the step's deadline, popup tracking and
+the route that catches a navigation answered with a file."""
+
 import time
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Self
 from urllib.parse import urlsplit
 
-from patchright.sync_api import (
-    Browser,
-    CDPSession,
-    Download,
-    Frame,
-    Page,
-    Request,
-    Route,
-)
+from patchright.sync_api import Download, Page, Request, Route
 
 from llm_browser.constants import (
     DOWNLOAD_POLL_MS,
-    DOWNLOAD_SLICE_BYTES,
     PAGE_MEDIA_TYPES,
+    TRANSFER_EXCEEDED,
 )
-from llm_browser.drivers.playwright_base import read_download
-from llm_browser.results import BytesResult, guess_media_type
-from llm_browser.scripts import load_script
+from llm_browser.results import BytesResult
 
 
-TRANSFER_EXCEEDED = "download transfer exceeded the step's timeout"
+@dataclass(frozen=True)
+class Deadline:
+    """One budget for a download step: the wait for a file and its transfer."""
 
+    at: float
+    timeout_ms: int
 
-class DownloadBegin(TypedDict):
-    """CDP ``Browser.downloadWillBegin``, the fields read here."""
+    @classmethod
+    def start(cls, timeout_ms: int) -> Self:
+        return cls(at=time.monotonic() + timeout_ms / 1000, timeout_ms=timeout_ms)
 
-    frameId: str
-    url: str
-    guid: str
-    suggestedFilename: str
+    def remaining_ms(self) -> float:
+        return max(0.0, (self.at - time.monotonic()) * 1000)
+
+    def left_ms(self) -> int:
+        left = int(self.remaining_ms())
+        if left <= 0:
+            raise TimeoutError(TRANSFER_EXCEEDED)
+        return left
+
+    def nothing_arrived(self) -> TimeoutError:
+        return TimeoutError(f"no file arrived within {self.timeout_ms}ms")
 
 
 @dataclass
 class Arrivals:
-    deadline: float
+    deadline: Deadline
     downloads: list[Download] = field(default_factory=list)
     files: list[BytesResult] = field(default_factory=list)
     popups: list[Page] = field(default_factory=list)
-    begins: list[DownloadBegin] = field(default_factory=list)
-    foreign_begins: int = 0
-
-    def remaining_ms(self) -> float:
-        return max(0.0, (self.deadline - time.monotonic()) * 1000)
 
 
-def catch_file(
-    page: Page,
-    trigger: Callable[[], None],
-    timeout_ms: int,
-    browser: Browser | None = None,
-) -> BytesResult:
-    """``browser`` is set when attached: the remote Chrome cannot write to
-    Playwright's download dir, so the bytes are read inside the page."""
-    arrivals = Arrivals(deadline=time.monotonic() + timeout_ms / 1000)
-    stop_watching = watch(page, arrivals, listen_downloads=browser is None)
-    cdp = None
+type Listen = Callable[[Page, Arrivals], Callable[[], None]]
+
+
+@contextmanager
+def watching(
+    page: Page, deadline: Deadline, listen: Listen | None = None
+) -> Iterator[Arrivals]:
+    """``listen`` adds a mode's own listeners; they go after the route, before
+    the popups close."""
+    arrivals = Arrivals(deadline)
+    stop_listening = listen(page, arrivals) if listen else (lambda: None)
+    stop_watching = watch(page, arrivals, after_unroute=stop_listening)
     try:
-        if browser is not None:
-            cdp = watch_begins(browser, arrivals)
-            keep_blobs(page)
-        trigger()
-        own = wait_for_arrival(page, arrivals)
-        # Inside the try: the popup a download began in closes in the finally.
-        if cdp is not None and own is not None:
-            return read_in_page(cdp, *own, arrivals.deadline)
+        yield arrivals
     finally:
-        if cdp is not None:
-            stop_begins(cdp)
         stop_watching()
-    if arrivals.downloads:
-        return read_download(arrivals.downloads[0])
-    if arrivals.files:
-        return arrivals.files[0]
-    if arrivals.foreign_begins:
-        raise ValueError("download started outside this tab")
-    raise TimeoutError(f"no file arrived within {timeout_ms}ms")
 
 
-def wait_for_arrival(
-    page: Page, arrivals: Arrivals
-) -> tuple[DownloadBegin, Frame] | None:
-    """The first download begun in this tab; None once anything else arrives."""
-    while arrivals.remaining_ms():
-        if arrivals.downloads or arrivals.files:
+def poll_until[T](
+    page: Page, arrivals: Arrivals, ready: Callable[[], T | None]
+) -> T | None:
+    """What ``ready`` found; None once a route caught a file or time ran out."""
+    while arrivals.deadline.remaining_ms():
+        if arrivals.files:
             return None
-        while arrivals.begins:
-            begin = arrivals.begins.pop(0)
-            pages = [page, *arrivals.popups]
-            frame = frame_for(pages, begin["frameId"])
-            if frame is not None:
-                return begin, frame
-            arrivals.foreign_begins += 1
+        found = ready()
+        if found is not None:
+            return found
         page.wait_for_timeout(DOWNLOAD_POLL_MS)
     return None
 
 
-def watch_begins(browser: Browser, arrivals: Arrivals) -> CDPSession:
-    # Only the session that set the behavior receives downloadWillBegin, and
-    # "deny" makes Chrome write nothing.
-    # debt: another client's connect mid-step resets behavior and can steal events; the step then times out
-    cdp = browser.new_browser_cdp_session()
-
-    def on_begin(event: DownloadBegin) -> None:
-        arrivals.begins.append(event)
-
-    cdp.on("Browser.downloadWillBegin", on_begin)
-    behavior = {"behavior": "deny", "eventsEnabled": True}
-    try:
-        cdp.send("Browser.setDownloadBehavior", behavior)
-    except Exception as exc:
-        with suppress(Exception):
-            cdp.detach()
-        reason = " ".join(str(exc).split())[:200]
-        raise ValueError(f"download did not complete: {reason}") from exc
-    return cdp
+def caught_file(arrivals: Arrivals) -> BytesResult:
+    if arrivals.files:
+        return arrivals.files[0]
+    raise arrivals.deadline.nothing_arrived()
 
 
-def keep_blobs(page: Page) -> None:
-    # Per step, not an init script: patchright routes the whole context for one.
-    for frame in page.frames:
-        with suppress(Exception):
-            frame.evaluate(load_script("keep_blobs"), isolated_context=False)
-
-
-def stop_begins(cdp: CDPSession) -> None:
-    with suppress(Exception):
-        cdp.send("Browser.setDownloadBehavior", {"behavior": "default"})
-    with suppress(Exception):
-        cdp.detach()
-
-
-def read_in_page(
-    cdp: CDPSession, begin: DownloadBegin, frame: Frame, deadline: float
-) -> BytesResult:
-    with suppress(Exception):
-        cdp.send("Browser.cancelDownload", {"guid": begin["guid"]})
-    try:
-        content = read_bytes(frame, begin["url"], begin["guid"], deadline)
-    except TimeoutError:
-        raise
-    except Exception as exc:
-        reason = " ".join(str(exc).split())[:200]
-        raise ValueError(f"download did not complete: {reason}") from exc
-    name = Path(begin["suggestedFilename"]).name
-    return BytesResult(name=name, content=content, media_type=guess_media_type(name))
-
-
-def read_bytes(frame: Frame, url: str, key: str, deadline: float) -> bytes:
-    # Main world: keep_blobs' kept Blobs and deferred revokes live there.
-    read = [url, key, transfer_left_ms(deadline)]
-    size = frame.evaluate(load_script("download_read"), read, isolated_context=False)
-    if size < 0:
-        raise TimeoutError(TRANSFER_EXCEEDED)
-    chunks = []
-    try:
-        for start in range(0, size, DOWNLOAD_SLICE_BYTES):
-            transfer_left_ms(deadline)
-            span = [key, start, start + DOWNLOAD_SLICE_BYTES]
-            chunk = frame.evaluate(
-                load_script("download_slice"), span, isolated_context=False
-            )
-            chunks.append(base64.b64decode(chunk))
-    finally:
-        with suppress(Exception):
-            frame.evaluate(load_script("download_drop"), key, isolated_context=False)
-    return b"".join(chunks)
-
-
-def transfer_left_ms(deadline: float) -> int:
-    left = int((deadline - time.monotonic()) * 1000)
-    if left <= 0:
-        raise TimeoutError(TRANSFER_EXCEEDED)
-    return left
-
-
-def frame_for(pages: list[Page], frame_id: str) -> Frame | None:
-    """The frame of these tabs a download began in; None when it is not theirs."""
-    frames = [frame for page in pages for frame in page.frames]
-    for frame in frames:
-        tree = frame_tree(frame)
-        if tree is None:
-            continue
-        if tree["frame"]["id"] == frame_id:
-            return frame
-        # An in-process child frame has no session of its own; match it by url.
-        child_url = find_url(tree, frame_id)
-        same_url = [other for other in frames if other.url == child_url]
-        if child_url and same_url:
-            return same_url[0]
-    return None
-
-
-def frame_tree(frame: Frame) -> dict[str, Any] | None:
-    # Only a main frame or an out-of-process iframe owns a CDP session.
-    try:
-        session = frame.page.context.new_cdp_session(frame)
-    except Exception:
-        return None
-    try:
-        tree: dict[str, Any] = session.send("Page.getFrameTree")["frameTree"]
-        return tree
-    except Exception:
-        return None
-    finally:
-        with suppress(Exception):
-            session.detach()
-
-
-def find_url(tree: dict[str, Any], frame_id: str) -> str | None:
-    if tree["frame"]["id"] == frame_id:
-        return str(tree["frame"]["url"])
-    for child in tree.get("childFrames", []):
-        url = find_url(child, frame_id)
-        if url:
-            return url
-    return None
-
-
-def watch(page: Page, arrivals: Arrivals, listen_downloads: bool) -> Callable[[], None]:
-    # Closures, not bound methods: Playwright sets an attribute on each handler.
-    def on_download(download: Download) -> None:
-        arrivals.downloads.append(download)
+def watch(
+    page: Page, arrivals: Arrivals, after_unroute: Callable[[], None]
+) -> Callable[[], None]:
+    """Stopping closes the popups. ``after_unroute`` runs once the route is
+    gone, so events queued during the unroute round trip still land."""
 
     def on_popup(popup: Page) -> None:
         arrivals.popups.append(popup)
-        if listen_downloads:
-            popup.on("download", on_download)
 
     def on_route(route: Route) -> None:
         intercept(route, page, arrivals)
 
-    if listen_downloads:
-        page.on("download", on_download)
     page.on("popup", on_popup)
     page.context.route("**/*", on_route)
 
     def stop() -> None:
         page.context.unroute("**/*", on_route)
-        if listen_downloads:
-            page.remove_listener("download", on_download)
+        after_unroute()
         page.remove_listener("popup", on_popup)
         for popup in arrivals.popups:
             popup.close()
@@ -263,7 +123,7 @@ def intercept(route: Route, page: Page, arrivals: Arrivals) -> None:
     # download still reaches the browser rather than the route hanging it.
     # Playwright reads a 0 timeout as "none", hence the floor.
     try:
-        response = route.fetch(timeout=max(1.0, arrivals.remaining_ms()))
+        response = route.fetch(timeout=max(1.0, arrivals.deadline.remaining_ms()))
     except Exception:
         route.continue_()
         return
