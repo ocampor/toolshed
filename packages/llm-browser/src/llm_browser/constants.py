@@ -273,6 +273,9 @@ SCHEMA_TYPE_NAMES = {
 
 # How often a download step looks for a file between event dispatches.
 DOWNLOAD_POLL_MS = 100
+# An attached browser's download is read in-page in base64 slices this big.
+DOWNLOAD_SLICE_BYTES = 4 << 20
+TRANSFER_EXCEEDED = "download transfer exceeded the step's timeout"
 # A top-level navigation answered with one of these is a page, not a file.
 PAGE_MEDIA_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 

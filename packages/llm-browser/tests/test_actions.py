@@ -534,13 +534,14 @@ def test_download_honours_the_step_timeout(session: BrowserSession) -> None:
 def test_a_download_that_fails_is_a_step_failure(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """Playwright raises its own `Error` from `path()` on a cancelled
-    download; raw, it would unwind out of `run_flow` instead of coming back
-    as a failed step."""
+    """Playwright raises its own `Error` from `path()` and `delete()` on a
+    cancelled download; raw, it would unwind out of `run_flow` instead of
+    coming back as a failed step."""
     from llm_browser.results import ErrorResult
 
     mock_download = _arm_download(session, tmp_path, b"payload")
     mock_download.path.side_effect = RuntimeError("download was canceled")
+    mock_download.delete.side_effect = RuntimeError("canceled")
     result = execute_action(
         session, DownloadStep(name="s", action="download", selector="#dl")
     )

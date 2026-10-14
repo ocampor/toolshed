@@ -552,7 +552,14 @@ class DomStep(SelectorStep):
 
 class DownloadStep(SelectorStep):
     """Click ``selector`` and keep what the browser downloaded, in memory; like
-    ``screenshot``, ``path`` is an instruction to ``llm-browser run`` alone."""
+    ``screenshot``, ``path`` is an instruction to ``llm-browser run`` alone.
+
+    On an attached browser the bytes are read inside the page, so a POST or
+    one-time-token download that cannot be refetched fails, and a blob that a
+    popup revokes right after the click is lost, as is a blob made before the
+    step on a page whose CSP blocks ``blob:`` fetches. Keeping blobs readable
+    wraps the tab's ``URL.createObjectURL`` and ``URL.revokeObjectURL`` until
+    the page reloads, a small fingerprint cost."""
 
     action: Literal["download"]
     path: str | None = Field(

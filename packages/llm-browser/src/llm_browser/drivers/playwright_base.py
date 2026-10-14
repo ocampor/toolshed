@@ -11,6 +11,7 @@ and never touch these Protocols.
 """
 
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Protocol, cast
 
@@ -112,16 +113,21 @@ def _pw_loc(locator: Any) -> PwLocator:
     return cast(PwLocator, locator)
 
 
+def incomplete_download(exc: Exception) -> ValueError:
+    """A step failure, not a crash: anything else would unwind out of run_flow."""
+    return ValueError(f"download did not complete: {' '.join(str(exc).split())[:200]}")
+
+
 def read_download(download: PwDownload) -> BytesResult:
     # Playwright's own error from a cancelled download would unwind out of run_flow.
     try:
         content = Path(download.path()).read_bytes()
     except Exception as exc:
-        raise ValueError(
-            f"download did not complete: {' '.join(str(exc).split())[:200]}"
-        ) from exc
+        raise incomplete_download(exc) from exc
     finally:
-        download.delete()
+        # A canceled download raises here too, which would hide the ValueError.
+        with suppress(Exception):
+            download.delete()
     name = download.suggested_filename
     return BytesResult(name=name, content=content, media_type=guess_media_type(name))
 
