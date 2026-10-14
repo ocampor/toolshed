@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.26.0 — 2026-10-14
+
+### Fixed
+
+- `download` steps on an attached (CDP) Chrome read the bytes in-page, so a remote Chrome that can't write Playwright's download dir no longer cancels them. Closes [#88](https://github.com/ocampor/toolshed/issues/88).
+- A canceled download fails the step (`ok: false`) instead of crashing `run_flow`.
+
+### Changed
+
+- One step timeout covers the wait plus the transfer.
+- Attached downloads restore Chrome's default download behavior after each step.
+- The launched and CDP download paths live in separate modules: `patchright_download`, `patchright_download_launched`, `patchright_download_cdp`.
+- Known limit: POST and one-time-token downloads can't be refetched.
+- Known limit: a blob revoked by a popup the click opened is lost.
+- Known limit: a blob made before the step on a CSP page that blocks `blob:` fetches fails.
+
 ## 0.25.0 — 2026-10-10
 
 ### Added
