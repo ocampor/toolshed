@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
+import cssselect
 import pytest
 
 from llm_browser import probe
@@ -22,6 +23,18 @@ PROBE_CASES = [
     (PageProbe(text="Log in to comment on this story"), False),
     (PageProbe(challenge=True, text="One moment please"), True),
     (PageProbe(), False),
+    (PageProbe(text="Press and hold the button"), True),
+    (PageProbe(text="Before we continue... Robot or human?"), True),
+    (PageProbe(text="Click the button below to continue shopping"), True),
+    (PageProbe(text="¿Robot o humano?"), True),
+    (PageProbe(text="Mantén presionado el botón"), True),
+    (PageProbe(text="manten presionado el boton"), True),
+    (PageProbe(text="Mantenga presionado"), True),
+    (PageProbe(text="Verifica que eres humano"), True),
+    (
+        PageProbe(text="Haz clic en el botón de abajo para continuar comprando"),
+        True,
+    ),
 ]
 
 MARKUP_CASES = [
@@ -42,6 +55,13 @@ MARKUP_CASES = [
     ("<article><h1>Quarterly revenue rose 4%</h1></article>", False),
     ("", False),
     ("<p>A robot vacuum review</p>", False),
+    ('<div id="px-captcha"></div>', True),
+    ('<iframe src="https://client.px-cdn.net/PXabc/captcha"></iframe>', True),
+    ('<form action="/errors/validateCaptcha" method="get"></form>', True),
+    ('<iframe src="https://geo.captcha-delivery.com/captcha/?k=1"></iframe>', True),
+    ('<h2>Tu carrito</h2><a href="/">Continuar comprando</a>', False),
+    ('<a href="/">Seguir comprando</a>', False),
+    ('<a href="/">Continue shopping</a>', False),
 ]
 
 
@@ -65,6 +85,12 @@ def test_page_probe_js_substitutes_every_placeholder() -> None:
     assert json.dumps(PASSWORD_SELECTOR) in source
     assert json.dumps(", ".join(CHALLENGE_SELECTORS)) in source
     assert ".slice(0, 500)" in source
+
+
+def test_challenge_selectors_parse_as_one_selector_list() -> None:
+    # cssselect lacks the ` i` flag that querySelectorAll accepts.
+    joined = ", ".join(CHALLENGE_SELECTORS).replace(" i]", "]")
+    cssselect.parse(joined)
 
 
 def test_page_probe_js_without_a_selector() -> None:

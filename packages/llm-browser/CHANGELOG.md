@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.1 — 2026-10-19
+
+### Fixed
+
+- `human_needed` flags PerimeterX press-and-hold, Amazon validateCaptcha and DataDome walls, in English and Spanish, accent-insensitive. Closes [#93](https://github.com/ocampor/toolshed/issues/93).
+
 ## 0.26.0 — 2026-10-14
 
 ### Fixed
