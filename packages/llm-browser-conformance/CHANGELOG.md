@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.2 — 2026-10-19
+
+Tracks `llm-browser` 0.26.1.
+
+### Added
+
+- PerimeterX press-and-hold and Amazon validateCaptcha wall fixtures: the probe and a failing step must report `human_needed`. Covers [#93](https://github.com/ocampor/toolshed/issues/93).
+- `file as text pages` covers a download step's `extract:`; the suite now installs `llm-browser[documents]`.
+
 ## 0.13.1 — 2026-10-07
 
 Tracks `llm-browser` 0.24.2.

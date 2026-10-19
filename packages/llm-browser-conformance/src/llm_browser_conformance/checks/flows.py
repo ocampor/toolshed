@@ -63,6 +63,14 @@ def a_failure_behind_a_login_wall_asks_for_a_human(ctx: Context) -> None:
     assert result.human_needed is True
 
 
+def a_failure_behind_a_bot_wall_asks_for_a_human(ctx: Context) -> None:
+    for page in ("press-and-hold-wall.html", "validate-captcha-wall.html"):
+        ctx.visit(page)
+        result = run_flow(ctx.session, ctx.flow("wait-never"), {})
+        assert isinstance(result, FlowError), result
+        assert result.human_needed is True, page
+
+
 def a_screenshot_is_a_png(ctx: Context) -> None:
     """Everything above the driver calls these bytes a PNG and hands them to a
     reader that believes it, so the bytes have to match."""
@@ -125,6 +133,12 @@ SCENARIOS = [
         Section.FLOWS,
         a_failure_behind_a_login_wall_asks_for_a_human,
         covers=frozenset({"api:human_needed.password", "session:probe"}),
+    ),
+    Scenario(
+        "flow failure flags a bot wall",
+        Section.FLOWS,
+        a_failure_behind_a_bot_wall_asks_for_a_human,
+        covers=frozenset({"api:human_needed.challenge"}),
     ),
     Scenario(
         "screenshot is a png",

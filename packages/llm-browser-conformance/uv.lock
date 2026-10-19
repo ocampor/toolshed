@@ -538,7 +538,7 @@ dev = [
 
 [[package]]
 name = "llm-browser-conformance"
-version = "0.13.1"
+version = "0.13.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

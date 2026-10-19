@@ -66,6 +66,7 @@ REQUIRED_API = (
     "from_step",
     "goto.scheme_guard",
     "human_needed.challenge",
+    "human_needed.interstitial",
     "human_needed.password",
     "outputs.json",
     "outputs.qualified_name",
