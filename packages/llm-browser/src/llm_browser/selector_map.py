@@ -23,7 +23,7 @@ from typing import Any, NamedTuple
 
 import yaml
 
-from llm_browser.constants import WALL_GROUP
+from llm_browser.constants import ENGINE_PREFIX_PATTERN, WALL_GROUP
 from llm_browser.models import Flow, RunFlowStep, Step, SubFlow, WallSignals
 from llm_browser.selectors import RefSelector, Selector, parse_selector
 
@@ -52,7 +52,7 @@ def wall_signals(selector_map: SelectorMap | None) -> WallSignals:
         match spec:
             case str() if spec.startswith("text="):
                 phrases.append(spec.removeprefix("text="))
-            case str():
+            case str() if ENGINE_PREFIX_PATTERN.match(spec) is None:
                 selectors.append(spec)
             case {"css": str(css)}:
                 selectors.append(css)

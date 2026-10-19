@@ -77,11 +77,24 @@ def test_wall_signals(
     assert wall_signals(selector_map) == expected
 
 
-def test_load_selector_map_rejects_an_xpath_wall_entry(tmp_path: Path) -> None:
+@pytest.mark.parametrize("spec", [{"xpath": "//div"}, "xpath=//div"])
+def test_load_selector_map_rejects_a_non_css_wall_entry(
+    tmp_path: Path, spec: Any
+) -> None:
     path = tmp_path / "selector_map.yaml"
-    path.write_text(yaml.dump({"wall": {"gate": {"xpath": "//div"}}}))
+    path.write_text(yaml.dump({"wall": {"gate": spec}}))
     with pytest.raises(ValueError, match="'wall.gate'"):
         load_selector_map(path)
+
+
+def test_run_flow_rejects_a_bad_wall_entry_before_any_step() -> None:
+    session = MagicMock()
+    flow = Flow(
+        steps=[validate_step({"name": "a", "action": "click", "selector": "#a"})]
+    )
+    with pytest.raises(ValueError, match="'wall.gate'"):
+        run_flow(session, flow, {}, selector_map={"wall.gate": {"xpath": "//div"}})
+    assert session.mock_calls == []
 
 
 # --- what a flow asks for ---
