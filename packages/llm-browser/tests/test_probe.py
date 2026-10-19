@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_browser import probe
-from llm_browser.constants import CHALLENGE_SELECTORS, PASSWORD_SELECTOR
+from llm_browser.probe_constants import CHALLENGE_SELECTORS, PASSWORD_SELECTOR
 from llm_browser.models import PageProbe
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import XpathSelector
