@@ -863,6 +863,13 @@ class PageProbe(BaseModel):
     selector_text: str | None = None
 
 
+class WallSignals(BaseModel):
+    """A site's own wall markers, added to the built-in ones, never replacing them."""
+
+    selectors: tuple[str, ...] = ()
+    phrases: tuple[str, ...] = ()
+
+
 class SessionResult(BaseModel):
     """Result returned by session operations (launch, close, status)."""
 

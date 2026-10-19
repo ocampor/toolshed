@@ -23,6 +23,7 @@ from llm_browser.drivers import resolve_driver
 from llm_browser.drivers.base import Driver
 from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
+from llm_browser.models import WallSignals
 from llm_browser.parse import ExtractField
 from llm_browser.probe import has_interstitial_phrase, human_needed
 from llm_browser.selectors import MatchRule
@@ -85,6 +86,15 @@ def probe_reads_an_interstitial_phrase(ctx: Context) -> None:
     probe = ctx.session.probe()
     assert has_interstitial_phrase(probe.text) is True
     assert human_needed(probe) is True
+
+
+def probe_sees_a_custom_wall_selector(ctx: Context) -> None:
+    ctx.visit("custom-wall.html")
+    assert human_needed(ctx.session.probe()) is False
+    wall = WallSignals(selectors=("#hold-gate",))
+    probe = ctx.session.probe(wall=wall)
+    assert probe.challenge is True
+    assert human_needed(probe, wall) is True
 
 
 # --- screenshots ---
@@ -732,6 +742,12 @@ SCENARIOS = [
         Section.API,
         probe_reads_an_interstitial_phrase,
         covers=frozenset({"api:human_needed.interstitial"}),
+    ),
+    Scenario(
+        "probe sees a custom wall",
+        Section.API,
+        probe_sees_a_custom_wall_selector,
+        covers=frozenset({"api:human_needed.wall"}),
     ),
     Scenario(
         "screenshot bytes",

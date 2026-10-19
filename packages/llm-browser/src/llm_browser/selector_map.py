@@ -8,6 +8,13 @@ two-level YAML file, ``group: {name: selector}``, given to the CLI as
 ``--selector-map`` or to :func:`llm_browser.flows.run_flow` as
 ``selector_map=``. Refs resolve per step, at run time: a ref the map lacks
 fails the load, not the step, so a typo never reaches a browser.
+
+The ``wall`` group is not for refs: each entry adds a sign that a failing
+step's page needs a human, on top of the built-in ones. A CSS entry (plain
+string or ``{css: ...}``) counts as a challenge element; a ``text=...`` entry
+is a substring of the page's body text, compared case- and accent-blind, so
+write a full sentence rather than a word every page says. Any other kind
+fails the load.
 """
 
 from collections.abc import Iterator
@@ -16,7 +23,8 @@ from typing import Any, NamedTuple
 
 import yaml
 
-from llm_browser.models import Flow, RunFlowStep, Step, SubFlow
+from llm_browser.constants import WALL_GROUP
+from llm_browser.models import Flow, RunFlowStep, Step, SubFlow, WallSignals
 from llm_browser.selectors import RefSelector, Selector, parse_selector
 
 SelectorValue = str | dict[str, Any]
@@ -30,7 +38,30 @@ def load_selector_map(path: Path) -> SelectorMap:
     for group_name, fields in raw.items():
         for field_name, selector_spec in fields.items():
             flat[f"{group_name}.{field_name}"] = selector_spec
+    wall_signals(flat)  # result unused: a bad wall entry fails here, not mid-flow
     return flat
+
+
+def wall_signals(selector_map: SelectorMap | None) -> WallSignals:
+    """The map's ``wall.*`` entries; any kind but CSS or ``text=`` raises."""
+    selectors: list[str] = []
+    phrases: list[str] = []
+    for name, spec in (selector_map or {}).items():
+        if name.partition(".")[0] != WALL_GROUP:
+            continue
+        match spec:
+            case str() if spec.startswith("text="):
+                phrases.append(spec.removeprefix("text="))
+            case str():
+                selectors.append(spec)
+            case {"css": str(css)}:
+                selectors.append(css)
+            case _:
+                raise ValueError(
+                    f"selector_map entry {name!r}: a wall entry is CSS or text=..., "
+                    f"got {spec!r}"
+                )
+    return WallSignals(selectors=tuple(selectors), phrases=tuple(phrases))
 
 
 class MissingSelectorsError(ValueError):

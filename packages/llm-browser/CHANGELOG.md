@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.27.0 — 2026-10-19
+
+### Added
+
+- A selector map's `wall.*` group adds per-site wall signals to `human_needed`: CSS entries as challenge elements, `text=` entries as phrases. Built-ins stay. [#93](https://github.com/ocampor/toolshed/issues/93)
+- `WallSignals`, taken by `BrowserSession.probe(wall=)` and `human_needed(probe, wall)`; `selector_map.wall_signals` builds it.
+
 ## 0.26.1 — 2026-10-19
 
 ### Fixed

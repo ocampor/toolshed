@@ -94,6 +94,7 @@ DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 # --- Page probe / human detection ---
 
 PROBE_TEXT_MAX_CHARS = 20_000
+WALL_GROUP = "wall"
 
 # Substituted into ``js/page_probe.js``; no name is a substring of another, so
 # the replacements are order-independent.

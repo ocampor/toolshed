@@ -9,12 +9,20 @@ import pytest
 import yaml
 
 from llm_browser.flows import load_flow_document, run_flow
-from llm_browser.models import Flow, FlowData, FlowSuccess, Step, validate_step
+from llm_browser.models import (
+    Flow,
+    FlowData,
+    FlowSuccess,
+    Step,
+    WallSignals,
+    validate_step,
+)
 from llm_browser.selector_map import (
     MissingSelectorsError,
     load_selector_map,
     missing_selectors,
     selector_refs,
+    wall_signals,
 )
 from llm_browser.selectors import IdSelector, parse_selector
 from llm_browser.steps import resolve_step
@@ -44,6 +52,36 @@ def test_load_selector_map(tmp_path: Path) -> None:
     assert flat["invoice.rfc"] == {"id": "135textboxautocomplete55"}
     assert flat["invoice.cp"] == {"id": "135textbox61"}
     assert flat["declaracion.copropiedad"] == {"id": "457select7"}
+
+
+@pytest.mark.parametrize(
+    ("selector_map", "expected"),
+    [
+        (None, WallSignals()),
+        ({"ui.gate": "#gate"}, WallSignals()),
+        (
+            {
+                "wall.gate": "#gate",
+                "wall.box": {"css": ".box"},
+                "wall.notice": "text=check your connection",
+            },
+            WallSignals(
+                selectors=("#gate", ".box"), phrases=("check your connection",)
+            ),
+        ),
+    ],
+)
+def test_wall_signals(
+    selector_map: dict[str, Any] | None, expected: WallSignals
+) -> None:
+    assert wall_signals(selector_map) == expected
+
+
+def test_load_selector_map_rejects_an_xpath_wall_entry(tmp_path: Path) -> None:
+    path = tmp_path / "selector_map.yaml"
+    path.write_text(yaml.dump({"wall": {"gate": {"xpath": "//div"}}}))
+    with pytest.raises(ValueError, match="'wall.gate'"):
+        load_selector_map(path)
 
 
 # --- what a flow asks for ---

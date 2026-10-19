@@ -215,6 +215,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:human_needed.challenge` | flow failure flags a bot wall, probe sees a challenge, probe sees a press-and-hold wall |
 | `api:human_needed.interstitial` | probe reads an interstitial phrase |
 | `api:human_needed.password` | flow failure flags a login wall, probe sees a password |
+| `api:human_needed.wall` | flow failure flags a custom wall phrase, probe sees a custom wall |
 | `api:outputs.json` | outputs json dump |
 | `api:outputs.qualified_name` | run-flow embedded |
 | `api:outputs.shape` | outputs shape |

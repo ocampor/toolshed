@@ -68,6 +68,7 @@ REQUIRED_API = (
     "human_needed.challenge",
     "human_needed.interstitial",
     "human_needed.password",
+    "human_needed.wall",
     "outputs.json",
     "outputs.qualified_name",
     "outputs.shape",

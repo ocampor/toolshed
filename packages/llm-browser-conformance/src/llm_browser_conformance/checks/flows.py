@@ -14,6 +14,7 @@ from pathlib import Path
 from llm_browser.flows import run_flow
 from llm_browser.html import SanitizeLevel
 from llm_browser.models import FlowError, FlowSuccess
+from llm_browser.selector_map import SelectorMap
 
 from llm_browser_conformance.checks.support import expect_success, wrote_nothing
 from llm_browser_conformance.scenario import Context, Scenario, Section
@@ -69,6 +70,19 @@ def a_failure_behind_a_bot_wall_asks_for_a_human(ctx: Context) -> None:
         result = run_flow(ctx.session, ctx.flow("wait-never"), {})
         assert isinstance(result, FlowError), result
         assert result.human_needed is True, page
+
+
+def a_failure_behind_a_custom_wall_phrase_asks_for_a_human(ctx: Context) -> None:
+    ctx.visit("custom-wall.html")
+    flow = ctx.flow("wait-never")
+    plain = run_flow(ctx.session, flow, {})
+    selector_map: SelectorMap = {
+        "wall.notice": "text=look at your connection to the store"
+    }
+    walled = run_flow(ctx.session, flow, {}, selector_map=selector_map)
+    assert isinstance(plain, FlowError) and isinstance(walled, FlowError)
+    assert plain.human_needed is False
+    assert walled.human_needed is True
 
 
 def a_screenshot_is_a_png(ctx: Context) -> None:
@@ -139,6 +153,12 @@ SCENARIOS = [
         Section.FLOWS,
         a_failure_behind_a_bot_wall_asks_for_a_human,
         covers=frozenset({"api:human_needed.challenge"}),
+    ),
+    Scenario(
+        "flow failure flags a custom wall phrase",
+        Section.FLOWS,
+        a_failure_behind_a_custom_wall_phrase_asks_for_a_human,
+        covers=frozenset({"api:human_needed.wall"}),
     ),
     Scenario(
         "screenshot is a png",

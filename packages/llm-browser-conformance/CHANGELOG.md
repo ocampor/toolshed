@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.3 — 2026-10-19
+
+Tracks `llm-browser` 0.27.0.
+
+### Added
+
+- `human_needed.wall`: a page with no built-in signal needs a human once a `wall.*` CSS or `text=` entry names it.
+
 ## 0.13.2 — 2026-10-19
 
 Tracks `llm-browser` 0.26.1.
