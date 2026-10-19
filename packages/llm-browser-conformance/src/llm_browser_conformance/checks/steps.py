@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from llm_browser.models import FlowSuccess
-from llm_browser.results import BytesResult
+from llm_browser.results import BytesResult, DocumentResult, TextPage
 
 from llm_browser_conformance.checks.frames import enter_frame_or_skip
 from llm_browser_conformance.checks.session_api import (
@@ -155,6 +155,19 @@ def a_download_comes_back_as_bytes(ctx: Context) -> None:
     assert payload.media_type == "text/plain", payload.media_type
 
 
+def a_download_extract_returns_the_file_as_text_pages(ctx: Context) -> None:
+    try:
+        outputs = expect_success(ctx, "download.html", "download-extract")
+    except NotImplementedError as exc:
+        raise ctx.skip(str(exc)) from exc
+    document = outputs["download"]
+    assert isinstance(document, DocumentResult), document
+    assert document.mode == "text"
+    page = document.pages[0]
+    assert isinstance(page, TextPage), page
+    assert page.text.strip() == DOWNLOAD_PAYLOAD
+
+
 def tab_moves_focus_to_the_next_field(ctx: Context) -> None:
     ctx.visit("keyboard.html")
     ctx.session.click("#first")
@@ -281,6 +294,12 @@ SCENARIOS = [
                 "step:download",
             }
         ),
+    ),
+    Scenario(
+        "file as text pages",
+        Section.STEPS,
+        a_download_extract_returns_the_file_as_text_pages,
+        covers=frozenset({"field:download.extract"}),
     ),
     Scenario(
         "tab order",

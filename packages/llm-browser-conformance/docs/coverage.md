@@ -57,6 +57,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:download.pick` | match picks a file link |
 | `field:download.selector` | download |
 | `field:download.path` | download |
+| `field:download.extract` | file as text pages |
 | `field:fill.expect` | match per step |
 | `field:fill.pick` | match per step |
 | `field:fill.selector` | shadow dom |
