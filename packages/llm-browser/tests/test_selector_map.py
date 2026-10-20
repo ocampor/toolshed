@@ -77,7 +77,18 @@ def test_wall_signals(
     assert wall_signals(selector_map) == expected
 
 
-@pytest.mark.parametrize("spec", [{"xpath": "//div"}, "xpath=//div"])
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"xpath": "//div"},
+        "xpath=//div",
+        "",
+        "div (",
+        {"css": "a]"},
+        "text=",
+        "text=   ",
+    ],
+)
 def test_load_selector_map_rejects_a_non_css_wall_entry(
     tmp_path: Path, spec: Any
 ) -> None:

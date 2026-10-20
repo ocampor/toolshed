@@ -89,12 +89,11 @@ def test_human_needed(page_probe: PageProbe, expected: bool) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["Please hold while we check your connection.", "Mantén la calma, ya casi."],
+    ["Please hold while we CHECK your connection.", "Mantén la calma, ya casi."],
 )
 def test_human_needed_on_a_wall_phrase(text: str) -> None:
-    wall = WallSignals(phrases=("check your connection", "Mantén la calma"))
-    plain = probe.fold_text(text)
-    assert probe.human_needed(PageProbe(text=plain), wall) is True
+    wall = WallSignals(phrases=("check your connection", "manten la calma"))
+    assert probe.human_needed(PageProbe(text=text), wall) is True
 
 
 @pytest.mark.parametrize(("markup", "expected"), MARKUP_CASES)
@@ -115,8 +114,8 @@ def test_page_probe_js_substitutes_every_placeholder() -> None:
 
 
 def test_page_probe_js_adds_wall_selectors_to_the_built_ins() -> None:
-    source = page_probe_js(None, 10, ["#hold-gate"])
-    assert json.dumps(", ".join((*CHALLENGE_SELECTORS, "#hold-gate"))) in source
+    source = page_probe_js(None, 10, ["#1gate"])
+    assert json.dumps(", ".join((*CHALLENGE_SELECTORS, ":is(#1gate)"))) in source
 
 
 def test_challenge_selectors_parse_as_one_selector_list() -> None:

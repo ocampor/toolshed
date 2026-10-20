@@ -51,17 +51,43 @@ def wall_signals(selector_map: SelectorMap | None) -> WallSignals:
             continue
         match spec:
             case str() if spec.startswith("text="):
-                phrases.append(spec.removeprefix("text="))
+                phrases.append(require_phrase(name, spec.removeprefix("text=")))
             case str() if ENGINE_PREFIX_PATTERN.match(spec) is None:
-                selectors.append(spec)
+                selectors.append(require_css(name, spec))
             case {"css": str(css)}:
-                selectors.append(css)
+                selectors.append(require_css(name, css))
             case _:
                 raise ValueError(
                     f"selector_map entry {name!r}: a wall entry is CSS or text=..., "
                     f"got {spec!r}"
                 )
     return WallSignals(selectors=tuple(selectors), phrases=tuple(phrases))
+
+
+def require_phrase(name: str, phrase: str) -> str:
+    """An empty phrase is a substring of every page."""
+    if not phrase.strip():
+        raise ValueError(f"selector_map entry {name!r}: empty text= phrase")
+    return phrase
+
+
+def require_css(name: str, css: str) -> str:
+    """Catches what ``:is()`` cannot forgive: empty or unbalanced brackets."""
+    if not css.strip() or not has_balanced_brackets(css):
+        raise ValueError(f"selector_map entry {name!r}: unparsable CSS {css!r}")
+    return css
+
+
+def has_balanced_brackets(css: str) -> bool:
+    # debt: a bracket inside a quoted attribute value counts too.
+    openers = {")": "(", "]": "["}
+    stack: list[str] = []
+    for char in css:
+        if char in "([":
+            stack.append(char)
+        elif char in openers and (not stack or stack.pop() != openers[char]):
+            return False
+    return not stack
 
 
 class MissingSelectorsError(ValueError):
