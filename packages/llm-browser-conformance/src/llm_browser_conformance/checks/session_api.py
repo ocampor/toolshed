@@ -24,7 +24,7 @@ from llm_browser.drivers.base import Driver
 from llm_browser.explore_models import ExploreTarget, Intent, Stability, Verdict
 from llm_browser.html import SanitizeLevel
 from llm_browser.parse import ExtractField
-from llm_browser.probe import human_needed
+from llm_browser.probe import has_interstitial_phrase, human_needed
 from llm_browser.selectors import MatchRule
 from llm_browser.session import BrowserSession
 
@@ -70,6 +70,20 @@ def probe_sees_a_visible_bot_challenge(ctx: Context) -> None:
     probe = ctx.session.probe()
     assert probe.challenge is True
     assert probe.password_visible is False
+    assert human_needed(probe) is True
+
+
+def probe_sees_a_press_and_hold_wall(ctx: Context) -> None:
+    ctx.visit("press-and-hold-wall.html")
+    probe = ctx.session.probe()
+    assert probe.challenge is True
+    assert human_needed(probe) is True
+
+
+def probe_reads_an_interstitial_phrase(ctx: Context) -> None:
+    ctx.visit("validate-captcha-wall.html")
+    probe = ctx.session.probe()
+    assert has_interstitial_phrase(probe.text) is True
     assert human_needed(probe) is True
 
 
@@ -706,6 +720,18 @@ SCENARIOS = [
         Section.API,
         probe_sees_a_visible_bot_challenge,
         covers=frozenset({"api:human_needed.challenge"}),
+    ),
+    Scenario(
+        "probe sees a press-and-hold wall",
+        Section.API,
+        probe_sees_a_press_and_hold_wall,
+        covers=frozenset({"api:human_needed.challenge"}),
+    ),
+    Scenario(
+        "probe reads an interstitial phrase",
+        Section.API,
+        probe_reads_an_interstitial_phrase,
+        covers=frozenset({"api:human_needed.interstitial"}),
     ),
     Scenario(
         "screenshot bytes",

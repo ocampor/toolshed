@@ -57,6 +57,7 @@ A scenario claims a key through `Scenario.covers`; see
 | `field:download.pick` | match picks a file link |
 | `field:download.selector` | download |
 | `field:download.path` | download |
+| `field:download.extract` | file as text pages |
 | `field:fill.expect` | match per step |
 | `field:fill.pick` | match per step |
 | `field:fill.selector` | shadow dom |
@@ -211,7 +212,8 @@ A scenario claims a key through `Scenario.covers`; see
 | `api:flow_repository` | run-flow from a repository |
 | `api:from_step` | from_step |
 | `api:goto.scheme_guard` | goto scheme guard |
-| `api:human_needed.challenge` | probe sees a challenge |
+| `api:human_needed.challenge` | flow failure flags a bot wall, probe sees a challenge, probe sees a press-and-hold wall |
+| `api:human_needed.interstitial` | probe reads an interstitial phrase |
 | `api:human_needed.password` | flow failure flags a login wall, probe sees a password |
 | `api:outputs.json` | outputs json dump |
 | `api:outputs.qualified_name` | run-flow embedded |

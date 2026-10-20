@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
-from llm_browser import constants
+from llm_browser import constants, probe_constants
 
 JS_DIR = Path(__file__).parent / "js"
 
@@ -202,13 +202,13 @@ def page_probe_js(selector: str | None, max_chars: int) -> str:
     Drivers evaluate a bare script string with no arguments, so the selector,
     the shared challenge-selector list and the text limit are substituted in.
     """
-    challenge = ", ".join(constants.CHALLENGE_SELECTORS)
+    challenge = ", ".join(probe_constants.CHALLENGE_SELECTORS)
     return substitute(
         load_script("page_probe"),
         {
             constants.PROBE_SELECTOR_PLACEHOLDER: json.dumps(selector),
             constants.PROBE_PASSWORD_PLACEHOLDER: json.dumps(
-                constants.PASSWORD_SELECTOR
+                probe_constants.PASSWORD_SELECTOR
             ),
             constants.PROBE_CHALLENGE_PLACEHOLDER: json.dumps(challenge),
             constants.PROBE_MAX_CHARS_PLACEHOLDER: str(max_chars),

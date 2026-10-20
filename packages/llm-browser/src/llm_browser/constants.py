@@ -95,22 +95,6 @@ DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 
 PROBE_TEXT_MAX_CHARS = 20_000
 
-PASSWORD_SELECTOR = 'input[type="password"]'
-
-CHALLENGE_SELECTORS = (
-    'iframe[src*="hcaptcha"]',
-    'iframe[src*="recaptcha"]',
-    'iframe[title*="recaptcha" i]',
-    ".h-captcha",
-    ".g-recaptcha",
-    "#cf-challenge",
-    '[id*="cf-chl"]',
-    '[class*="cf-challenge"]',
-    "#challenge-form",
-    "#challenge-running",
-    ".cf-turnstile",
-)
-
 # Substituted into ``js/page_probe.js``; no name is a substring of another, so
 # the replacements are order-independent.
 PROBE_SELECTOR_PLACEHOLDER = "PROBE_SELECTOR_JSON"
@@ -141,12 +125,6 @@ SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
 TEXT_MATCH_TEXT_PLACEHOLDER = "TEXT_MATCH_TEXT_JSON"
 TEXT_MATCH_EXACT_PLACEHOLDER = "TEXT_MATCH_EXACT_BOOL"
 
-# A page needs a human only for a real credential prompt, a live bot challenge or
-# an explicit interstitial — a bare "sign in" link is ordinary page furniture.
-PASSWORD_INPUT_PATTERN = r"<input[^>]*type\s*=\s*[\"']?password"
-CHALLENGE_IFRAME_PATTERN = r"<iframe[^>]*(?:hcaptcha|recaptcha)"
-CHALLENGE_MARKERS = ("cf-challenge", "challenge-platform")
-INTERSTITIAL_PHRASES = ("verify you are human", "access denied", "unusual traffic")
 
 # --- Extract specs (``"child selector@attribute"``) ---
 
