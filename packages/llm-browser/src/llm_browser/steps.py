@@ -22,7 +22,7 @@ from llm_browser.models import (
 from llm_browser.probe import human_needed
 from llm_browser.repeat import ElementScope
 from llm_browser.save_as import save_result
-from llm_browser.selector_map import SelectorMap, resolve_step_refs
+from llm_browser.selector_map import SelectorMap, resolve_step_refs, wall_signals
 from llm_browser.selectors import ScopedSelector, parse_selector
 from llm_browser.session import BrowserSession
 
@@ -114,14 +114,15 @@ def resolve_step(
     return resolved
 
 
-def page_needs_human(session: BrowserSession) -> bool:
+def page_needs_human(session: BrowserSession, selector_map: SelectorMap | None) -> bool:
     """Whether the failing page is asking for a login or a challenge.
 
     Diagnostic only: a probe that itself fails must never replace the error
     the caller actually cares about.
     """
+    wall = wall_signals(selector_map)
     try:
-        return human_needed(session.probe())
+        return human_needed(session.probe(wall=wall), wall)
     except Exception:
         logger.debug("probe failed while diagnosing a step failure", exc_info=True)
         return False
@@ -157,7 +158,7 @@ def execute_step(
                 else None
             ),
             dom=session.dom_snapshot() if capture in ("dom", "both") else None,
-            human_needed=page_needs_human(session),
+            human_needed=page_needs_human(session, selector_map),
             # A step that failed after its pick accepted a mismatch still ran
             # on that mismatch, so the run reports it.
             warnings=(

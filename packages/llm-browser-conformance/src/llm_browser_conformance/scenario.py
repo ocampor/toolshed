@@ -197,7 +197,7 @@ class Scenario:
     ``covers`` names the public surface this scenario exercises — step types,
     step fields, step options, session methods (see
     :mod:`llm_browser_conformance.coverage` for the key grammar). It is what
-    ``docs/coverage.md`` is built from, and what lets a test fail when the
+    the coverage table is built from, and what lets a test fail when the
     library grows a step type or a field nothing checks.
 
     There is deliberately no ``page`` field: the check navigates, so a second

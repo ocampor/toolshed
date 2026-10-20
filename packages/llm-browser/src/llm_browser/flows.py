@@ -28,7 +28,7 @@ from llm_browser.models import (
 )
 from llm_browser.redact import clean_secrets, redacting_logs, redact_secrets
 from llm_browser.results import ExtractError
-from llm_browser.selector_map import SelectorMap
+from llm_browser.selector_map import SelectorMap, wall_signals
 from llm_browser.session import BrowserSession
 
 
@@ -78,6 +78,7 @@ def run_flow(
     ``only`` restricts a repeating step to the passes whose indices it names,
     keyed by step name — what a previous run's ``retry_hint.only`` carries.
     Outputs keep the original indices."""
+    wall_signals(selector_map)  # result unused: a bad wall entry fails before any step
     secrets = clean_secrets(redact)
     fresh_run = parse_warned.set(False)
     previous_secrets, session.secrets = session.secrets, secrets

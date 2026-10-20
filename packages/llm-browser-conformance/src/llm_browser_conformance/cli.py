@@ -52,7 +52,7 @@ from llm_browser_conformance.scenarios import select
     "--coverage",
     "print_coverage",
     is_flag=True,
-    help="Print docs/coverage.md as the scenarios define it, and exit.",
+    help="Print the coverage table as the scenarios define it, and exit.",
 )
 @click.option(
     "--headed",

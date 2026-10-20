@@ -164,8 +164,8 @@ legitimately differ and the point is to *record* which behaviour this one has
 
 ## Coverage
 
-[`docs/coverage.md`](docs/coverage.md) — every step type, step field, step
-option, `when:` condition and `BrowserSession` method the library exposes, and
+`llm-browser-check --coverage` prints the table: every step type, step field,
+step option, `when:` condition and `BrowserSession` method the library exposes, and
 the scenario that exercises it. The rows are *introspected* from
 `llm_browser.models` and `llm_browser.session`, so a step type or a field
 added to the library shows up uncovered and `tests/test_coverage.py` fails
@@ -182,8 +182,6 @@ Scenario(
     covers=frozenset({"step:goto", "field:goto.wait_until"}),
 )
 ```
-
-Regenerate the table with `llm-browser-check --coverage > docs/coverage.md`.
 
 ## Known gaps
 

@@ -48,6 +48,7 @@ from llm_browser.models import (
     SessionInfo,
     SessionResult,
     WaitState,
+    WallSignals,
 )
 from llm_browser.parse import ExtractField, row_spec
 from llm_browser.redact import redact_secrets
@@ -913,15 +914,18 @@ class BrowserSession:
         self,
         selector: Selector | None = None,
         max_chars: int = PROBE_TEXT_MAX_CHARS,
+        wall: WallSignals | None = None,
     ) -> PageProbe:
         """Read the page's human-attention signals in a single evaluate.
 
         Pass ``selector`` to also capture that element's rendered text in
-        ``PageProbe.selector_text``. Feed the result to
-        :func:`llm_browser.probe.human_needed`.
+        ``PageProbe.selector_text``. Feed the result, with the same ``wall``,
+        to :func:`llm_browser.probe.human_needed`.
         """
         script = page_probe_js(
-            css_string(selector) if selector is not None else None, max_chars
+            css_string(selector) if selector is not None else None,
+            max_chars,
+            wall.selectors if wall is not None else (),
         )
         raw = self.driver.evaluate(self.get_page(), script)
         return PageProbe.model_validate(raw or {})

@@ -8,7 +8,7 @@ import pytest
 
 from llm_browser import probe
 from llm_browser.probe_constants import CHALLENGE_SELECTORS, PASSWORD_SELECTOR
-from llm_browser.models import PageProbe
+from llm_browser.models import PageProbe, WallSignals
 from llm_browser.scripts import page_probe_js
 from llm_browser.selectors import XpathSelector
 from llm_browser.session import BrowserSession
@@ -87,6 +87,15 @@ def test_human_needed(page_probe: PageProbe, expected: bool) -> None:
     assert probe.human_needed(page_probe) is expected
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["Please hold while we CHECK your connection.", "Mantén la calma, ya casi."],
+)
+def test_human_needed_on_a_wall_phrase(text: str) -> None:
+    wall = WallSignals(phrases=("check your connection", "manten la calma"))
+    assert probe.human_needed(PageProbe(text=text), wall) is True
+
+
 @pytest.mark.parametrize(("markup", "expected"), MARKUP_CASES)
 def test_human_needed_from_a_failure_snapshot(markup: str, expected: bool) -> None:
     assert probe.human_needed(probe.probe_from_markup(markup)) is expected
@@ -102,6 +111,11 @@ def test_page_probe_js_substitutes_every_placeholder() -> None:
     assert json.dumps(PASSWORD_SELECTOR) in source
     assert json.dumps(", ".join(CHALLENGE_SELECTORS)) in source
     assert ".slice(0, 500)" in source
+
+
+def test_page_probe_js_adds_wall_selectors_to_the_built_ins() -> None:
+    source = page_probe_js(None, 10, ["#1gate"])
+    assert json.dumps(", ".join((*CHALLENGE_SELECTORS, ":is(#1gate)"))) in source
 
 
 def test_challenge_selectors_parse_as_one_selector_list() -> None:

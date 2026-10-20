@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.3 — 2026-10-19
+
+Tracks `llm-browser` 0.27.0.
+
+### Added
+
+- `human_needed.wall`: the probe and a failing step honour a selector map's `wall.*` entries.
+
+### Removed
+
+- The committed coverage table under `docs/`; `llm-browser-check --coverage` prints it.
+
 ## 0.13.2 — 2026-10-19
 
 Tracks `llm-browser` 0.26.1.

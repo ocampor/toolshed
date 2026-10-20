@@ -1,6 +1,6 @@
 """What the suite covers, read off the library rather than off a list.
 
-``docs/coverage.md`` is this module's output. The point is the *required* set:
+``llm-browser-check --coverage`` prints this module's table. The point is the *required* set:
 the step types, step fields, step options and session methods are introspected
 from ``llm_browser`` itself, so a step type the library grows — or a field
 added to an existing one — turns into an uncovered row and fails
@@ -68,6 +68,7 @@ REQUIRED_API = (
     "human_needed.challenge",
     "human_needed.interstitial",
     "human_needed.password",
+    "human_needed.wall",
     "outputs.json",
     "outputs.qualified_name",
     "outputs.shape",

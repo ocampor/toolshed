@@ -196,13 +196,17 @@ def text_match_js(text: str, exact: bool) -> str:
     )
 
 
-def page_probe_js(selector: str | None, max_chars: int) -> str:
+def page_probe_js(
+    selector: str | None, max_chars: int, extra_selectors: Sequence[str] = ()
+) -> str:
     """``() => PageProbe`` — password/challenge visibility plus page text.
 
     Drivers evaluate a bare script string with no arguments, so the selector,
     the shared challenge-selector list and the text limit are substituted in.
     """
-    challenge = ", ".join(probe_constants.CHALLENGE_SELECTORS)
+    # `:is()` is a forgiving list: a bad extra matches nothing instead of throwing.
+    extras = (f":is({css})" for css in extra_selectors)
+    challenge = ", ".join((*probe_constants.CHALLENGE_SELECTORS, *extras))
     return substitute(
         load_script("page_probe"),
         {

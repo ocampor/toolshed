@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 from llm_browser import probe_constants
-from llm_browser.models import PageProbe
+from llm_browser.models import PageProbe, WallSignals
 
 
 def has_challenge_markup(markup: str) -> bool:
@@ -13,9 +13,11 @@ def has_challenge_markup(markup: str) -> bool:
     return any(marker in markup for marker in probe_constants.CHALLENGE_MARKERS)
 
 
-def has_interstitial_phrase(text: str) -> bool:
+def has_interstitial_phrase(text: str, wall: WallSignals | None = None) -> bool:
     folded = fold_text(text)
-    return any(phrase in folded for phrase in probe_constants.INTERSTITIAL_PHRASES)
+    extra = wall.phrases if wall is not None else ()
+    phrases = (*probe_constants.INTERSTITIAL_PHRASES, *extra)
+    return any(fold_text(phrase) in folded for phrase in phrases)
 
 
 def fold_text(text: str) -> str:
@@ -36,7 +38,9 @@ def probe_from_markup(markup: str) -> PageProbe:
     )
 
 
-def human_needed(probe: PageProbe) -> bool:
+def human_needed(probe: PageProbe, wall: WallSignals | None = None) -> bool:
     return bool(
-        probe.password_visible or probe.challenge or has_interstitial_phrase(probe.text)
+        probe.password_visible
+        or probe.challenge
+        or has_interstitial_phrase(probe.text, wall)
     )

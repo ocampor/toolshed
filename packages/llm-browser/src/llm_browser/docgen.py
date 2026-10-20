@@ -137,6 +137,7 @@ DOCUMENTS: dict[str, Document] = {
         named(
             "session.BrowserSession",
             "models.PageProbe",
+            "models.WallSignals",
             "models.SessionResult",
             "models.SessionInfo",
             "html.SanitizeLevel",

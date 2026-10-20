@@ -614,6 +614,17 @@ def test_execute_step_flags_a_page_that_needs_a_human(mock_session: MagicMock) -
     assert error.human_needed is True
 
 
+def test_execute_step_flags_a_wall_phrase_from_the_selector_map(
+    mock_session: MagicMock,
+) -> None:
+    step = _failing_click(mock_session)
+    mock_session.probe.return_value = PageProbe(text="We are checking your connection.")
+    selector_map = {"wall.notice": "text=checking your connection"}
+    error = execute_step(mock_session, step, _flow_data(), selector_map=selector_map)
+    assert isinstance(error, FlowError)
+    assert error.human_needed is True
+
+
 def test_execute_step_leaves_human_needed_false_on_an_ordinary_page(
     mock_session: MagicMock,
 ) -> None:

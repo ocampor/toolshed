@@ -863,6 +863,11 @@ class PageProbe(BaseModel):
     selector_text: str | None = None
 
 
+class WallSignals(BaseModel):
+    selectors: tuple[str, ...] = ()
+    phrases: tuple[str, ...] = ()
+
+
 class SessionResult(BaseModel):
     """Result returned by session operations (launch, close, status)."""
 
