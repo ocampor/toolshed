@@ -864,8 +864,6 @@ class PageProbe(BaseModel):
 
 
 class WallSignals(BaseModel):
-    """A site's own wall markers, added to the built-in ones, never replacing them."""
-
     selectors: tuple[str, ...] = ()
     phrases: tuple[str, ...] = ()
 

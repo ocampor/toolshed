@@ -43,7 +43,6 @@ def load_selector_map(path: Path) -> SelectorMap:
 
 
 def wall_signals(selector_map: SelectorMap | None) -> WallSignals:
-    """The map's ``wall.*`` entries; any kind but CSS or ``text=`` raises."""
     selectors: list[str] = []
     phrases: list[str] = []
     for name, spec in (selector_map or {}).items():

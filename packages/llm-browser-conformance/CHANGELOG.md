@@ -6,7 +6,7 @@ Tracks `llm-browser` 0.27.0.
 
 ### Added
 
-- `human_needed.wall`: a page with no built-in signal needs a human once a `wall.*` CSS or `text=` entry names it.
+- `human_needed.wall`: the probe and a failing step honour a selector map's `wall.*` entries.
 
 ## 0.13.2 — 2026-10-19
 

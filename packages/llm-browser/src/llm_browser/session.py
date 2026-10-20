@@ -919,9 +919,8 @@ class BrowserSession:
         """Read the page's human-attention signals in a single evaluate.
 
         Pass ``selector`` to also capture that element's rendered text in
-        ``PageProbe.selector_text``. ``wall.selectors`` count as challenge
-        markers alongside the built-in ones. Feed the result, with the same
-        ``wall``, to :func:`llm_browser.probe.human_needed`.
+        ``PageProbe.selector_text``. Feed the result, with the same ``wall``,
+        to :func:`llm_browser.probe.human_needed`.
         """
         script = page_probe_js(
             css_string(selector) if selector is not None else None,

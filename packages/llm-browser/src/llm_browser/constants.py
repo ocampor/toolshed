@@ -95,7 +95,6 @@ DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 
 PROBE_TEXT_MAX_CHARS = 20_000
 WALL_GROUP = "wall"
-# A string selector naming its engine, e.g. ``xpath=//div``.
 ENGINE_PREFIX_PATTERN = re.compile(r"^[a-z]+=")
 
 # Substituted into ``js/page_probe.js``; no name is a substring of another, so

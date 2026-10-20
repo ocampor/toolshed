@@ -32,7 +32,6 @@ CHALLENGE_MARKERS = (
     "validatecaptcha",
     "captcha-delivery.com",
 )
-# Matched against ``probe.fold_text`` output, so written lowercase without accents.
 # Never a bare "continue shopping": every cart page says it.
 INTERSTITIAL_PHRASES = (
     "verify you are human",
