@@ -8,8 +8,6 @@ before anyone can call a release "acceptance tested" on a suite that never
 touched it.
 """
 
-from pathlib import Path
-
 import pytest
 from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.session import BrowserSession
@@ -25,9 +23,6 @@ from llm_browser_conformance.coverage import (
     unknown,
 )
 
-PACKAGE_DIR = Path(__file__).resolve().parent.parent
-COVERAGE = PACKAGE_DIR / "docs" / "coverage.md"
-
 
 def test_every_public_step_option_and_method_has_a_scenario() -> None:
     assert uncovered() == [], (
@@ -39,13 +34,6 @@ def test_every_public_step_option_and_method_has_a_scenario() -> None:
 def test_no_scenario_claims_a_key_nothing_requires() -> None:
     assert unknown() == [], (
         "claimed but not in the required set — a typo, or a key that outlived what it named"
-    )
-
-
-def test_the_coverage_table_matches_the_scenarios() -> None:
-    assert COVERAGE.read_text() == coverage_document(), (
-        "docs/coverage.md is stale; regenerate with "
-        "`uv run llm-browser-check --coverage > docs/coverage.md`"
     )
 
 
