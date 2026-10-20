@@ -39,6 +39,12 @@ PROBE_CASES = [
         ),
         True,
     ),
+    (
+        PageProbe(
+            text="Mantén presionado el botón para confirmar que no eres un robot."
+        ),
+        True,
+    ),
     (PageProbe(text="Press and hold the power button to restart"), False),
     (PageProbe(text="Mantén presionado el botón de emparejamiento Bluetooth"), False),
     (PageProbe(text="Verifica que eres humano"), True),

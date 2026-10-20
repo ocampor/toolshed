@@ -43,6 +43,7 @@ INTERSTITIAL_PHRASES = (
     "click the button below to continue shopping",
     "robot o humano",
     "confirmar que eres un ser humano",
+    "confirmar que no eres un robot",
     "verifica que eres humano",
     "haz clic en el boton de abajo para continuar comprando",
 )
