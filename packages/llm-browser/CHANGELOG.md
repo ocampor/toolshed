@@ -6,6 +6,10 @@
 
 - `human_needed` flags PerimeterX press-and-hold, Amazon validateCaptcha and DataDome walls, in English and Spanish, accent-insensitive. Closes [#93](https://github.com/ocampor/toolshed/issues/93).
 
+### Changed
+
+- `PASSWORD_SELECTOR`, `CHALLENGE_SELECTORS`, `PASSWORD_INPUT_PATTERN`, `CHALLENGE_IFRAME_PATTERN`, `CHALLENGE_MARKERS` and `INTERSTITIAL_PHRASES` moved from `llm_browser.constants` to `llm_browser.probe_constants`.
+
 ## 0.26.0 — 2026-10-14
 
 ### Fixed

@@ -23,13 +23,24 @@ PROBE_CASES = [
     (PageProbe(text="Log in to comment on this story"), False),
     (PageProbe(challenge=True, text="One moment please"), True),
     (PageProbe(), False),
-    (PageProbe(text="Press and hold the button"), True),
+    (PageProbe(text="Press & Hold to confirm you are a human"), True),
     (PageProbe(text="Before we continue... Robot or human?"), True),
     (PageProbe(text="Click the button below to continue shopping"), True),
     (PageProbe(text="¿Robot o humano?"), True),
-    (PageProbe(text="Mantén presionado el botón"), True),
-    (PageProbe(text="manten presionado el boton"), True),
-    (PageProbe(text="Mantenga presionado"), True),
+    (
+        PageProbe(
+            text="Mantén presionado el botón para confirmar que eres un ser humano"
+        ),
+        True,
+    ),
+    (
+        PageProbe(
+            text="manten presionado el boton para confirmar que eres un ser humano"
+        ),
+        True,
+    ),
+    (PageProbe(text="Press and hold the power button to restart"), False),
+    (PageProbe(text="Mantén presionado el botón de emparejamiento Bluetooth"), False),
     (PageProbe(text="Verifica que eres humano"), True),
     (
         PageProbe(text="Haz clic en el botón de abajo para continuar comprando"),
