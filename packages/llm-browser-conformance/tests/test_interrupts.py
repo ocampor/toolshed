@@ -1,5 +1,3 @@
-"""Registry sweep for sessions an interrupted run left open."""
-
 import signal
 import subprocess
 import sys
@@ -30,12 +28,7 @@ class FakeSession:
 
 @pytest.fixture(autouse=True)
 def clean_module_state() -> Iterator[None]:
-    """Every test starts from an empty registry and no rewired signals.
-
-    A test that installs real handlers (or leaves a session registered on
-    failure) must not bleed into the next one, so both are restored here
-    regardless of how the test ends.
-    """
+    # A test that installs real handlers or leaves a session registered must not bleed into the next.
     LIVE_SESSIONS.clear()
     previous_handlers.clear()
     yield
@@ -86,14 +79,7 @@ def test_a_session_that_fails_to_close_does_not_block_the_rest() -> None:
 
 
 def test_a_reentrant_sweep_is_a_no_op_and_the_original_continues() -> None:
-    """A second signal arriving mid-sweep re-enters ``close_stranded_sessions``.
-
-    Before the reentrancy flag, that second call cleared the registry it
-    found empty-looking-enough-to-abandon while the first call was still
-    partway through it, stranding whatever the first call had not reached
-    yet. Simulated here by having one session's own ``close()`` call back
-    into the sweep, as the nested signal handler would.
-    """
+    # A nested signal re-entering the sweep once cleared the registry the first call was still walking.
 
     class ReentersOnClose(FakeSession):
         def close(self) -> None:
@@ -132,7 +118,7 @@ def test_an_interrupt_raised_while_closing_one_session_waits_for_the_rest() -> N
 
 
 def test_the_first_interrupt_seen_wins_over_a_later_one() -> None:
-    """Last-write-wins would drop whichever interrupt type raised first."""
+    # Last-write-wins would drop whichever interrupt type raised first.
 
     class RaisesKeyboardInterruptOnClose(FakeSession):
         def close(self) -> None:
@@ -175,15 +161,14 @@ def test_install_saves_and_chains_to_the_previous_handler() -> None:
 
 
 def test_a_previously_ignored_signal_stays_ignored_after_the_sweep() -> None:
-    """SIG_IGN is not callable and is not the platform default either — it
-    must not fall through to raising KeyboardInterrupt/SystemExit."""
+    # SIG_IGN is neither callable nor the default; it must not fall through to raising.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     install_interrupt_handlers()
 
     session = FakeSession()
     register_session(session)
 
-    handle_interrupt(signal.SIGINT, None)  # must not raise
+    handle_interrupt(signal.SIGINT, None)
 
     assert session.close_calls == 1
 
@@ -205,9 +190,7 @@ def test_restoring_lets_a_later_sigint_reach_the_previous_handler_again() -> Non
 
 
 def test_a_sweep_during_launch_keeps_handlers_installed_for_the_real_session() -> None:
-    """A signal landing between ``install_interrupt_handlers()`` and the real
-    session's ``register_session()`` must not restore the original handlers —
-    the placeholder held during that window keeps the registry non-empty."""
+    # The placeholder keeps the registry non-empty until the real session registers.
     signal.signal(signal.SIGINT, lambda signum, frame: None)
     install_interrupt_handlers()
 
@@ -261,13 +244,7 @@ print(session.close_calls, len(previous_calls))
 
 
 def test_a_real_sigint_closes_registered_sessions_and_chains() -> None:
-    """Exercises the actual OS wiring, not just a direct call to the handler.
-
-    Runs in its own process: a real SIGINT's delivery can be deferred past
-    the instant ``os.kill`` returns, and this suite sends several more of
-    them — sharing a process would risk a delayed one landing during a later
-    test's signal state instead of this one's.
-    """
+    # Own process: a real SIGINT can arrive late and land in a later test's signal state.
     result = subprocess.run(
         [sys.executable, "-c", REAL_SIGINT_SCRIPT],
         capture_output=True,

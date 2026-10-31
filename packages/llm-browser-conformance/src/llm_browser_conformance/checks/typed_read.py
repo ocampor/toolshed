@@ -1,6 +1,3 @@
-"""Typed ``read`` fields — ``pattern``, ``type``, ``required`` — their
-errors, and the deprecated ``parse`` path's warning, as a run reports them."""
-
 import datetime
 import logging
 from pathlib import Path

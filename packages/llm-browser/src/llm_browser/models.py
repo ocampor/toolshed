@@ -1,5 +1,3 @@
-"""Pydantic models for browser session state, flow state, and flow results."""
-
 # debt: over the 300-line rule; split the step models out.
 
 from __future__ import annotations
@@ -35,8 +33,6 @@ from llm_browser.parse import ExtractField, parse_extract_spec
 from llm_browser.repeat import Repeat, RepeatBlock, check_scope
 from llm_browser.results import AcceptedMatch, ExtractError, PayloadBytes
 from llm_browser.selectors import MatchRule, Selector
-
-# --- Step types ---
 
 
 CaptureMode = Literal["screenshot", "dom", "both", "none"]
@@ -736,11 +732,7 @@ _step_adapter: TypeAdapter[Step] = TypeAdapter(Step)
 
 
 def validate_step(data: dict[str, Any]) -> Step:
-    """Validate a raw dict into the appropriate Step subtype."""
     return _step_adapter.validate_python(data)
-
-
-# --- Other models ---
 
 
 class Param(BaseModel):
@@ -791,8 +783,7 @@ class Flow(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_unique_step_names(self) -> Flow:
-        """Step names act as identifiers (used by ``--from`` for
-        partial re-runs). Reject duplicates within the same flow."""
+        """Step names are identifiers: ``--from`` re-runs a flow from one."""
         from collections import Counter
 
         counts = Counter(s.name for s in self.steps)

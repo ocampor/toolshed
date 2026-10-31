@@ -188,8 +188,6 @@ def record_outcome(
     index: int | None,
     state: RunState,
 ) -> None:
-    """Fold one pass's result into the run's outputs, skips, warnings and
-    reports."""
     if isinstance(outcome, ActionResult) and outcome.accepted is not None:
         state.warnings.append(
             match_warning(indexed(step.qualified_name, index), outcome.accepted)

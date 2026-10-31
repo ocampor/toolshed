@@ -1,5 +1,3 @@
-"""``save_as``: a read's rows become flow data for the steps after it."""
-
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -42,9 +40,6 @@ def _run(session: MagicMock, steps: list[dict[str, Any]], **data: object) -> Any
 
 def _urls(session: MagicMock) -> list[str]:
     return [call.args[0] for call in session.goto.call_args_list]
-
-
-# --- what a save binds ---
 
 
 @pytest.mark.parametrize(
@@ -116,9 +111,6 @@ def test_a_skipped_read_saves_nothing(mock_session: MagicMock) -> None:
     assert _urls(mock_session) == ["https://x/{{ v }}"]
 
 
-# --- repeat over a saved list ---
-
-
 def _each(
     steps: list[dict[str, Any]], over: str = "links", bind: str = "item"
 ) -> dict[str, Any]:
@@ -185,9 +177,6 @@ def test_a_dotted_path_to_nothing_fails_the_pass_it_is_in(
     assert list(result.outputs) == ["links"]
 
 
-# --- the innermost binding wins ---
-
-
 def _child(steps: list[dict[str, Any]]) -> dict[str, Any]:
     return {"name": "child", "action": "run-flow", "flow": {"steps": steps}}
 
@@ -234,9 +223,6 @@ def test_a_sub_flow_may_use_a_name_its_parent_saves_later() -> None:
     inner = {**_read({"name": "v", "field": "href"}), "name": "inner"}
     later = {**_read({"name": "v", "field": "href"}), "name": "later"}
     load_flow_document({"steps": [_child([inner, _goto("https://x/{{ v }}")]), later]})
-
-
-# --- load-time rejections ---
 
 
 @pytest.mark.parametrize(

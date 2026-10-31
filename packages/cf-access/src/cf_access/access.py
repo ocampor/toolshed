@@ -36,7 +36,6 @@ class SigningKeyResolver(Protocol):
 
 
 def certs_url(team_domain: str) -> str:
-    """Return the JWKS endpoint for a Cloudflare Access team domain."""
     return f"{team_domain.rstrip('/')}{CERTS_PATH}"
 
 
@@ -64,8 +63,6 @@ def verify_access_jwt(
 
 
 class CloudflareAccessMiddleware(BaseHTTPMiddleware):
-    """Reject requests that don't carry a valid Cloudflare Access JWT."""
-
     def __init__(self, app: ASGIApp, *, team_domain: str, expected_aud: str) -> None:
         super().__init__(app)
         self._issuer = team_domain.rstrip("/")
@@ -79,7 +76,6 @@ class CloudflareAccessMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
     def is_authenticated(self, request: Request) -> bool:
-        """Return whether the request carries a verifiable Access JWT."""
         token = request.headers.get(ACCESS_JWT_HEADER)
         if not token:
             return False

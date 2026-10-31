@@ -1,5 +1,3 @@
-"""What one ``read`` extract field asks for, and how its raw text becomes a value."""
-
 import datetime
 import re
 from typing import Annotated, Any, ClassVar, Literal

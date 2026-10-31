@@ -1,6 +1,3 @@
-"""``expect`` / ``pick``: what a step's selector should match, and which match
-it acts on."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -36,8 +33,6 @@ PRICES = ["£45.17", "£53.74", "£23.21", "£12.00", "£9.99", "£1.50", "£7.7
 
 
 def fake_driver(found: int) -> MagicMock:
-    """A page where every selector matches ``found`` elements, each reading as
-    one of ``PRICES``."""
     driver = MagicMock(spec=Driver)
     driver.resolve.side_effect = lambda page, selector: ("locator", selector)
     driver.count.side_effect = lambda locator: found
@@ -69,9 +64,6 @@ def run_steps(
 ) -> Any:
     flow = load_flow_document({"steps": steps})
     return run_flow(session, flow, kwargs.pop("data", {}), **kwargs)
-
-
-# --- load-time validation ---
 
 
 @pytest.mark.parametrize(
@@ -148,15 +140,11 @@ def test_the_fields_survive_the_template_round_trip() -> None:
 def test_a_step_that_states_neither_survives_the_round_trip(
     step: dict[str, Any],
 ) -> None:
-    """The round trip re-validates a dump, so a default that came back as a
-    stated one would fail the step it just ran."""
+    # The round trip re-validates a dump, so a default must not come back as a stated value.
     resolved = resolve_step_templates(
         validate_step({"name": "s", **step}), FlowData.model_validate({})
     )
     assert (resolved.expect, resolved.pick) == (None, None)
-
-
-# --- the count check itself ---
 
 
 @pytest.mark.parametrize(
@@ -263,7 +251,7 @@ def test_a_sample_that_cannot_be_read_never_masks_the_failure() -> None:
 
 
 def test_a_wait_is_only_pre_empted_by_an_ambiguity() -> None:
-    """Too few matches is what the wait that follows is for."""
+    # Too few matches is what the wait that follows is for.
     assert match_elements(
         fake_driver(0), ("locator", "#a"), "#a", SINGLE, waiting=True
     ) == Match(("locator", "#a"))
@@ -275,9 +263,6 @@ def test_a_many_rule_never_counts() -> None:
     driver = fake_driver(7)
     match_elements(driver, ("locator", "#a"), "#a", MANY)
     driver.count.assert_not_called()
-
-
-# --- steps ---
 
 
 def test_a_read_that_expected_one_row_reports_what_it_found(tmp_path: Path) -> None:
@@ -302,8 +287,7 @@ def test_a_pick_takes_the_row_it_names(tmp_path: Path) -> None:
 def test_an_acting_step_still_fails_a_missing_element_on_the_wait(
     tmp_path: Path,
 ) -> None:
-    """An acting step states no count, so a page without its element is the
-    wait's timeout, the way every consumer keying on it expects."""
+    # An acting step states no count, so a missing element is the wait's timeout.
     step = validate_step(
         {"name": "go", "action": "click", "selector": "a.link", "timeout": 50}
     )
@@ -314,7 +298,6 @@ def test_an_acting_step_still_fails_a_missing_element_on_the_wait(
 
 
 def test_a_read_that_expected_one_row_fails_on_an_empty_page(tmp_path: Path) -> None:
-    """The count it waited for and never got, not the bare wait timeout."""
     result = execute_action(
         page_session(tmp_path, 0), validate_step(read_step(expect=1, timeout=50))
     )
@@ -397,9 +380,6 @@ def test_a_dom_step_reads_the_match_it_picked(tmp_path: Path) -> None:
     assert target == ("nth", ("locator", "p.price_color"), 6)
 
 
-# --- what a run reports ---
-
-
 REPEAT = {"over": "codes", "as": "code"}
 REPEAT_BLOCK = {"name": "loop", "action": "repeat", **REPEAT}
 CLICK = {
@@ -456,9 +436,7 @@ def test_a_run_names_every_step_whose_pick_took_a_mismatch(
     warned: list[str],
     skipped: list[str],
 ) -> None:
-    """The click cases fail or skip after the pick: a step reports the mismatch
-    it ran on however it ended. Every row here picks "first" out of 7 matches
-    against an expected 1, so the warning content is the same for each name."""
+    # A step reports the mismatch it ran on however it ended.
     session = page_session(tmp_path, 7)
     session.driver.click.side_effect = TimeoutError("element not clickable")
     result = run_steps(session, steps, data={"codes": ["a", "b"]})

@@ -1,6 +1,3 @@
-"""Tests for selector map loading, the refs a flow names, and the substitution
-that happens as a step runs."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -108,8 +105,6 @@ def test_run_flow_rejects_a_bad_wall_entry_before_any_step() -> None:
     assert session.mock_calls == []
 
 
-# --- what a flow asks for ---
-
 DOCUMENT: dict[str, Any] = {
     "steps": [
         {"name": "a", "action": "click", "ref": "ui.button"},
@@ -131,8 +126,6 @@ FULL_MAP: dict[str, Any] = {ref: {"id": ref} for ref in DOCUMENT_REFS}
 
 
 def test_a_flow_with_refs_validates_with_no_map_and_names_every_ref_once() -> None:
-    """Step, `selector:`, `fields[]`, `read[]` and sub-flow sites, sorted and
-    deduplicated; a `run-flow` `data:` value is not a ref."""
     assert selector_refs(load_flow_document(DOCUMENT)) == DOCUMENT_REFS
 
 
@@ -179,9 +172,6 @@ def test_a_full_map_leaves_nothing_missing() -> None:
     assert missing_selectors(load_flow_document(DOCUMENT), FULL_MAP) == []
 
 
-# --- substitution at step time ---
-
-
 def _resolved(step: dict[str, Any], selector_map: dict[str, Any]) -> Step:
     return resolve_step(validate_step(step), FlowData(), selector_map)
 
@@ -190,8 +180,7 @@ def _resolved(step: dict[str, Any], selector_map: dict[str, Any]) -> Step:
 def test_a_map_value_lands_on_the_step_its_fields_and_its_read_entries(
     value: Any,
 ) -> None:
-    """A string value is the selector string — `text=Aside` must not be
-    indexed like a mapping."""
+    # A string value is the selector string; `text=Aside` must not be indexed like a mapping.
     step = _resolved(
         {
             "name": "s",
@@ -214,9 +203,6 @@ def test_resolving_a_step_leaves_the_flows_own_step_alone() -> None:
     )
     resolve_step(flow.steps[0], FlowData(), {"ui.x": "#once"})
     assert selector_refs(flow) == ["ui.x"]
-
-
-# --- substitution over a whole run ---
 
 
 def _click_flow(ref: str = "ui.x") -> Flow:

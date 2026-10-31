@@ -1,5 +1,3 @@
-"""Rows a typed read sees and returns, shared by the read and explore tests."""
-
 from unittest.mock import MagicMock
 
 from llm_browser.session import BrowserSession

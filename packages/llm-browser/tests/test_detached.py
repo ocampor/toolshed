@@ -1,5 +1,3 @@
-"""Tests for detached-Chromium spawn + BrowserSession.launch_detached."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -80,9 +78,7 @@ def test_launch_detached_persists_pid_and_attaches(tmp_path: Path) -> None:
 
 
 def test_launch_detached_closes_other_tabs(tmp_path: Path) -> None:
-    """The daemon must trim the context to the page it launched, so
-    subsequent reconnects via ``_last_page_or_new`` are deterministic
-    even when Chromium auto-opens its default new-tab page."""
+    # Trimming to one page keeps `_last_page_or_new` deterministic despite Chromium's default tab.
     driver = AttachStubDriver()
     session = BrowserSession(state_dir=tmp_path, driver=driver)
     with patch(
@@ -112,7 +108,6 @@ def test_stop_detached_kills_pid_and_clears_state(tmp_path: Path) -> None:
 
 
 def test_close_does_not_kill_detached_pid(tmp_path: Path) -> None:
-    """Plain close() leaves the detached browser alive — only stop_detached kills."""
     driver = AttachStubDriver()
     session = BrowserSession(state_dir=tmp_path, driver=driver)
     with patch(
@@ -127,8 +122,6 @@ def test_close_does_not_kill_detached_pid(tmp_path: Path) -> None:
 
 
 class RefusingDriver(AttachStubDriver):
-    """A driver whose attach fails — the shape that used to orphan Chromium."""
-
     def attach(self, cdp_url: str) -> Any:
         raise RuntimeError("connect_over_cdp failed")
 
@@ -150,8 +143,7 @@ def test_launch_detached_kills_the_browser_when_attach_fails(tmp_path: Path) -> 
 
 
 def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> None:
-    """Even if the process dies between spawn and attach, the pid is on disk
-    for `stop_detached` to use."""
+    # Even if the process dies before attach, the pid is on disk for stop_detached.
     seen: list[int | None] = []
 
     class RecordingDriver(AttachStubDriver):
@@ -171,8 +163,7 @@ def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> Non
 
 
 def test_a_failed_attach_leaves_an_earlier_session_stoppable(tmp_path: Path) -> None:
-    """The spawn we just made is killed; the browser already recorded is not
-    ours to forget — clearing the file would strand it with no pid anywhere."""
+    # Clearing the file would strand the already-recorded browser with no pid anywhere.
     live = BrowserSession(state_dir=tmp_path, driver=AttachStubDriver())
     with patch(
         "llm_browser.session.spawn_detached_chromium",

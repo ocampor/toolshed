@@ -1,5 +1,3 @@
-"""Tests for in-memory screenshots across the driver layer."""
-
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -29,7 +27,6 @@ def test_playwright_crops_to_the_element_it_was_handed() -> None:
 
 
 def _nodriver_page() -> tuple[NodriverDriver, MagicMock]:
-    """nodriver can only capture to a file, so the fake writes one."""
     page = MagicMock()
     page.spooled = []
 
@@ -61,15 +58,13 @@ def test_nodriver_removes_the_spool_file() -> None:
 
 
 def test_nodriver_asks_for_png() -> None:
-    """nodriver's `save_screenshot` defaults to jpeg, so it would hand back
-    JPEG bytes from the `.png` file every caller here asks for."""
+    # nodriver's save_screenshot defaults to jpeg.
     driver, page = _nodriver_page()
     driver.screenshot_bytes(page)
     assert page.saved["format"] == "png"
 
 
 def _nodriver_element() -> tuple[NodriverDriver, MagicMock, NodriverLocator]:
-    """nodriver captures an element to a file too, so the fake writes one."""
     element = MagicMock()
     element.spooled = []
 
@@ -108,6 +103,6 @@ def test_nodriver_element_capture_fails_the_step_when_nothing_matches() -> None:
 
 
 def test_a_driver_without_element_capture_reports_it_as_unsupported() -> None:
-    """The contract's opt-out: `NotImplementedError` is a conformance skip."""
+    # `NotImplementedError` is the contract's opt-out: a conformance skip.
     with pytest.raises(NotImplementedError, match="element screenshots"):
         Driver.screenshot_element_bytes(MagicMock(spec=Driver), MagicMock())

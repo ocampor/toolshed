@@ -1,5 +1,3 @@
-"""Compile raw YAML-parsed dicts into typed, optimised structures."""
-
 import re
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -14,11 +12,8 @@ from yaml_engine.types import (
     CompiledRule,
 )
 
-# --- Single-item compilers ---
-
 
 def compile_condition(raw: dict[str, object]) -> CompiledCondition[CompiledParam]:
-    """Compile a single raw condition dict."""
     field = str(raw["field"])
     op = str(raw["op"])
     source = str(raw.get("source", "record"))
@@ -51,17 +46,10 @@ def compile_condition(raw: dict[str, object]) -> CompiledCondition[CompiledParam
 
 
 def compile_action(raw: dict[str, object]) -> CompiledAction[CompiledParam]:
-    """Compile a single raw action dict.
-
-    Iterates over keys and treats the first recognized key as the action op.
-    Consumers can extend this by registering custom actions.
-    """
+    """The first recognized key is the action op."""
     for key, value in raw.items():
         return CompiledAction(op=key, param=value)  # type: ignore[arg-type]
     raise ValueError(f"Unknown action format: {raw!r}")
-
-
-# --- Group sub-compilers ---
 
 
 class GroupOptions(NamedTuple):
@@ -72,7 +60,6 @@ class GroupOptions(NamedTuple):
 
 
 def compile_options(raw: dict[str, object]) -> GroupOptions:
-    """Extract group-level metadata from a raw group dict."""
     raw_priority = raw.get("priority", 0)
     priority = int(raw_priority) if isinstance(raw_priority, (int, float, str)) else 0
     options: dict[str, object] = raw.get("options", {})  # type: ignore[assignment]
@@ -85,14 +72,12 @@ def compile_options(raw: dict[str, object]) -> GroupOptions:
 
 
 def as_list(value: object) -> list[dict[str, object]]:
-    """Cast a YAML-parsed value to a list of dicts, defaulting to empty."""
     if isinstance(value, list):
         return value
     return []
 
 
 def compile_rules(raw_rules: list[dict[str, object]]) -> tuple[CompiledRule, ...]:
-    """Compile a list of raw rule dicts into CompiledRules."""
     return tuple(
         CompiledRule(
             conditions=tuple(compile_condition(c) for c in as_list(raw_rule.get("conditions"))),
@@ -103,7 +88,6 @@ def compile_rules(raw_rules: list[dict[str, object]]) -> tuple[CompiledRule, ...
 
 
 def compile_group(raw: dict[str, object]) -> CompiledGroup:
-    """Compile a raw group dict (parsed from one YAML file) into a CompiledGroup."""
     options = compile_options(raw)
     raw_rules: list[dict[str, object]] = raw.get("rules", [])  # type: ignore[assignment]
     return CompiledGroup(
@@ -116,7 +100,6 @@ def compile_group(raw: dict[str, object]) -> CompiledGroup:
 
 
 def load_groups(rules_dir: Path) -> list[CompiledGroup]:
-    """Load and compile all YAML files in a directory into CompiledGroups."""
     groups: list[CompiledGroup] = []
     for path in sorted(rules_dir.glob("*.yaml")):
         raw: dict[str, Any] = yaml.safe_load(path.read_text())

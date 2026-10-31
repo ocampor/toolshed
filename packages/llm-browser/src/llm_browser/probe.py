@@ -1,5 +1,3 @@
-"""Heuristic for spotting a page that genuinely needs a human at the keyboard."""
-
 import re
 import unicodedata
 

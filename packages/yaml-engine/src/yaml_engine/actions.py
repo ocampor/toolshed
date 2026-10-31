@@ -17,5 +17,5 @@ register_action = get_registry().register
 
 
 def execute_action(op: str, record: dict[str, object], param: object) -> None:
-    """Execute an action against a record (mutates in-place)."""
+    """Mutates ``record`` in place."""
     get_registry().get(op)(record, param)

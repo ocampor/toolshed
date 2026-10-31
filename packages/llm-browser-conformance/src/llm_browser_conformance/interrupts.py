@@ -57,7 +57,6 @@ def unregister_session(session: Closeable) -> None:
 
 
 def register_launch_placeholder() -> Closeable:
-    """Reserve a registry slot for the session ``launch()`` is about to make."""
     placeholder = LaunchPlaceholder()
     register_session(placeholder)
     return placeholder

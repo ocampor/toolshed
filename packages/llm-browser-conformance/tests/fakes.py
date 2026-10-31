@@ -1,5 +1,3 @@
-"""Synthetic scenarios that need no browser, one per verdict."""
-
 from typing import cast
 
 from llm_browser.session import BrowserSession
@@ -48,7 +46,6 @@ FAKE_SCENARIOS = [
 
 
 def fake_context(driver: str = FAKE_DRIVER) -> Context:
-    """No check here touches the session, so there is nothing to launch."""
     return Context(
         session=cast(BrowserSession, None),
         site_url="http://127.0.0.1:1",

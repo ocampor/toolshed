@@ -1,5 +1,3 @@
-"""Tests for the one-shot ``run --cdp-url`` path (cli.run_attached)."""
-
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +46,7 @@ def test_run_attached_closes_when_flow_raises(base: BrowserSession) -> None:
 
 
 def test_run_attached_is_stateless(base: BrowserSession) -> None:
-    """No state.json is read or written, so parallel runs never collide."""
+    # No state.json is read or written, so parallel runs never collide.
     seen: list[BrowserSession] = []
 
     def record(session: BrowserSession) -> object:
@@ -62,7 +60,6 @@ def test_run_attached_is_stateless(base: BrowserSession) -> None:
 
 
 def test_run_attached_uses_a_unique_session_id(base: BrowserSession) -> None:
-    """Concurrent one-shot runs must not share a session directory."""
     ids = []
     for _ in range(2):
         run_attached(base, CDP_URL, lambda s: ids.append(s.session_id))
@@ -103,7 +100,6 @@ def invoke_run(
 
 
 def test_run_reuses_the_attached_group_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    """--cdp-url + --target-id drives the caller's tab and leaves it open."""
     result, driver = invoke_run(monkeypatch, "--cdp-url", CDP_URL, "--target-id", "ABC")
 
     assert result.exit_code == 0

@@ -36,7 +36,6 @@ CLI_TIMEOUT_S = 120
 
 @contextlib.contextmanager
 def scratch() -> Iterator[Path]:
-    """A throwaway tree for one scenario's output, capture and working dirs."""
     with tempfile.TemporaryDirectory(prefix="llm-browser-cli-") as directory:
         yield Path(directory)
 
@@ -60,11 +59,7 @@ def only_on_the_cli_driver(ctx: Context) -> None:
 def run_cli(
     ctx: Context, workdir: Path, *args: str
 ) -> subprocess.CompletedProcess[str]:
-    """One `llm-browser` invocation, from ``workdir``.
-
-    ``workdir`` is the CWD on purpose: a relative path the library wrote
-    itself would land there, which is what the scenarios check stayed empty.
-    """
+    """``workdir`` is the CWD on purpose: a relative path the library wrote itself would land there."""
     return subprocess.run(
         [str(cli_executable(ctx)), "--session", "conformance-cli", *args],
         cwd=workdir,
@@ -165,8 +160,6 @@ def cli_run_writes_every_output_where_it_was_asked(ctx: Context) -> None:
 
 
 def cli_run_writes_the_failure_captures(ctx: Context) -> None:
-    """A failing run exits 1, writes its capture to `--capture-dir`, and
-    reports the path where the bytes would otherwise have been."""
     only_on_the_cli_driver(ctx)
     with scratch() as tmp:
         out_dir = tmp / "artifacts"

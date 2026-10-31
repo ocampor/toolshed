@@ -80,13 +80,7 @@ DEFAULT_DRIVER = "patchright"
 
 
 def load_behavior(config_path: str | Path) -> Behavior:
-    """Parse a YAML config into a :class:`Behavior`. The returned
-    instance is a ``BehaviorConfigBase`` subclass (so IS-A Behavior)
-    and passes straight to :class:`BrowserSession`.
-
-    If ``driver`` is absent, the loader fills in the default tag
-    before validation — pydantic discriminated unions require a
-    tag in the data."""
+    """If ``driver`` is absent the loader fills in the default tag: a discriminated union needs one."""
     try:
         data = yaml.safe_load(Path(config_path).read_text()) or {}
     except yaml.YAMLError as e:

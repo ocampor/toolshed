@@ -31,7 +31,6 @@ def flow_document(text: str) -> dict[str, Any]:
 
 
 def unresolved_run_flow_steps(document: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """``run-flow`` steps whose ``flow:`` is still a reference string."""
     steps = document.get("steps")
     if not isinstance(steps, list):
         return []

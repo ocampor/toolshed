@@ -1,5 +1,3 @@
-"""Tests for fxrates package."""
-
 import datetime
 
 import httpx
@@ -29,8 +27,6 @@ def mock_rates(
     )
 
 
-# --- get_rate ---
-
 def test_get_rate_returns_float(httpx_mock: HTTPXMock) -> None:
     mock_rates(httpx_mock, "USD", ("MXN",), {"MXN": 20.15})
     assert get_rate("USD", "MXN", DATE) == 20.15
@@ -55,8 +51,6 @@ def test_get_rate_returns_none_on_network_error(httpx_mock: HTTPXMock) -> None:
     assert get_rate("USD", "MXN", DATE) is None
 
 
-# --- get_rates (batch) ---
-
 def test_get_rates_returns_all_quotes(httpx_mock: HTTPXMock) -> None:
     mock_rates(httpx_mock, "USD", ("EUR", "MXN"), {"EUR": 0.92, "MXN": 20.15})
     rates = get_rates("USD", ("EUR", "MXN"), DATE)
@@ -68,19 +62,17 @@ def test_get_rates_returns_empty_dict_on_error(httpx_mock: HTTPXMock) -> None:
     assert get_rates("USD", ("MXN",), DATE) == {}
 
 
-# --- Caching ---
-
 def test_get_rates_cached_on_second_call(httpx_mock: HTTPXMock) -> None:
     mock_rates(httpx_mock, "USD", ("MXN",), {"MXN": 20.15})
     get_rates("USD", ("MXN",), DATE)
-    get_rates("USD", ("MXN",), DATE)  # should hit cache
+    get_rates("USD", ("MXN",), DATE)
     assert len(httpx_mock.get_requests()) == 1
 
 
 def test_get_rates_caches_empty_dict_on_error(httpx_mock: HTTPXMock) -> None:
     httpx_mock.add_response(status_code=500)
     get_rates("USD", ("MXN",), DATE)
-    result = get_rates("USD", ("MXN",), DATE)  # cache hit
+    result = get_rates("USD", ("MXN",), DATE)
     assert result == {}
     assert len(httpx_mock.get_requests()) == 1
 

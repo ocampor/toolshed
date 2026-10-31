@@ -1,5 +1,3 @@
-"""Tests for the allowlisted YAML schema type parser."""
-
 import datetime
 import decimal
 from pathlib import Path

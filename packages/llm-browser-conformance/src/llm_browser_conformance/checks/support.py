@@ -52,7 +52,6 @@ def error_message(failure: FlowError) -> str:
 
 
 def texts(outputs: dict[str, object], step: str) -> list[str | None]:
-    """The ``text`` field of every row a ``read`` step produced."""
     rows: Any = outputs[step]
     return [None if row is None else row["text"] for row in rows]
 

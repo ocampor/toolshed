@@ -5,15 +5,12 @@ from bench.docs.render import Document, load_package, render
 
 
 class Reference(NamedTuple):
-    """What one consumer documents; ``header`` opens every generated file."""
-
     package: str
     header: str
     documents: dict[str, Document]
 
 
 def reference_documents(reference: Reference, source: Path) -> dict[str, str]:
-    """Every generated document, keyed by its doc name."""
     module = load_package(reference.package, source)
     return {name: render(module, document, reference.header) for name, document in reference.documents.items()}
 
@@ -39,7 +36,6 @@ def write_reference(reference: Reference, source: Path) -> list[str]:
 
 
 def orphans(reference: Reference, source: Path) -> list[Path]:
-    """Files left behind by a document that was renamed or dropped."""
     wanted = {f"{Path(name).name}.md" for name in reference.documents}
     target = reference_dir(reference, source)
     if not target.exists():
@@ -48,7 +44,6 @@ def orphans(reference: Reference, source: Path) -> list[Path]:
 
 
 def stale_reference(reference: Reference, source: Path) -> list[str]:
-    """What a rebuild would change: drift, missing files and orphans alike."""
     target = reference_dir(reference, source)
     stale = [
         name

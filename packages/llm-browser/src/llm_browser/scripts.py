@@ -1,5 +1,3 @@
-"""In-page JavaScript loaded from ``js/``."""
-
 import json
 import re
 from collections.abc import Sequence
@@ -13,7 +11,6 @@ JS_DIR = Path(__file__).parent / "js"
 
 @lru_cache(maxsize=None)
 def load_script(name: str) -> str:
-    """Return the source of ``js/<name>.js``."""
     return (JS_DIR / f"{name}.js").read_text()
 
 
@@ -83,7 +80,6 @@ def explore_limits() -> dict[str, object]:
 
 
 def with_explore_element(source: str) -> str:
-    """``source`` with the shared per-element read and its limits filled in."""
     return source.replace(
         constants.EXPLORE_ELEMENT_PLACEHOLDER, load_script("explore_element")
     ).replace(constants.EXPLORE_LIMITS_PLACEHOLDER, json.dumps(explore_limits()))

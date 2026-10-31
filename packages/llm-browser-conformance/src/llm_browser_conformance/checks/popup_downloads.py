@@ -54,8 +54,6 @@ POPUP_DOWNLOAD_GAP = (
 
 
 class Attempt(NamedTuple):
-    """The flow's verdict and what the download step alone cost."""
-
     result: FlowSuccess | FlowError
     took: float
 

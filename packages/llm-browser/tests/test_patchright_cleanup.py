@@ -1,5 +1,3 @@
-"""A failed launch/attach must leave neither an event loop nor stale objects."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -22,7 +20,6 @@ LAUNCHED_HANDLE = DriverHandle(driver="patchright", user_data_dir="/tmp/profile"
 
 @pytest.fixture
 def playwright(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """The Playwright ``start_playwright()`` hands the driver."""
     pw = MagicMock()
     monkeypatch.setattr(
         "llm_browser.drivers.patchright.start_playwright",
@@ -105,7 +102,7 @@ def test_failed_attach_leaves_no_live_state(playwright: Any, entry_point: Any) -
 def test_failed_attach_keeps_a_playwright_it_did_not_start(
     playwright: Any, entry_point: Any
 ) -> None:
-    """A retry on a live driver must not stop the connection an earlier call owns."""
+    # A retry on a live driver must not stop the connection an earlier call owns.
     playwright.chromium.connect_over_cdp.side_effect = BOOM
     driver = PatchrightDriver()
     driver._playwright = playwright
@@ -132,7 +129,7 @@ def test_close_after_a_failed_launch_does_not_raise(
 def test_attach_after_a_failed_attach_opens_a_fresh_connection(
     playwright: Any,
 ) -> None:
-    """The stale browser reports itself connected, so it must not be reused."""
+    # The stale browser reports itself connected, so it must not be reused.
     break_new_page(playwright)
     driver = PatchrightDriver()
 

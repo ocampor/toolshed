@@ -50,7 +50,7 @@ def doc_names() -> list[str]:
 
 
 def read(name: str) -> str:
-    """One document's markdown. An unknown name is a ``ValueError``."""
+    """An unknown name is a ``ValueError``."""
     if name in doc_names():
         return (DOC_ROOT / f"{name}.md").read_text(encoding="utf-8")
     # A typo reads very differently from a reference nobody has built yet.
@@ -95,7 +95,6 @@ def title_of(text: str) -> str:
 
 
 def index() -> list[DocEntry]:
-    """Every shipped document, with the title and size a caller picks by."""
     entries = []
     for name in doc_names():
         text = read(name)

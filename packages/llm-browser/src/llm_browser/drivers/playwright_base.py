@@ -27,9 +27,6 @@ from llm_browser.results import BytesResult, HitTarget, guess_media_type
 from llm_browser.scripts import extract_rows_js, property_js
 
 
-# --- Narrow Playwright-family protocols ---
-
-
 class PwLocator(Protocol):
     first: "PwLocator"
 
@@ -133,16 +130,10 @@ def read_download(download: PwDownload) -> BytesResult:
 
 
 class PlaywrightDriverBase(Driver):
-    """Interaction methods shared by every Playwright-compatible driver."""
-
     supports_role_selector: ClassVar[bool] = True
-
-    # --- Selector resolution ---
 
     def resolve(self, page: Any, selector: str) -> Any:
         return _pw_page(page).locator(selector)
-
-    # --- Interactions ---
 
     def click(self, locator: Any, *, dispatch: bool = False) -> None:
         pw = _pw_loc(locator)
@@ -194,8 +185,6 @@ class PlaywrightDriverBase(Driver):
     def dispatch_event(self, locator: Any, event: str) -> None:
         _pw_loc(locator).dispatch_event(event)
 
-    # --- Navigation / waiting ---
-
     def goto(self, page: Any, url: str, wait_until: str) -> None:
         _pw_page(page).goto(url, wait_until=wait_until)
 
@@ -219,8 +208,6 @@ class PlaywrightDriverBase(Driver):
             _pw_loc(locator).is_enabled()
             and self.get_attribute(locator, "aria-disabled") != "true"
         )
-
-    # --- Read / capture ---
 
     def now_read(self, locator: Any, read: Callable[[PwLocator], Any]) -> Any:
         """A now-read (rule 1). Playwright's own reads wait for the element —

@@ -176,7 +176,6 @@ def rerun_hint(
 
 
 def rerun_indices(report: IterationReport) -> list[int]:
-    """Every pass the run did not finish, in the order it would run them."""
     return sorted([failure.index for failure in report.failed] + report.not_run)
 
 

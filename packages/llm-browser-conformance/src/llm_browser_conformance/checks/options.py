@@ -49,16 +49,11 @@ def ran(ctx: Context, flow: str, **data: object) -> bool:
 
 
 def timed_run(ctx: Context, flow: str) -> float:
-    """Seconds one flow costs on the page that is already loaded."""
-
     def go() -> None:
         result = run_flow(ctx.session, ctx.flow(flow), {})
         assert isinstance(result, FlowSuccess), result
 
     return ctx.elapsed(go)
-
-
-# --- when: ---
 
 
 def is_truthy_reads_the_flow_data(ctx: Context) -> None:
@@ -91,9 +86,6 @@ def element_exists_asks_the_page(ctx: Context) -> None:
 def element_missing_is_the_inverse(ctx: Context) -> None:
     assert ran(ctx, "when-element-missing", target="#absent")
     assert not ran(ctx, "when-element-missing", target="#present")
-
-
-# --- The rest of BaseStep ---
 
 
 def wait_after_costs_the_flow_its_milliseconds(ctx: Context) -> None:
@@ -166,9 +158,6 @@ def repeat_indexes_a_sub_flows_outputs_too(ctx: Context) -> None:
         "first",
         "third",
     ]
-
-
-# --- Templating and params ---
 
 
 def a_selector_and_a_value_are_both_templated(ctx: Context) -> None:

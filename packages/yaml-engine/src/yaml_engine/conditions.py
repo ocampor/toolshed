@@ -1,5 +1,3 @@
-"""Built-in condition operators and evaluation registry."""
-
 import re
 from functools import lru_cache
 from typing import Callable, TypeVar
@@ -20,11 +18,7 @@ register_condition = get_registry().register
 
 
 def evaluate_condition(op: str, value: T, param: object) -> bool:
-    """Evaluate a condition operator against a value and its compiled param."""
     return get_registry().get(op)(value, param)
-
-
-# --- Built-in operators ---
 
 
 @register_condition("eq")

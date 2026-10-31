@@ -1,5 +1,3 @@
-"""Async CDP doubles shared by the nodriver and driver-contract tests."""
-
 import asyncio
 from typing import Any
 
@@ -13,15 +11,11 @@ class FakeElement:
 
 
 class DetachedElement:
-    """A handle whose node the page already removed: CDP reads on it fail."""
-
     async def apply(self, script: str) -> bool:
         raise RuntimeError("Could not find node with given id")
 
 
 class FakeTab:
-    """Serves each queued query result in turn, repeating the last one."""
-
     def __init__(self, results: list[Any]) -> None:
         self.results = results
         self.select_all_calls: list[str] = []
@@ -35,8 +29,7 @@ class FakeTab:
         return found if isinstance(found, list) else [found]
 
     async def select_all(self, selector: str, timeout: float = 10) -> list[Any]:
-        """Real nodriver retries in here — 500ms and a `Target.getTargets` per
-        cycle — so no read on the wait path may reach this method at all."""
+        # Real nodriver retries here (500ms and a Target.getTargets per cycle); waits must not reach it.
         self.select_all_calls.append(selector)
         return await self.query_selector_all(selector)
 
@@ -45,13 +38,7 @@ class FakeTab:
 
 
 class FakeBrowser:
-    """A nodriver ``Browser`` double: ``stop()`` is synchronous, like the real one.
-
-    Passing ``loop`` reproduces what the real ``Browser.stop()`` does on the
-    way out — schedule its own disconnect task on the driver's loop without
-    ever running it — so a test can assert the loop drains it instead of
-    warning about a task destroyed while still pending.
-    """
+    # Passing `loop` mimics the real stop(): it schedules a disconnect task it never runs.
 
     def __init__(
         self,

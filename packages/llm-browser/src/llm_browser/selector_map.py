@@ -103,8 +103,6 @@ class MissingSelectorsError(ValueError):
 
 
 class RefSite(NamedTuple):
-    """One model whose ``field`` holds a ref, and the name it asks for."""
-
     owner: Any
     ref: str
     field: str = "selector"
@@ -138,7 +136,6 @@ def selector_refs(flow: Flow) -> list[str]:
 
 
 def missing_selectors(flow: Flow, selector_map: SelectorMap) -> list[str]:
-    """The refs the flow needs and the map lacks, sorted and unique."""
     return [ref for ref in selector_refs(flow) if ref not in selector_map]
 
 

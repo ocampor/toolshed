@@ -1,6 +1,3 @@
-"""Selector abstraction: Pydantic models for CSS, XPath, ID, and fallback
-selectors, plus the match-count rule a step's ``expect``/``pick`` states."""
-
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
@@ -75,10 +72,6 @@ FallbackSelector.model_rebuild()
 
 
 def parse_selector(raw: str | dict[str, Any]) -> Selector:
-    """Parse a raw string or dict into a typed Selector.
-
-    Used at the boundary where YAML/JSON data enters the system.
-    """
     if isinstance(raw, str):
         return raw
     if isinstance(raw, BaseModel):
@@ -143,7 +136,6 @@ def css_string(selector: Selector) -> str:
 
 
 def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
-    """Resolve a typed selector into a driver-native locator."""
     if isinstance(selector, FallbackSelector):
         return _resolve_with_fallback(driver, page, selector.primary, selector.fallback)
     if isinstance(selector, ScopedSelector):

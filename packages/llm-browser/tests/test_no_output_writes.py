@@ -1,21 +1,10 @@
-"""The library never writes output files; only the CLI does.
-
-Written as a check over the source rather than over behaviour: a new call to
-``write_text`` in an action or a driver would pass every other test in this
-suite and quietly put the design decision back where it was.
-
-The detector is deliberately broad. It is not a sandbox — anything determined
-to write can — but every *ordinary* way to put bytes on disk should trip it,
-because the failure mode being guarded against is a reasonable-looking edit,
-not an adversary.
-"""
+# A source check: a new write_text in an action would pass every behaviour test.
 
 import ast
 from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "llm_browser"
 
-# Methods that write wherever they are called.
 WRITE_METHODS = {"write_text", "write_bytes"}
 
 # Dotted helpers that write, copy or move a file. Matched on the whole dotted
@@ -45,7 +34,6 @@ WRITE_HELPERS = {
     "numpy.save",
 }
 
-# `open(...)` in a mode that can create or change a file.
 WRITE_MODES = set("wax+")
 
 # Every module allowed to put bytes on disk, and why it earns the exemption.
@@ -57,7 +45,6 @@ ALLOWED = {
 
 
 def dotted_name(node: ast.expr) -> str:
-    """``shutil.copyfileobj`` for an Attribute chain, ``open`` for a Name."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -67,12 +54,7 @@ def dotted_name(node: ast.expr) -> str:
 
 
 def opens_for_writing(call: ast.Call) -> bool:
-    """Whether ``call`` is an ``open`` in a writing mode.
-
-    The mode is the second argument of ``open(path, mode)`` but the *first* of
-    ``path.open(mode)``, which is why the position depends on the call shape —
-    missing that is how ``Path.open("w")`` slips past a naive check.
-    """
+    # The mode is open's second argument but path.open's first; missing that lets Path.open("w") by.
     name = dotted_name(call.func)
     if name != "open" and not name.endswith(".open"):
         return False
@@ -89,12 +71,7 @@ def opens_for_writing(call: ast.Call) -> bool:
 
 
 def file_handles(tree: ast.AST) -> set[str]:
-    """Names bound to an ``open(...)`` call, by assignment or ``with``.
-
-    ``handle.write(...)`` says nothing on its own — it could be a socket or a
-    StringIO — so it only counts as a file write when the name came from
-    ``open``.
-    """
+    # handle.write could be a socket or StringIO, so it counts only when the name came from open.
     names: set[str] = set()
     for node in ast.walk(tree):
         targets: list[ast.expr] = []
@@ -127,7 +104,6 @@ def writes_a_file(node: ast.AST, handles: frozenset[str] = frozenset()) -> bool:
     if isinstance(func, ast.Attribute):
         if func.attr in WRITE_METHODS:
             return True
-        # `fp.write(...)` where `fp` came from `open(...)`.
         if func.attr in ("write", "writelines"):
             if isinstance(func.value, ast.Name) and func.value.id in handles:
                 return True
@@ -137,7 +113,6 @@ def writes_a_file(node: ast.AST, handles: frozenset[str] = frozenset()) -> bool:
 
 
 def writing_modules() -> dict[str, list[int]]:
-    """Module path (relative to the package) to the lines that write a file."""
     found = {}
     for source in sorted(SOURCE_ROOT.rglob("*.py")):
         tree = ast.parse(source.read_text())
@@ -160,7 +135,7 @@ def _expr(source: str) -> ast.Call:
 
 
 def test_the_check_sees_every_ordinary_way_to_write() -> None:
-    """Guard the guard: a detector that recognises nothing always passes."""
+    # Guard the guard: a detector that recognises nothing always passes.
     for source in (
         'p.write_bytes(b"x")',
         'p.write_text("x")',
@@ -191,7 +166,6 @@ def test_the_check_ignores_reads_and_non_file_writes() -> None:
 
 
 def test_a_handle_from_open_is_followed() -> None:
-    """`fp.write(...)` counts only once `fp` is known to be a file."""
     tree = ast.parse('fp = open(p, "w")\nfp.write("x")\n')
     handles = frozenset(file_handles(tree))
     assert handles == {"fp"}

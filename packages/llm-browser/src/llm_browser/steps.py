@@ -1,5 +1,3 @@
-"""Step execution: resolve templates, evaluate conditions, dispatch actions."""
-
 import logging
 import time
 from typing import Any, cast

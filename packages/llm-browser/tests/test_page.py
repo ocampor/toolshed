@@ -1,5 +1,3 @@
-"""Tests for BrowserSession interaction methods."""
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,7 +7,6 @@ from llm_browser.session import BrowserSession
 
 
 def _single_locator() -> MagicMock:
-    """Create a locator mock that reports exactly one element."""
     locator = MagicMock()
     locator.count.return_value = 1
     return locator
@@ -17,7 +14,6 @@ def _single_locator() -> MagicMock:
 
 @pytest.fixture
 def session(tmp_path: object) -> BrowserSession:
-    """Create a BrowserSession with a mock page injected."""
     s = BrowserSession(state_dir=tmp_path)  # type: ignore[arg-type]
     mock_page = MagicMock()
     mock_page.locator.return_value = _single_locator()
@@ -30,12 +26,6 @@ def page(session: BrowserSession) -> MagicMock:
     return session._page  # type: ignore[return-value]
 
 
-# --- Properties ---
-
-
-# --- goto ---
-
-
 def test_goto(session: BrowserSession, page: MagicMock) -> None:
     session.goto("https://example.com")
     page.goto.assert_called_once_with(
@@ -46,9 +36,6 @@ def test_goto(session: BrowserSession, page: MagicMock) -> None:
 def test_goto_custom_wait_until(session: BrowserSession, page: MagicMock) -> None:
     session.goto("https://example.com", wait_until="networkidle")
     page.goto.assert_called_once_with("https://example.com", wait_until="networkidle")
-
-
-# --- find / find_all / element_exists ---
 
 
 def test_find(session: BrowserSession, page: MagicMock) -> None:
@@ -84,9 +71,6 @@ def test_element_exists_false(session: BrowserSession, page: MagicMock) -> None:
     assert session.element_exists("#missing", timeout=0) is False
 
 
-# --- pick ---
-
-
 def test_pick(session: BrowserSession, page: MagicMock) -> None:
     locator = MagicMock()
     locator.count.return_value = 2
@@ -119,15 +103,9 @@ def test_pick_no_match_raises(session: BrowserSession, page: MagicMock) -> None:
         session.pick(".option", "Missing")
 
 
-# --- wait_for_load_state ---
-
-
 def test_wait_for_load_state(session: BrowserSession, page: MagicMock) -> None:
     session.wait_for_load_state("load", timeout=5000)
     page.wait_for_load_state.assert_called_once_with("load", timeout=5000)
-
-
-# --- frame ---
 
 
 def test_frame_returns_frame(session: BrowserSession, page: MagicMock) -> None:
@@ -136,9 +114,6 @@ def test_frame_returns_frame(session: BrowserSession, page: MagicMock) -> None:
     locator.first.element_handle.return_value.content_frame.return_value = frame_mock
     result = session.frame("iframe#main")
     assert result is frame_mock
-
-
-# --- parse_elements ---
 
 
 def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
@@ -164,7 +139,6 @@ def test_parse_elements(session: BrowserSession, page: MagicMock) -> None:
 def test_parse_elements_one_evaluation_for_many_rows(
     session: BrowserSession, page: MagicMock
 ) -> None:
-    """The whole table costs one page evaluation, no per-row locator calls."""
     locator = MagicMock()
     locator.evaluate_all.return_value = [{"name": f"row{i}"} for i in range(56)]
     page.locator.return_value = locator
@@ -208,9 +182,6 @@ def test_parse_elements_row_itself_when_no_child_selector(
     assert result == [{"id": "r1"}]
 
 
-# --- dom ---
-
-
 def test_dom(session: BrowserSession, page: MagicMock) -> None:
     locator = page.locator.return_value
     locator.first.evaluate.return_value = "<div><p>Hello</p></div>"
@@ -234,7 +205,6 @@ def test_dom_returns_first_of_several_matches(
 def test_dom_waits_for_the_element_to_become_visible(
     session: BrowserSession, page: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tolerating several matches did not turn `dom` into an attached read."""
     monkeypatch.setattr("llm_browser.waits.time.sleep", lambda _: None)
     locator = _single_locator()
     locator.first.is_visible.side_effect = [False, True]
@@ -253,9 +223,6 @@ def test_dom_level_is_applied(session: BrowserSession, page: MagicMock) -> None:
     result = session.dom("#content", level=SanitizeLevel.HIGH)
     assert "data-x" not in result
     assert "href" not in result
-
-
-# --- Typed selectors ---
 
 
 def test_find_with_id_selector(session: BrowserSession, page: MagicMock) -> None:

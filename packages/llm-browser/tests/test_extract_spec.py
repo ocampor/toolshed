@@ -1,5 +1,3 @@
-"""Each extract ``type`` validates into its own spec, which converts the raw text."""
-
 import datetime
 import subprocess
 import sys

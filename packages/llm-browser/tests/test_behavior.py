@@ -1,5 +1,3 @@
-"""Tests for the behavior layer (humanization config + its helpers)."""
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -53,9 +51,6 @@ def session(tmp_path: object) -> BrowserSession:
     return s
 
 
-# --- Jitter ---
-
-
 def test_jitter_zero_returns_zero() -> None:
     assert Jitter().sample_seconds() == 0.0
 
@@ -74,9 +69,6 @@ def test_jitter_rejects_inverted_bounds() -> None:
 def test_jitter_rejects_negative() -> None:
     with pytest.raises(ValueError, match=">= 0"):
         Jitter(min_ms=-1, max_ms=10)
-
-
-# --- Presets ---
 
 
 def test_off_preset_disables_everything() -> None:
@@ -113,17 +105,12 @@ def test_human_preset_all_on() -> None:
 
 
 def test_the_config_carries_no_seed() -> None:
-    """Deterministic jitter is the strongest tell there is, so no knob offers
-    it — a `seed:` in a behavior YAML is an unknown key, not an option."""
+    # Deterministic jitter is the strongest tell, so no knob offers a seed.
     assert "seed" not in Behavior.model_fields
 
 
-# --- Helpers ---
-
-
 def test_the_gap_is_paid_before_every_action(no_sleep: list[float]) -> None:
-    """Memoryless by design: no clock says how long the caller has been idle,
-    so a run that was already slow pays one more gap."""
+    # Memoryless: no clock says how long the caller was idle, so a slow run pays one more gap.
     b = Behavior(min_gap_ms=50)
     enforce_gap(b)
     enforce_gap(b)
@@ -171,8 +158,7 @@ def test_humanized_click_walks_a_curve_and_presses_with_a_gap() -> None:
 
 
 def test_click_target_spreads_with_the_offset_ratio() -> None:
-    """The offset is a fraction of the half-extent, so it scales with the box
-    instead of with a pixel count — and never leaves the element."""
+    # The offset is a fraction of the half-extent: it scales with the box and stays inside it.
     b = Behavior(click_offset_ratio=0.3)
     targets = [jittered_target(_element_at(), b) for _ in range(2000)]
     xs = [x for x, _y in targets]
@@ -183,8 +169,7 @@ def test_click_target_spreads_with_the_offset_ratio() -> None:
 
 
 def test_a_curve_bows_off_the_straight_line() -> None:
-    """The bow is sampled either way and one draw can land near zero, so the
-    claim is about paths rather than about a path."""
+    # One draw can land near zero, so the claim is about paths rather than a path.
     curves = [curve_points((0.0, 0.0), (100.0, 0.0), 10) for _ in range(200)]
     assert all(points[-1] == (100.0, 0.0) for points in curves)
     bowed = [max(abs(y) for _x, y in points) > 1.0 for points in curves]
@@ -192,7 +177,6 @@ def test_a_curve_bows_off_the_straight_line() -> None:
 
 
 def test_a_curve_is_monotonic_towards_its_end() -> None:
-    """Bézier control points never drag the path past its endpoint."""
     points = curve_points((0.0, 0.0), (100.0, 0.0), 20)
     assert [x for x, _y in points] == sorted(x for x, _y in points)
 
@@ -231,9 +215,6 @@ def test_humanized_click_raises_when_no_bbox() -> None:
     page.mouse.move.assert_not_called()
 
 
-# --- Regression: default session preserves existing semantics ---
-
-
 def test_default_session_fill_still_calls_fill(session: BrowserSession) -> None:
     step = FillStep(name="s", action="fill", selector="#input", value="hello")
     execute_action(session, step)
@@ -261,9 +242,6 @@ def test_default_session_type_respects_delay(session: BrowserSession) -> None:
     execute_action(session, step)
     locator = session._page.locator.return_value  # type: ignore[union-attr]
     locator.first.type.assert_called_once_with("ab", delay=25)
-
-
-# --- Behavior.human() changes the dispatch path ---
 
 
 def test_human_session_fill_routes_to_type(tmp_path: object) -> None:
@@ -302,9 +280,6 @@ def test_dispatch_click_bypasses_humanization(tmp_path: object) -> None:
     mock_page.mouse.move.assert_not_called()
 
 
-# --- think action ---
-
-
 def test_think_sleeps_within_bounds(session: BrowserSession) -> None:
     step = ThinkStep(name="s", action="think", min_ms=10, max_ms=20)
     with pytest.MonkeyPatch.context() as mp:
@@ -317,17 +292,12 @@ def test_think_sleeps_within_bounds(session: BrowserSession) -> None:
 
 
 def test_think_rejects_inverted_bounds(session: BrowserSession) -> None:
-    """``min_ms > max_ms`` triggers Pydantic validation inside Jitter, which
-    bubbles to ``execute_action`` and is returned as ``ErrorResult``."""
     from llm_browser.results import ErrorResult
 
     step = ThinkStep(name="s", action="think", min_ms=100, max_ms=50)
     result = execute_action(session, step)
     assert isinstance(result, ErrorResult)
     assert "max_ms" in result.message
-
-
-# --- The pointer between actions ---
 
 
 @pytest.fixture
@@ -344,8 +314,7 @@ def _page_with_viewport(width: float, height: float) -> MagicMock:
 
 
 def test_a_mouse_path_stays_inside_the_viewport(no_sleep: list[float]) -> None:
-    """The bow is a fraction of the distance, so a long approach to an element
-    at the edge swings off-screen — where no real pointer can be."""
+    # The bow scales with distance, so a long approach to an edge element can swing off-screen.
     corner = {"x": 0.0, "y": 0.0, "width": 40.0, "height": 20.0}
     b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
     for _ in range(20):
@@ -367,8 +336,7 @@ def test_the_pointer_approaches_from_its_target_s_neighbourhood() -> None:
 
 
 def test_every_click_approaches_from_a_fresh_point(no_sleep: list[float]) -> None:
-    """Nothing remembers where the last click left the pointer, so two clicks
-    on the same element cannot share a trail for a detector to correlate."""
+    # Nothing remembers the last click's point, so two clicks cannot share a correlatable trail.
     b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
     box = {"x": 600.0, "y": 400.0, "width": 40.0, "height": 20.0}
     firsts = []
@@ -380,7 +348,7 @@ def test_every_click_approaches_from_a_fresh_point(no_sleep: list[float]) -> Non
 
 
 def test_the_path_is_paced_point_by_point(no_sleep: list[float]) -> None:
-    """A trail with a shape but no speed still reads as synthetic."""
+    # A trail with a shape but no speed still reads as synthetic.
     b = Behavior(
         pre_click_pause=Jitter(),
         hover_dwell=Jitter(),

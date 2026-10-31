@@ -1,10 +1,4 @@
-"""Rule 1 of the `Driver` contract, against every driver we can fake here.
-
-The reads answer about the DOM as it is right now: a miss is 0 / False /
-None / a locator that matches nothing, never a retry inside the driver and
-never a raise. `llm_browser.waits` owns the deadline, and a read that blocked or
-retried would make that deadline meaningless.
-"""
+# `waits` owns the deadline, so a driver read never retries or raises on a miss.
 
 import asyncio
 from dataclasses import dataclass
@@ -31,9 +25,6 @@ MISSING_CHILD_FIELDS: list[dict[str, str | None]] = [
 
 @dataclass
 class DriverCase:
-    """A driver, a locator for a selector nothing matches, and the calls that
-    would mean it waited."""
-
     driver: Driver
     locator: Any
     retrying_calls: Callable[[], list[Any]]
@@ -100,8 +91,7 @@ def test_text_content_of_a_missing_selector_is_none(case: DriverCase) -> None:
 def test_read_field_of_a_missing_child_is_none(
     case: DriverCase, field: dict[str, str | None]
 ) -> None:
-    """`explore` samples a row this way: an absent child is an empty field,
-    not a 30 s auto-wait ending in the backend's own `TimeoutError`."""
+    # An absent child is an empty field, not a 30 s auto-wait ending in the backend's TimeoutError.
     assert case.driver.read_field(case.driver.first(case.locator), field) is None
 
 
@@ -109,14 +99,10 @@ def test_first_of_a_missing_selector_does_not_raise(case: DriverCase) -> None:
     assert case.driver.first(case.locator) is not None
 
 
-# --- Rule 2: the humanized defaults a native driver inherits ---
-
-
 def test_the_default_humanized_type_sends_one_key_per_char_on_the_cadence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A driver with native humanization (nodriver) still owes the caller the
-    per-key delay it asked for, so the default must not type in one burst."""
+    # A driver with native humanization still owes the per-key delay the caller asked for.
     sleeps: list[float] = []
     monkeypatch.setattr(behavior_module.time, "sleep", sleeps.append)
     driver = MagicMock()
@@ -133,9 +119,6 @@ def test_the_default_humanized_type_sends_one_key_per_char_on_the_cadence(
     ]
     assert len(sleeps) == 2
     assert all(0.040 <= slept <= 0.080 for slept in sleeps)
-
-
-# --- is_enabled: the browser's own answer on the Playwright family ---
 
 
 @pytest.mark.parametrize(

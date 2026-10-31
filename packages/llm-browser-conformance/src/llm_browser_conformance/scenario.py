@@ -104,8 +104,6 @@ class Context:
     driver: str
     delay_ms: int = DEFAULT_DELAY_MS
 
-    # --- The site ---
-
     def url(self, page: str) -> str:
         separator = "&" if "?" in page else "?"
         return f"{self.site_url}/{page}{separator}delay={self.delay_ms}"
@@ -117,10 +115,7 @@ class Context:
         return load_flow_text(self.flow_file(name).read_text())
 
     def flow_file(self, name: str) -> Path:
-        """The fixture flow on disk — what a CLI invocation needs."""
         return FLOWS_DIR / f"{name}.yaml"
-
-    # --- Waiting ---
 
     def wait_now(self, selector: str, state: str, **overrides: int) -> None:
         options: dict[str, Any] = {
@@ -147,8 +142,6 @@ class Context:
         start = time.monotonic()
         action()
         return time.monotonic() - start
-
-    # --- Reading ---
 
     def js(self, expression: str) -> Any:
         """Read the page from the page's own side.

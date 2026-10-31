@@ -1,5 +1,3 @@
-"""Tests for param resolution and validation."""
-
 from typing import Any
 
 import pytest

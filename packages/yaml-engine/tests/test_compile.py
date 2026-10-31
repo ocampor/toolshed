@@ -1,5 +1,3 @@
-"""Tests for YAML compilation."""
-
 import textwrap
 from pathlib import Path
 
@@ -32,7 +30,7 @@ def test_compile_condition_matches():
 
 
 def test_compile_condition_unknown_op_passes():
-    """Unknown ops should not raise — consumers may register custom conditions."""
+    # Consumers may register custom conditions, so an unknown op must not raise.
     cond = compile_condition({"field": "x", "op": "custom_op", "value": "test"})
     assert cond.op == "custom_op"
     assert cond.param == "test"

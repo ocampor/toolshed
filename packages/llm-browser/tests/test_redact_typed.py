@@ -1,5 +1,3 @@
-"""Secrets a typed read or caller data turned into numbers and dates."""
-
 import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal

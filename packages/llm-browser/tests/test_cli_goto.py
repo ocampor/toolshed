@@ -1,5 +1,3 @@
-"""The URL-taking CLI commands report a rejected scheme as a click usage error."""
-
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -12,7 +10,7 @@ from llm_browser.session import BrowserSession
 
 @pytest.fixture
 def cli_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BrowserSession:
-    """A real session — a MagicMock one would never reach the scheme guard."""
+    # A MagicMock session would never reach the scheme guard.
     session = BrowserSession(state_dir=tmp_path)
     session.driver = MagicMock()
     session._page = MagicMock()

@@ -150,7 +150,6 @@ def is_function_literal(script: str) -> bool:
 
 
 def is_async_literal(script: str) -> bool:
-    """Whether ``script`` is a function whose result has to be awaited."""
     return ASYNC_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
@@ -277,8 +276,6 @@ class NodriverLocator:
 
 
 class NodriverDriver(Driver):
-    """nodriver-backed driver. Native humanized click via `element.click()`."""
-
     name: ClassVar[str] = "nodriver"
     supports_reconnect: ClassVar[bool] = False
 
@@ -288,14 +285,10 @@ class NodriverDriver(Driver):
         self.tab: Any = None
         self.loop: asyncio.AbstractEventLoop | None = None
 
-    # --- Sync bridge ---
-
     def run(self, coro: Coroutine[Any, Any, T]) -> T:
         if self.loop is None:
             raise RuntimeError("Event loop not running. Call launch() first.")
         return self.loop.run_until_complete(coro)
-
-    # --- Lifecycle ---
 
     def launch(
         self,
@@ -390,8 +383,6 @@ class NodriverDriver(Driver):
     def status(self, handle: DriverHandle) -> bool:
         return self.tab is not None
 
-    # --- Element resolution ---
-
     def resolve(self, page: Any, selector: str) -> Any:
         return NodriverLocator(tab=page, selector=selector)
 
@@ -460,8 +451,6 @@ class NodriverDriver(Driver):
             return await apply_awaiting(el, script)
         return await el.apply(script)
 
-    # --- Interactions ---
-
     def click(self, locator: Any, *, dispatch: bool = False) -> None:
         self.run(self.do_click(locator, dispatch))
 
@@ -490,7 +479,6 @@ class NodriverDriver(Driver):
         self.run(self.do_fill(locator, text))
 
     async def do_fill(self, loc: NodriverLocator, text: str) -> None:
-        """Trusted clear + trusted type. Equivalent to do_type on an empty field."""
         await self.clear_trusted(loc)
         await self.do_type(loc, text, delay_ms=0)
 
@@ -584,8 +572,6 @@ class NodriverDriver(Driver):
             )
         )
 
-    # --- Navigation / waiting ---
-
     def goto(self, page: Any, url: str, wait_until: str) -> None:
         self.run(self.do_goto(page, url))
 
@@ -634,8 +620,6 @@ class NodriverDriver(Driver):
             # Reading a handle the page already detached fails over CDP; a node
             # that is gone is not visible, which is what `hidden` waits for.
             return False
-
-    # --- Read / capture ---
 
     def text_content(self, locator: Any) -> str | None:
         return self.run(self.read_text(locator))
@@ -793,11 +777,7 @@ class NodriverDriver(Driver):
 
 
 async def _evaluate_by_value(tab: Any, expression: str) -> Any:
-    """Call CDP Runtime.evaluate with plain returnByValue (no deep serialization).
-
-    Matches the contract every Playwright-family driver provides: a JSON-like
-    value, or raise on JS error.
-    """
+    """Matches the Playwright-family contract: a JSON-like value, or raise on JS error."""
     nodriver = load_optional_module("nodriver", "nodriver")
     cdp = nodriver.cdp
 

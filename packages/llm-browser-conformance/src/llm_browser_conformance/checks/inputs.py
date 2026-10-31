@@ -77,7 +77,6 @@ def a_key_press_is_a_trusted_event(ctx: Context) -> None:
 
 
 def typing_fires_trusted_input_events(ctx: Context) -> None:
-    """The value arrives through real input, whatever key events came with it."""
     ctx.visit("form.html")
     ctx.session.type("#name", "ab")
     assert ctx.trusted("#name", "data-trusted-input") == "true"

@@ -1,10 +1,4 @@
-"""Browser-free tests for the helpers the checks share.
-
-The tab helpers are the reason this file exists: every driver installed today
-implements ``latest_tab`` and closes its popups, so the paths that matter most
-— no ``latest_tab`` at all, and a tab that never closes — are only reachable
-with a fake session.
-"""
+# Every installed driver has latest_tab and closes popups; only a fake reaches the other paths.
 
 import dataclasses
 import itertools
@@ -55,13 +49,7 @@ def test_a_driver_with_latest_tab_runs_the_scenario() -> None:
 
 
 class SessionWhoseTabNeverCloses:
-    """A session whose newest tab is a *different* object every time.
-
-    That is the case the outer deadline exists for: ``close_tab``'s inner wait
-    only runs while ``latest_tab()`` is the tab it just asked to close, so with
-    a fresh object each call the inner deadline is never reached and only the
-    outer one can end the loop.
-    """
+    # A fresh tab object per call: only the outer deadline, never close_tab's inner one, ends the loop.
 
     def __init__(self) -> None:
         self.latest_tab_calls = 0
@@ -73,14 +61,12 @@ class SessionWhoseTabNeverCloses:
         return object()
 
     def evaluate(self, target: Any, expression: str) -> Any:
-        """``close_opened_tabs`` polls for this url before it starts closing;
-        answering it straight away keeps that timeout out of the test."""
+        # close_opened_tabs polls for this url first; answering at once keeps its timeout out.
         return f"http://127.0.0.1/{NEW_TAB_TARGET}"
 
 
 def fake_clock(step: float = 1.0) -> Callable[[], float]:
-    """A monotonic clock that advances a step per reading, so a deadline is
-    reached in a handful of iterations and the test costs no wall time."""
+    # Advances a step per reading, so a deadline arrives in a few iterations at no wall time.
     ticks = itertools.count(0.0, step)
     return lambda: next(ticks)
 
@@ -100,9 +86,7 @@ def test_a_tab_that_never_closes_gives_up_on_the_deadline(stuck_tab: Context) ->
 def test_a_failing_cleanup_does_not_replace_the_scenario_failure(
     stuck_tab: Context,
 ) -> None:
-    """Both go wrong at once: the scenario asserts and the popup then refuses
-    to close. The table shows the newest exception, so the assertion has to be
-    the one that comes out."""
+    # The table shows the newest exception, so the scenario's assertion must be the one raised.
     with (
         pytest.raises(AssertionError) as caught,
         tabs_closed_after(stuck_tab, OPENER, NEW_TAB_TARGET),

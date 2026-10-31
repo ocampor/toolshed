@@ -41,7 +41,6 @@ DEAD_HREF_SCHEMES = ("#", "javascript:", "mailto:", "tel:")
 
 
 def class_stem(token: str) -> str:
-    """A class name without the build's numbering on the end."""
     return CLASS_SUFFIX.sub("", token) or token
 
 
@@ -107,7 +106,6 @@ def link_shape(href: str) -> tuple[str, str] | None:
 
 
 def link_shapes_of(hrefs: list[str], max_shapes: int) -> list[LinkShape]:
-    """The link families the page navigates by, the busiest first."""
     shapes = [shape for shape in map(link_shape, hrefs) if shape is not None]
     counts = Counter(shapes)
     return [

@@ -53,7 +53,6 @@ def chrome_binary() -> str | None:
 
 
 def unavailable(driver: str) -> str | None:
-    """Why ``driver`` cannot run here, or ``None`` if it can."""
     if driver not in get_registry():
         return f"extra not installed (uv sync --extra {driver})"
     if driver == "nodriver" and chrome_binary() is None:

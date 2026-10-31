@@ -113,10 +113,7 @@ def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None
 
 
 def parse_extract_spec(spec: Mapping[str, Any] | None) -> dict[str, ExtractField]:
-    """Turn ``{field: "child selector@attribute"}`` into extraction fields.
-
-    ``None`` means "just the text", under the field name ``text``.
-    """
+    """``None`` means "just the text", under the field name ``text``."""
     if spec is None:
         return {constants.DEFAULT_EXTRACT_FIELD: ExtractField()}
     return {name: ExtractField.coerce(value) for name, value in spec.items()}

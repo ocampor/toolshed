@@ -44,11 +44,7 @@ PayloadBytes = Annotated[
 
 
 def is_timeout(exc: BaseException) -> bool:
-    """Treat any exception class named ``TimeoutError`` as a timeout.
-    Patchright (and similar driver libs) raise their own TimeoutError
-    that does NOT inherit from the Python builtin, so a bare
-    ``isinstance(exc, TimeoutError)`` check misses driver-side waits
-    and the optional-swallow / ErrorResult contract was violated."""
+    """Driver libs (patchright) raise their own ``TimeoutError`` that does not inherit the builtin, so match by class name."""
     if isinstance(exc, TimeoutError):
         return True
     return type(exc).__name__ == "TimeoutError"
@@ -183,7 +179,6 @@ class DocumentResult(ActionResult):
 
 
 def guess_media_type(name: str) -> str:
-    """The media type ``name``'s extension implies, or the generic one."""
     return mimetypes.guess_type(name)[0] or DEFAULT_MEDIA_TYPE
 
 

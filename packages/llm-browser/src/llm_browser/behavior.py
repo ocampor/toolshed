@@ -285,7 +285,6 @@ def humanized_click(
 
 
 def humanized_type(page: Any, element: Any, text: str, behavior: Behavior) -> None:
-    """Type text char-by-char with jittered per-key delays."""
     if behavior.focus_drift and behavior.mouse_move:
         drift_mouse_to(page, element, behavior)
     type_chars(lambda ch: element.type(ch, delay=0), text, behavior)
@@ -305,7 +304,6 @@ def jittered_point(
 
 
 def jittered_target(element: Any, behavior: Behavior) -> tuple[float, float]:
-    """Where in ``element`` this click lands."""
     box = element.bounding_box()
     if box is None:
         raise RuntimeError("element has no bounding box (detached or not rendered)")

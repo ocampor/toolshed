@@ -1,8 +1,4 @@
-"""The docs are checked, not trusted.
-
-``xpass`` catches a gap that closes; nothing catches a table row whose
-wording drifted, a row deleted from the code, or a new gap nobody wrote down.
-"""
+# xpass catches a closed gap; nothing else catches drifted wording, deleted or unwritten rows.
 
 from pathlib import Path
 

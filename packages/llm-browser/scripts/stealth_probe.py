@@ -94,7 +94,6 @@ PAGE_TEXT_JS = "() => [document.title, document.body && document.body.innerText]
 
 
 def page_text(title: str | None, body: str | None) -> str:
-    """The text a probe's ``check`` regex runs against: title, then body."""
     return "\n".join(part for part in (title, body) if part)
 
 

@@ -67,7 +67,6 @@ def step_models(module: griffe.Module) -> list[str]:
 
 
 def result_models(module: griffe.Module) -> list[str]:
-    """The flow-level results, then every action result they are built from."""
     flow_level = [
         "models.FlowSuccess",
         "models.FlowError",
@@ -197,7 +196,6 @@ REFERENCE = Reference(package="llm_browser", header=HEADER, documents=DOCUMENTS)
 
 
 def covered_modules(module: griffe.Module) -> set[str]:
-    """Every module some document renders from, whole or through a member."""
     names = set()
     for document in DOCUMENTS.values():
         paths = [path for _, path in document.prose] + members_of(module, document)

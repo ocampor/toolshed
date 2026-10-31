@@ -1,5 +1,3 @@
-"""HTML cleaning utilities for DOM snippet extraction and page snapshots."""
-
 import enum
 import re
 from typing import Any
@@ -120,7 +118,6 @@ def normalize_whitespace(tree: HtmlElement) -> None:
 
 
 def truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> None:
-    """Remove children beyond max_depth."""
     if current >= max_depth:
         for child in list(element):
             element.remove(child)
@@ -174,7 +171,6 @@ def sanitize_html_fragment(
     max_depth: int = 0,
     level: SanitizeLevel = SanitizeLevel.LOW,
 ) -> str:
-    """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
     tree = parse_fragment(html)
     sanitize_tree(tree, level)
     if max_depth > 0:

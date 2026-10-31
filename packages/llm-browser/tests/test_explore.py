@@ -1,5 +1,3 @@
-"""What `explore_many` costs and what it answers: one page call, every target."""
-
 import json
 from types import SimpleNamespace
 
@@ -12,7 +10,6 @@ from tests.extract_helpers import CARD_EXTRACT, CARDS, TYPED_CARDS
 
 
 def element(**over: object) -> dict[str, object]:
-    """One target's first-match read, as the page hands it back."""
     first = {
         "tag": "a",
         "text": "Senior engineer",
@@ -44,8 +41,6 @@ def answer(selector: str, count: int, **over: object) -> dict[str, object]:
 
 
 class FakeSession:
-    """A session that answers one page call with what the page would have."""
-
     def __init__(self, answers: list[dict[str, object]], counts: dict[str, int]):
         self.answers = answers
         self.counts = counts
@@ -74,7 +69,7 @@ class FakeSession:
 
 
 def test_a_batch_is_one_page_call_whatever_it_asks_for() -> None:
-    """The whole point: three targets cost one evaluation, not three waits."""
+    # Three targets cost one evaluation, not three waits.
     session = FakeSession(
         [answer(".card", 3), answer("#search", 1), answer(".gone", 0)],
         counts={'[data-testid="mission"]': 3},
@@ -148,8 +143,7 @@ def test_a_typed_target_is_sampled_whole_then_typed_like_a_read() -> None:
 
 
 def test_a_timeout_is_a_page_with_none_of_them_on_it() -> None:
-    """The wait is the batch's: when it runs out every target is a count of
-    zero rather than an exception, the same answer `explore` gives."""
+    # When the batch wait runs out every target counts zero, the same answer `explore` gives.
     session = FakeSession([answer(".a", 0), answer(".b", 0)], counts={})
 
     results = explore_many(
@@ -164,8 +158,7 @@ def test_a_timeout_is_a_page_with_none_of_them_on_it() -> None:
 
 
 def test_a_selector_the_page_cannot_parse_answers_for_itself_only() -> None:
-    """A typo is the author's, but it is one target's: the eleven answers the
-    page already computed are not thrown away with it."""
+    # One target's typo must not throw away the answers the page already computed.
     session = FakeSession(
         [answer("div >", 0, invalid=True), answer(".card", 3)], counts={}
     )
@@ -182,8 +175,7 @@ def test_a_selector_the_page_cannot_parse_answers_for_itself_only() -> None:
 
 
 def test_the_driver_is_given_longer_than_the_wait_it_is_running() -> None:
-    """The wait happens inside the evaluate, so the evaluate outlives it — or
-    the driver's own default ends the call before the answer arrives."""
+    # The wait runs inside the evaluate, so the evaluate must outlive it.
     session = FakeSession([answer(".a", 1), answer(".b", 1)], counts={})
 
     explore_many(
@@ -197,8 +189,7 @@ def test_the_driver_is_given_longer_than_the_wait_it_is_running() -> None:
 
 
 def test_more_targets_than_one_page_call_takes_is_refused() -> None:
-    """Each target settles in turn, so a hundred of them is a page call nobody
-    sized a timeout for."""
+    # Targets settle in turn, so a hundred is a page call nobody sized a timeout for.
     session = FakeSession([], counts={})
     targets = [
         ExploreTarget(selector=f".c{index}")

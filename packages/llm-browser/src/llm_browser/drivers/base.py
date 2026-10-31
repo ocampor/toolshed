@@ -62,8 +62,6 @@ class Driver(ABC):
     # else it reaches `querySelectorAll` as a syntax error.
     supports_role_selector: ClassVar[bool] = False
 
-    # --- Lifecycle ---
-
     @abstractmethod
     def launch(
         self,
@@ -74,19 +72,13 @@ class Driver(ABC):
     ) -> DriverHandle: ...
 
     def attach(self, cdp_url: str) -> DriverHandle:
-        """Attach to an already-running Chromium over CDP.
-
-        Subclasses that support it (patchright) override this. Others raise.
-        """
+        """Subclasses that support it (patchright) override this; others raise."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support attach; use driver='patchright'"
         )
 
     def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
-        """Attach to one existing tab, addressed by its CDP target id.
-
-        Subclasses that support it (patchright) override this. Others raise.
-        """
+        """Subclasses that support it (patchright) override this; others raise."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support attach; use driver='patchright'"
         )
@@ -109,13 +101,9 @@ class Driver(ABC):
         Default no-op for drivers without a multi-page concept.
         """
 
-    # --- Selector resolution ---
-
     @abstractmethod
     def resolve(self, page: Any, selector: str) -> Any:
         """A locator for ``selector``; matching nothing yet is not an error."""
-
-    # --- Interactions ---
 
     @abstractmethod
     def click(self, locator: Any, *, dispatch: bool = False) -> None: ...
@@ -172,8 +160,6 @@ class Driver(ABC):
     def dispatch_event(self, locator: Any, event: str) -> None:
         """Fire a synthetic (``isTrusted=false``) DOM event — rule 2's escape hatch."""
 
-    # --- Navigation / waiting ---
-
     @abstractmethod
     def goto(self, page: Any, url: str, wait_until: str) -> None: ...
 
@@ -220,8 +206,6 @@ class Driver(ABC):
         Abstract rather than defaulted: a driver that skipped it would raise
         past the step's timeout-or-``ValueError`` contract and abort the flow.
         """
-
-    # --- Read / capture ---
 
     @abstractmethod
     def text_content(self, locator: Any) -> str | None:

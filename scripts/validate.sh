@@ -11,8 +11,8 @@ package_dir="${1:?usage: validate.sh <package-dir>}"
 
 cd "$repo_root/$package_dir"
 
-uv sync                       # install the package and its dev tools
-uv run ruff check .           # lint
-uv run ruff format --check .  # formatting
-uv run mypy .                 # types
-uv run pytest -q              # tests
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
+uv run pytest -q

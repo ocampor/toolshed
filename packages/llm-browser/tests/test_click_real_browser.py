@@ -1,11 +1,4 @@
-"""The humanized click against a real Chromium: does the hit test the click
-trusts — run in patchright's isolated world — see what the page itself sees?
-
-The fakes elsewhere can only prove the plumbing. Isolated-world
-``elementFromPoint`` reading a different element than the main world's would
-make every refusal and every reported hit a lie, and nothing but a browser
-can answer that.
-"""
+# Only a real browser shows whether the isolated world's elementFromPoint matches the main world's.
 
 import random
 from pathlib import Path
@@ -42,11 +35,7 @@ PAGE = """
 
 
 class Case(NamedTuple):
-    """A page and where it starts scrolled, plus whether the click must land.
-
-    ``must_click`` is off only for the original shape, where the path crosses
-    the nav on its way down and the menu legitimately takes the point.
-    """
+    # `must_click` is off only for the original shape, where the nav menu legitimately takes the point.
 
     nav_edge: str
     nav_height: int
@@ -87,11 +76,7 @@ def live_session(tmp_path: Path) -> Iterator[BrowserSession]:
 
 
 def main_world_at(cdp: Any, point: tuple[float, float]) -> str:
-    """``tag|class`` of whatever the *page's own* world finds at ``point``.
-
-    ``Runtime.evaluate`` with no context id is the main world; patchright's
-    ``evaluate`` deliberately is not, which is the whole question here.
-    """
+    # Runtime.evaluate with no context id is the main world; patchright's evaluate is not.
     read = cdp.send(
         "Runtime.evaluate",
         {

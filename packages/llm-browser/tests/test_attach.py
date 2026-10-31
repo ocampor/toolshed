@@ -1,5 +1,3 @@
-"""Tests for BrowserSession.attach() CDP-attach mode."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -12,8 +10,6 @@ from llm_browser.session import BrowserSession
 
 
 class AttachStubDriver(Driver):
-    """Minimal stub that records attach/close and never touches a PID."""
-
     name = "stub"
 
     def __init__(self) -> None:
@@ -148,7 +144,6 @@ def test_attach_close_never_kills_pid(tmp_path: Path) -> None:
 def test_patchright_reattaches_from_cdp_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fresh PatchrightDriver with an attached-mode handle reconnects via CDP."""
     from llm_browser.drivers.patchright import PatchrightDriver
 
     fake_page = MagicMock()
@@ -178,7 +173,6 @@ def test_patchright_reattaches_from_cdp_endpoint(
 
 
 def test_patchright_launched_mode_does_not_reattach() -> None:
-    """Launched mode can't recover from a fresh process — raises a clear error."""
     from llm_browser.drivers.patchright import PatchrightDriver
 
     driver = PatchrightDriver()
@@ -188,7 +182,6 @@ def test_patchright_launched_mode_does_not_reattach() -> None:
 
 
 def test_patchright_status_true_when_attached_and_endpoint_set() -> None:
-    """status() reports open for a fresh attach-mode handle, enabling CLI reuse."""
     from llm_browser.drivers.patchright import PatchrightDriver
 
     driver = PatchrightDriver()
@@ -204,8 +197,6 @@ def test_patchright_status_true_when_attached_and_endpoint_set() -> None:
 
 
 def test_base_driver_attach_raises() -> None:
-    """Drivers that don't override attach() should raise NotImplementedError."""
-
     class NoAttach(AttachStubDriver):
         def attach(self, cdp_url: str) -> DriverHandle:
             return Driver.attach(self, cdp_url)

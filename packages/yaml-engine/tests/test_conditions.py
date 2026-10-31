@@ -1,12 +1,8 @@
-"""Parametrized tests for built-in condition operators."""
-
 import re
 
 import pytest
 
 from yaml_engine.conditions import evaluate_condition
-
-# --- eq ---
 
 
 @pytest.mark.parametrize(
@@ -24,9 +20,6 @@ def test_eq(value, param, expected):
     assert evaluate_condition("eq", value, param) == expected
 
 
-# --- neq ---
-
-
 @pytest.mark.parametrize(
     "value, param, expected",
     [
@@ -37,9 +30,6 @@ def test_eq(value, param, expected):
 )
 def test_neq(value, param, expected):
     assert evaluate_condition("neq", value, param) == expected
-
-
-# --- contains ---
 
 
 @pytest.mark.parametrize(
@@ -56,9 +46,6 @@ def test_contains(value, param, expected):
     assert evaluate_condition("contains", value, param) == expected
 
 
-# --- in / in_set ---
-
-
 @pytest.mark.parametrize("op", ["in", "in_set"])
 @pytest.mark.parametrize(
     "value, param, expected",
@@ -71,9 +58,6 @@ def test_contains(value, param, expected):
 )
 def test_in(op, value, param, expected):
     assert evaluate_condition(op, value, param) == expected
-
-
-# --- all_present ---
 
 
 @pytest.mark.parametrize(
@@ -89,9 +73,6 @@ def test_all_present(value, param, expected):
     assert evaluate_condition("all_present", value, param) == expected
 
 
-# --- has_fragment ---
-
-
 @pytest.mark.parametrize(
     "value, param, expected",
     [
@@ -103,9 +84,6 @@ def test_all_present(value, param, expected):
 )
 def test_has_fragment(value, param, expected):
     assert evaluate_condition("has_fragment", value, param) == expected
-
-
-# --- matches ---
 
 
 @pytest.mark.parametrize(
@@ -120,9 +98,6 @@ def test_has_fragment(value, param, expected):
 )
 def test_matches(value, param, expected):
     assert evaluate_condition("matches", value, param) == expected
-
-
-# --- gt / lt ---
 
 
 @pytest.mark.parametrize(
@@ -151,9 +126,6 @@ def test_lt(value, param, expected):
     assert evaluate_condition("lt", value, param) == expected
 
 
-# --- is_null / not_null ---
-
-
 @pytest.mark.parametrize(
     "value, expected",
     [
@@ -179,9 +151,6 @@ def test_not_null(value, expected):
     assert evaluate_condition("not_null", value, None) == expected
 
 
-# --- is_truthy ---
-
-
 @pytest.mark.parametrize(
     "value, expected",
     [
@@ -196,9 +165,6 @@ def test_not_null(value, expected):
 )
 def test_is_truthy(value, expected):
     assert evaluate_condition("is_truthy", value, None) == expected
-
-
-# --- unknown operator ---
 
 
 def test_unknown_operator_raises():

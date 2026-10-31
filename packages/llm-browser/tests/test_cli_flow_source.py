@@ -1,5 +1,3 @@
-"""Tests for the CLI's flow sources: --flow PATH, --flow -, --flow-yaml."""
-
 import asyncio
 import json
 from pathlib import Path
@@ -62,9 +60,6 @@ def _mock_session(tmp_path: Path) -> MagicMock:
     return stub_matching(session)
 
 
-# --- source selection ---
-
-
 def test_inline_text_resolves_to_its_document() -> None:
     assert _resolve(None, FLOW_YAML) == FLOW_DOCUMENT
 
@@ -84,9 +79,6 @@ def test_exactly_one_source_is_required(
 ) -> None:
     with pytest.raises(Exception, match="exactly one"):
         _resolve(flow_path, flow_yaml)
-
-
-# --- running ---
 
 
 def test_run_cli_flow_runs_inline_text_without_touching_disk(tmp_path: Path) -> None:
@@ -115,7 +107,7 @@ def test_run_command_runs_a_flow_file(
 def test_run_command_runs_a_flow_file_with_a_sibling_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The child resolves against the parent's directory, not the CWD."""
+    # The child resolves against the parent's directory, not the CWD.
     (tmp_path / "child.yaml").write_text(CHILD_YAML)
     parent = tmp_path / "parent.yaml"
     parent.write_text(PARENT_YAML)
@@ -129,9 +121,6 @@ def test_run_command_runs_a_flow_file_with_a_sibling_child(
 
     assert result.exit_code == 0
     assert session.goto.call_args.args == ("https://child.example",)
-
-
-# --- validate ---
 
 
 @pytest.mark.parametrize(
@@ -278,9 +267,6 @@ def test_an_empty_flow_path_is_a_usage_error() -> None:
     result = CliRunner().invoke(main, ["validate", "--flow", ""])
     assert result.exit_code == 2
     assert "--flow needs a path" in result.output
-
-
-# --- cwd-relative sub-flow refs ---
 
 
 def test_run_cli_flow_resolves_a_sibling_ref_from_the_cwd(

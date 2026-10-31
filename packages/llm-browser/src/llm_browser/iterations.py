@@ -1,5 +1,3 @@
-"""What every pass of a repeating step did: counts, and each failure in full."""
-
 from pydantic import BaseModel
 
 from llm_browser.results import ErrorResult, PayloadBytes

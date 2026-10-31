@@ -1,5 +1,3 @@
-"""Tests for the stealth probe's match-text builder."""
-
 import pytest
 
 from scripts.stealth_probe import page_text

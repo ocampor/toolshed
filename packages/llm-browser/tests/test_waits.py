@@ -1,7 +1,4 @@
-"""BrowserSession.wait_for_element: the Python-side explicit wait.
-
-Time is faked throughout — a real poll loop would make these tests sleep.
-"""
+# Time is faked throughout; a real poll loop would make these tests sleep.
 
 import itertools
 from pathlib import Path
@@ -29,8 +26,6 @@ from llm_browser.session import BrowserSession
 
 
 class FakeClock:
-    """A monotonic clock that only moves when the code under test sleeps."""
-
     def __init__(self) -> None:
         self.now = 1000.0
         self.sleeps: list[float] = []
@@ -67,8 +62,6 @@ def driver_with(
     visible: list[bool] | None = None,
     texts: list[str | None] | None = None,
 ):
-    """A driver whose reads walk ``counts`` / ``visible`` / ``texts``,
-    repeating the last."""
     driver = MagicMock(spec=Driver)
     driver.resolve.side_effect = lambda page, selector: MagicMock(name=selector)
     driver.first.side_effect = lambda locator: locator
@@ -79,8 +72,6 @@ def driver_with(
 
 
 def driver_with_attributes(attributes: list[dict[str, str | None]]):
-    """A driver whose element is attached throughout and whose attributes walk
-    ``attributes``, repeating the last."""
     driver = driver_with(counts=[1])
     take = _series(attributes)
     driver.is_enabled.side_effect = lambda locator: Driver.is_enabled(driver, locator)
@@ -142,7 +133,7 @@ def test_timeout_fires_at_the_deadline_not_a_tick_past_it(
 def test_the_last_sleep_is_clamped_to_what_is_left(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """An interval far wider than the budget must not stretch the wait."""
+    # An interval far wider than the budget must not stretch the wait.
     session = make_session(tmp_path, driver_with(counts=[0]))
 
     with pytest.raises(TimeoutError):
@@ -175,8 +166,7 @@ def test_zero_timeout_still_returns_when_already_in_state(
 def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """A CDP failure is not "the element is missing" — it must not become a
-    timeout, and a later "make polling robust" edit must not swallow it."""
+    # A later "make polling robust" edit must not swallow driver errors.
     driver = driver_with(counts=[0])
     driver.count.side_effect = RuntimeError("Could not find node with given id")
     session = make_session(tmp_path, driver)
@@ -188,8 +178,7 @@ def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
 def test_a_navigation_during_a_detached_wait_reads_as_not_yet(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """The navigation that destroys the context is what `detached` is waiting
-    for, so the poll re-asks on the next tick instead of unwinding."""
+    # The navigation that destroys the context is what `detached` waits for.
     driver = driver_with(counts=[1])
     driver.count.side_effect = [
         RuntimeError(
@@ -207,8 +196,6 @@ def test_a_navigation_during_a_detached_wait_reads_as_not_yet(
 def test_a_detached_wait_still_re_raises_any_other_driver_error(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """Only the navigation message is forgiven; a CDP failure is still a bug
-    to surface, not "the element is still there"."""
     driver = driver_with(counts=[1])
     driver.count.side_effect = RuntimeError("Could not find node with given id")
     session = make_session(tmp_path, driver)
@@ -244,7 +231,7 @@ def test_a_visibility_error_escapes_too(tmp_path: Path, clock: FakeClock) -> Non
 def test_the_message_renders_the_selector_the_way_it_was_written(
     tmp_path: Path, clock: FakeClock, selector: Any, rendered: str
 ) -> None:
-    """A pydantic repr in a user-facing message would not match the docs."""
+    # A pydantic repr in a user-facing message would not match the docs.
     session = make_session(tmp_path, driver_with(counts=[0]))
 
     with pytest.raises(TimeoutError) as excinfo:
@@ -281,7 +268,7 @@ def test_every_state_polls_until_satisfied(
 def test_presence_states_never_read_visibility(
     tmp_path: Path, clock: FakeClock, state: Any
 ) -> None:
-    """No ``is_visible`` means no in-page script on the nodriver path."""
+    # No is_visible means no in-page script on the nodriver path.
     driver = driver_with(counts=[1, 0])
     session = make_session(tmp_path, driver)
 
@@ -329,14 +316,12 @@ def test_sleeps_are_not_a_fixed_cadence(tmp_path: Path, clock: FakeClock) -> Non
 
 
 def test_poll_jitter_window_brackets_the_interval() -> None:
-    """Guards the jitter window's arithmetic, independent of the loop."""
     jitter = waits.poll_jitter(DEFAULT_POLL_INTERVAL_MS)
     assert jitter.min_ms == 350
     assert jitter.max_ms == 650
 
 
 def test_poll_for_state_is_driver_agnostic() -> None:
-    """No session, no page: the loop only needs a Driver and a page object."""
     driver = driver_with(counts=[1])
 
     waits.poll_for_state(
@@ -349,9 +334,6 @@ def test_poll_for_state_is_driver_agnostic() -> None:
     )
 
     assert driver.count.call_count == 1
-
-
-# --- the stable state ---
 
 
 def test_stable_returns_once_the_text_holds_still(
@@ -380,7 +362,7 @@ def test_stable_times_out_while_the_text_keeps_changing(
 def test_stable_never_settles_on_an_element_that_is_not_there(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """``None`` is "nothing to read yet", not "settled on nothing"."""
+    # None is "nothing to read yet", not "settled on nothing".
     session = make_session(tmp_path, driver_with(texts=[None]))
 
     with pytest.raises(TimeoutError):
@@ -402,7 +384,6 @@ def test_stable_restarts_the_clock_on_every_change(
 def test_a_settle_that_does_not_fit_the_budget_fails_before_polling(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """The wait could only ever time out, so say why instead of pretending."""
     session = make_session(tmp_path, driver_with(texts=["done"]))
 
     with pytest.raises(ValueError, match="must be less than timeout"):
@@ -414,16 +395,12 @@ def test_a_settle_that_does_not_fit_the_budget_fails_before_polling(
 def test_find_rejects_an_ambiguous_selector_before_polling(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """Two matches is a mistake, not a state to wait for: no budget is burned."""
     session = make_session(tmp_path, driver_with(counts=[2], visible=[False]))
 
     with pytest.raises(ValueError, match="expected 1 element for '#dup', found 2"):
         session.find("#dup", timeout=10_000)
 
     assert clock.sleeps == []
-
-
-# --- enabled / disabled ---
 
 
 ENABLED: dict[str, str | None] = {}
@@ -476,8 +453,7 @@ def test_enabled_times_out_while_the_control_stays_locked(
 def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """Absence must not read as enabled, and asking a driver about a node that
-    is not there is what raises."""
+    # Asking a driver about a node that is not there is what raises.
     driver = driver_with(counts=[0])
     driver.is_enabled.side_effect = AssertionError("read a missing element")
 
@@ -488,11 +464,7 @@ def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
             session.wait_for_element("#submit", state=state, timeout=0)
 
 
-# --- waiting on text ---
-
-
 def driver_with_text(matches: list[bool]) -> MagicMock:
-    """A driver whose text-match evaluations walk ``matches``, repeating the last."""
     driver = driver_with()
     driver.evaluate.side_effect = _series(matches)
     driver.all.side_effect = lambda locator: [locator]
@@ -520,7 +492,6 @@ def test_wait_for_text_absent(tmp_path: Path, clock: FakeClock) -> None:
 
 
 def test_wait_for_text_scoped(tmp_path: Path, clock: FakeClock) -> None:
-    """A scope selector asks the matched elements, not the page."""
     driver = driver_with_text([True])
     session = make_session(tmp_path, driver)
 
@@ -544,15 +515,12 @@ def test_a_text_timeout_names_the_text_and_the_direction(
 
 
 def driver_error(name: str, message: str) -> Exception:
-    """Every driver raises its own classes — patchright's ``TimeoutError`` is
-    not playwright's and neither is the builtin — so a fake gets the name
-    right, which is what the code that reads them matches on."""
+    # Each driver raises its own TimeoutError class, and the code matches on the name.
     return type(name, (Exception,), {})(message)
 
 
 def test_a_scoped_text_read_is_bounded(tmp_path: Path, clock: FakeClock) -> None:
-    """A tick that let the driver wait for its scope would blow past the
-    loop's own deadline."""
+    # A tick that let the driver wait for its scope would blow past the loop's deadline.
     driver = driver_with_text([True])
     session = make_session(tmp_path, driver)
 
@@ -564,9 +532,7 @@ def test_a_scoped_text_read_is_bounded(tmp_path: Path, clock: FakeClock) -> None
 def test_a_scope_that_detaches_mid_tick_has_no_text(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """``all()`` hands back a snapshot: the toast a ``detached`` wait watches
-    for can go between the listing and the read, and the wait wants that as
-    "no text", not as the driver's own error."""
+    # A watched toast can vanish between listing and read; that is "no text", not an error.
     driver = driver_with_text([True])
     driver.evaluate.side_effect = driver_error(
         "TimeoutError", "element is not attached"
@@ -582,9 +548,7 @@ def test_a_scope_that_detaches_mid_tick_has_no_text(
 def test_a_text_script_that_cannot_run_is_not_a_missing_scope(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    """Only the detached scope's timeout reads as "no text": a script the page
-    refuses is a bug, and one swallowed would poll out the whole budget and
-    then blame the text."""
+    # A swallowed script error would poll out the whole budget and then blame the text.
     driver = driver_with_text([True])
     driver.evaluate.side_effect = driver_error(
         "ReferenceError", "renderedText is not defined"
@@ -596,9 +560,7 @@ def test_a_text_script_that_cannot_run_is_not_a_missing_scope(
 
 
 def test_waiting_for_no_text_is_rejected(tmp_path: Path, clock: FakeClock) -> None:
-    """Every page renders the empty string, so the wait would return on the
-    first tick and the bool would always be ``True`` — every entry point
-    refuses it, the flow step's condition included."""
+    # Every page renders "", so the wait would always return True on the first tick.
     session = make_session(tmp_path, driver_with_text([False]))
 
     with pytest.raises(ValueError, match="needs text"):

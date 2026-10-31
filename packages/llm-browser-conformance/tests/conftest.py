@@ -1,8 +1,4 @@
-"""pytest wrapper around the same scenario list ``llm-browser-check`` runs.
-
-Browsers are expensive and this package is validated in CI like any other, so
-the whole suite is skipped unless ``--real`` is passed.
-"""
+# Browsers are expensive, so the whole suite is skipped unless `--real` is passed.
 
 from collections.abc import Iterator
 

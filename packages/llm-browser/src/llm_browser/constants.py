@@ -1,5 +1,3 @@
-"""Shared constants for llm-browser."""
-
 import datetime
 import decimal
 import re
@@ -91,7 +89,6 @@ DATA_URI_PATTERN = re.compile(r"^(data:[^;,]+)[;,].*$", re.S)
 # An outerHTML rooted at one of these is a whole document to lxml.
 DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 
-# --- Page probe / human detection ---
 
 PROBE_TEXT_MAX_CHARS = 20_000
 WALL_GROUP = "wall"
@@ -127,8 +124,6 @@ SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
 TEXT_MATCH_TEXT_PLACEHOLDER = "TEXT_MATCH_TEXT_JSON"
 TEXT_MATCH_EXACT_PLACEHOLDER = "TEXT_MATCH_EXACT_BOOL"
 
-
-# --- Extract specs (``"child selector@attribute"``) ---
 
 # Read as ``el[name]``; every other name is an HTML attribute.
 EXTRACT_PROPERTIES = (
@@ -190,7 +185,6 @@ EXPLORE_MANY_MAX_TARGETS = 20
 # the round trip itself, plus the reads of every target's first match.
 EXPLORE_MANY_MARGIN_MS = 5000
 
-# --- Survey ---
 
 SURVEY_LIMITS_PLACEHOLDER = "SURVEY_LIMITS_JSON"
 SURVEY_COUNT_PLACEHOLDER = "COUNT_SELECTORS_JSON"
@@ -236,7 +230,6 @@ INTERACTIVE_ROLES = (
     "option",
 )
 
-# --- YAML schema types ---
 
 # The only names a schema `type:` string may use; see `schema_types.py`.
 SCHEMA_TYPE_NAMES = {
@@ -249,7 +242,6 @@ SCHEMA_TYPE_NAMES = {
     "datetime": datetime.datetime,
 }
 
-# --- Downloads ---
 
 # How often a download step looks for a file between event dispatches.
 DOWNLOAD_POLL_MS = 100

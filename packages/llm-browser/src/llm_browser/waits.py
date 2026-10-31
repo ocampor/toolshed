@@ -210,7 +210,6 @@ def poll_for_text(
     timeout_ms: int,
     interval_ms: int,
 ) -> None:
-    """Block until ``text`` is present (or absent), or raise ``TimeoutError``."""
     wanted = check_text_state(state)
     scope = f" inside {describe_selector(selector)}" if selector is not None else ""
     poll_until(

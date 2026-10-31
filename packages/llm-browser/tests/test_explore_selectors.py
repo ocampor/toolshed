@@ -1,5 +1,3 @@
-"""The selector rules behind `explore`: what to propose, and what it costs."""
-
 import pytest
 
 from llm_browser.explore import accepted_counts
@@ -17,8 +15,7 @@ def locators(**fields: object) -> Locators:
 
 
 def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
-    """A test id outlives a redesign, an aria label a restyle, an id both —
-    a link's section outlives the page, and a hashed class outlives nothing."""
+    # Test id outlives a redesign, aria label a restyle, id both; a hashed class nothing.
     proposed = candidate_selectors(
         locators(
             testid_attribute="data-testid",
@@ -44,8 +41,7 @@ def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
 
 
 def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
-    """The id names the row; the match is what is inside it, so the candidate
-    has to descend — and `:is()` keeps the tail from adding specificity."""
+    # `:is()` keeps the descended tail from adding specificity.
     proposed = candidate_selectors(
         locators(testid_attribute="data-testing-id", testid="row", testid_depth=2),
         role_selectors=True,
@@ -81,8 +77,7 @@ def test_an_attribute_value_is_escaped_as_a_css_string(
 
 
 def test_only_the_best_hashed_class_is_proposed() -> None:
-    """A utility-class element carries eight of them; verifying each costs a
-    round trip and none of them outlives the next redeploy anyway."""
+    # Each candidate costs a round trip, and no hashed class outlives the next redeploy.
     proposed = candidate_selectors(
         locators(classes=["css-1x2y3z", "css-9a8b7c", "w-[42px]"]),
         role_selectors=True,
@@ -92,15 +87,14 @@ def test_only_the_best_hashed_class_is_proposed() -> None:
 
 
 def test_a_class_is_escaped_before_it_becomes_a_selector() -> None:
-    """`.w-[42px]` unescaped is a syntax error, not a candidate."""
+    # `.w-[42px]` unescaped is a syntax error, not a candidate.
     proposed = candidate_selectors(locators(classes=["w-[42px]"]), role_selectors=True)
 
     assert proposed == [r".w-\[42px\]"]
 
 
 def test_a_driver_that_cannot_parse_role_is_not_offered_one() -> None:
-    """`role=` is Playwright's own syntax; elsewhere it is a syntax error in
-    the flow the author writes next."""
+    # `role=` is Playwright syntax; elsewhere it is a syntax error in the author's flow.
     offers = locators(role="link", name="Open mission", id="mission")
 
     assert candidate_selectors(offers, role_selectors=False) == ["#mission"]
@@ -151,8 +145,7 @@ def test_the_href_prefix_is_the_section_not_the_page(
 
 
 def test_a_read_wants_a_candidate_that_matches_every_row() -> None:
-    """`.card` finding all 30 rows is the selector to write for a `read`; one
-    that finds a single row is not a replacement for the list."""
+    # A selector finding one row is not a replacement for the list a `read` wants.
     assert accepted_counts(Intent.READ, 30) == {30}
     assert accepted_counts(Intent.READ, 1) == {1}
     assert accepted_counts(Intent.CLICK, 30) == {1}

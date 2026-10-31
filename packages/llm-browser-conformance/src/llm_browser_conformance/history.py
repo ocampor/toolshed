@@ -23,7 +23,6 @@ HISTORY_FILE = Path(".llm-browser-check") / "last.json"
 # what you just tried to close, and a gap that closed is a failing run.
 RERUN_OUTCOMES = frozenset({Outcome.FAIL, Outcome.XFAIL})
 
-# One cell of the table: which scenario, on which driver.
 Key = tuple[str, str]
 
 

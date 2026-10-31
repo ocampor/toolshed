@@ -1,5 +1,3 @@
-"""``save_as``: a read's rows become flow data for the steps after it."""
-
 from collections.abc import Iterable
 
 from yaml_engine.template import template_names

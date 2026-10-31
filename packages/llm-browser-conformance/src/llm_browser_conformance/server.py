@@ -77,8 +77,6 @@ def requested_delay_ms(query: str) -> int:
 
 
 class SiteHandler(http.server.SimpleHTTPRequestHandler):
-    """Static files, plus the 302s, a deliberately slow image and the PDFs."""
-
     def do_GET(self) -> None:
         path, _, query = self.path.partition("?")
         if path == SLOW_RESOURCE_PATH:
@@ -139,7 +137,6 @@ class SiteHandler(http.server.SimpleHTTPRequestHandler):
 
 @contextmanager
 def serve_site() -> Iterator[str]:
-    """Yield the base URL of the fixture site for as long as the block runs."""
     handler = functools.partial(SiteHandler, directory=str(SITE_DIR))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

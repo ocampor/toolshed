@@ -1,5 +1,3 @@
-"""Tests for page probing and the human-needed heuristic."""
-
 import json
 from unittest.mock import MagicMock
 
@@ -101,9 +99,6 @@ def test_human_needed_from_a_failure_snapshot(markup: str, expected: bool) -> No
     assert probe.human_needed(probe.probe_from_markup(markup)) is expected
 
 
-# --- script substitution ---
-
-
 def test_page_probe_js_substitutes_every_placeholder() -> None:
     source = page_probe_js("main .body", 500)
     assert "PROBE_SELECTOR_JSON" not in source
@@ -126,9 +121,6 @@ def test_challenge_selectors_parse_as_one_selector_list() -> None:
 
 def test_page_probe_js_without_a_selector() -> None:
     assert "const selector = null;" in page_probe_js(None, 10)
-
-
-# --- session.probe ---
 
 
 @pytest.fixture

@@ -1,9 +1,4 @@
-"""The pytest half of the two front ends.
-
-``run_scenario`` decides; this only translates its verdict into a pytest
-report. Keeping the translation in one importable place is what lets
-``test_front_ends.py`` prove the CLI and pytest agree about the same run.
-"""
+# One importable translation is what lets test_front_ends.py prove CLI and pytest agree.
 
 import pytest
 

@@ -37,8 +37,6 @@ def align_locale_with_geoip(kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 class CamoufoxDriver(PlaywrightDriverBase):
-    """Camoufox (Firefox) driver. Inherits every interaction from the Playwright base."""
-
     name: ClassVar[str] = "camoufox"
     supports_reconnect: ClassVar[bool] = False
 
@@ -54,8 +52,6 @@ class CamoufoxDriver(PlaywrightDriverBase):
         self._camoufox: Any = None
         self._context: Any = None
         self._page: Any = None
-
-    # --- Lifecycle ---
 
     def launch(
         self,
@@ -82,8 +78,6 @@ class CamoufoxDriver(PlaywrightDriverBase):
         if url is not None:
             self._page.goto(url)
         return DriverHandle(driver=self.name, user_data_dir=str(user_data_dir))
-
-    # --- Interactions (stealth overrides) ---
 
     def fill(self, locator: Any, text: str) -> None:
         """Clear via `.value=""` then type per-char so callers who bypass the
@@ -124,7 +118,6 @@ class CamoufoxDriver(PlaywrightDriverBase):
         page.mouse.wheel(dx, dy)
 
     def wheel_target(self, page: Any, locator: Any | None) -> tuple[float, float]:
-        """The element's centre when there is one, else the viewport's."""
         box = locator.bounding_box() if locator is not None else None
         if box is not None:
             return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2

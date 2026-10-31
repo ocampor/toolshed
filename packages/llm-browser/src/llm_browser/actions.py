@@ -67,9 +67,6 @@ parse_warned: ContextVar[bool] = ContextVar("parse_warned", default=False)
 _registry = get_registry()
 
 
-# --- Element actions ---
-
-
 @_registry.register("click")
 def action_click(
     session: BrowserSession, step: ClickStep, behavior: Behavior
@@ -146,9 +143,6 @@ def action_press(
     return VoidResult()
 
 
-# --- Page actions ---
-
-
 @_registry.register("goto")
 def action_goto(
     session: BrowserSession, step: GotoStep, behavior: Behavior
@@ -196,9 +190,6 @@ def action_screenshot(
         content=session.screenshot_bytes(step.selector),
         media_type="image/png",
     )
-
-
-# --- Data actions ---
 
 
 @_registry.register("read")
@@ -254,9 +245,6 @@ def action_dom(
     )
 
 
-# --- File actions ---
-
-
 @_registry.register("download")
 def action_download(
     session: BrowserSession, step: DownloadStep, behavior: Behavior
@@ -267,9 +255,6 @@ def action_download(
     if step.extract is None:
         return file
     return extract_file(file, step.extract)
-
-
-# --- Pacing actions ---
 
 
 @_registry.register("scroll")

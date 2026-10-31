@@ -62,7 +62,6 @@ CLICKABLE_FIRST: dict[str, object] = {
     "nested_controls": [],
 }
 
-# What the first match offers a selector when it offers nothing.
 NO_LOCATORS: dict[str, object] = {
     "tag": "a",
     "testid_attribute": None,
@@ -79,16 +78,6 @@ NO_LOCATORS: dict[str, object] = {
 
 @pytest.fixture
 def exploring_session(tmp_path: Path) -> ExploringSession:
-    """Build a session whose driver answers ``explore`` from canned rows.
-
-    Each row maps a child selector to what reading it returns, so a test
-    states the page as the extract sees it; a selector no key names reads as
-    ``None``, and ``text`` is what every row's own element says. ``first``
-    overrides the in-page read of the first match, ``candidates`` are what
-    that read proposes, and ``matches`` says how many elements a selector
-    other than the explored one finds.
-    """
-
     def build(
         rows: list[dict[str | None, str | None]],
         text: str = "",

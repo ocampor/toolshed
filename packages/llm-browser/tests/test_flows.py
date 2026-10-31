@@ -1,5 +1,3 @@
-"""Tests for flow loading, step execution, and file-backed flow runs."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -44,9 +42,6 @@ def _write_flow(
     return path
 
 
-# --- loading a flow file ---
-
-
 def test_load_flow(tmp_path: Path) -> None:
     path = _write_flow(tmp_path, [{"name": "step1"}, {"name": "step2"}])
     flow = load_flow_file(path)
@@ -59,9 +54,6 @@ def test_load_flow_rejects_bad_yaml(tmp_path: Path) -> None:
     path.write_text("steps: [\n  - name: x\n")
     with pytest.raises(ValueError, match="invalid flow yaml"):
         load_flow_file(path)
-
-
-# --- should_skip ---
 
 
 def test_should_skip_no_when(mock_session: MagicMock) -> None:
@@ -130,9 +122,6 @@ def test_should_skip_text_present(mock_session: MagicMock) -> None:
     assert mock_session.text_present.call_args.kwargs["exact"] is False
 
 
-# --- execute_step ---
-
-
 def test_execute_step_skipped_by_when(mock_session: MagicMock) -> None:
     step = EvalStep(
         name="optional",
@@ -155,9 +144,6 @@ def test_execute_step_template_substitution(mock_session: MagicMock) -> None:
     )
 
 
-# --- running a flow file ---
-
-
 def test_run_completes_to_end(tmp_path: Path, mock_session: MagicMock) -> None:
     steps = [{"name": "s1", "action": "click", "selector": "#btn"}]
     path = _write_flow(tmp_path, steps)
@@ -169,7 +155,6 @@ def test_run_from_step_skips_prior_steps(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    """`from_step="step3"` skips step1 and step2; only step3 runs."""
     steps = [
         {"name": "step1", "action": "click", "selector": "#a"},
         {"name": "step2", "action": "click", "selector": "#b"},
@@ -178,7 +163,6 @@ def test_run_from_step_skips_prior_steps(
     path = _write_flow(tmp_path, steps)
     result = run_flow_file(mock_session, path, {}, from_step="step3")
     assert isinstance(result, FlowSuccess)
-    # Only step3's selector reached the session — step1 and step2 were skipped.
     assert mock_session.click.call_count == 1
     selector = mock_session.click.call_args.args[0]
     assert "c" in str(selector)
@@ -195,14 +179,12 @@ def test_run_emits_retry_hint_on_failure(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    """When a step fails, run_flow attaches a RetryHint to the FlowError."""
     steps = [
         {"name": "ok", "action": "click", "selector": "#a"},
         {"name": "boom", "action": "click", "selector": "#missing"},
     ]
     path = _write_flow(tmp_path, steps)
 
-    # First click succeeds; second click raises so the action fails.
     mock_session.click.side_effect = [None, TimeoutError("element missing")]
 
     result = run_flow_file(mock_session, path, {"k": "v"})
@@ -218,9 +200,7 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    """When a step inside a sub-flow fails, the hint's `failed_step`
-    is the parent's run-flow step name (not the inner step) so
-    `--from <hint.failed_step>` resolves against the parent flow."""
+    # The hint names the parent's run-flow step so `--from` resolves against the parent flow.
     mock_session.click.side_effect = TimeoutError("element missing")
     _write_named_flow(
         tmp_path,
@@ -235,7 +215,6 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowError)
     assert result.retry_hint is not None
-    # Hint uses the parent's run-flow step name, not the qualified path.
     assert result.retry_hint.failed_step == "do-thing"
     # The result itself carries the qualified path so diagnostics
     # can show where in the tree the failure happened.
@@ -270,16 +249,12 @@ def test_run_with_registered_and_inline_params(
     )
 
 
-# --- run-flow (sub-flow composition) ---
-
-
 def _write_named_flow(
     tmp_path: Path,
     name: str,
     steps: list[dict[str, Any]],
     params: list[str | dict[str, Any]] | None = None,
 ) -> Path:
-    """Write a flow under a specific filename so sub-flow includes can reference it."""
     flow_dict: dict[str, Any] = {"steps": steps}
     if params:
         flow_dict["params"] = params
@@ -305,7 +280,6 @@ def test_run_flow_dispatches_subflow(tmp_path: Path, mock_session: MagicMock) ->
     result = run_flow_file(mock_session, parent, {})
 
     assert isinstance(result, FlowSuccess)
-    # Both child clicks fired against the mock_session.
     assert mock_session.click.call_count == 2
 
 
@@ -330,13 +304,11 @@ def test_run_flow_param_passthrough(tmp_path: Path, mock_session: MagicMock) -> 
         params=["target"],
     )
     run_flow_file(mock_session, parent, {"target": "submit"})
-    # mock_session.click was called with a parsed selector for #submit
     args, _ = mock_session.click.call_args
     assert "submit" in str(args[0])
 
 
 def _goto_child(param: str) -> dict[str, Any]:
-    """A one-step child whose only step echoes ``param`` into the URL."""
     return {
         "params": [param],
         "steps": [
@@ -395,8 +367,6 @@ def test_run_flow_passes_unbound_parent_params_through_to_the_child(
 def test_a_repeated_subflow_binds_each_item_over_the_parent_param(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
-    """The deepest legal nesting — a `run-flow` inside a `repeat` — resolves the
-    same way: the pass's binding wins over the parent param it shadows."""
     path = _write_flow(
         tmp_path,
         [
@@ -422,7 +392,6 @@ def test_run_flow_optional_swallows_child_failure(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    # Force the click action to raise so the child's first step fails.
     mock_session.click.side_effect = TimeoutError("button missing")
     _write_named_flow(
         tmp_path,
@@ -442,7 +411,6 @@ def test_run_flow_optional_swallows_child_failure(
             {"name": "after", "action": "click", "selector": "#after"},
         ],
     )
-    # The parent's own click must succeed even when the sub-flow swallows.
     mock_session.click.side_effect = [TimeoutError("button missing"), None]
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
@@ -464,7 +432,6 @@ def test_run_flow_required_failure_bubbles(
         [{"name": "required", "action": "run-flow", "flow": "child.yaml"}],
     )
     result = run_flow_file(mock_session, parent, {})
-    # Child failure surfaces to the parent runner; not completed.
     assert isinstance(result, FlowError)
 
 
@@ -496,8 +463,6 @@ def test_run_flow_resolves_relative_to_parent_dir(
     mock_session: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sub-flow paths resolve relative to the parent flow's directory,
-    not CWD."""
     nested = tmp_path / "nested"
     nested.mkdir()
     _write_named_flow(
@@ -522,9 +487,7 @@ def test_run_flow_resolves_relative_to_parent_dir(
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
-    """Resolving pulls in every `run-flow` reference up front,
-    so a child that itself contains a `run-flow` step is rejected
-    before the browser ever launches."""
+    # A child containing its own run-flow is rejected before the browser launches.
     _write_named_flow(
         tmp_path,
         "grandchild.yaml",
@@ -545,7 +508,6 @@ def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
 
 
 def test_load_flow_attaches_subflow_to_runflow_step(tmp_path: Path) -> None:
-    """After loading, every RunFlowStep carries its child as a model."""
     _write_named_flow(
         tmp_path,
         "child.yaml",
@@ -564,7 +526,6 @@ def test_load_flow_attaches_subflow_to_runflow_step(tmp_path: Path) -> None:
 
 
 def test_load_flow_missing_subflow_file_fails_at_load(tmp_path: Path) -> None:
-    """A typo in `flow:` surfaces at load time — no runtime surprise."""
     parent = _write_named_flow(
         tmp_path,
         "parent.yaml",
@@ -596,9 +557,6 @@ def test_run_flow_when_skips_subflow(tmp_path: Path, mock_session: MagicMock) ->
     result = run_flow_file(mock_session, parent, {})
     assert isinstance(result, FlowSuccess)
     assert mock_session.click.call_count == 0
-
-
-# --- execute_step: human_needed ---
 
 
 def _failing_click(session: MagicMock) -> ClickStep:
@@ -656,8 +614,6 @@ def test_run_flow_carries_human_needed_through_to_the_caller(
     assert result.human_needed is True
 
 
-# --- run-level behavior ---
-
 CLICK_STEP = {"name": "c", "action": "click", "selector": "#btn"}
 
 
@@ -704,7 +660,7 @@ def test_a_run_level_behavior_reaches_a_sub_flows_steps(
 def test_a_run_never_rewrites_the_sessions_own_behavior(
     mock_session: MagicMock,
 ) -> None:
-    """The run's default is carried to each step, not parked on the session."""
+    # The run's default is carried to each step, not parked on the session.
     run_flow(mock_session, _click_flow(), {}, behavior=Behavior.human())
     assert mock_session.behavior == Behavior.off()
 
@@ -731,9 +687,6 @@ def test_a_failure_names_the_profile_too(mock_session: MagicMock) -> None:
     result = run_flow(mock_session, Flow(steps=[step]), {}, behavior=Behavior.human())
     assert isinstance(result, FlowError)
     assert result.behavior == "human"
-
-
-# --- repeat ---
 
 
 def _dom_step(**extra: Any) -> dict[str, Any]:
@@ -856,8 +809,6 @@ def test_a_failing_pass_names_its_iteration(
 def test_a_skip_inside_a_repeat_is_named_per_pass(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
-    """`when:` gates one pass and `optional:` swallows another's failure; both
-    land in `skipped` under the pass's own key."""
     mock_session.dom.side_effect = TimeoutError("never rendered")
     path = _write_flow(
         tmp_path,
@@ -897,9 +848,6 @@ def test_a_failing_pass_of_a_repeated_subflow_indexes_both_sides(
     assert isinstance(result, FlowError)
     assert result.step == "each/grab[1]"
     assert list(result.outputs) == ["each/grab[0]"]
-
-
-# --- skipped steps ---
 
 
 def test_an_optional_miss_is_named_in_skipped(

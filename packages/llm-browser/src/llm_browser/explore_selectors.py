@@ -43,8 +43,6 @@ def selector_stability(selector: str) -> Stability:
     return Stability.OTHER
 
 
-# --- Candidates: what to write instead of the selector that was explored ---
-
 CSS_UNSAFE = re.compile(r"([^A-Za-z0-9_-])")
 CSS_STRING_UNSAFE = re.compile(r'["\\]|[\x00-\x1f\x7f]')
 
@@ -68,7 +66,6 @@ def css_quoted(value: str) -> str:
 
 
 def escaped_id(value: str) -> str:
-    """``value`` as a CSS identifier, the way ``CSS.escape`` writes one."""
     return CSS_UNSAFE.sub(r"\\\1", value)
 
 

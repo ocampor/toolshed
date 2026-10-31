@@ -29,8 +29,6 @@ def test_find_url_walks_the_frame_tree(frame_id: str, expected: str | None) -> N
 
 
 def fake_frame(url: str, tree: dict[str, Any] | None) -> SimpleNamespace:
-    """A frame whose CDP session reports ``tree``; None has no session of its own."""
-
     def new_cdp_session(frame: SimpleNamespace) -> SimpleNamespace:
         if tree is None:
             raise RuntimeError("in-process frame")
@@ -43,8 +41,6 @@ def fake_frame(url: str, tree: dict[str, Any] | None) -> SimpleNamespace:
 
 
 def detached_frame() -> SimpleNamespace:
-    """A frame that goes away between its session opening and answering."""
-
     def gone(*args: object) -> None:
         raise RuntimeError("Target closed")
 

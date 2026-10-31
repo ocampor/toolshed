@@ -1,5 +1,3 @@
-"""`llm-browser explore`: JSON on stdout, non-zero exit when nothing matched."""
-
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -103,7 +101,7 @@ def test_intent_click_on_one_clickable_match_exits_zero(
 def test_intent_click_on_a_covered_match_exits_one(
     cli_explore: ExploringSession,
 ) -> None:
-    """The read exits zero on the same element: only a click is refused."""
+    # The read exits zero on the same element: only a click is refused.
     cli_explore(
         [{".label": "Alpha"}],
         first={
@@ -155,7 +153,7 @@ def test_explore_rejects_an_extract_without_a_name(
 def test_explore_rejects_the_same_extract_name_twice(
     cli_explore: ExploringSession,
 ) -> None:
-    """A typo'd duplicate would otherwise discard the first spec in silence."""
+    # A typo'd duplicate would otherwise discard the first spec in silence.
     cli_explore([{".label": "Alpha"}])
 
     result = CliRunner().invoke(
@@ -199,7 +197,6 @@ def test_sample_chars_cuts_each_field_of_the_sample(
 
 @pytest.fixture
 def cli_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """A session the CLI drives, so these tests are about the wiring only."""
     session = MagicMock(spec=BrowserSession)
     monkeypatch.setattr("llm_browser.cli.build_session", lambda **kwargs: session)
     return session
@@ -243,7 +240,7 @@ def test_a_targets_file_explores_them_all_in_the_order_written(
 def test_one_bad_verdict_in_a_batch_is_a_non_zero_exit(
     cli_session: MagicMock, tmp_path: Path
 ) -> None:
-    """The shell's question is "can I write these steps", and one no is a no."""
+    # The shell's question is "can I write these steps", and one no is a no.
     cli_session.explore_many.return_value = [
         explored(1),
         explored(0, Verdict.MISSING),
@@ -276,7 +273,7 @@ def test_a_targets_file_that_is_not_a_list_is_a_usage_error(tmp_path: Path) -> N
 
 
 def test_an_empty_targets_file_is_a_usage_error(tmp_path: Path) -> None:
-    """Exploring nothing and exiting 0 reads as "every selector is fine"."""
+    # Exploring nothing and exiting 0 reads as "every selector is fine".
     path = targets_file(tmp_path, "[]\n")
 
     result = CliRunner().invoke(main, ["explore", "--targets", path])
@@ -300,8 +297,6 @@ def test_more_targets_than_one_page_call_takes_is_a_usage_error(
 def test_a_target_the_page_cannot_parse_is_reported_with_the_rest(
     cli_session: MagicMock, tmp_path: Path
 ) -> None:
-    """One typo costs its own answer, not the batch's — and the exit code
-    still says something is wrong."""
     refused = ExploreResult(
         count=0,
         sample=[],
@@ -342,7 +337,6 @@ def test_survey_outputs_what_the_page_is_made_of(cli_session: MagicMock) -> None
 def test_a_flag_meant_for_one_selector_is_not_silently_ignored(
     tmp_path: Path, option: list[str]
 ) -> None:
-    """A targets file carries its own intent and extract per entry."""
     path = targets_file(tmp_path, "- selector: .row\n")
 
     result = CliRunner().invoke(main, ["explore", "--targets", path, *option])

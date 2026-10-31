@@ -516,8 +516,6 @@ def run(
         raise SystemExit(1)
 
 
-# --- Writing what a run returned ---
-#
 # The library keeps every output in memory; these are the only functions in
 # the package that turn one into a file.
 
@@ -645,7 +643,6 @@ def per_pass_path(path: str, index: int | None) -> str:
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
-    """Write the failing page's screenshot and DOM, returning what was written."""
     written: dict[str, str] = {}
     if error.screenshot is not None:
         target = contained_output_path(capture_dir, "screenshot.png")

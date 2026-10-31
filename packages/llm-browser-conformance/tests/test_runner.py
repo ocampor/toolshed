@@ -1,8 +1,4 @@
-"""Browser-free tests for the reporting half of the runner.
-
-``scripts/validate.sh`` runs ``pytest -q`` without ``--real``, so this is the
-only part of the package CI actually exercises — everything pure lives here.
-"""
+# validate.sh runs pytest without --real, so this is the only part CI exercises.
 
 import json
 from collections.abc import Callable, Iterator
@@ -138,7 +134,6 @@ CLEANUP_NOTE = "cleanup failed too: the opened tab never closed"
 
 
 def raising(error: BaseException) -> Callable[[Context], None]:
-    """A check that fails the way a scenario whose cleanup also failed does."""
     error.add_note(CLEANUP_NOTE)
 
     def check(ctx: Context) -> None:
@@ -148,8 +143,7 @@ def raising(error: BaseException) -> Callable[[Context], None]:
 
 
 def test_one_line_carries_the_notes_the_failure_was_given() -> None:
-    """A cleanup that failed after the real failure attaches itself with
-    ``add_note``, and the table is the only place anyone would read it."""
+    # A cleanup that failed attaches itself with add_note; the table is the only place it is read.
     error = AssertionError("new-tab.html not in current")
     error.add_note(CLEANUP_NOTE)
     assert CLEANUP_NOTE in one_line(error)
@@ -183,9 +177,7 @@ def test_one_line_carries_the_notes_the_failure_was_given() -> None:
 def test_a_cleanup_note_reaches_the_detail_whatever_the_verdict(
     noted_scenario: Scenario, expected: Outcome
 ) -> None:
-    """The note is attached by a helper any scenario can use, so the branch
-    that happens to report the row must not be what decides whether it is
-    read."""
+    # Which branch reports the row must not decide whether the cleanup note is read.
     result = run_scenario(noted_scenario, fake_context())
     assert result.outcome is expected
     assert CLEANUP_NOTE in result.detail
@@ -213,8 +205,7 @@ def test_select_filters_by_substring() -> None:
 
 
 def test_every_scenario_name_can_be_run_on_its_own() -> None:
-    """``--only`` filters by substring, so a name that is contained in another
-    one has no argument that selects just it."""
+    # `--only` filters by substring, so a name contained in another cannot be selected alone.
     names = [s.name for s in ALL_SCENARIOS]
     assert sorted(set(names)) == sorted(names), "two scenarios share a name"
     swallowed = [
@@ -254,8 +245,7 @@ def session_that_fails_to_close() -> Iterator[Any]:
 def test_a_teardown_error_gets_its_own_row_and_keeps_the_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The regression this guards: a browser that will not *stop* has already
-    answered every question, so its column must survive."""
+    # A browser that will not stop has already answered every question; its column must survive.
     monkeypatch.setattr(runner, "unavailable", lambda driver: None)
     monkeypatch.setattr(
         runner,

@@ -1,10 +1,3 @@
-"""``explore`` and ``explore_many``: what a selector matches, and its verdict.
-
-One selector at a time or a page's worth in one call — both answer with the
-same ``ExploreResult``. What makes a sturdier selector lives next door, in
-:mod:`llm_browser.explore_selectors`.
-"""
-
 import time
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, Any

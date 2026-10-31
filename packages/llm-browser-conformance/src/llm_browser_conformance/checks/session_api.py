@@ -50,9 +50,6 @@ MISSING_TIMEOUT_MS = 1_000
 TYPED_TEXT = "conformance " * 4
 
 
-# --- probe ---
-
-
 def probe_sees_the_password_field_and_the_page_text(ctx: Context) -> None:
     ctx.visit("login-wall.html")
     probe = ctx.session.probe()
@@ -97,9 +94,6 @@ def probe_sees_a_custom_wall_selector(ctx: Context) -> None:
     assert human_needed(probe, wall) is True
 
 
-# --- screenshots ---
-
-
 def screenshot_bytes_returns_a_png_and_writes_nothing(ctx: Context) -> None:
     ctx.visit("form.html")
     before = artifact_snapshot(ctx.session)
@@ -107,9 +101,6 @@ def screenshot_bytes_returns_a_png_and_writes_nothing(ctx: Context) -> None:
     assert data.startswith(PNG_MAGIC), data[:16]
     assert len(data) > 1_000, len(data)
     assert artifact_snapshot(ctx.session) == before
-
-
-# --- finding ---
 
 
 def element_exists_answers_false_inside_its_timeout(ctx: Context) -> None:
@@ -342,8 +333,6 @@ def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
     assert found.title == "Buttons a click would miss", found
 
 
-# --- tabs ---
-
 TAB_CLOSE_TIMEOUT_S = 5.0
 
 NEW_TAB_TARGET = "new-tab-target.html"
@@ -488,9 +477,6 @@ def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
         assert NEW_TAB_TARGET in url, url
 
 
-# --- dom sanitize levels ---
-
-
 def sanitize_levels_each_drop_something_more(ctx: Context) -> None:
     """``session.dom`` is the only way a level other than LOW is reachable —
     the YAML ``dom`` step is always LOW."""
@@ -530,16 +516,10 @@ def sanitize_levels_each_drop_something_more(ctx: Context) -> None:
     assert "wrapped" in xhigh
 
 
-# --- load state ---
-
-
 def wait_for_load_state_returns_at_the_state_it_names(ctx: Context) -> None:
     ctx.visit("form.html")
     ctx.session.wait_for_load_state("load")
     assert ctx.js("document.readyState") == "complete"
-
-
-# --- behavior ---
 
 
 def humanized_typing_costs_a_delay_per_key(ctx: Context) -> None:
@@ -565,9 +545,6 @@ def humanized_typing_costs_a_delay_per_key(ctx: Context) -> None:
     assert humanized - instant >= floor, (
         f"humanized {humanized:.3f}s vs off {instant:.3f}s, floor {floor:.3f}s"
     )
-
-
-# --- attach ---
 
 
 def attach_or_skip(ctx: Context) -> None:

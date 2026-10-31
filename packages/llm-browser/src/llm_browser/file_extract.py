@@ -140,9 +140,6 @@ def require_documents_extra() -> None:
         raise ValueError(MISSING_DOCUMENTS_EXTRA) from exc
 
 
-# --- budgets ---
-
-
 def selected_pages(spec: Extract, page_count: int) -> list[int]:
     if spec.pages is None:
         return list(range(1, page_count + 1))
@@ -191,9 +188,6 @@ def take_images(
     return PageBatch(page_count, pages, rest=selected[spec.max_images :])
 
 
-# --- PDF ---
-
-
 @contextmanager
 def opened_pdf(content: bytes) -> Iterator["pypdfium2.PdfDocument"]:
     import pypdfium2
@@ -235,9 +229,6 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", spec: ImageExtract, page: int) -> Fr
         scale = (spec.max_long_side - 0.5) / max(width, height)
         image: Image = pdf_page.render(scale=scale).to_pil()
     return Frame(image, round(width), round(height))
-
-
-# --- plain text ---
 
 
 def decode_text(content: bytes) -> str | None:

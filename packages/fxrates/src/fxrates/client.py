@@ -1,5 +1,3 @@
-"""Frankfurter API client for historical exchange rates."""
-
 import datetime
 import functools
 
@@ -12,11 +10,7 @@ from fxrates.constants import BASE_URL
 def get_rates(
     base: str, quotes: tuple[str, ...], date: datetime.date
 ) -> dict[str, float]:
-    """Fetch multiple quote rates for a single base/date in one API call.
-
-    Results are cached in-memory for the session. Returns an empty dict on errors.
-    Use this to minimize HTTP calls when several pairs share the same base and date.
-    """
+    """Cached in memory for the session; returns an empty dict on errors."""
     try:
         resp = httpx.get(
             f"{BASE_URL}/{date}",
@@ -31,11 +25,7 @@ def get_rates(
 
 
 def get_rate(base: str, quote: str, date: datetime.date) -> float | None:
-    """Return the exchange rate from base to quote on the given date.
-
-    Returns 1.0 for same-currency pairs. Returns None if unavailable.
-    Results are cached via get_rates.
-    """
+    """Returns 1.0 for same-currency pairs and None when unavailable."""
     base, quote = base.upper(), quote.upper()
     if base == quote:
         return 1.0

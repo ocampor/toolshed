@@ -179,9 +179,6 @@ def failed(results: list[Result]) -> bool:
     return any(r.outcome.is_failure for r in results)
 
 
-# --- Reporting ---
-
-
 def cell(row: Result | None) -> str:
     if row is None:
         return "-"
