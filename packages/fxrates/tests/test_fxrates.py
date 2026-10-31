@@ -23,7 +23,7 @@ def mock_rates(
     mock: HTTPXMock, base: str, quotes: tuple[str, ...], rates: dict[str, float]
 ) -> None:
     mock.add_response(
-        url=f"https://api.frankfurter.app/2026-01-15?from={base}&to={','.join(quotes)}",
+        url=f"https://api.frankfurter.dev/v1/2026-01-15?from={base}&to={','.join(quotes)}",
         json={"date": "2026-01-15", "rates": rates},
     )
 
@@ -80,11 +80,11 @@ def test_get_rates_caches_empty_dict_on_error(httpx_mock: HTTPXMock) -> None:
 
 def test_different_dates_make_separate_requests(httpx_mock: HTTPXMock) -> None:
     httpx_mock.add_response(
-        url="https://api.frankfurter.app/2026-01-15?from=USD&to=MXN",
+        url="https://api.frankfurter.dev/v1/2026-01-15?from=USD&to=MXN",
         json={"date": "2026-01-15", "rates": {"MXN": 20.15}},
     )
     httpx_mock.add_response(
-        url="https://api.frankfurter.app/2026-01-16?from=USD&to=MXN",
+        url="https://api.frankfurter.dev/v1/2026-01-16?from=USD&to=MXN",
         json={"date": "2026-01-16", "rates": {"MXN": 20.20}},
     )
     r1 = get_rate("USD", "MXN", datetime.date(2026, 1, 15))
