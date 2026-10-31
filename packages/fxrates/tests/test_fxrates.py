@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Iterator
 
 import httpx
 import pytest
@@ -9,7 +10,7 @@ from fxrates.client import get_rates as _get_rates_cached
 
 
 @pytest.fixture(autouse=True)
-def clear_cache():
+def clear_cache() -> Iterator[None]:
     _get_rates_cached.cache_clear()
     yield
     _get_rates_cached.cache_clear()
