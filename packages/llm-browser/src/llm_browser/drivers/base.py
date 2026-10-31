@@ -1,5 +1,3 @@
-"""Lifecycle and interactions share one class, so a backend is one subclass."""
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
@@ -229,7 +227,7 @@ class Driver(ABC):
 
     @abstractmethod
     def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
-        """The only arbitrary JS touchpoint (rule 3); ``timeout_ms=None`` keeps the backend default."""
+        """The only arbitrary JS touchpoint (rule 3); a backend without a ``timeout_ms`` knob ignores it, never raises."""
 
     @abstractmethod
     def content(self, page: Any) -> str: ...
@@ -251,7 +249,7 @@ class Driver(ABC):
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:
-        """No start raises ``TimeoutError``, a failed one ``ValueError`` (rule 5); held whole in memory, uncapped."""
+        """Leaves nothing on disk; no start raises ``TimeoutError``, a failed one ``ValueError`` (rule 5)."""
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...

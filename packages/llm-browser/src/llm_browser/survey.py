@@ -181,7 +181,7 @@ def page_counts(session: "BrowserSession", found: Survey) -> dict[str, int]:
 def survey(
     session: "BrowserSession", max_items: int = constants.SURVEY_MAX_ITEMS
 ) -> Survey:
-    """Reads and scrolls nothing; a second call counts what each named selector matches."""
+    """Clicks and scrolls nothing; a second call counts what each named selector matches."""
     read = SurveyRead.model_validate(session.evaluate_document(survey_js()))
     found = survey_of(read, max_items)
     return with_page_counts(found, page_counts(session, found))
