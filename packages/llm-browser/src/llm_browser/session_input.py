@@ -1,10 +1,4 @@
-"""The input half of ``BrowserSession``: resolve, pace, drive the element.
-
-Every one of these owns the same three decisions so no caller has to: wait for
-the element, bracket the interaction in ``paced`` and pick the humanized or the
-plain driver primitive from ``Behavior``. ``BrowserSession`` exposes each as a
-one-line method; actions and the CLI call those and never reach for the driver.
-"""
+"""Callers above the session use these, never the driver."""
 
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -49,22 +43,13 @@ HUMANIZE_KNOBS = frozenset(
 
 
 def driver_opt_out(behavior: Behavior, field: str) -> bool:
-    """Whether the session's behaviour class owns this knob itself.
-
-    A driver config that redefines one — camoufox turning ``mouse_move`` off
-    because its native C++ Bézier does the moving — keeps it off, or our path
-    would run stacked on top of the driver's own.
-    """
+    """A driver config redefining a knob keeps it, or our path would stack on the driver's (camoufox's Bézier)."""
     declared = behavior.__class__.model_fields[field]
     return bool(declared.default != Behavior.model_fields[field].default)
 
 
 def driver_opt_outs(session_behavior: Behavior) -> dict[str, Any]:
-    """The knobs the session's driver owns, at the value it chose.
-
-    A session that set one itself has overruled the driver and keeps its own
-    value; everything else the class redefined is the driver's to decide.
-    """
+    """A session that set the knob itself overrules the driver."""
     declared = session_behavior.__class__.model_fields
     return {
         name: declared[name].default
@@ -98,10 +83,7 @@ def switched_off() -> dict[str, Any]:
 
 
 def behavior_for(base: Behavior, humanize: bool | None) -> Behavior:
-    """``base`` with its humanization knobs switched on or off — timing
-    included, since a humanized action that pauses like an instant one is only
-    half humanized — and everything else left as it was configured.
-    """
+    """Timing included: a humanized action that pauses like an instant one is half humanized."""
     if humanize is None:
         return base
     knobs = switched_on(base) if humanize else switched_off()
@@ -113,12 +95,7 @@ def effective_behavior(
     humanize: bool | None = None,
     behavior: Behavior | None = None,
 ) -> Behavior:
-    """The behaviour one call runs under: an explicit ``behavior`` first, then
-    the ``humanize`` shorthand applied to the session's default, then that
-    default unchanged, and the driver's own opt-outs applied last to all three.
-    The session's own ``Behavior`` is never rewritten — a call carries its
-    behaviour, it does not leave it behind.
-    """
+    """Explicit ``behavior``, then the ``humanize`` shorthand, then the default; driver opt-outs last."""
     resolved = (
         behavior if behavior is not None else behavior_for(session.behavior, humanize)
     )
@@ -153,13 +130,7 @@ def click_element(
     dispatch: bool = False,
     behavior: Behavior,
 ) -> HitTarget | None:
-    """Click an element the caller already resolved.
-
-    The one place the humanized-vs-plain-vs-dispatch choice is made, so a
-    session method that found its element some other way — ``pick`` walking a
-    list, ``download_file`` arming a download — clicks like every other click.
-    Pacing belongs to whoever opened the action, not here.
-    """
+    """The one place the humanized/plain/dispatch choice is made; pacing belongs to the caller."""
     if dispatch:
         session.driver.dispatch_event(element, "click")
         return None
@@ -182,18 +153,7 @@ def click_element(
 def hit_test_after_move(
     session: "BrowserSession", element: Any, behavior: Behavior
 ) -> HitTest:
-    """Refuse the press when the pointer's own path opened something under it.
-
-    A humanized click travels, and what ``find`` resolved is not necessarily
-    what is under the cursor when it arrives: a nav the curve crossed can drop
-    a menu over the target, and the click would land on the menu and report
-    success. The point is asked again, at the end of the path, and only the
-    target or a descendant of it is allowed to take the press.
-
-    A check that cannot be made is a refusal too: the window it runs in is the
-    hover dwell, where a navigation or a re-render can destroy the context, and
-    pressing blind is the failure this whole gate exists to stop.
-    """
+    """A menu the curve opened can cover the target, so the end point is re-asked; a check that cannot run refuses."""
 
     def check(point: tuple[float, float]) -> HitTarget | None:
         try:
@@ -218,9 +178,6 @@ def hit_test_after_move(
 
 
 class ViewportFit(NamedTuple):
-    """What one wheel tick needs: how far the box still has to travel to reach
-    the viewport's middle, where that middle is, and whether the page moved."""
-
     gap: int
     centre: tuple[float, float]
     scroll_y: int
@@ -239,17 +196,7 @@ def viewport_fit(session: "BrowserSession", element: Any) -> ViewportFit:
 def wheel_into_view(
     session: "BrowserSession", element: Any, behavior: Behavior
 ) -> None:
-    """Wheel the target into view, one jittered delta at a time.
-
-    ``scroll_into_view`` teleports the page in a single frame and emits no
-    wheel events at all, which is the tell this path exists to avoid. Each
-    tick is re-measured, because a sticky header or a lazy list moves the box
-    while the page scrolls under it, and a tick that did not move the page at
-    all — an inner scroller under the pointer, an ``overflow: hidden`` body —
-    stops the loop rather than burning twenty of them. The programmatic jump
-    is the fallback for a page the wheel cannot move and for a driver that has
-    no wheel.
-    """
+    """``scroll_into_view`` jumps in one frame with no wheel events, the tell this avoids; a tick that moves nothing stops the loop."""
     page = session.get_page()
     fit = viewport_fit(session, element)
     for _ in range(WHEEL_INTO_VIEW_TICKS):
@@ -276,15 +223,7 @@ def retreat_pointer(
     behavior: Behavior,
     point: tuple[float, float],
 ) -> None:
-    """Walk off the cover before refusing the click.
-
-    A pointer left parked on the menu its own path opened keeps that menu
-    open for whatever the caller does next; the viewport centre is clear of a
-    nav's dropdown, jittered because a pixel-exact centre repeated across
-    refusals is itself a tell. Best-effort by construction: the refusal the
-    caller is about to get is the one worth raising, so a page that closes or
-    navigates mid-retreat costs a debug line and nothing else.
-    """
+    """A parked pointer keeps its menu open; the retreat point is jittered and best-effort."""
     try:
         fit = viewport_fit(session, element)
         destination = jittered_point(
@@ -306,24 +245,12 @@ INTERCEPTION_MARKER = "intercepts pointer events"
 
 
 def is_interception(exc: Exception) -> bool:
-    """Whether the click failed because something covered the target.
-
-    The only failure centring the element can fix. A disabled control, a
-    hidden one, a selector that matched nothing: retrying those buys a second
-    timeout and, worse, a `dispatch: true` hint that would fire an untrusted
-    click at a control the page is deliberately refusing.
-    """
+    """Only an interception is fixed by centring; retrying anything else adds a timeout and a bad ``dispatch`` hint."""
     return INTERCEPTION_MARKER in str(exc)
 
 
 def click_or_centre_and_retry(session: "BrowserSession", element: Any) -> None:
-    """A click a fixed header or footer swallowed is worth one more try.
-
-    Drivers scroll a target just far enough to be in view, which is exactly
-    where a sticky banner sits; centring it moves it clear. A second
-    interception is reported as the first one plus the escape hatch, because
-    the original error is what says *why* the click never landed.
-    """
+    """Drivers scroll a target just into view, where sticky banners sit; centring clears them."""
     # debt: `Driver.click` takes no timeout, so the retry pays the driver's
     # own default a second time; plumb the step timeout through to bound it.
     intercepted = failed_click(session, element)
@@ -342,10 +269,7 @@ def click_or_centre_and_retry(session: "BrowserSession", element: Any) -> None:
 
 
 def centre(session: "BrowserSession", element: Any, intercepted: Exception) -> None:
-    """Centre the element for the retry; a failure here is not the caller's
-    problem. Centring is an evaluate against an element the click already
-    struggled with, so it can time out on its own — reporting *that* would
-    bury the click error the caller needs."""
+    """Centring can time out on the same element; reporting that would bury the click error."""
     try:
         session.driver.scroll_into_view(element)
     except Exception as exc:
@@ -354,8 +278,7 @@ def centre(session: "BrowserSession", element: Any, intercepted: Exception) -> N
 
 
 def failed_click(session: "BrowserSession", element: Any) -> Exception | None:
-    """The step failure the click raised, or ``None`` if it landed. A library
-    bug is not a step failure and still propagates."""
+    """A library bug is not a step failure and still propagates."""
     try:
         session.driver.click(element)
     except Exception as exc:
@@ -374,8 +297,6 @@ def fill(
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
-    """``fill_as_type`` is one of the knobs ``humanize`` switches, so ``True``
-    types the value key by key and ``False`` writes it in one go."""
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
@@ -395,9 +316,7 @@ def type(  # shadows the builtin to mirror the `type` action's name
     behavior: Behavior | None = None,
     timeout: int = DEFAULT_FIND_TIMEOUT_MS,
 ) -> None:
-    """An explicit ``delay_ms`` is the caller's own cadence, so it wins over the
-    behaviour's: a constant types at a constant rate, a :class:`Jitter` becomes
-    the per-key delay of the humanized path."""
+    """An explicit ``delay_ms`` is the caller's cadence and wins over the behaviour's."""
     behavior = effective_behavior(session, humanize, behavior)
     with paced(behavior):
         element = session.find(selector, timeout=timeout)
@@ -444,16 +363,8 @@ def select_option(
 
 
 def expect_select(session: "BrowserSession", element: Any, selector: Selector) -> None:
-    """`select` on something that is not a `<select>` is a step error.
-
-    Left to the drivers it is not: Playwright raises its own `Error`, which
-    `execute_action` does not convert, so the flow died instead of returning
-    a `FlowError` an `optional:` step could swallow. Asking the page costs one
-    read and gives every driver the same message.
-
-    A `<label>` answers for the control it labels, because the Playwright
-    family resolves one before acting and this check must not reject a target
-    those drivers accept.
+    """Playwright's own `Error` here once killed the flow; asking the page gives every driver one message.
+    A `<label>` answers for its control, as the Playwright family resolves it.
     """
     tag = str(session.driver.evaluate(element, select_control_tag_js())).lower()
     if tag != "select":

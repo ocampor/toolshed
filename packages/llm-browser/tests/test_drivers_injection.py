@@ -1,5 +1,3 @@
-"""Plug-and-play contract: BrowserSession routes through an injected Driver."""
-
 from pathlib import Path
 from typing import Any, Callable, ClassVar
 from unittest.mock import MagicMock

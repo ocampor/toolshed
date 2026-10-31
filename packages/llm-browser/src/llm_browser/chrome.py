@@ -1,5 +1,3 @@
-"""Chromium binary discovery and detached-launch helpers."""
-
 import os
 import signal
 import subprocess
@@ -14,11 +12,6 @@ class ChromiumNotInstalledError(RuntimeError):
 
 
 def chromium_executable() -> str:
-    """Get Chromium binary path from Playwright installation.
-
-    Raises ChromiumNotInstalledError with an actionable remediation message
-    if the binary is missing.
-    """
     try:
         pw = sync_playwright().start()
         try:
@@ -43,7 +36,6 @@ def chromium_executable() -> str:
 
 
 def is_process_alive(pid: int) -> bool:
-    """Check if a process with given PID is still running."""
     try:
         os.kill(pid, 0)
         return True
@@ -57,16 +49,8 @@ def spawn_detached_chromium(
     executable_path: str | None = None,
     startup_timeout_s: float = 20.0,
 ) -> tuple[int, str]:
-    """Spawn a Chromium that outlives the Python process. Returns (pid, cdp_url).
-
-    Uses ``--remote-debugging-port=0`` + the ``DevToolsActivePort`` file Chromium
-    writes into ``user_data_dir`` on startup to discover the chosen port.
-    The child is placed in a new session (``setsid``) so it survives parent
-    exit and CLI re-invocations can reconnect over CDP.
-
-    Note: running this Chromium via ``connect_over_cdp`` does NOT activate
-    patchright's stealth patches. Value comes from reusing a *warmed* profile
-    across CLI calls — log in / pass Cloudflare once, reuse forever.
+    """Survives parent exit via ``setsid``; the port comes from ``DevToolsActivePort``.
+    Over ``connect_over_cdp`` patchright's stealth patches do not apply; the value is a warmed profile.
     """
     user_data_dir.mkdir(parents=True, exist_ok=True)
     port_file = user_data_dir / "DevToolsActivePort"
@@ -103,7 +87,6 @@ def spawn_detached_chromium(
 def _wait_for_devtools_port(
     port_file: Path, proc: subprocess.Popen[bytes], timeout_s: float
 ) -> str:
-    """Poll DevToolsActivePort until Chromium writes a port, or give up."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
@@ -126,7 +109,6 @@ def _wait_for_devtools_port(
 
 
 def kill_detached_chromium(pid: int) -> None:
-    """Terminate a detached Chromium (and its process group) by PID."""
     try:
         os.killpg(os.getpgid(pid), signal.SIGTERM)
     except OSError:

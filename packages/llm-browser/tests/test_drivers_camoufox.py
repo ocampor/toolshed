@@ -1,5 +1,3 @@
-"""Tests for CamoufoxDriver. Skipped when the camoufox extra is not installed."""
-
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -11,7 +9,6 @@ from llm_browser.drivers.camoufox import CamoufoxDriver  # noqa: E402
 
 
 def _install_mock_camoufox(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Stub the Camoufox loader to return a mock factory."""
     page = MagicMock()
     context = MagicMock()
     context.pages = [page]
@@ -218,8 +215,7 @@ def test_latest_tab_returns_last_page(
 
 
 def test_scroll_parks_the_cursor_over_the_content_first() -> None:
-    """Gecko delivers a wheel event to whatever is under the pointer, which
-    starts off the page — so the wheel alone moved nothing."""
+    # Gecko sends the wheel to whatever is under the pointer, which starts off the page.
     from unittest.mock import call
 
     page = MagicMock()

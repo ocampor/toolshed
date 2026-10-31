@@ -1,5 +1,3 @@
-"""Tests for the generic Registry."""
-
 import pytest
 
 from yaml_engine.registry import Registry

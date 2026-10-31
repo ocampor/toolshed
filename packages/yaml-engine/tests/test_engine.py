@@ -1,5 +1,3 @@
-"""Integration tests for the base Engine."""
-
 import textwrap
 from pathlib import Path
 
@@ -8,7 +6,7 @@ import yaml
 from yaml_engine.actions import register_action
 from yaml_engine.engine import Engine
 
-# --- Register test actions (yaml-engine ships no built-in actions) ---
+# yaml-engine ships no built-in actions.
 
 
 @register_action("set")
@@ -21,9 +19,6 @@ def negate(record: dict[str, object], param: str) -> None:
     value = record.get(param)
     if value is not None:
         record[param] = -value  # type: ignore[operator]
-
-
-# --- Tests ---
 
 
 def test_basic_eq_rule():

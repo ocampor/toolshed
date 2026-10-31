@@ -1,5 +1,3 @@
-"""The repeat block: its sources, its element scoping, its report, its rerun."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -27,7 +25,7 @@ def grab(**extra: Any) -> dict[str, Any]:
 
 
 def block(**extra: Any) -> dict[str, Any]:
-    """``as_`` spells the block's ``as:``, which Python will not take."""
+    # `as_` spells the block's `as:`, which Python will not take.
     bind = extra.pop("as_", "code")
     return {
         "name": "each",
@@ -38,13 +36,9 @@ def block(**extra: Any) -> dict[str, Any]:
     }
 
 
-# --- block form ---
-
-
 def test_the_block_form_is_the_modifier_form(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
-    """Same flow, written both ways: one engine, one set of outputs."""
     sugared = write_flow(tmp_path, [block(over="codes")], params=["codes"])
     hand_written = write_flow(
         tmp_path,
@@ -129,9 +123,6 @@ def test_a_repeat_is_rejected_at_load(step: dict[str, Any], message: str) -> Non
         Flow.model_validate({"params": ["codes"], "steps": [step]})
 
 
-# --- on_error and the report ---
-
-
 def test_skip_keeps_the_passes_around_the_failed_one(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
@@ -190,9 +181,6 @@ def test_a_repeat_with_nothing_to_do_reports_zero(
     result = run_flow_file(mock_session, path, {})
     assert isinstance(result, FlowSuccess)
     assert result.iterations["each"].total == 0
-
-
-# --- over_selector and `in:` ---
 
 
 def element_rows(*texts: str) -> list[dict[str, str]]:
@@ -279,12 +267,7 @@ def test_a_scoped_read_that_finds_nothing_fails_its_pass(
     assert "read found nothing at tr.athing[0] a" in failure.message
 
 
-# --- rerun ---
-
-
 def saved_codes_steps() -> list[dict[str, Any]]:
-    """A read that saves the list the repeat then loops over: `over` names flow
-    data the caller never passed in."""
     return [
         {
             "name": "rows",
@@ -300,7 +283,6 @@ def saved_codes_steps() -> list[dict[str, Any]]:
 @pytest.mark.parametrize(
     ("steps", "params", "data", "items", "only", "not_run", "expected_type"),
     [
-        # A list param reruns by data; `skip` runs every pass, so none is left.
         (
             [block(over="codes", on_error="skip")],
             ["codes"],
@@ -310,7 +292,6 @@ def saved_codes_steps() -> list[dict[str, Any]]:
             [],
             FlowSuccess,
         ),
-        # `stop` never reached c and d, and they belong to the rerun too.
         (
             [block(over="codes")],
             ["codes"],
@@ -320,7 +301,6 @@ def saved_codes_steps() -> list[dict[str, Any]]:
             [2, 3],
             FlowError,
         ),
-        # Only an index addresses an inline list entry.
         (
             [block(over=["a", "b"], on_error="skip")],
             [],
@@ -339,7 +319,6 @@ def saved_codes_steps() -> list[dict[str, Any]]:
             [2, 3],
             FlowError,
         ),
-        # A saved list is not in the caller's data, so an index is all there is.
         (
             saved_codes_steps(),
             [],
@@ -349,7 +328,6 @@ def saved_codes_steps() -> list[dict[str, Any]]:
             [2, 3],
             FlowError,
         ),
-        # Nor is a param the caller left to its default.
         (
             [block(over="codes")],
             [{"codes": {"required": False, "default": ["a", "b", "c", "d"]}}],
@@ -419,8 +397,6 @@ def test_a_clean_run_carries_no_retry_hint(
 
 
 def test_only_runs_the_passes_it_names(tmp_path: Path, mock_session: MagicMock) -> None:
-    """The indices are the original ones, so a rerun's outputs line up with
-    the run they came from."""
     path = write_flow(tmp_path, [block(over=["a", "b", "c"])])
     flow = Flow.model_validate(yaml.safe_load(path.read_text()))
     result = run_flow(mock_session, flow, {}, only={"each": [1, 2]})
@@ -433,8 +409,6 @@ def test_only_runs_the_passes_it_names(tmp_path: Path, mock_session: MagicMock) 
 
 
 def nested_repeat_flow(on_error: str = "skip") -> dict[str, Any]:
-    """A repeating step inside a hand-written `run-flow` — the one nesting the
-    block form rejects, and the one whose report has to reach the parent."""
     return {
         "name": "outer",
         "action": "run-flow",
@@ -450,7 +424,6 @@ def nested_repeat_flow(on_error: str = "skip") -> dict[str, Any]:
 
 
 def test_a_repeat_loops_a_saved_read(tmp_path: Path, mock_session: MagicMock) -> None:
-    """`save_as` (#61) feeds `over` (#60): any list in flow data loops."""
     mock_session.parse_elements.return_value = [{"href": "a.html"}, {"href": "b.html"}]
     path = write_flow(
         tmp_path,
@@ -498,14 +471,12 @@ def test_a_repeating_step_inside_a_subflow_reports_and_hints(
     assert failure.message == "never rendered"
     assert result.retry_hint is not None
     assert result.retry_hint.data["codes"] == ["b"]
-    # `--from` resumes the top-level step, not the child that failed.
     assert result.retry_hint.failed_step == "outer"
 
 
 def test_only_reaches_a_repeating_step_inside_a_subflow(
     tmp_path: Path, mock_session: MagicMock
 ) -> None:
-    """`only` is keyed the way a report is: the step's qualified name."""
     path = write_flow(tmp_path, [nested_repeat_flow()], params=["codes"])
     flow = Flow.model_validate(yaml.safe_load(path.read_text()))
     result = run_flow(

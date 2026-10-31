@@ -1,5 +1,3 @@
-"""Driver connection state and optional-dependency loading."""
-
 import importlib
 from types import ModuleType
 
@@ -21,7 +19,6 @@ class DriverNotInstalledError(RuntimeError):
 
 
 def load_optional_module(module: str, extra: str) -> ModuleType:
-    """Import an optional driver dependency or raise DriverNotInstalledError."""
     try:
         return importlib.import_module(module)
     except ImportError as e:

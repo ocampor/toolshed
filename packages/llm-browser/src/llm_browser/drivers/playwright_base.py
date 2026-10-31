@@ -27,9 +27,6 @@ from llm_browser.results import BytesResult, HitTarget, guess_media_type
 from llm_browser.scripts import extract_rows_js, property_js
 
 
-# --- Narrow Playwright-family protocols ---
-
-
 class PwLocator(Protocol):
     first: "PwLocator"
 
@@ -133,16 +130,10 @@ def read_download(download: PwDownload) -> BytesResult:
 
 
 class PlaywrightDriverBase(Driver):
-    """Interaction methods shared by every Playwright-compatible driver."""
-
     supports_role_selector: ClassVar[bool] = True
-
-    # --- Selector resolution ---
 
     def resolve(self, page: Any, selector: str) -> Any:
         return _pw_page(page).locator(selector)
-
-    # --- Interactions ---
 
     def click(self, locator: Any, *, dispatch: bool = False) -> None:
         pw = _pw_loc(locator)
@@ -194,8 +185,6 @@ class PlaywrightDriverBase(Driver):
     def dispatch_event(self, locator: Any, event: str) -> None:
         _pw_loc(locator).dispatch_event(event)
 
-    # --- Navigation / waiting ---
-
     def goto(self, page: Any, url: str, wait_until: str) -> None:
         _pw_page(page).goto(url, wait_until=wait_until)
 
@@ -211,21 +200,14 @@ class PlaywrightDriverBase(Driver):
         return _pw_loc(locator).is_visible()
 
     def is_enabled(self, locator: Any) -> bool:
-        """Playwright's own check, which reads the *inherited* disabled state —
-        a button inside a ``<fieldset disabled>`` carries no attribute of its
-        own and the base class's attribute rule calls it enabled. The
-        ``aria-disabled`` half of that rule is still ours."""
+        """Playwright's check sees the inherited ``<fieldset disabled>`` state; ``aria-disabled`` is still ours."""
         return (
             _pw_loc(locator).is_enabled()
             and self.get_attribute(locator, "aria-disabled") != "true"
         )
 
-    # --- Read / capture ---
-
     def now_read(self, locator: Any, read: Callable[[PwLocator], Any]) -> Any:
-        """A now-read (rule 1). Playwright's own reads wait for the element —
-        and ``timeout=0`` there means *no* timeout — so a miss is answered by
-        the count, and the read gets a round-trip's worth of budget."""
+        """Playwright reads wait, and ``timeout=0`` means none, so a miss is answered by the count."""
         loc = _pw_loc(locator)
         if loc.count() == 0:
             return None
@@ -283,8 +265,6 @@ class PlaywrightDriverBase(Driver):
         spec: dict[str, dict[str, str | None]],
         exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
-        """One page evaluation over every matched row, instead of a locator
-        call per row and field."""
         arg = {"spec": spec, "exclude": list(exclude)}
         rows = _pw_loc(locator).evaluate_all(extract_rows_js(), arg)
         return cast(list[dict[str, str | None]], rows)

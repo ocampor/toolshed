@@ -1,8 +1,4 @@
-"""NodriverDriver's DOM reads against hand-written async CDP doubles.
-
-`nodriver` is an optional extra and is NOT installed here — these tests also
-assert the wait paths never import it.
-"""
+# nodriver is not installed here; these tests also assert the wait paths never import it.
 
 import asyncio
 import sys
@@ -33,9 +29,6 @@ def _locator(results: list[Any], selector: str | None = "#out") -> NodriverLocat
     return NodriverLocator(tab=tab, selector=selector, element=element)
 
 
-# --- count: one bare query, no retry, no cache ---
-
-
 def test_count_never_reaches_the_retrying_query(driver: NodriverDriver) -> None:
     loc = _locator([None])
 
@@ -56,9 +49,6 @@ def test_count_reads_the_handle_without_a_selector(driver: NodriverDriver) -> No
 
     assert driver.count(loc) == 1
     assert loc.tab.query_calls == []
-
-
-# --- is_visible: a single read of the element as it is now ---
 
 
 def test_is_visible_is_false_for_a_missing_selector(driver: NodriverDriver) -> None:
@@ -86,9 +76,6 @@ def test_nth_keeps_the_selector_and_reads_its_own_index(
 
     assert (item.selector, item.index, item.element) == ("li", 1, hidden)
     assert driver.is_visible(item) is False
-
-
-# --- session -> nodriver seam: no mock driver, the real NodriverDriver ---
 
 
 @pytest.fixture

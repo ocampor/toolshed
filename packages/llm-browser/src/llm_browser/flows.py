@@ -41,8 +41,7 @@ def load_flow_document(document: Mapping[str, Any]) -> Flow:
 
 
 def with_flow_path(result: FlowResult, flow_path: str) -> FlowResult:
-    """Fill ``retry_hint.flow_path`` for a flow that came from a file — an
-    ``on_error: skip`` run carries one on its success, too."""
+    """An ``on_error: skip`` run carries a retry hint on its success too."""
     if result.retry_hint is None:
         return result
     hint = result.retry_hint.model_copy(update={"flow_path": flow_path})
@@ -145,15 +144,8 @@ def rerun_hint(
     failed_step: str = "",
     error: str = "",
 ) -> RetryHint | None:
-    """How to run the unfinished passes again, or ``None`` when none failed.
-
-    A stopped loop leaves the passes after the failing one unrun, and they
-    belong to the rerun as much as the failure does. A repeat over a list the
-    caller itself passed in gets those items back in ``data``; every other
-    source gets their indices in ``only``, since only an index addresses an
-    inline list entry, a matched element or a list the run made for itself. A
-    run that survived its failures names no step or error of its own, so the
-    first failing step stands in for both.
+    """Caller-passed list items come back in ``data``; any other source by index in ``only``.
+    A run that survived its failures names the first failing step as its own.
     """
     failing = {name: report for name, report in iterations.items() if report.failed}
     if not failing:
@@ -176,17 +168,13 @@ def rerun_hint(
 
 
 def rerun_indices(report: IterationReport) -> list[int]:
-    """Every pass the run did not finish, in the order it would run them."""
     return sorted([failure.index for failure in report.failed] + report.not_run)
 
 
 def rerun_items(
     report: IterationReport, data: dict[str, object]
 ) -> list[object] | None:
-    """The same passes as items, or ``None`` when the caller's own data does
-    not hold every one of them. An unrun pass left no record of its item, so it
-    is read back out of the list the run was given, which its index keys — and
-    a list the run saved or defaulted for itself was never in that data."""
+    """An unrun pass left no record, so its item is read back from the caller's list by index."""
     if report.over is None:
         return None
     source = data.get(report.over)

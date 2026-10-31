@@ -1,5 +1,3 @@
-"""``llm-browser-check``: run the conformance suite and report the table."""
-
 import sys
 
 import click

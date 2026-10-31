@@ -1,10 +1,3 @@
-"""The CLI and the pytest wrapper must report the same run the same way.
-
-They share ``run_scenario``, so this pins the only place they could drift:
-the translation of a verdict into a pytest report. Runs pytest in a
-subprocess over the synthetic scenarios — no browser, about a second.
-"""
-
 import subprocess
 import sys
 from collections import Counter
@@ -48,7 +41,6 @@ def test_the_two_front_ends_agree(tmp_path: Path) -> None:
 
 
 def parse_counts(output: str) -> dict[str, int]:
-    """The last summary line, e.g. ``2 failed, 3 passed, 1 skipped, 1 xfailed``."""
     summary = [
         line for line in output.splitlines() if " passed" in line or " failed" in line
     ]

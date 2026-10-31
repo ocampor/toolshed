@@ -1,5 +1,3 @@
-"""Tests for stage two (`load_flow_text`), `run_flow`, outputs, redaction."""
-
 import logging
 from pathlib import Path
 from typing import Any
@@ -25,9 +23,6 @@ def _run_flow_step(child: dict[str, Any], name: str = "c") -> dict[str, Any]:
     return {"name": name, "action": "run-flow", "flow": child}
 
 
-# --- load_flow_text ---
-
-
 def test_load_flow_text_parses_steps() -> None:
     flow = load_flow_text(_flow_yaml([{"name": "s1", "action": "goto", "url": "u"}]))
     assert isinstance(flow, Flow)
@@ -39,9 +34,6 @@ def test_load_flow_text_rejects_an_unresolved_reference() -> None:
         load_flow_text(
             _flow_yaml([{"name": "c", "action": "run-flow", "flow": "child"}])
         )
-
-
-# --- run_flow on a Flow model ---
 
 
 def test_run_flow_accepts_flow_model(mock_session: MagicMock) -> None:
@@ -69,9 +61,6 @@ def test_run_flow_model_runs_subflow(mock_session: MagicMock) -> None:
     flow = load_flow_text(_flow_yaml([_run_flow_step(CHILD)]))
     assert isinstance(run_flow(mock_session, flow, {}), FlowSuccess)
     assert mock_session.click.call_count == 1
-
-
-# --- outputs ---
 
 
 def _read_step(**extra: Any) -> dict[str, Any]:
@@ -110,8 +99,6 @@ def test_a_step_path_writes_nothing_and_keeps_the_output(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    """``path:`` is a CLI instruction; ``run_flow`` returns the rows and
-    leaves the filesystem alone."""
     out = tmp_path / "rows.json"
     flow = load_flow_text(_flow_yaml([_read_step(path=str(out))]))
     result = run_flow(mock_session, flow, {})
@@ -180,9 +167,6 @@ def test_outputs_from_subflow_are_qualified(mock_session: MagicMock) -> None:
     result = run_flow(mock_session, flow, {})
     assert isinstance(result, FlowSuccess)
     assert result.outputs == {"inner/snap": "<p>hello</p>"}
-
-
-# --- redaction ---
 
 
 @pytest.mark.parametrize(

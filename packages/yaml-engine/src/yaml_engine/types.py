@@ -1,5 +1,3 @@
-"""Base type definitions for compiled structures."""
-
 import re
 from dataclasses import dataclass, field
 from typing import Literal

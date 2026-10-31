@@ -1,5 +1,3 @@
-"""Tests for HTML cleaning utilities."""
-
 import pytest
 from lxml.html import fragment_fromstring
 
@@ -248,8 +246,7 @@ def test_higher_levels_shrink_output(sanitized: dict[SanitizeLevel, str]) -> Non
 
 
 def test_a_body_fragment_sanitizes_to_the_body_element() -> None:
-    """`dom body` hands lxml an outerHTML whose root its fragment parser
-    strips, leaving the children as several roots it then refuses."""
+    # lxml's fragment parser strips the body root and refuses the several roots left.
     html = "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
     result = sanitize_html_fragment(html)
     assert result.startswith("<body>")
@@ -272,8 +269,6 @@ def test_an_html_fragment_sanitizes_to_the_html_element() -> None:
 
 @pytest.mark.parametrize("html", ["", "<body"])
 def test_unparseable_html_is_a_step_failure(html: str) -> None:
-    """lxml raises a ParserError (a SyntaxError) for one and hands back a
-    document with no `.body` for the other; both would escape
-    `is_step_failure` and crash the run instead of failing the step."""
+    # lxml raises ParserError or returns no `.body`; both would crash the run, not fail the step.
     with pytest.raises(ValueError, match="cannot parse HTML"):
         sanitize_html_fragment(html)

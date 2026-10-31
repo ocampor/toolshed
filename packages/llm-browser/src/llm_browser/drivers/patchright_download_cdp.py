@@ -23,8 +23,6 @@ from llm_browser.scripts import load_script
 
 
 class DownloadBegin(TypedDict):
-    """CDP ``Browser.downloadWillBegin``, the fields read here."""
-
     frameId: str
     url: str
     guid: str
@@ -144,7 +142,6 @@ def read_bytes(frame: Frame, url: str, key: str, deadline: Deadline) -> bytes:
 
 
 def frame_for(pages: list[Page], frame_id: str) -> Frame | None:
-    """The frame of these tabs a download began in; None when it is not theirs."""
     frames = [frame for page in pages for frame in page.frames]
     for frame in frames:
         tree = frame_tree(frame)

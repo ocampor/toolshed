@@ -1,5 +1,3 @@
-"""Tests for stage one: a flow reference or text in, a resolved document out."""
-
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -25,8 +23,7 @@ def _parent_yaml(*refs: str) -> str:
 
 
 class FakeRepository:
-    """Records every fetch, and blocks until `concurrency` fetches are in
-    flight so a serial resolver would deadlock into a timeout."""
+    # Blocks until `concurrency` fetches are in flight, so a serial resolver deadlocks.
 
     def __init__(self, flows: dict[str, str], concurrency: int = 1) -> None:
         self.flows = flows

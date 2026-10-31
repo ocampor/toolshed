@@ -1,5 +1,3 @@
-"""Tests for the partial outputs a `FlowError` carries back."""
-
 from typing import Any
 from unittest.mock import MagicMock
 

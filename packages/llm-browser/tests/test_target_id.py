@@ -1,5 +1,3 @@
-"""Addressing a tab by its CDP target id instead of ``pages[-1]``."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -20,7 +18,6 @@ CDP_URL = "http://127.0.0.1:9223"
 
 
 def fake_context(target_ids: list[str]) -> Any:
-    """A context whose pages answer ``Target.getTargetInfo`` with ``target_ids``."""
     pages = [MagicMock(name=f"page-{tid}") for tid in target_ids]
     by_page = {id(page): tid for page, tid in zip(pages, target_ids)}
     context = MagicMock()
@@ -114,7 +111,6 @@ def test_reattach_resolves_by_target_id_not_last_page(
 def test_reattach_without_target_id_picks_the_last_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A legacy handle (pre-target-id state.json) reconnects to the last tab."""
     context = fake_context(["A", "B"])
     fake_playwright(monkeypatch, context)
 
@@ -123,7 +119,6 @@ def test_reattach_without_target_id_picks_the_last_page(
 
 
 def test_find_page_by_target_id_skips_unhealthy_tabs() -> None:
-    """A crashed sibling tab must not hide the tab we are addressing."""
     context = fake_context(["BROKEN", "MINE"])
     healthy = context.new_cdp_session.side_effect
 
@@ -146,7 +141,6 @@ def test_reattach_raises_when_target_gone(monkeypatch: pytest.MonkeyPatch) -> No
 def test_reattach_reuses_the_playwright_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A second attach on the same driver must not orphan the first connection."""
     context = fake_context(["A"])
     pw = fake_playwright(monkeypatch, context)
     starts = 0

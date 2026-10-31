@@ -1,5 +1,3 @@
-"""Resolve → load → run, the three stages a file-backed flow test needs."""
-
 import asyncio
 from collections.abc import Iterable
 from pathlib import Path
@@ -31,8 +29,7 @@ def run_flow_file(
 
 
 def stub_matching(session: MagicMock) -> MagicMock:
-    """``BrowserSession.matching`` is a context manager yielding the mismatches
-    a step accepted; a bare mock yields a truthy mock instead of a list."""
+    # A bare mock would yield a truthy mock instead of the list of accepted mismatches.
     session.matching.return_value.__enter__.return_value = []
     # Set in ``__init__``, so ``spec=BrowserSession`` does not know it.
     session.extract_errors = []

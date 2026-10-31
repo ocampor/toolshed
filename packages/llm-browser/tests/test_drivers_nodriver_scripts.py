@@ -1,11 +1,3 @@
-"""nodriver runs a page script the way the Playwright family reads it.
-
-The library writes its scripts as function literals (``el => el.outerHTML``,
-``page_probe.js``). CDP does neither half by itself, and both wrong answers
-are a silent ``None`` rather than an error — so this pins which string gets
-invoked and which gets evaluated.
-"""
-
 import asyncio
 import re
 from pathlib import Path
@@ -117,8 +109,7 @@ class ClickableElement:
 
 
 def test_a_click_scrolls_the_target_into_view_first() -> None:
-    """The CDP mouse event carries viewport coordinates, so a target below
-    the fold is otherwise clicked where it is not."""
+    # CDP mouse events take viewport coordinates, so an offscreen target is clicked where it is not.
     element = ClickableElement()
     driver_with_loop().click(NodriverLocator(tab=None, element=element))
     assert element.calls == ["scroll_into_view", "mouse_click"]
@@ -131,8 +122,6 @@ def test_a_dispatched_click_needs_no_coordinates() -> None:
 
 
 class SelectElement:
-    """A select whose in-page script has already made up its mind."""
-
     backend_node_id = 7
 
     def __init__(self, outcome: str) -> None:
@@ -152,8 +141,7 @@ class FocusingTab:
 
 @pytest.fixture
 def stub_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the real `nodriver` package out of `sys.modules`: a sibling test
-    asserts the wait paths never pull it in, and an import here is global."""
+    # A sibling test asserts the wait paths never import nodriver, and imports are global.
     monkeypatch.setattr(
         nodriver_driver, "load_optional_module", lambda *names: MagicMock()
     )
@@ -173,8 +161,6 @@ def stub_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_refused_select_is_a_value_error(
     outcome: str, message: str, stub_cdp: None
 ) -> None:
-    """``ValueError`` is what ``execute_action`` turns into an ``ErrorResult``;
-    anything else would abort the flow instead of failing the step."""
     locator = NodriverLocator(tab=FocusingTab(), element=SelectElement(outcome))
     with pytest.raises(ValueError, match=re.escape(message)):
         driver_with_loop().select_option(locator, "z")
@@ -188,16 +174,12 @@ def test_a_successful_select_focuses_first(stub_cdp: None) -> None:
 
 
 def test_the_visibility_read_asks_the_platform_first() -> None:
-    """A box read cannot see `visibility: hidden` -- the element still has a
-    box -- and `opacity: 0` has to stay visible, so only the CSS check is on."""
+    # A box read cannot see `visibility: hidden`, and `opacity: 0` must stay visible.
     from llm_browser.drivers.nodriver import VISIBILITY_SCRIPT
 
     assert "checkVisibility({checkVisibilityCSS: true})" in VISIBILITY_SCRIPT
     assert "opacityProperty" not in VISIBILITY_SCRIPT
     assert "getClientRects" in VISIBILITY_SCRIPT
-
-
-# --- keyboard ---
 
 
 @pytest.mark.parametrize(
@@ -244,8 +226,6 @@ def test_an_unknown_modifier_is_a_value_error() -> None:
 
 
 class KeyboardTab:
-    """Records the `Input.dispatchKeyEvent` arguments, not the CDP wrapper."""
-
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
 
@@ -273,7 +253,7 @@ def recorded_keys(monkeypatch: pytest.MonkeyPatch) -> KeyboardTab:
 def test_a_typed_character_fires_a_keydown_with_its_text(
     recorded_keys: KeyboardTab,
 ) -> None:
-    """`char` alone — what nodriver's `send_keys` sends — fires no keydown."""
+    # `char` alone (what nodriver's send_keys sends) fires no keydown.
     asyncio.new_event_loop().run_until_complete(
         nodriver_driver.press_key(recorded_keys, "a")
     )
@@ -297,9 +277,6 @@ def test_a_chord_holds_its_modifier_down_and_types_nothing(
     assert all("text" not in e for e in recorded_keys.events)
 
 
-# --- the tab stays in the foreground ---
-
-
 class ForegroundTab:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -317,8 +294,7 @@ class ForegroundTab:
 
 
 def test_goto_activates_the_tab_it_is_about_to_drive() -> None:
-    """Chromium throttles a background tab's timers and stalls a capture on
-    it; one `window.open` is enough to leave the opener there for good."""
+    # Chromium throttles background tabs; one window.open leaves the opener there for good.
     tab = ForegroundTab()
     driver_with_loop().goto(tab, "http://example.test", "load")
     assert tab.calls == ["activate", "get http://example.test"]
@@ -330,12 +306,7 @@ def test_a_screenshot_activates_the_tab_first() -> None:
     assert tab.calls == ["activate", "save_screenshot png"]
 
 
-# --- a write path never dereferences a miss ---
-
-
 class EmptyScope:
-    """A parent whose child selector matches nothing."""
-
     async def query_selector_all(self, selector: str) -> list[Any]:
         return []
 
@@ -352,15 +323,12 @@ class EmptyScope:
 def test_a_write_to_a_missing_element_is_a_value_error(
     drive: Any, args: tuple[Any, ...], stub_cdp: None
 ) -> None:
-    """`AttributeError` on `None` would escape `run_flow` as a raw traceback;
-    a `ValueError` is what `execute_action` turns into an `ErrorResult`."""
     locator = NodriverLocator(tab=None, selector="td.gone", parent=EmptyScope())
     with pytest.raises(ValueError, match="no element matched 'td.gone'"):
         drive(driver_with_loop(), locator, *args)
 
 
 def test_a_read_of_a_missing_element_is_still_a_miss() -> None:
-    """Rule 1: the read paths answer a miss, they do not raise."""
     locator = NodriverLocator(tab=None, selector="td.gone", parent=EmptyScope())
     driver = driver_with_loop()
     assert driver.get_attribute(locator, "href") is None
@@ -368,12 +336,8 @@ def test_a_read_of_a_missing_element_is_still_a_miss() -> None:
 
 
 def test_a_script_behind_a_comment_is_still_a_function() -> None:
-    """Not detecting it costs a silent `undefined`, not an error."""
     assert is_function_literal("// what this reads\nel => el.value")
     assert not is_function_literal("// a note\ndocument.readyState")
-
-
-# --- an async script is awaited, however it is written ---
 
 
 @pytest.mark.parametrize(
@@ -389,8 +353,7 @@ def test_a_script_behind_a_comment_is_still_a_function() -> None:
 def test_an_async_literal_is_recognised_behind_its_comments(
     script: str, asynchronous: bool
 ) -> None:
-    """Missed, the promise comes back unresolved and serializes to `{}` — a
-    validation error pointing at the page rather than at the driver."""
+    # Missed, the promise serializes to `{}`, a validation error blaming the page.
     assert is_async_literal(script) is asynchronous
 
 
@@ -413,8 +376,6 @@ def test_a_commented_async_script_takes_the_awaiting_path(
 
 
 class RemoteTab:
-    """Answers the three CDP calls `apply_awaiting` makes, in order."""
-
     def __init__(self, value: Any) -> None:
         self.sent: list[Any] = []
         self.replies: list[Any] = [
@@ -443,8 +404,7 @@ def cdp_module(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def test_an_async_script_is_awaited_and_its_handle_released(cdp_module: Any) -> None:
-    """Without `awaitPromise` the value is an unresolved promise; without the
-    release, every `explore` leaks a node handle for the life of the tab."""
+    # Without awaitPromise the value is a promise; without the release every explore leaks a handle.
     tab = RemoteTab({"first": {"tag": "a"}})
     result = asyncio.new_event_loop().run_until_complete(
         apply_awaiting(RemoteElement(tab), "async (el) => el.getBoundingClientRect()")

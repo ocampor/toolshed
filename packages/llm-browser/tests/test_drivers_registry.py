@@ -1,5 +1,3 @@
-"""Tests for the driver registry and resolve_driver."""
-
 import pytest
 
 from llm_browser.drivers import (

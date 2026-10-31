@@ -1,5 +1,3 @@
-"""llm-browser — Playwright browser automation with declarative YAML flows."""
-
 from llm_browser.selectors import (
     CssSelector,
     FallbackSelector,

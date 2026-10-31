@@ -1,5 +1,3 @@
-"""Launched mode: Playwright's own ``Download`` events save the file locally."""
-
 from collections.abc import Callable
 
 from patchright.sync_api import Download, Page

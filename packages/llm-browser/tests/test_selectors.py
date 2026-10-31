@@ -1,5 +1,3 @@
-"""Tests for selector resolution."""
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,9 +27,6 @@ def driver(page: MagicMock) -> MagicMock:
     mock.resolve.side_effect = lambda p, sel: p.locator(sel)
     mock.count.side_effect = lambda loc: loc.count()
     return mock
-
-
-# --- resolve_selector with typed models ---
 
 
 def test_resolve_string_selector(driver: MagicMock, page: MagicMock) -> None:
@@ -94,9 +89,6 @@ def test_resolve_fallback_uses_fallback(driver: MagicMock, page: MagicMock) -> N
     assert result is fallback_locator
 
 
-# --- parse_selector ---
-
-
 def test_parse_string() -> None:
     assert parse_selector("#btn") == "#btn"
 
@@ -136,8 +128,7 @@ def test_parse_unknown_raises() -> None:
 def test_fallback_probe_never_waits_inside_the_driver(
     driver: MagicMock, page: MagicMock
 ) -> None:
-    """Resolution asks "does the primary match right now"; `count` may retry
-    internally, which would stall every tick of an explicit wait."""
+    # `count` may retry internally, which would stall every tick of an explicit wait.
     selector = FallbackSelector(
         primary=CssSelector(css="#a"), fallback=CssSelector(css="#b")
     )
@@ -146,9 +137,6 @@ def test_fallback_probe_never_waits_inside_the_driver(
     resolve_selector(driver, page, selector)
 
     driver.count.assert_called_once()
-
-
-# --- scoped selectors (`in:`) ---
 
 
 def test_a_scoped_selector_looks_inside_the_nth_match(
@@ -169,7 +157,6 @@ def test_a_scoped_selector_looks_inside_the_nth_match(
 def test_a_scoped_selector_says_so_when_the_row_is_gone(
     driver: MagicMock, page: MagicMock
 ) -> None:
-    """A page that dropped rows mid-loop fails the pass with what happened."""
     page.locator.return_value.count.return_value = 1
 
     with pytest.raises(

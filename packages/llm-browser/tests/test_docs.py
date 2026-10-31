@@ -1,10 +1,3 @@
-"""The generated reference is checked against the source, not trusted.
-
-The files themselves are a build artifact, so there is nothing to compare a
-committed copy against; what is worth asserting is that the generator runs and
-covers every step type.
-"""
-
 import ast
 import importlib
 import re
@@ -41,8 +34,6 @@ def test_every_document_fits_one_read(rendered: dict[str, str], name: str) -> No
 
 
 def test_every_step_type_reaches_the_reference(rendered: dict[str, str]) -> None:
-    """`docgen` finds step models by name; this is what fails if that rule
-    stops matching one."""
     steps = rendered["reference/steps"]
     missing = [
         step_class.__name__
@@ -66,7 +57,6 @@ def documented_modules() -> set[str]:
 
 
 def module_prose() -> dict[str, int]:
-    """Every module under `src/llm_browser`, by the length of its docstring."""
     root = Path(llm_browser.__file__).resolve().parent
     found = {}
     for path in sorted(root.rglob("*.py")):
@@ -79,9 +69,6 @@ def module_prose() -> dict[str, int]:
 
 
 def test_every_module_that_explains_itself_reaches_a_doc() -> None:
-    """A guide folded into a module docstring and never added to `DOCUMENTS`
-    is a topic that lost its documentation — which is how `repeat`, `cli` and
-    `drivers` went missing."""
     documented = documented_modules()
     unreachable = sorted(
         name
@@ -113,7 +100,6 @@ def test_every_public_model_is_rendered_somewhere(rendered: dict[str, str]) -> N
 
 
 def test_no_class_variable_renders_as_a_field(rendered: dict[str, str]) -> None:
-    """A `ClassVar` configures the model; a flow that writes one is ignored."""
     documents = "\n".join(rendered.values())
     shown = [
         f"{model.__name__}.{name}"
@@ -125,8 +111,6 @@ def test_no_class_variable_renders_as_a_field(rendered: dict[str, str]) -> None:
 
 
 def test_every_default_factory_field_shows_a_default(rendered: dict[str, str]) -> None:
-    """Without one the field reads as required, contradicting its own
-    description."""
     documents = "\n".join(rendered.values())
     undefaulted = [
         f"{model.__name__}.{name}"
@@ -142,7 +126,6 @@ DOC_NAME = re.compile(r"`((?:reference|guide)/[a-z0-9_-]+)`")
 
 
 def test_every_doc_name_a_doc_mentions_resolves(rendered: dict[str, str]) -> None:
-    """A pointer at a document that does not exist is worse than none."""
     readme = (Path(llm_browser.__file__).parents[2] / "README.md").read_text()
     names = {entry.name for entry in docs.index()}
     pointed = {

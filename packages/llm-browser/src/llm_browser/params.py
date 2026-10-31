@@ -1,5 +1,3 @@
-"""Param registry: define reusable flow parameters, resolve and validate."""
-
 from functools import lru_cache
 from collections.abc import Sequence
 from typing import Any
@@ -18,12 +16,7 @@ register_param = get_registry().register
 
 
 def resolve_params(raw_params: Sequence[str | dict[str, Any]]) -> dict[str, Param]:
-    """Resolve a list of string refs and inline dicts into name->Param mapping.
-
-    Bare strings are looked up in the registry; if not registered, they
-    default to Param(required=True) so flows can declare params without
-    pre-registering every name.
-    """
+    """A bare name not in the registry defaults to ``Param(required=True)``, so flows need not pre-register every name."""
     registry = get_registry()
     resolved: dict[str, Param] = {}
     for entry in raw_params:
@@ -41,7 +34,6 @@ def resolve_params(raw_params: Sequence[str | dict[str, Any]]) -> dict[str, Para
 def validate_flow_params(
     raw_params: Sequence[str | dict[str, Any]], data: dict[str, object]
 ) -> FlowData:
-    """Resolve params, validate data against them, apply defaults, return FlowData."""
     params = resolve_params(raw_params)
     fields: dict[str, Any] = {}
     for name, param in params.items():

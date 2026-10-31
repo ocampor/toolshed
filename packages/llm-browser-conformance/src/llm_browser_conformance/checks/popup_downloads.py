@@ -1,20 +1,4 @@
-"""Downloads the page hands to a tab the session never opened.
-
-A portal that prints a receipt rarely writes the file into the tab you are
-driving: a button calls ``window.open`` on an ``.action`` URL, that tab
-redirects to the PDF, and the browser turns it into a download. A
-``target=_blank`` link and a ``target=_blank`` form post are the same shape
-with less JavaScript.
-
-Most of those still reach the caller, because a popup that never commits a
-document leaves the browser reporting the download on the opener — the one
-page ``download_bytes`` listens on. The row that does not is ``popup
-renders then fetches``: that popup is a document before it asks for the file,
-so the download belongs to a page of its own and the step times out with the
-receipt sitting in the Downloads folder. That is the shape that broke a real
-run; the others are here so that the day a driver starts listening
-context-wide, the table says which shapes changed.
-"""
+"""Only a popup that renders before fetching escapes ``download_bytes``, which listens on the opener alone."""
 
 import time
 from typing import NamedTuple
@@ -43,7 +27,6 @@ from llm_browser_conformance.server import (
 PAGE = "popup-download.html"
 FLOW = "popup-download"
 
-# The page `#popup_deferred` opens, and the one it leaves behind.
 DEFERRED_POPUP = "popup-then-download.html"
 
 # One reason for every row that fails for it; the issue number lands here.
@@ -54,31 +37,18 @@ POPUP_DOWNLOAD_GAP = (
 
 
 class Attempt(NamedTuple):
-    """The flow's verdict and what the download step alone cost."""
-
     result: FlowSuccess | FlowError
     took: float
 
 
 def declared_timeout_ms(ctx: Context) -> int:
-    """The budget `flows/popup-download.yaml` declares, read off the flow so
-    lowering it there cannot leave a scenario asserting an old ceiling."""
+    """Read off the flow, so lowering it there cannot leave an old ceiling asserted here."""
     step = ctx.flow(FLOW).steps[0]
     return step.timeout
 
 
 def download(ctx: Context, selector: str, opened: str | None = None) -> Attempt:
-    """Click ``selector`` and hand back the flow's verdict, one tab again.
-
-    The opener is read before the click on purpose: afterwards the newest tab
-    may be the popup, and the cleanup would then close the page every later
-    scenario runs on. ``opened`` names the page a trigger leaves behind, so
-    the cleanup waits for a popup that has not registered yet; the shapes the
-    browser closes by itself pass nothing.
-
-    Only ``run_flow`` is timed: the visit before it and the tab teardown after
-    it are not what the step's budget covers.
-    """
+    """The opener is read before the click: afterwards the newest tab may be the popup."""
     ctx.visit(PAGE)
     opener = ctx.session.get_page()
     with tabs_closed_after(ctx, opener, opened):
@@ -104,16 +74,11 @@ def expect_pdf(
 
 
 def a_same_tab_attachment_comes_back_as_bytes(ctx: Context) -> None:
-    """The baseline the other rows are measured against: the response the
-    click starts lands in the tab the click happened in."""
     expect_pdf(ctx, "#attach", ATTACHMENT_PDF_FILENAME)
 
 
 def a_popup_that_redirects_to_an_inline_pdf_is_captured(ctx: Context) -> None:
-    """``Content-Disposition: inline`` is not a request to download, but a
-    headless browser has no viewer to show it in, so it downloads anyway —
-    which is exactly how the receipt reaches a Downloads folder instead of the
-    caller."""
+    """A headless browser has no PDF viewer, so an inline PDF downloads anyway."""
     expect_pdf(ctx, "#popup_inline", INLINE_PDF_FILENAME)
 
 
@@ -126,21 +91,16 @@ def a_target_blank_link_to_a_file_is_captured(ctx: Context) -> None:
 
 
 def a_target_blank_form_post_is_captured(ctx: Context) -> None:
-    """A POST cannot be re-issued from the outside — no url to fetch again —
-    so the tab the browser opened for it is the only copy of the file."""
+    """A POST cannot be re-issued, so the tab the browser opened is the only copy of the file."""
     expect_pdf(ctx, "#blank_form_submit", INLINE_PDF_FILENAME)
 
 
 def a_popup_that_renders_before_downloading_is_captured(ctx: Context) -> None:
-    """The one that broke a real run: the popup is a page for a moment before
-    it asks for the file, so the download is the popup's, not the opener's."""
+    """The popup is a page before it fetches, so the download is the popup's, not the opener's."""
     expect_pdf(ctx, "#popup_deferred", INLINE_PDF_FILENAME, opened=DEFERRED_POPUP)
 
 
 def a_popup_with_no_file_fails_inside_its_budget(ctx: Context) -> None:
-    """The negative case, and the one a caller feels first: a trigger that
-    opens an ordinary page must report that no download arrived, inside the
-    budget the step declared, rather than hang."""
     attempt = download(ctx, "#popup_html", opened=NEW_TAB_TARGET)
     failure = attempt.result
     assert isinstance(failure, FlowError), f"a plain popup produced {failure.outputs}"

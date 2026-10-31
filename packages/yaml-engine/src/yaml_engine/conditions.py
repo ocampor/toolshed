@@ -1,5 +1,3 @@
-"""Built-in condition operators and evaluation registry."""
-
 import re
 from functools import lru_cache
 from typing import Callable, TypeVar
@@ -20,11 +18,7 @@ register_condition = get_registry().register
 
 
 def evaluate_condition(op: str, value: T, param: object) -> bool:
-    """Evaluate a condition operator against a value and its compiled param."""
     return get_registry().get(op)(value, param)
-
-
-# --- Built-in operators ---
 
 
 @register_condition("eq")
@@ -68,7 +62,7 @@ def in_set(value: T, param: frozenset[str]) -> bool:
 
 @register_condition("all_present")
 def all_present(value: T, param: list[str]) -> bool:
-    """All substrings must be present in value (case-insensitive)."""
+    """Case-insensitive."""
     if value is None:
         return False
     upper = str(value).upper()
@@ -77,7 +71,7 @@ def all_present(value: T, param: list[str]) -> bool:
 
 @register_condition("has_fragment")
 def has_fragment(value: T, param: list[str]) -> bool:
-    """Any fragment in param must be present in value (case-insensitive)."""
+    """Case-insensitive."""
     if value is None:
         return False
     upper = str(value).upper()

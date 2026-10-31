@@ -1,5 +1,3 @@
-"""Tests for chrome.py executable discovery."""
-
 from unittest.mock import patch
 
 import pytest

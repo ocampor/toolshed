@@ -1,5 +1,3 @@
-"""Tests for template variable substitution."""
-
 import pytest
 
 from yaml_engine.template import (
@@ -8,8 +6,6 @@ from yaml_engine.template import (
     resolve_templates_in_dict,
     template_names,
 )
-
-# --- resolve_template ---
 
 
 @pytest.mark.parametrize(
@@ -31,9 +27,6 @@ def test_resolve_template(template, data, expected):
 
 def test_resolve_template_none_value_leaves_placeholder():
     assert resolve_template("{{ x }}", {"x": None}) == "{{ x }}"
-
-
-# --- resolve_templates_in_dict ---
 
 
 def test_resolve_dict_simple():
@@ -77,8 +70,6 @@ def test_resolve_dict_missing_vars_preserved():
     result = resolve_templates_in_dict(raw, {"known": "yes"})
     assert result == {"field": "yes and {{ unknown }}"}
 
-
-# --- dotted paths ---
 
 ROWS = {"link": {"href": "/a", "n": 3}, "links": [{"text": "one"}, {"text": "two"}]}
 

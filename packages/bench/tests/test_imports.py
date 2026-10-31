@@ -8,7 +8,7 @@ SRC = Path(__file__).parents[1] / "src"
 
 
 def import_bare(module: str) -> subprocess.CompletedProcess[str]:
-    """`-S` skips site-packages, so griffe is as absent as in a bare install."""
+    # `-S` skips site-packages, so griffe is as absent as in a bare install.
     code = f"import sys; sys.path.insert(0, {str(SRC)!r}); import {module}"
     return subprocess.run([sys.executable, "-S", "-c", code], capture_output=True, text=True)
 

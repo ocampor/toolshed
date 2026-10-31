@@ -1,13 +1,4 @@
-"""The reference half of the docs, rendered from the source by griffe2md.
-
-This module names *what* to document; griffe reads the signatures, docstrings
-and ``Field(description=)`` out of the source statically, and griffe2md turns
-them into markdown. The build hook (``hatch_build.py``) runs it, so
-``docs/reference/*.md`` is a build artifact rather than a committed file.
-
-Nothing here imports ``llm_browser``: the hook loads this file on its own, in
-a build environment where the package is source, not an installed dependency.
-"""
+"""Imports nothing from ``llm_browser``: the build hook loads it where the package is source, not installed."""
 
 import griffe
 from bench.docs.files import Reference
@@ -35,12 +26,7 @@ def named(*paths: str) -> Members:
 
 
 def classes_named(where: str, suffix: str) -> Members:
-    """Every class declared in ``where`` whose name ends in ``suffix``.
-
-    By name rather than by list: a step type or selector form added to the
-    models turns up in the docs without anyone remembering to add it here.
-    An imported name is an alias, never a declaration, so it is skipped.
-    """
+    """By suffix, so a new step type turns up in the docs unlisted; imported aliases are skipped."""
 
     def found(module: griffe.Module) -> list[str]:
         classes = module[where].classes
@@ -67,7 +53,6 @@ def step_models(module: griffe.Module) -> list[str]:
 
 
 def result_models(module: griffe.Module) -> list[str]:
-    """The flow-level results, then every action result they are built from."""
     flow_level = [
         "models.FlowSuccess",
         "models.FlowError",
@@ -197,7 +182,6 @@ REFERENCE = Reference(package="llm_browser", header=HEADER, documents=DOCUMENTS)
 
 
 def covered_modules(module: griffe.Module) -> set[str]:
-    """Every module some document renders from, whole or through a member."""
     names = set()
     for document in DOCUMENTS.values():
         paths = [path for _, path in document.prose] + members_of(module, document)

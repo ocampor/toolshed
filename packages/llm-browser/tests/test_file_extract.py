@@ -1,5 +1,3 @@
-"""download ``extract:`` over files generated in the test."""
-
 import codecs
 import hashlib
 import io
@@ -26,7 +24,6 @@ from llm_browser.results import (
 
 
 def pdf_bytes(texts: list[str]) -> bytes:
-    """A 200x300pt page per text, drawn in Helvetica; ``""`` is a blank page."""
     count = len(texts)
     kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(count))
     objects = [
@@ -71,8 +68,6 @@ def red_left_blue_right() -> Image.Image:
 
 
 def exif_jpeg() -> bytes:
-    """Orientation 6 (shown rotated 90 degrees clockwise), a GPS fix, a comment
-    repeating it, and an ICC profile."""
     exif = Image.Exif()
     exif[ExifTags.Base.Orientation] = 6
     gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
@@ -128,8 +123,6 @@ def test_text_stops_at_max_chars(
     expected: list[tuple[str, bool]],
     next_pages: str | None,
 ) -> None:
-    """``max_chars`` is a hard ceiling: an over-long first page is clipped and
-    says so."""
     spec = TextExtract(mode="text", max_chars=max_chars, pages=pages)
     result = run(pdf_bytes(["aaaa", "bbbb", "cccc"]), spec)
     got = [
@@ -245,8 +238,7 @@ def test_images_give_one_page_per_tiff_frame() -> None:
 
 
 def partial_frames() -> list[Image.Image]:
-    """Red, then a blue corner, then a green corner: an encoder stores frames
-    2 and 3 as the changed corner alone, drawn over the previous canvas."""
+    # An encoder stores frames 2 and 3 as the changed corner, drawn over the previous canvas.
     frames = [Image.new("RGB", (1200, 800), "red") for _ in range(3)]
     frames[1].paste("blue", (0, 0, 300, 300))
     frames[2].paste("blue", (0, 0, 300, 300))
@@ -332,7 +324,6 @@ def test_transparency_is_flattened_onto_white() -> None:
     ("pages", "expected"), [("2-10", ["b"]), ("1-100000000", ["a", "b"])]
 )
 def test_pages_past_the_end_are_clamped(pages: str, expected: list[str]) -> None:
-    """The huge range also proves clamping happens before expanding."""
     result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages=pages))
     assert texts(result) == expected
     assert result.next_pages is None
@@ -421,7 +412,6 @@ PNG = image_bytes(Image.new("RGB", (64, 48), "red"), "PNG")
 def test_a_corrupt_image_fails_the_step_or_returns_metadata(
     content: bytes, spec: TextExtract | ImageExtract
 ) -> None:
-    """Images mode reads it or fails the step; text mode never decodes it."""
     try:
         result = run(content, spec, "photo.jpg")
     except ValueError:

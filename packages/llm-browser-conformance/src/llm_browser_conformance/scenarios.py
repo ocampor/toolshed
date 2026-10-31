@@ -1,10 +1,3 @@
-"""The scenario list: everything the suite knows how to check.
-
-One flat, declarative sequence, assembled from the ``checks`` modules so each
-group stays readable on its own. Both front ends walk this list — adding a
-scenario here adds a row to ``llm-browser-check`` and a pytest case at once.
-"""
-
 from llm_browser_conformance.checks import (
     command_line,
     controls,

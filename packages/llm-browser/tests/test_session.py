@@ -1,5 +1,3 @@
-"""Tests for BrowserSession state file lifecycle."""
-
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -47,7 +45,7 @@ def test_clear_state(tmp_path: Path) -> None:
 
 def test_clear_state_noop_when_missing(tmp_path: Path) -> None:
     session = BrowserSession(state_dir=tmp_path)
-    session.state.clear()  # should not raise
+    session.state.clear()
 
 
 def test_status_closed_no_state(tmp_path: Path) -> None:
@@ -78,9 +76,6 @@ def testis_process_alive_nonexistent() -> None:
     assert is_process_alive(1 << 30) is False
 
 
-# --- executable_path ---
-
-
 def test_executable_path_threaded_to_driver(tmp_path: Path) -> None:
     from tests.test_attach import AttachStubDriver
 
@@ -108,9 +103,6 @@ def test_executable_path_threaded_to_driver(tmp_path: Path) -> None:
     assert captured["executable_path"] == "/usr/bin/chromium"
 
 
-# --- element_exists ---
-
-
 def _session_with_mock_driver(tmp_path: Path) -> BrowserSession:
     session = BrowserSession(state_dir=tmp_path)
     session.driver = MagicMock()
@@ -131,7 +123,6 @@ def test_element_exists_is_false_when_nothing_ever_matches(tmp_path: Path) -> No
 
 
 def test_element_exists_propagates_a_driver_error(tmp_path: Path) -> None:
-    """A CDP failure is not "not yet": only a timeout reads as False."""
     session = _session_with_mock_driver(tmp_path)
     session.driver.count.side_effect = RuntimeError("boom")
     with pytest.raises(RuntimeError, match="boom"):
@@ -157,8 +148,6 @@ def test_screenshot_bytes_writes_nothing_to_session_dir(tmp_path: Path) -> None:
     session.screenshot_bytes()
     assert not session.session_dir.exists()
 
-
-# --- explore ---
 
 LABELLED_ROWS: list[dict[str | None, str | None]] = [
     {".label": "Alpha", ".note": None},
@@ -221,8 +210,6 @@ def test_explore_sums_the_rendered_text_of_the_sampled_elements(
 def test_explore_names_a_child_selector_that_matches_no_row(
     exploring_session: ExploringSession,
 ) -> None:
-    """The read of an absent child is a miss, not a wait — see
-    `test_read_field_of_a_missing_child_is_none` for the driver side."""
     session = exploring_session(LABELLED_ROWS)
 
     result = session.explore(
@@ -246,8 +233,6 @@ def test_explore_reports_a_selector_that_never_arrives_as_a_count_of_zero(
     assert result.sample == []
     assert result.text_chars == 0
 
-
-# --- explore: the first match, the verdict, the candidates ---
 
 ONE_ROW: list[dict[str | None, str | None]] = [{".label": "Alpha"}]
 TWO_ROWS: list[dict[str | None, str | None]] = [{".label": "Alpha"}, {".label": "Beta"}]
@@ -280,9 +265,6 @@ def test_the_verdict_answers_the_intent(
     expected: Verdict,
     exploring_session: ExploringSession,
 ) -> None:
-    """A `read` is happy with any number of matches; a covered element is
-    still fine to wait for or to fill, and only a click cares. Below the fold
-    is not a reason: every driver scrolls before it clicks."""
     session = exploring_session(rows, first=first)
 
     assert session.explore(".row", timeout_ms=0, intent=intent).verdict == expected
@@ -303,8 +285,6 @@ def test_explore_reads_the_first_match_once(
 def test_a_candidate_has_to_match_exactly_one_element(
     exploring_session: ExploringSession,
 ) -> None:
-    """The proposals come off the first match's own attributes, so a unique
-    match is that element; one that matches twice names something else too."""
     session = exploring_session(
         ONE_ROW,
         locators={"id": "alpha", "aria_label": "Go"},
@@ -317,8 +297,6 @@ def test_a_candidate_has_to_match_exactly_one_element(
 def test_a_read_candidate_may_match_every_row_instead_of_one(
     exploring_session: ExploringSession,
 ) -> None:
-    """A list is explored to be read as a list: a candidate that finds the
-    same 4 rows is the selector to write, and only a `read` can say so."""
     session = exploring_session(
         LABELLED_ROWS,
         locators={"classes": ["card-2xh9"]},
@@ -332,7 +310,6 @@ def test_a_read_candidate_may_match_every_row_instead_of_one(
 def test_a_read_drops_a_candidate_that_finds_one_row_of_many(
     exploring_session: ExploringSession,
 ) -> None:
-    """The first row's own link is not a selector for the list."""
     session = exploring_session(
         LABELLED_ROWS,
         locators={"id": "first-row"},
@@ -355,8 +332,6 @@ ALL_THE_NAMES: dict[str, object] = {
 def test_only_the_best_three_candidates_are_verified(
     exploring_session: ExploringSession,
 ) -> None:
-    """The fourth proposal is never counted: `explore` is sold as a bounded
-    number of round trips, and the element's own id is its fourth-best name."""
     session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
 
     result = session.explore(".row")
@@ -367,7 +342,6 @@ def test_only_the_best_three_candidates_are_verified(
         'role=link[name="Buy"]',
     ]
     assert result.candidates == best_three
-    # `#buy-now` is proposed and never counted: three round trips, not four.
     counted = [call.args[0] for call in session.driver.count.call_args_list]
     assert [selector for selector in counted if selector != ".row"] == best_three
 
@@ -375,8 +349,7 @@ def test_only_the_best_three_candidates_are_verified(
 def test_a_driver_that_cannot_parse_role_is_never_offered_one(
     exploring_session: ExploringSession,
 ) -> None:
-    """Under nodriver `role=…` reaches `querySelectorAll` as a syntax error,
-    so it is not a selector to hand the author."""
+    # Under nodriver `role=` reaches querySelectorAll as a syntax error.
     session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
     session.driver.supports_role_selector = False
 
@@ -400,8 +373,6 @@ def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(
 def test_explore_times_the_match_against_the_page_and_against_the_call(
     exploring_session: ExploringSession,
 ) -> None:
-    """A call seconds after the load would size a `wait_for` from its own
-    latency; the page's own clock is what the element actually took."""
     result = exploring_session(ONE_ROW, since_navigation_ms=740).explore(".row")
 
     assert result.since_navigation_ms == 740
@@ -432,8 +403,6 @@ def test_stability_reads_the_selector_a_redeploy_would_break(
 def test_a_control_inside_the_first_match_is_named(
     exploring_session: ExploringSession,
 ) -> None:
-    """A card-sized anchor wrapping its own dismiss button: the click that
-    looks like "open the card" is the one that hides it."""
     session = exploring_session(
         ONE_ROW,
         first={"nested_controls": [{"tag": "button", "text": "Not Interested"}]},
@@ -450,7 +419,6 @@ def test_a_control_inside_the_first_match_is_named(
 def test_a_sampled_field_is_cut_to_sample_chars(
     exploring_session: ExploringSession,
 ) -> None:
-    """A 2 kB row times forty rows is what `read` is for, not a look."""
     session = exploring_session([{".label": "x" * 900}])
 
     result = session.explore(

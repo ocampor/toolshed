@@ -1,9 +1,3 @@
-"""The docs are checked, not trusted.
-
-``xpass`` catches a gap that closes; nothing catches a table row whose
-wording drifted, a row deleted from the code, or a new gap nobody wrote down.
-"""
-
 from pathlib import Path
 
 from llm_browser_conformance.gaps import known_gaps_document

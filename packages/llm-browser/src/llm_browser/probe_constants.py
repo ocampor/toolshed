@@ -1,5 +1,3 @@
-"""Signals that a page needs a human: selectors, markup patterns and phrases."""
-
 PASSWORD_SELECTOR = 'input[type="password"]'
 
 CHALLENGE_SELECTORS = (

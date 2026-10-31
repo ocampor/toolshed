@@ -1,5 +1,3 @@
-"""Driver-level row extraction: one page evaluation, with a per-element fallback."""
-
 import asyncio
 from typing import Any
 from unittest.mock import MagicMock
@@ -31,8 +29,6 @@ def test_playwright_extract_rows_uses_one_evaluate_all() -> None:
 
 
 class FallbackDriver(Driver):
-    """Minimal driver exercising the base per-element extract_rows."""
-
     def __init__(self, rows: list[Any]) -> None:
         self.rows = rows
 
@@ -43,8 +39,6 @@ class FallbackDriver(Driver):
         return locator.children.get(selector)
 
     def evaluate(self, target: Any, script: str) -> Any:
-        """The base property read is ``(el) => el.<name>``; the page answers
-        with whatever that property holds."""
         name = script.rsplit(".", 1)[1]
         return None if target is None else target.properties.get(name)
 
@@ -100,12 +94,7 @@ def test_fallback_extract_rows_reads_properties_and_attributes(
     assert rows[0][field] == expected
 
 
-# --- nodriver: every row reads its own match ---
-
-
 class ScopedElement:
-    """A node whose `query_selector_all` only sees its own subtree."""
-
     def __init__(self, text: str | None = None, **children: list["ScopedElement"]):
         self.text = text
         self.subtree = children
@@ -114,8 +103,7 @@ class ScopedElement:
         return self.subtree.get(selector, [])
 
     async def apply(self, script: str) -> Any:
-        """`Runtime.callFunctionOn`, which is how a property read reaches a
-        nodriver handle."""
+        # Runtime.callFunctionOn is how a property read reaches a nodriver handle.
         assert script.endswith(".textContent"), script
         return self.text
 
@@ -140,9 +128,6 @@ def test_nodriver_reads_each_row_inside_that_row() -> None:
 
 
 def test_the_per_element_path_prunes_before_it_reads() -> None:
-    """The nodriver route reads a property through one script, so `exclude`
-    has to reach that script rather than the batch one -- and only for a
-    property a descendant is part of."""
     driver = FallbackDriver([])
     seen: list[str] = []
     driver.evaluate = lambda target, script: seen.append(script)  # type: ignore[method-assign]

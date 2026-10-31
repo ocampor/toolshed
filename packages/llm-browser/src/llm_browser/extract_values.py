@@ -83,14 +83,12 @@ def require_some_valid(
 
 
 def is_typed(field: ExtractField) -> bool:
-    """A field whose raw value must reach Python whole, uncut, to be typed."""
     return field.spec.pattern is not None or field.spec.type != "str"
 
 
 def preview_rows(
     rows: list[Row], extract: dict[str, ExtractField], limit: int
 ) -> list[Row]:
-    """Rows as a real run types them, each string then cut to ``limit``."""
     typed, _ = typed_rows(rows, extract)
     return [{name: cut(value, limit) for name, value in row.items()} for row in typed]
 

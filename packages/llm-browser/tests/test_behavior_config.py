@@ -1,11 +1,3 @@
-"""BehaviorConfig discriminated union + load_behavior.
-
-Config classes inherit from Behavior, so their defaults are the
-human values. An empty YAML yields Behavior.human() on patchright;
-the camoufox subclass overrides the Playwright-level mouse fields
-to False so a bare `driver: camoufox` gives natural behavior.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,9 +17,6 @@ def write(tmp_path: Path, body: str) -> Path:
     p = tmp_path / "behavior.yaml"
     p.write_text(body)
     return p
-
-
-# ---- Discriminator dispatch ----
 
 
 def test_empty_yaml_gives_human_on_patchright(tmp_path: Path) -> None:
@@ -71,13 +60,8 @@ def test_unknown_driver_rejected(tmp_path: Path) -> None:
 
 
 def test_malformed_yaml_rejected(tmp_path: Path) -> None:
-    """A syntax error is a config error like any other, so both CLI entry
-    points turn it into a usage message instead of a traceback."""
     with pytest.raises(BehaviorConfigError):
         load_behavior(write(tmp_path, "min_gap_ms: [unclosed\n"))
-
-
-# ---- Overrides ----
 
 
 def test_shared_override(tmp_path: Path) -> None:
@@ -127,9 +111,6 @@ type_char_delay: {min_ms: 0, max_ms: 0}
     assert b.type_char_delay.max_ms == 0
 
 
-# ---- Validation errors ----
-
-
 def test_unknown_field_rejected(tmp_path: Path) -> None:
     with pytest.raises(BehaviorConfigError):
         load_behavior(write(tmp_path, "typoed_field: true\n"))
@@ -138,9 +119,6 @@ def test_unknown_field_rejected(tmp_path: Path) -> None:
 def test_wrong_type_rejected(tmp_path: Path) -> None:
     with pytest.raises(BehaviorConfigError):
         load_behavior(write(tmp_path, "fill_as_type: sometimes\n"))
-
-
-# ---- Config classes usable directly ----
 
 
 def test_playwright_defaults_match_human() -> None:

@@ -1,13 +1,3 @@
-"""The suite has to notice when the library grows something it does not check.
-
-``docs/known-gaps.md`` says what is broken; this says what is *unexamined*,
-which is the more dangerous of the two. The required rows are introspected
-from ``llm_browser`` itself, so a new step type, a new field on an existing
-step, or a new ``BrowserSession`` method fails here on the day it lands —
-before anyone can call a release "acceptance tested" on a suite that never
-touched it.
-"""
-
 import pytest
 from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.session import BrowserSession
@@ -38,8 +28,6 @@ def test_no_scenario_claims_a_key_nothing_requires() -> None:
 
 
 def test_the_required_set_is_read_off_the_library() -> None:
-    """Guards the introspection itself: a `required_keys` that silently
-    returned nothing would make every assertion above vacuous."""
     groups = required_keys()
     actions = {action for action, _ in step_arms()}
     assert {"click", "goto", "run-flow", "eval"} <= actions
@@ -51,8 +39,6 @@ def test_the_required_set_is_read_off_the_library() -> None:
 
 
 def test_the_discriminator_is_not_mistaken_for_an_option() -> None:
-    """``action`` is how a step is chosen, not something to exercise, and the
-    ``BaseStep`` fields are counted once as options rather than per step."""
     for _, step_class in step_arms():
         assert "action" not in own_fields(step_class)
         assert "optional" not in own_fields(step_class)
@@ -65,9 +51,7 @@ def test_private_session_helpers_are_not_required() -> None:
 def test_a_session_property_is_required_like_a_method(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``inspect.isfunction`` sees neither a ``property`` nor a
-    ``classmethod``, so a session attribute declared as one would slip past
-    the gate the day the library grows it."""
+    # inspect.isfunction sees neither a property nor a classmethod, so those would slip the gate.
     monkeypatch.setattr(
         BrowserSession, "brand_prop", property(lambda self: None), raising=False
     )
@@ -76,7 +60,6 @@ def test_a_session_property_is_required_like_a_method(
 
 
 def test_the_hand_listed_keys_stay_sorted_and_unique() -> None:
-    """They are the only rows nothing introspects, so drift shows up here."""
     for names in (REQUIRED_API, REQUIRED_CONDITIONS):
         assert list(names) == sorted(set(names))
 

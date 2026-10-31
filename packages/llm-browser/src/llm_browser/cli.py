@@ -77,9 +77,7 @@ class CliFlow(NamedTuple):
 def flow_with_selector_map(
     document: dict[str, Any], selector_map_path: str | None
 ) -> CliFlow:
-    """The loaded flow, the map its refs will be resolved from, and the refs
-    that map lacks. A flow without refs never reads the map file; a named map
-    file that is not there is a bad path, not an empty map."""
+    """A flow without refs never reads the map; a missing named map is a bad path, not an empty map."""
     flow = load_flow_document(document)
     refs = selector_refs(flow)
     if not refs:
@@ -94,7 +92,6 @@ def flow_with_selector_map(
 
 
 def fail_on_missing_selectors(label: str | None, missing: list[str]) -> None:
-    """Refs no map carries stop the command before a browser is touched."""
     if not missing:
         return
     click.echo(
@@ -123,8 +120,7 @@ def budget_argument_errors() -> Iterator[None]:
 
 @contextmanager
 def url_argument_errors() -> Iterator[None]:
-    """A rejected `--url` (non-http scheme) is a bad argument, so report it as
-    one — a clean message and exit 2, not a JSON line plus a traceback."""
+    """Exit 2 with a clean message, not a JSON line plus a traceback."""
     try:
         yield
     except ValueError as exc:
@@ -132,30 +128,14 @@ def url_argument_errors() -> Iterator[None]:
 
 
 def prepare_output_path(path: str | Path) -> Path:
-    """The absolute path to write ``path`` to, with its parent created.
-
-    A caller can name ``out/run_<ts>/turn.html`` without mkdir-ing first, and
-    what is reported back reads the same from any working directory.
-
-    For a path the *user* typed (``--path``). A path that came out of a flow
-    goes through :func:`contained_output_path`, which will not leave its
-    directory.
-
-    Writing is the CLI's job alone; the library returns its output in memory.
-    """
+    """For a user-typed path; a flow's path goes through :func:`contained_output_path`."""
     out = Path(path).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     return out
 
 
 def contained_output_path(directory: Path, relative: str) -> Path:
-    """Where ``relative`` lands under ``directory``, refusing to leave it.
-
-    ``path:`` is templated from ``--data`` before it gets here and a
-    download's filename is whatever the server called it, so both are
-    untrusted: ``..`` segments and absolute paths would otherwise write
-    wherever they pleased, and ``--out-dir`` promises they cannot.
-    """
+    """``path:`` comes from ``--data`` and a download's name from the server, so both are untrusted."""
     root = directory.resolve()
     target = (root / relative).resolve()
     if not target.is_relative_to(root):
@@ -167,13 +147,7 @@ def contained_output_path(directory: Path, relative: str) -> Path:
 
 
 class _StructuredErrorGroup(click.Group):
-    """Click group that emits a one-line JSON summary for *unexpected*
-    exceptions (programmer bugs, network failures) before re-raising.
-
-    Expected runtime failures (Timeout/Value from action handlers) are
-    returned as ``ErrorResult`` and never reach this fallback; this only
-    catches things like assertion errors or driver crashes.
-    """
+    """Only unexpected exceptions get the JSON line; expected step failures return as ``ErrorResult``."""
 
     def invoke(self, ctx: click.Context) -> object:
         try:
@@ -268,11 +242,7 @@ def build_session(
     cdp_url: str | None,
     target_id: str | None,
 ) -> BrowserSession:
-    """Build the session every command runs against.
-
-    With ``--cdp-url`` the session is stateless — no state.json is read or
-    written — and ``--target-id`` addresses the exact tab to drive.
-    """
+    """With ``--cdp-url`` the session is stateless and ``--target-id`` picks the tab."""
     if target_id and not cdp_url:
         raise click.UsageError("--target-id requires --cdp-url.")
     session = BrowserSession(
@@ -516,8 +486,6 @@ def run(
         raise SystemExit(1)
 
 
-# --- Writing what a run returned ---
-#
 # The library keeps every output in memory; these are the only functions in
 # the package that turn one into a file.
 
@@ -528,16 +496,8 @@ class CliFlowRun(NamedTuple):
 
 
 def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
-    """Qualified step name to the ``path:`` that step asked the CLI to write.
-
-    The value comes from the resolved step, so ``path: out/{{ id }}.png``
-    names the file the flow meant. The *key* comes from the unresolved one,
-    because that is what ``run_loaded_flow`` keys ``outputs`` on — a step
-    whose ``name:`` is itself templated would otherwise never match its own
-    output, and its file would silently not be written.
-
-    Only templates are resolved: naming a file needs no selector, so a
-    ``ref:`` the caller never mapped must not cost the run its outputs.
+    """Keyed by the unresolved name, as ``run_loaded_flow`` keys ``outputs``;
+    an unmapped ``ref:`` must not cost the run its files.
     """
     paths: dict[str, str] = {}
     flow_data = flow.validate_data(data)
@@ -554,9 +514,7 @@ def declared_paths(flow: Flow, data: dict[str, object]) -> dict[str, str]:
 
 
 def resolve_after_run(raw: dict[str, Any], data: FlowData) -> dict[str, Any]:
-    """``raw`` templated once the run is over, when a pass's item and every
-    ``save_as`` value are gone: only the key whose value reaches into one stays
-    as written, so its siblings still resolve."""
+    """Pass items and ``save_as`` values are gone by now, so only keys reaching into them stay as written."""
     template_data = data.to_template_dict()
     resolved: dict[str, Any] = {}
     for key, value in raw.items():
@@ -568,15 +526,7 @@ def resolve_after_run(raw: dict[str, Any], data: FlowData) -> dict[str, Any]:
 
 
 def as_text(output: object) -> str:
-    """A non-bytes output as the file a ``path:`` asks for: ``dom`` text
-    verbatim, ``read`` / ``parse`` rows as JSON.
-
-    ``to_json`` rather than ``json.dumps``: a ``parse`` schema may declare
-    ``Decimal``, ``date`` or ``datetime``, and rows reach here in python mode
-    carrying the real objects. ``json.dumps`` cannot encode any of them, and
-    the resulting ``TypeError`` would replace the flow result with a
-    traceback.
-    """
+    """``to_json``: python-mode rows carry ``Decimal``/``date`` objects ``json.dumps`` cannot encode."""
     if isinstance(output, str):
         return output
     return to_json(output).decode()
@@ -585,13 +535,7 @@ def as_text(output: object) -> str:
 def write_outputs(
     outputs: dict[str, object], paths: dict[str, str], out_dir: Path
 ) -> dict[str, str]:
-    """Write the run's outputs, returning step name to file written.
-
-    Bytes are always written — a PNG on stdout helps nobody — under the
-    step's ``path:`` or, failing that, the name the payload came with.
-    Text and rows are written only where the step asked for a file; they
-    stay in the JSON either way.
-    """
+    """Bytes are always written; text and rows only where a ``path:`` asks."""
     targets = planned_outputs(outputs, paths, out_dir)
     for step, (target, payload) in targets.items():
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -605,12 +549,7 @@ def write_outputs(
 def planned_outputs(
     outputs: dict[str, object], paths: dict[str, str], out_dir: Path
 ) -> dict[str, tuple[Path, bytes | str]]:
-    """Every file this run is about to write, resolved and bounds-checked.
-
-    Planned in full before anything is written so that a path trying to leave
-    ``--out-dir`` fails the command with nothing on disk, rather than half a
-    run's output and an error.
-    """
+    """Planned in full first, so a path escaping ``--out-dir`` fails with nothing on disk."""
     planned: dict[str, tuple[Path, bytes | str]] = {}
     for key, result in outputs.items():
         step, index = unindexed(key)
@@ -632,12 +571,7 @@ def planned_outputs(
 
 
 def per_pass_path(path: str, index: int | None) -> str:
-    """One ``repeat`` pass's file: ``shots/page.png`` pass 1 is
-    ``shots/page[1].png``.
-
-    A repeated step declares one ``path:`` and produces a file per pass, so
-    the index has to land in the name or every pass but the last is lost.
-    """
+    """A repeated ``path:`` makes a file per pass, so the index lands in the name."""
     if index is None:
         return path
     name = PurePosixPath(path)
@@ -645,7 +579,6 @@ def per_pass_path(path: str, index: int | None) -> str:
 
 
 def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
-    """Write the failing page's screenshot and DOM, returning what was written."""
     written: dict[str, str] = {}
     if error.screenshot is not None:
         target = contained_output_path(capture_dir, "screenshot.png")
@@ -663,13 +596,7 @@ def write_captures(error: FlowError, capture_dir: Path) -> dict[str, str]:
 def describe_run(
     result: FlowResult, outputs: dict[str, str], captures: dict[str, str]
 ) -> dict[str, Any]:
-    """The JSON this command prints: every payload the CLI put on disk is
-    reported as its path rather than as base64.
-
-    ``outputs`` is keyed by step and ``captures`` by ``screenshot`` / ``dom``,
-    which is why they stay apart — a step named ``screenshot`` would otherwise
-    take the failing page's capture path as its own output.
-    """
+    """``outputs`` and ``captures`` stay apart, or a step named ``screenshot`` takes the capture path."""
     payload: dict[str, Any] = result.model_dump(mode="json", exclude_none=True)
     payload["outputs"] = {**payload.get("outputs", {}), **outputs}
     return {**payload, **captures}
@@ -692,11 +619,7 @@ def write_run(
 async def resolve_flow_options(
     flow_path: str | None, flow_yaml: str | None
 ) -> dict[str, Any]:
-    """The one place the CLI turns its options into a resolved flow document.
-
-    A file resolves its `run-flow` refs against its own directory; inline text
-    has no directory of its own, so it uses the CWD.
-    """
+    """A file resolves `run-flow` refs against its own directory; inline text uses the CWD."""
     if (flow_path is None) == (flow_yaml is None):
         raise click.UsageError("pass exactly one of --flow or --flow-yaml")
     if flow_path == "":
@@ -721,7 +644,6 @@ BEHAVIOR_PRESETS = {"human": Behavior.human, "off": Behavior.off}
 
 
 def resolve_behavior(spec: str | None) -> Behavior | None:
-    """``--behavior``'s value: a preset name, or a path to a behavior YAML."""
     if spec is None:
         return None
     preset = BEHAVIOR_PRESETS.get(spec)
@@ -734,7 +656,6 @@ def resolve_behavior(spec: str | None) -> Behavior | None:
 
 
 def parse_only(specs: tuple[str, ...]) -> dict[str, list[int]] | None:
-    """``--only step=0,3`` into what ``run_flow(only=)`` takes."""
     if not specs:
         return None
     only: dict[str, list[int]] = {}
@@ -781,16 +702,7 @@ def run_attached(
     cdp_url: str,
     execute: Callable[[BrowserSession], object],
 ) -> object:
-    """Attach to ``cdp_url`` in a stateless session, run ``execute``, close.
-
-    Nothing is persisted, so a previous invocation's state is never reused
-    and parallel runs against the same Chromium each own their tab, addressed
-    by its CDP target id. Closing an attached session releases only that tab.
-
-    The session id carries a uuid suffix so concurrent runs never share a
-    session directory (screenshots, DOM dumps) with each other or with the
-    caller's own session.
-    """
+    """Stateless; the uuid session id keeps concurrent runs out of each other's directories."""
     session = BrowserSession(
         session_id=f"{base.session_id}-{uuid.uuid4().hex[:8]}",
         state_dir=base.state_dir,

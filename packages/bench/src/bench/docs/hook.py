@@ -1,9 +1,4 @@
-"""Hatch build hook: the generated reference is written into the wheel, not into git.
-
-``src/<package>/docgen.py`` is loaded by path rather than imported, so the build
-environment needs the ``docs`` extra but none of the consumer's own runtime
-dependencies.
-"""
+"""Writes the reference into the wheel, not git; docgen.py loads by path so only the ``docs`` extra is needed."""
 
 import importlib.util
 from pathlib import Path

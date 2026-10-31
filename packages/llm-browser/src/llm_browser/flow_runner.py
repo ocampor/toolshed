@@ -1,9 +1,3 @@
-"""Stage three of the flow pipeline: run a validated ``Flow``, step by step.
-
-:mod:`llm_browser.flows` is the surface callers use; this module is the loop
-underneath it — one step's passes at a time, sub-flows included.
-"""
-
 from typing import NamedTuple
 
 from yaml_engine.template import TemplatePathError
@@ -70,9 +64,7 @@ def run_loaded_flow(
     only: dict[str, list[int]] | None = None,
     scope: ElementScope | None = None,
 ) -> FlowSuccess | FlowError:
-    """``SubFlow``'s leaf-only constraint bounds the recursion at depth one.
-    ``behavior`` defaults every step of this flow and its sub-flows; ``scope``
-    is the element the enclosing pass confined them to."""
+    """``SubFlow``'s leaf-only rule bounds the recursion at depth one."""
     flow_data = flow.validate_data(data)
     state = RunState()
     context = RunContext(session, behavior, selector_map, only, scope)
@@ -94,7 +86,6 @@ def run_loaded_flow(
 def run_step(
     step: Step, flow_data: FlowData, state: RunState, context: RunContext
 ) -> FlowError | None:
-    """Run every pass of one step; ``None`` when the flow goes on."""
     try:
         passes = repeat_passes(
             context.session, step, flow_data, context.selector_map, context.only
@@ -124,7 +115,6 @@ def record_failure(
     report: IterationReport | None,
     context: RunContext,
 ) -> None:
-    """One failed pass, in full. A step that does not repeat has no report."""
     if report is None:
         return
     report.failed.append(
@@ -140,8 +130,7 @@ def record_failure(
 
 
 def record_unrun(passes: list[Pass], report: IterationReport | None) -> None:
-    """The passes a stopped loop left behind, in the order they would have run
-    — already narrowed by ``only``, since that is what built ``passes``."""
+    """Already narrowed by ``only``, since that is what built ``passes``."""
     if report is not None:
         report.not_run = [one.index for one in passes if one.index is not None]
 
@@ -170,7 +159,6 @@ def run_pass(
             scope,
         )
     except TemplatePathError as exc:
-        # This pass's own failure: the run's outputs are the caller's to merge.
         return repeat_data_error(step, exc, RunState())
 
 
@@ -184,9 +172,7 @@ def start_report(step: Step, total: int, state: RunState) -> IterationReport | N
 
 
 def stopped_at(failure: FlowError, index: int | None, state: RunState) -> FlowError:
-    """A sub-flow failure already carries the child's outputs; keep both
-    sides, qualified names keep the keys distinct, and the pass's index keys
-    them exactly as a success would."""
+    """A sub-flow failure already carries the child's outputs; qualified names keep keys distinct."""
     return failure.model_copy(
         update={
             "step": indexed(failure.step, index),
@@ -221,8 +207,6 @@ def stopped_at(failure: FlowError, index: int | None, state: RunState) -> FlowEr
 
 
 def folded_failure(name: str, failure: FlowError, reason: str) -> FlowSuccess:
-    """A failure kept as partial work: whatever it collected stays in
-    ``outputs`` and the step is named in ``skipped`` with what went wrong."""
     return FlowSuccess(
         step=name,
         outputs=failure.outputs,
@@ -234,8 +218,7 @@ def folded_failure(name: str, failure: FlowError, reason: str) -> FlowSuccess:
 
 
 def page_url(session: BrowserSession) -> str:
-    """Diagnostic only: a url a failing page will not give up must never
-    replace the failure the caller came for."""
+    """Diagnostic only: a failing page's url must never replace the failure."""
     try:
         return session.current_url()
     except Exception:
@@ -251,10 +234,7 @@ def run_subflow(
     scope: ElementScope | None = None,
     only: dict[str, list[int]] | None = None,
 ) -> FlowSuccess | FlowError:
-    """A skipped step comes back as an empty success; a swallowed
-    ``optional:`` failure comes back as a success carrying the child's
-    partial outputs, so the parent advances without losing that work. Either
-    way the step is named in ``skipped``, child skips included."""
+    """A swallowed ``optional:`` failure returns the child's partial outputs, so the parent keeps that work."""
     resolved = resolve_step(step, flow_data, selector_map)
     if not isinstance(resolved, RunFlowStep) or not isinstance(resolved.flow, SubFlow):
         raise RuntimeError(f"step {step.name!r} lost its sub-flow while templating")

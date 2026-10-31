@@ -1,6 +1,6 @@
 [project]
 name = "cf-access"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cloudflare Access JWT validation middleware for Starlette/MCP origins."
 requires-python = ">=3.13"
 dependencies = [

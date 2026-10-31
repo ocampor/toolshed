@@ -1,8 +1,4 @@
-"""Frames: entering a child document and driving it.
-
-``enter_frame`` is optional in the driver contract, so a driver without it
-skips rather than fails — that is the difference the table has to show.
-"""
+"""``enter_frame`` is optional in the driver contract, so a driver without it skips rather than fails."""
 
 from typing import Any
 

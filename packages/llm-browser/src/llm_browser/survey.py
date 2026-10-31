@@ -36,23 +36,15 @@ if TYPE_CHECKING:
 
 CLASS_SUFFIX = re.compile(constants.CLASS_SUFFIX_PATTERN)
 
-# Hrefs that go nowhere a step could follow.
 DEAD_HREF_SCHEMES = ("#", "javascript:", "mailto:", "tel:")
 
 
 def class_stem(token: str) -> str:
-    """A class name without the build's numbering on the end."""
     return CLASS_SUFFIX.sub("", token) or token
 
 
 def landmark_selector(node: SurveyNodeRead) -> tuple[int, str] | None:
-    """The sturdiest name the element answers to, with its rank: a test id
-    outranks a label, a label an id, an id a role. ``None`` for an element
-    that offers none of them.
-
-    Same order as ``explore``'s candidates, minus what CSS cannot say: a role
-    selects by role alone, and the accessible name stays in ``text``.
-    """
+    """Same order as ``explore``'s candidates, minus what CSS cannot say."""
     if node.testid and node.testid_attribute:
         return 0, f"[{node.testid_attribute}={css_quoted(node.testid)}]"
     if node.aria_label:
@@ -65,11 +57,7 @@ def landmark_selector(node: SurveyNodeRead) -> tuple[int, str] | None:
 
 
 def landmarks_of(nodes: list[SurveyNodeRead], max_items: int) -> list[Landmark]:
-    """The named elements, deduped by selector and best first.
-
-    Document order inside a rank: the header's landmarks read before the
-    footer's, which is the order an author reads the page in anyway.
-    """
+    """Document order inside a rank: the order an author reads the page."""
     found: dict[str, Landmark] = {}
     ranks: dict[str, int] = {}
     for node in nodes:
@@ -86,11 +74,7 @@ def landmarks_of(nodes: list[SurveyNodeRead], max_items: int) -> list[Landmark]:
 
 
 def link_shape(href: str) -> tuple[str, str] | None:
-    """A link's family as ``(shape, selector)``; ``None`` when it has none.
-
-    ``/mission/4821`` and ``/mission/5109`` are one shape, ``/mission/<id>``;
-    so are ``item?id=1`` and ``item?id=2``, as ``item?<query>``.
-    """
+    """``/mission/4821`` and ``/mission/5109`` are one shape, ``/mission/<id>``."""
     if not href or href.startswith(DEAD_HREF_SCHEMES):
         return None
     path = href.split("?")[0].split("#")[0]
@@ -107,7 +91,6 @@ def link_shape(href: str) -> tuple[str, str] | None:
 
 
 def link_shapes_of(hrefs: list[str], max_shapes: int) -> list[LinkShape]:
-    """The link families the page navigates by, the busiest first."""
     shapes = [shape for shape in map(link_shape, hrefs) if shape is not None]
     counts = Counter(shapes)
     return [
@@ -117,15 +100,7 @@ def link_shapes_of(hrefs: list[str], max_shapes: int) -> list[LinkShape]:
 
 
 def repeat_selector(repeat: SurveyRepeatRead) -> str:
-    """What to write against every member of the run, and nothing else.
-
-    Every class the members share goes in, preferring the ones the build did
-    not number: `dense` outlives `sc-card-0-2-1`. All of them, because one
-    utility class is a name two unrelated components both answer to —
-    `div.flex` is three cards and four footer rows, `div.flex.p-4.rounded` is
-    the cards. Failing that the run is named by what holds it, which is why
-    the parent's test id is read.
-    """
+    """Every shared class goes in: one utility class names unrelated components (`div.flex`)."""
     stable = [
         token
         for token in repeat.shared_classes
@@ -143,14 +118,7 @@ def repeat_selector(repeat: SurveyRepeatRead) -> str:
 
 
 def repeats_of(runs: list[SurveyRepeatRead], max_repeats: int) -> list[Repeat]:
-    """The repeated structures, the busiest first.
-
-    Two grids of the same card are one card: they answer to the same selector,
-    so they are reported once. Merging is on the whole selector — two runs that
-    merely share a utility class are two entries, because they are two things.
-    The summed run sizes rank them; what each is reported with is what its own
-    selector matches page-wide (see :func:`with_page_counts`).
-    """
+    """Two grids of the same card answer to one selector, so they report once."""
     merged: dict[str, Repeat] = {}
     for run in runs:
         selector = repeat_selector(run)
@@ -167,18 +135,11 @@ def repeats_of(runs: list[SurveyRepeatRead], max_repeats: int) -> list[Repeat]:
 
 
 def repeat_rank(run: Repeat) -> tuple[bool, bool, int]:
-    """What an author came for, before what merely repeats.
-
-    A run you can click into outranks one you cannot — a page's cards beat the
-    hundred syntax-highlight spans in its code sample — and a run with a class
-    of its own beats a bigger one without: thirty story rows are the answer,
-    the thirty-five `tbody > tr` around them are the table they sit in.
-    """
+    """A run you can click into outranks a bigger one you cannot."""
     return (not run.nested_controls, "." not in run.selector, -run.count)
 
 
 def survey_of(read: SurveyRead, max_items: int) -> Survey:
-    """The rules, over what the page handed back — no browser involved."""
     return Survey(
         title=read.title,
         url=read.url,
@@ -194,12 +155,7 @@ def survey_of(read: SurveyRead, max_items: int) -> Survey:
 
 
 def with_page_counts(found: Survey, counts: dict[str, int]) -> Survey:
-    """``found`` with every count replaced by what its own selector matches.
-
-    A landmark's rank decides which of its names it is reported under and a run
-    of siblings decides that it is a repeat; neither says how many elements the
-    reported selector finds, and that is the number a step is written against.
-    """
+    """Rank and run size say nothing of how many elements the selector finds, which a step is written against."""
     return found.model_copy(
         update={
             "landmarks": [
@@ -215,12 +171,7 @@ def with_page_counts(found: Survey, counts: dict[str, int]) -> Survey:
 
 
 def page_counts(session: "BrowserSession", found: Survey) -> dict[str, int]:
-    """One page call asking how many elements each reported selector matches.
-
-    A second call rather than a second list off the first: the selectors are
-    built here, so the page can only be asked about them once they exist. It
-    is one ``querySelectorAll`` per reported landmark and repeat, both capped.
-    """
+    """A second call: the selectors only exist once built here."""
     selectors = [mark.selector for mark in found.landmarks]
     selectors += [run.selector for run in found.repeats]
     counted = session.evaluate_document(count_selectors_js(selectors))
@@ -230,19 +181,7 @@ def page_counts(session: "BrowserSession", found: Survey) -> dict[str, int]:
 def survey(
     session: "BrowserSession", max_items: int = constants.SURVEY_MAX_ITEMS
 ) -> Survey:
-    """What the page offers a step, in one read: the first call of a session.
-
-    The named elements to write selectors against, the link families the page
-    navigates by, the structures it repeats — the cards, rows and items — and
-    how long it had been up when asked. Nothing is clicked and nothing is
-    scrolled, so the answer is the page as it stands.
-
-    Where ``explore`` answers "is this selector right", ``survey`` answers the
-    question before it: which selectors are there to try.
-
-    Two page calls: one reads the page, one counts what the selectors it named
-    match — so every ``count`` is the number that selector is about to return.
-    """
+    """Clicks and scrolls nothing; a second call counts what each named selector matches."""
     read = SurveyRead.model_validate(session.evaluate_document(survey_js()))
     found = survey_of(read, max_items)
     return with_page_counts(found, page_counts(session, found))

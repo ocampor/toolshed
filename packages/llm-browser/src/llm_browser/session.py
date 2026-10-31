@@ -1,5 +1,3 @@
-"""BrowserSession: browser lifecycle + direct interaction API."""
-
 # debt: over the 300-line rule; split the lifecycle half out of this file.
 
 from __future__ import annotations
@@ -152,8 +150,6 @@ class BrowserSession:
             yield accepted
         finally:
             self.match_rule, self.accepted_matches = previous_rule, previous_accepted
-
-    # --- Lifecycle ---
 
     def _ensure_dirs(self) -> None:
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -476,8 +472,6 @@ class BrowserSession:
 
         return self.driver.download_bytes(self.get_page(), trigger, timeout)
 
-    # --- Interaction ---
-
     def goto(
         self,
         url: str,
@@ -667,8 +661,6 @@ class BrowserSession:
         """Wait for page load state (domcontentloaded, load, networkidle)."""
         self.driver.wait_for_load(self.get_page(), state, timeout)
 
-    # --- Input ---
-    #
     # Thin delegations to ``session_input``, which owns the resolve/pace/
     # humanize decisions. Callers above the session use these, never the driver.
 
@@ -825,8 +817,6 @@ class BrowserSession:
         require_some_valid(len(typed), self.extract_errors, extract)
         return typed
 
-    # --- Explore ---
-    #
     # Thin delegations to ``explore``, which owns the counting, sampling and
     # verdict rules. ``count_of`` stays here: it is the driver call they verify
     # candidates with.

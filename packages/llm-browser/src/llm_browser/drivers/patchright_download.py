@@ -1,6 +1,3 @@
-"""Shared by both download modes: the step's deadline, popup tracking and
-the route that catches a navigation answered with a file."""
-
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -22,8 +19,6 @@ from llm_browser.results import BytesResult
 
 @dataclass(frozen=True)
 class Deadline:
-    """One budget for a download step: the wait for a file and its transfer."""
-
     at: float
     timeout_ms: int
 

@@ -1,5 +1,3 @@
-"""What ``explore`` reports: the first match, its locators, and the verdict."""
-
 import datetime
 import enum
 from typing import Any

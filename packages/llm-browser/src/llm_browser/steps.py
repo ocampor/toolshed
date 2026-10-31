@@ -1,5 +1,3 @@
-"""Step execution: resolve templates, evaluate conditions, dispatch actions."""
-
 import logging
 import time
 from typing import Any, cast
@@ -30,17 +28,7 @@ logger = logging.getLogger(LOGGER_NAME)
 
 
 def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
-    """Return True if the step's when clause is not satisfied.
-
-    Supported predicates:
-      * ``element_exists``  — skip unless the element is present.
-      * ``element_missing`` — skip unless the element is absent
-        (idempotent toggles: only click when the post-click element
-        isn't already there).
-      * ``text_present``   — skip unless the page renders that text,
-        optionally scoped to ``selector`` and ``exact``.
-      * Plain field/op/value forms compiled by ``yaml_engine``.
-    """
+    """``element_missing`` is for idempotent toggles: click only when the post-click element is absent."""
     if not step.when:
         return False
     template_dict = data.to_template_dict()
@@ -73,16 +61,7 @@ def should_skip(session: BrowserSession, step: Step, data: FlowData) -> bool:
 
 
 def resolve_step_templates(step: Step, data: FlowData) -> Step:
-    """Resolve {{ template }} refs inside ``step`` against ``data`` and
-    return a freshly-validated Step, its ``ref:`` selectors untouched.
-    Idempotent — resolving a resolved step is a no-op. Carries ``_parent``
-    (a private attr set during flow load) across the round trip so qualified
-    names survive.
-
-    A ``run-flow`` step's child body is left untemplated: the child resolves
-    its own steps against its own data, so a parent param never substitutes a
-    name the step's ``data:`` binds.
-    """
+    """Idempotent; carries ``_parent`` so qualified names survive. A ``run-flow`` child body stays untemplated."""
     raw = step.model_dump(exclude_none=True)
     child_flow = raw.pop("flow", None)
     resolved_raw = resolve_templates_in_dict(raw, data.to_template_dict())
@@ -99,10 +78,6 @@ def resolve_step(
     selector_map: SelectorMap | None = None,
     scope: ElementScope | None = None,
 ) -> Step:
-    """A step ready to execute: templates resolved, every ``ref:`` selector
-    swapped for the one ``selector_map`` carries, and an ``in:`` step's
-    selector scoped to ``scope``'s element. A ref the map lacks raises
-    :class:`~llm_browser.selector_map.MissingSelectorsError`."""
     resolved = resolve_step_templates(step, data)
     resolve_step_refs(resolved, selector_map)
     if resolved.scope is not None and scope is not None:
@@ -115,11 +90,7 @@ def resolve_step(
 
 
 def page_needs_human(session: BrowserSession, selector_map: SelectorMap | None) -> bool:
-    """Whether the failing page is asking for a login or a challenge.
-
-    Diagnostic only: a probe that itself fails must never replace the error
-    the caller actually cares about.
-    """
+    """Diagnostic only: a probe that fails must never replace the caller's error."""
     wall = wall_signals(selector_map)
     try:
         return human_needed(session.probe(wall=wall), wall)
@@ -136,10 +107,7 @@ def execute_step(
     selector_map: SelectorMap | None = None,
     scope: ElementScope | None = None,
 ) -> ActionResult | FlowError:
-    """A ``when:``-skipped step returns a ``SkippedResult``, not a failure.
-    ``RunFlowStep`` never reaches here — ``run_loaded_flow`` dispatches it.
-    ``behavior`` is the run's default, which the step's own ``humanize``
-    refines; ``scope`` is the element an ``in:`` step is confined to."""
+    """``RunFlowStep`` never reaches here: ``run_loaded_flow`` dispatches it."""
     resolved = resolve_step(step, data, selector_map, scope)
     if should_skip(session, resolved, data):
         return SkippedResult(reason=WHEN_SKIP_REASON)

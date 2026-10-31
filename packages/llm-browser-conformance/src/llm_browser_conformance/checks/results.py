@@ -1,11 +1,3 @@
-"""What ``run_flow`` hands back: the success value, the failure value, and the
-two keyword arguments that change them.
-
-The fixtures here are deliberately dull. Nothing in this module is about the
-browser — every assertion is about ``FlowSuccess.outputs``, ``FlowError`` and
-``RetryHint``, so a driver has almost nothing to disagree about.
-"""
-
 import base64
 from collections.abc import Iterable
 
@@ -31,7 +23,6 @@ def run(
     from_step: str | None = None,
     redact: Iterable[str] = (),
 ) -> FlowResult:
-    """``support.run``, plus the two keywords these scenarios exist to pin."""
     ctx.visit(page)
     return run_flow(
         ctx.session,
@@ -53,8 +44,6 @@ def failed(result: FlowResult) -> FlowError:
 
 
 def outputs_hold_rows_and_dom_text_and_screenshot_bytes(ctx: Context) -> None:
-    """One output per kind: rows, text, and bytes. Nothing is a path — the
-    caller decides what, if anything, reaches disk."""
     success = succeeded(run(ctx, "result-rows.html", "result-outputs"))
     assert success.outputs["rows"] == [
         {"code": "A", "label": "alpha"},
@@ -71,8 +60,6 @@ def outputs_hold_rows_and_dom_text_and_screenshot_bytes(ctx: Context) -> None:
 
 
 def a_json_dump_base64s_the_bytes_it_cannot_hold(ctx: Context) -> None:
-    """``outputs`` keeps real bytes for a Python caller; a JSON consumer gets
-    base64 rather than a serializer crash."""
     success = succeeded(run(ctx, "result-rows.html", "result-outputs"))
     shot = success.outputs["shot"]
     assert isinstance(shot, BytesResult), shot
@@ -124,9 +111,6 @@ def redact_replaces_the_secret_everywhere_it_would_have_escaped(ctx: Context) ->
 
 
 def skipped_names_every_step_the_run_passed_over(ctx: Context) -> None:
-    """Both kinds of skip, in the order the run made them: a `when:` that did
-    not hold and an `optional:` step whose element never arrived. Without this
-    list a miss is indistinguishable from a step that ran."""
     success = succeeded(run(ctx, "option-steps.html", "option-skipped"))
     assert list(success.outputs) == ["present"]
     assert [step.name for step in success.skipped] == ["gated", "missing"]

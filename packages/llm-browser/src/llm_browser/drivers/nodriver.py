@@ -81,7 +81,6 @@ NAMED_KEYS: dict[str, tuple[str, str, int]] = {
     "ArrowRight": ("ArrowRight", "ArrowRight", 39),
 }
 
-# Chord modifier → (CDP modifier bit, the modifier key's own triplet).
 MODIFIERS: dict[str, tuple[int, tuple[str, str, int]]] = {
     "Alt": (1, ("Alt", "AltLeft", 18)),
     "Control": (2, ("Control", "ControlLeft", 17)),
@@ -141,25 +140,16 @@ LEADING_LINE_COMMENTS = re.compile(r"^(?:\s*//[^\n]*\n)+")
 
 
 def is_function_literal(script: str) -> bool:
-    """Whether ``script`` reads as a function rather than an expression.
-
-    Anchored on the arrow or the ``function`` keyword, so a parenthesised
-    expression like ``(document.title)`` is still an expression.
-    """
+    """Anchored on the arrow or ``function`` keyword, so ``(document.title)`` stays an expression."""
     return FUNCTION_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
 def is_async_literal(script: str) -> bool:
-    """Whether ``script`` is a function whose result has to be awaited."""
     return ASYNC_LITERAL.match(LEADING_LINE_COMMENTS.sub("", script)) is not None
 
 
 def key_triplet(key: str) -> tuple[str, str, int]:
-    """DOM `key`, DOM `code` and the Windows virtual-key code CDP needs.
-
-    Without the VK code Chromium leaves `windowsVirtualKeyCode` at 0 and many
-    apps read the event as text input — Enter gets typed instead of submitting.
-    """
+    """Without the VK code Chromium reads Enter as text input instead of submitting."""
     if key in NAMED_KEYS:
         return NAMED_KEYS[key]
     if len(key) != 1:
@@ -207,13 +197,7 @@ async def dispatch_key_event(
 async def press_key(
     tab: Any, key: str, modifiers: int = 0, commands: list[str] | None = None
 ) -> None:
-    """One key, down and up, over CDP Input.
-
-    `keyDown` carries `text` for a plain character, which is what makes
-    Chromium emit the keypress and input a page is watching for; a `char`
-    event alone — what nodriver's own `send_keys` sends — emits no keydown at
-    all. A chord must not carry text, or `Control+a` would type an "a".
-    """
+    """`keyDown` carries `text` so Chromium emits keypress and input; a chord carries none, or `Control+a` types "a"."""
     triplet = key_triplet(key)
     types_text = len(triplet[0]) == 1 and not modifiers
     extra: dict[str, Any] = {}
@@ -232,11 +216,7 @@ async def press_key(
 
 
 async def press_chord(tab: Any, chord: str, commands: list[str] | None = None) -> None:
-    """`"Control+a"`, with the modifiers held down around the key.
-
-    The modifiers get their own events because a real keyboard sends them: a
-    page watching for the Control keydown sees one.
-    """
+    """Modifiers get their own events, as a real keyboard sends them."""
     names, key = split_chord(chord)
     modifiers = 0
     for name in names:
@@ -252,17 +232,8 @@ async def press_chord(tab: Any, chord: str, commands: list[str] | None = None) -
 
 @dataclass
 class NodriverLocator:
-    """Handle for a nodriver selector resolution.
-
-    Carries a `selector` and/or a pre-resolved `element` (from nth/all);
-    `index` picks the match a re-query refers to. `query` re-reads the DOM
-    every time and caches nothing, so waits and counts see a removed or
-    replaced node; `resolve_element` caches its lookup in `element`, so the
-    input paths keep driving the handle they first resolved.
-
-    `parent` scopes `selector` to one element's subtree. Without it a field
-    read off the third row would run the selector against the whole document
-    and answer with the first row's value.
+    """`query` caches nothing, so waits see a replaced node; `resolve_element` caches for the input paths.
+    `parent` scopes `selector`, or a row's field read answers with the first row's value.
     """
 
     tab: Any
@@ -277,8 +248,6 @@ class NodriverLocator:
 
 
 class NodriverDriver(Driver):
-    """nodriver-backed driver. Native humanized click via `element.click()`."""
-
     name: ClassVar[str] = "nodriver"
     supports_reconnect: ClassVar[bool] = False
 
@@ -288,14 +257,10 @@ class NodriverDriver(Driver):
         self.tab: Any = None
         self.loop: asyncio.AbstractEventLoop | None = None
 
-    # --- Sync bridge ---
-
     def run(self, coro: Coroutine[Any, Any, T]) -> T:
         if self.loop is None:
             raise RuntimeError("Event loop not running. Call launch() first.")
         return self.loop.run_until_complete(coro)
-
-    # --- Lifecycle ---
 
     def launch(
         self,
@@ -342,14 +307,8 @@ class NodriverDriver(Driver):
 
     def close(self, handle: DriverHandle) -> None:
         if self.browser is not None and self.loop is not None:
-            # Browser.stop() is synchronous — it calls Process.terminate()
-            # directly, no event loop needed. Wrapping it in self.run() made
-            # the terminate happen as a side effect of evaluating the
-            # argument, then raised TypeError on the non-coroutine result,
-            # which the broad except below silently ate. Shutdown is still
-            # racy — the CDP websocket may already be disconnected — so the
-            # except stays, but it now only catches Browser.stop()'s own
-            # failures.
+            # Browser.stop() is synchronous: awaiting it raised TypeError, which the broad
+            # except ate. The except stays for racy shutdown, catching only stop()'s own failures.
             try:
                 self.browser.stop()
             except Exception:
@@ -367,12 +326,7 @@ class NodriverDriver(Driver):
         self.loop = None
 
     def drain_pending_tasks(self) -> None:
-        """Cancel and await whatever is still pending on ``self.loop``.
-
-        Best-effort: a task's own cancellation can itself raise or the loop
-        can already be unusable, and none of that should stop ``close()``
-        from resetting state.
-        """
+        """Best-effort: nothing here may stop ``close()`` from resetting state."""
         if self.loop is None or self.loop.is_closed():
             return
         pending = [task for task in asyncio.all_tasks(self.loop) if not task.done()]
@@ -390,31 +344,18 @@ class NodriverDriver(Driver):
     def status(self, handle: DriverHandle) -> bool:
         return self.tab is not None
 
-    # --- Element resolution ---
-
     def resolve(self, page: Any, selector: str) -> Any:
         return NodriverLocator(tab=page, selector=selector)
 
     async def require_element(self, loc: NodriverLocator) -> Any:
-        """The handle a write path is about to drive — never `None`.
-
-        The read paths are allowed a miss (rule 1); a write to an element that
-        is not there is the step failing, and a `ValueError` is what
-        `execute_action` turns into an `ErrorResult`. Without this the write
-        paths raise `AttributeError` on `None`, which escapes `run_flow` as a
-        raw traceback.
-        """
+        """A write to a missing element must be a `ValueError`, not an `AttributeError` escaping `run_flow`."""
         el = await self.resolve_element(loc)
         if el is None:
             raise ValueError(f"no element matched {loc.selector!r}")
         return el
 
     async def resolve_element(self, loc: NodriverLocator) -> Any:
-        """The handle `loc` drives, or `None` when nothing matches.
-
-        A scoped lookup goes through `query`: `tab.select` searches the whole
-        document and would walk straight out of the subtree `parent` names.
-        """
+        """A scoped lookup uses `query`: `tab.select` would search the whole document."""
         if loc.element is not None:
             return loc.element
         assert loc.selector is not None
@@ -426,9 +367,7 @@ class NodriverDriver(Driver):
         return loc.element
 
     async def resolve_now(self, loc: NodriverLocator) -> Any:
-        """`resolve_element` without the wait: the bare query, so a read of a
-        selector nothing matches is `None` now rather than after `tab.select`
-        has retried for its ten seconds."""
+        """The bare query: a miss is `None` now, not after `tab.select` retries for ten seconds."""
         if loc.element is not None:
             return loc.element
         matches = await self.query(loc)
@@ -436,16 +375,7 @@ class NodriverDriver(Driver):
         return loc.element
 
     async def query(self, loc: NodriverLocator) -> list[Any]:
-        """Everything `loc` matches right now — the one DOM query.
-
-        `tab.select_all` retries internally, and each retry costs a 500ms
-        sleep plus a `Target.getTargets` refresh — even `timeout=0` pays one
-        cycle, because the timeout is checked after it. `query_selector_all`
-        is the bare `DOM.querySelectorAll` underneath it. Nothing is cached:
-        a caller that needs the element to be there waits for it first
-        (`BrowserSession.wait_for_element`), and a wait that re-read a cache
-        would never see the page change.
-        """
+        """`tab.select_all` retries (500ms plus `Target.getTargets`, even at `timeout=0`); this is the bare query, uncached."""
         if loc.selector is None:
             return [loc.element] if loc.element is not None else []
         scope = loc.parent if loc.parent is not None else loc.tab
@@ -460,21 +390,11 @@ class NodriverDriver(Driver):
             return await apply_awaiting(el, script)
         return await el.apply(script)
 
-    # --- Interactions ---
-
     def click(self, locator: Any, *, dispatch: bool = False) -> None:
         self.run(self.do_click(locator, dispatch))
 
     async def do_click(self, loc: NodriverLocator, dispatch: bool) -> None:
-        """Default path uses Input.dispatchMouseEvent (event.isTrusted=true).
-
-        nodriver's own `element.click()` is a Runtime.callFunctionOn wrapper
-        around the JS `HTMLElement.click()` method — the resulting DOM event
-        is NOT trusted. `element.mouse_click()` is the real native path.
-
-        `dispatch=True` opts into the JS click as an overlay-bypass escape
-        hatch (detectable; use sparingly).
-        """
+        """`element.click()` is an untrusted JS click; `mouse_click()` dispatches a trusted mouse event."""
         el = await self.require_element(loc)
         if dispatch:
             await el.click()
@@ -490,7 +410,6 @@ class NodriverDriver(Driver):
         self.run(self.do_fill(locator, text))
 
     async def do_fill(self, loc: NodriverLocator, text: str) -> None:
-        """Trusted clear + trusted type. Equivalent to do_type on an empty field."""
         await self.clear_trusted(loc)
         await self.do_type(loc, text, delay_ms=0)
 
@@ -498,12 +417,7 @@ class NodriverDriver(Driver):
         self.run(self.do_type(locator, text, delay_ms))
 
     async def do_type(self, loc: NodriverLocator, text: str, delay_ms: int) -> None:
-        """CDP focus, then one real key per character.
-
-        nodriver's own `send_keys` dispatches `char` events, which fire
-        keypress and input but no keydown at all — so a page that watches
-        keystrokes (a mask, an autocomplete, a hotkey) never reacts.
-        """
+        """nodriver's `send_keys` fires no keydown, so masks, autocompletes and hotkeys never react."""
         await self.focus_trusted(loc)
         for ch in text:
             await press_key(loc.tab, ch)
@@ -518,13 +432,7 @@ class NodriverDriver(Driver):
         return el
 
     async def clear_trusted(self, loc: NodriverLocator) -> None:
-        """CDP focus → Ctrl+A (selectAll) → Delete. All isTrusted=true.
-
-        Replaces `element.clear_input()` which sets value="" via JS and fires
-        no input/change events — a detectable value discontinuity. `selectAll`
-        is spelled out because the chord alone tells the page what happened
-        without asking Chromium to perform the edit.
-        """
+        """`clear_input()` sets the value via JS with no input events, a detectable discontinuity."""
         await self.focus_trusted(loc)
         await press_chord(loc.tab, "Control+a", commands=["selectAll"])
         await press_key(loc.tab, "Delete")
@@ -533,7 +441,6 @@ class NodriverDriver(Driver):
         self.run(self.do_press(locator, key))
 
     async def do_press(self, loc: NodriverLocator, key: str) -> None:
-        """`key` may be a chord: `"Control+a"`, `"Shift+Tab"`."""
         await self.focus_trusted(loc)
         await press_chord(loc.tab, key)
 
@@ -549,13 +456,7 @@ class NodriverDriver(Driver):
         self.run(self.do_select_option(locator, value))
 
     async def do_select_option(self, loc: NodriverLocator, value: str) -> None:
-        """Set the value through the select, after a real CDP focus.
-
-        Clicking the `<option>` -- what this used to do -- is a no-op on a
-        closed native select: the value never changed, and a *disabled*
-        option reported success. See the module docstring for why the two
-        events this fires are synthetic.
-        """
+        """Clicking the `<option>` of a closed native select is a no-op; the module docstring says why the events are synthetic."""
         el = await self.focus_trusted(loc)
         outcome = await el.apply(select_option_js(value))
         if outcome != "ok":
@@ -566,17 +467,14 @@ class NodriverDriver(Driver):
         self.run(self.do_set_checked(locator, checked))
 
     async def do_set_checked(self, loc: NodriverLocator, checked: bool) -> None:
-        """Read current state, then native-click if mismatched. The read uses
-        Runtime.callFunctionOn (unavoidable to know .checked) but the write is
-        a real CDP Input event, so event.isTrusted stays true."""
+        """The `.checked` read needs Runtime; the write is a trusted CDP click."""
         el = await self.require_element(loc)
         current = await el.apply("(el) => el.checked")
         if bool(current) != checked:
             await el.click()
 
     def dispatch_event(self, locator: Any, event: str) -> None:
-        """Escape hatch — dispatches a SYNTHETIC event (event.isTrusted=false).
-        Most bot-detection systems flag these. Prefer click()/fill()/type()."""
+        """Synthetic (`isTrusted=false`): most bot detection flags it."""
         self.run(
             self.apply_script(
                 locator,
@@ -584,19 +482,11 @@ class NodriverDriver(Driver):
             )
         )
 
-    # --- Navigation / waiting ---
-
     def goto(self, page: Any, url: str, wait_until: str) -> None:
         self.run(self.do_goto(page, url))
 
     async def do_goto(self, page: Any, url: str) -> None:
-        """Activate first: the tab a caller navigates is the tab it drives.
-
-        A background tab is not just invisible — Chromium throttles its timers
-        and stalls `Page.captureScreenshot` on it waiting for a frame that
-        never comes. One `window.open` earlier in a session is enough to leave
-        the opener there for good.
-        """
+        """Chromium throttles a background tab and stalls captures on it, so activate first."""
         await page.activate()
         await page.get(url)
 
@@ -604,13 +494,7 @@ class NodriverDriver(Driver):
         self.run(self.do_wait_for_load(page, state, timeout_ms))
 
     async def do_wait_for_load(self, page: Any, state: str, timeout_ms: int) -> None:
-        """Poll `document.readyState` until it matches `state` or timeout.
-
-        nodriver has no CDP lifecycle-event wait (tab.wait() is a plain sleep
-        in 0.48, and tab.get() handles its own post-navigate wait internally).
-        So this is mostly a backstop for click-triggered navigations. 250ms
-        interval keeps Runtime.evaluate traffic low enough not to fingerprint.
-        """
+        """nodriver has no lifecycle-event wait; the 250ms poll keeps Runtime traffic below fingerprinting."""
         targets = READY_STATES.get(state, {"complete"})
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout_ms / 1000.0
@@ -623,8 +507,7 @@ class NodriverDriver(Driver):
         return self.run(self.element_visible(locator))
 
     async def element_visible(self, loc: NodriverLocator) -> bool:
-        """Re-queries: a handle caches the node it matched, so a node the page
-        swapped out would otherwise never be seen to change state."""
+        """Re-queries: a handle caches its node, so a swapped-out node would never change state."""
         matches = await self.query(loc)
         if loc.index >= len(matches):
             return False
@@ -634,8 +517,6 @@ class NodriverDriver(Driver):
             # Reading a handle the page already detached fails over CDP; a node
             # that is gone is not visible, which is what `hidden` waits for.
             return False
-
-    # --- Read / capture ---
 
     def text_content(self, locator: Any) -> str | None:
         return self.run(self.read_text(locator))
@@ -649,12 +530,7 @@ class NodriverDriver(Driver):
         return text
 
     def input_value(self, locator: Any) -> str:
-        """Read-only access to the live .value property via Runtime.callFunctionOn.
-
-        CDP has no non-JS accessor for form property state (attrs only carries
-        HTML attributes, which diverge from `.value` after user input). The read
-        dispatches no DOM events, so it's not a synthetic-event detection signal.
-        """
+        """CDP has no non-JS accessor for `.value`; the read fires no DOM events."""
         value = self.run(self.apply_script(locator, "(el) => el.value"))
         return str(value) if value is not None else ""
 
@@ -672,9 +548,7 @@ class NodriverDriver(Driver):
         return len(self.run(self.query(locator)))
 
     def first(self, locator: Any) -> Any:
-        """Lazy while a selector is available, like Playwright's `.first`: the
-        wait paths re-query it, and "nothing matched yet" is a state to wait
-        for rather than an error (`element_exists` never raises)."""
+        """Lazy like Playwright's `.first`: waits re-query it, and no match yet is a state, not an error."""
         if locator.selector is None:
             return NodriverLocator(tab=locator.tab, element=locator.element)
         return NodriverLocator(
@@ -682,8 +556,7 @@ class NodriverDriver(Driver):
         )
 
     def nth(self, locator: Any, index: int) -> Any:
-        """Resolved eagerly — callers iterate indices over one query — but it
-        keeps the selector so the wait paths can re-query this same match."""
+        """Eager for index iteration, but keeps the selector so waits can re-query this match."""
         elements = self.run(self.query(locator))
         return NodriverLocator(
             tab=locator.tab,
@@ -709,9 +582,7 @@ class NodriverDriver(Driver):
         ]
 
     def child(self, locator: Any, selector: str) -> Any:
-        """Scoped to the element once one is resolved. A combined
-        document-wide selector would answer every row with the first row's
-        match, which is what `extract_rows` reads off each row."""
+        """A document-wide selector would answer every row with the first row's match."""
         if locator.element is not None:
             return NodriverLocator(
                 tab=locator.tab, selector=selector, parent=locator.element
@@ -722,13 +593,7 @@ class NodriverDriver(Driver):
         )
 
     def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
-        """A function literal is invoked; anything else is a body or an
-        expression, the way the Playwright family reads the same string.
-
-        ``timeout_ms`` is accepted and ignored: CDP `Runtime.callFunctionOn`
-        has no deadline of its own, so an awaited script ends when the page
-        ends it — see this module's docstring.
-        """
+        """``timeout_ms`` is ignored: `Runtime.callFunctionOn` has no deadline (see the module docstring)."""
         if isinstance(target, NodriverLocator):
             declaration = (
                 script if is_function_literal(script) else f"(el) => {{ {script} }}"
@@ -752,13 +617,7 @@ class NodriverDriver(Driver):
         return str(page.url)
 
     def screenshot_bytes(self, page: Any) -> bytes:
-        """nodriver can only capture to a file, so the capture is spooled to a
-        temporary directory and read back; the directory goes with it.
-
-        `format` is explicit: nodriver defaults to jpeg and would write JPEG
-        bytes into the `.png` file every caller here asks for. The activate is
-        what keeps the capture from stalling on a background tab.
-        """
+        """nodriver captures only to a file, defaults to jpeg, and stalls on a background tab."""
         with tempfile.TemporaryDirectory() as spool:
             path = Path(spool) / "screenshot.png"
             self.run(self.do_screenshot(page, path))
@@ -769,7 +628,6 @@ class NodriverDriver(Driver):
         await page.save_screenshot(filename=str(path), format="png")
 
     def screenshot_element_bytes(self, locator: Any) -> bytes:
-        """Spooled and read back like the page capture, for the same reason."""
         with tempfile.TemporaryDirectory() as spool:
             path = Path(spool) / "element.png"
             self.run(self.do_element_screenshot(locator, path))
@@ -793,11 +651,7 @@ class NodriverDriver(Driver):
 
 
 async def _evaluate_by_value(tab: Any, expression: str) -> Any:
-    """Call CDP Runtime.evaluate with plain returnByValue (no deep serialization).
-
-    Matches the contract every Playwright-family driver provides: a JSON-like
-    value, or raise on JS error.
-    """
+    """Matches the Playwright-family contract: a JSON-like value, or raise on JS error."""
     nodriver = load_optional_module("nodriver", "nodriver")
     cdp = nodriver.cdp
 
@@ -815,7 +669,6 @@ async def _evaluate_by_value(tab: Any, expression: str) -> Any:
 
 
 async def apply_awaiting(element: Any, script: str) -> Any:
-    """``Element.apply`` with ``awaitPromise``, for an ``async (el) => …``."""
     nodriver = load_optional_module("nodriver", "nodriver")
     cdp = nodriver.cdp
     remote = await element.tab.send(

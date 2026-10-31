@@ -47,7 +47,6 @@ MOUSE_BOW_RATIO = 0.2
 # How far from its target the pointer starts, in pixels.
 MOUSE_APPROACH_PX = 200.0
 
-# How far the pre-action gap may stray from `min_gap_ms`.
 GAP_SPREAD = 0.2
 
 
@@ -202,7 +201,6 @@ MOUSE_STEP_PAUSE = Jitter(min_ms=4, max_ms=16)
 # without this pause reads the page as it was and rolls again.
 WHEEL_SETTLE_PAUSE = Jitter(min_ms=60, max_ms=180)
 
-# Whether a `paced` scope is already open on this call stack.
 _pacing: ContextVar[bool] = ContextVar("pacing", default=False)
 
 
@@ -214,12 +212,7 @@ def gap_jitter(behavior: Behavior) -> Jitter:
 
 
 def enforce_gap(behavior: Behavior) -> None:
-    """Pause before an action so two of them never land back to back.
-
-    Memoryless: the pause is paid whether or not the caller has just been
-    idle, which costs an already-slow run one more gap and buys the removal
-    of a clock that survives the action.
-    """
+    """Memoryless: paid even after idle, so no clock survives the action."""
     if behavior.min_gap_ms <= 0:
         return
     jittered_sleep(gap_jitter(behavior))
@@ -231,12 +224,7 @@ def post_pause(behavior: Behavior) -> None:
 
 @contextmanager
 def paced(behavior: Behavior) -> Iterator[None]:
-    """Bracket one action with its gap and post-action pause.
-
-    A raise skips the post-pause, so a failed step does not sit out a pause it
-    never earned. Nested scopes defer to the outermost one: a session input
-    method called from an action handler must not pause twice.
-    """
+    """A raise skips the post-pause; nested scopes defer to the outermost so nothing pauses twice."""
     if _pacing.get():
         yield
         return
@@ -263,15 +251,8 @@ def jittered_delta(delta: int, behavior: Behavior) -> int:
 def humanized_click(
     page: Any, element: Any, behavior: Behavior, hit_test: HitTest | None = None
 ) -> HitTarget | None:
-    """Approach on a curve, dwell, then press and release with a gap.
-
-    Trail shape, hover dwell, offset entropy and press duration are the four
-    things a behavioral score reads off a pointer, so no part of this is a
-    constant.
-
-    The dwell is also when a menu the path opened finishes appearing, so
-    ``hit_test`` is asked where the pointer actually ended, after it, and its
-    refusal is what stops the press.
+    """Trail, dwell, offset and press duration are what a behavioral score reads, so none is constant;
+    the dwell also lets a menu the path opened appear before ``hit_test`` asks.
     """
     jittered_sleep(behavior.pre_click_pause)
     target = jittered_target(element, behavior)
@@ -285,7 +266,6 @@ def humanized_click(
 
 
 def humanized_type(page: Any, element: Any, text: str, behavior: Behavior) -> None:
-    """Type text char-by-char with jittered per-key delays."""
     if behavior.focus_drift and behavior.mouse_move:
         drift_mouse_to(page, element, behavior)
     type_chars(lambda ch: element.type(ch, delay=0), text, behavior)
@@ -305,7 +285,6 @@ def jittered_point(
 
 
 def jittered_target(element: Any, behavior: Behavior) -> tuple[float, float]:
-    """Where in ``element`` this click lands."""
     box = element.bounding_box()
     if box is None:
         raise RuntimeError("element has no bounding box (detached or not rendered)")
@@ -316,19 +295,13 @@ def jittered_target(element: Any, behavior: Behavior) -> tuple[float, float]:
 
 
 def path_steps(behavior: Behavior) -> int:
-    """Half to all of ``mouse_move_steps`` points on the way: the number of
-    samples varies as much as the path between them does."""
+    """The sample count varies as much as the path does."""
     top = max(1, behavior.mouse_move_steps)
     return random.randint(max(1, top // 2), top)
 
 
 def type_chars(send: Callable[[str], None], text: str, behavior: Behavior) -> None:
-    """Send ``text`` one key at a time, on the behaviour's cadence.
-
-    The one definition of that cadence: the Playwright path drives a locator,
-    the driver default drives ``Driver.type``, and both owe the caller the
-    same per-key jitter and boundary pauses.
-    """
+    """The one definition of the cadence: the locator and ``Driver.type`` paths owe the same jitter."""
     for ch in text:
         send(ch)
         jittered_sleep(behavior.type_char_delay)
@@ -343,12 +316,7 @@ def move_mouse_to(
     steps: int,
     start: tuple[float, float] | None = None,
 ) -> tuple[float, float]:
-    """Walk the path and answer where the pointer ended: clamping can leave it
-    short of ``target``, and a hit test asks about the point it is really on.
-
-    ``start`` is for a caller that knows where the pointer already is and wants
-    the curve to continue from it rather than begin near ``target``.
-    """
+    """Returns where the pointer ended: clamping can leave it short of ``target``."""
     bounds = viewport_size(page)
     landed = clamp_to_viewport(target, bounds)
     for point in curve_points(start or approach_start(target), target, steps):
@@ -359,8 +327,7 @@ def move_mouse_to(
 
 
 def approach_start(target: tuple[float, float]) -> tuple[float, float]:
-    """Where the pointer comes from: the target's neighbourhood, which is the
-    honest answer when nothing records where the last click left it."""
+    """Nothing records where the last click left the pointer, so it starts near the target."""
     reach = MOUSE_APPROACH_PX
     return (
         target[0] + random.uniform(-reach, reach),
@@ -369,8 +336,7 @@ def approach_start(target: tuple[float, float]) -> tuple[float, float]:
 
 
 def viewport_size(page: Any) -> tuple[float, float] | None:
-    """The page's viewport in CSS pixels, or ``None`` when the driver does not
-    say (nodriver, a fake page in a test)."""
+    """``None`` when the driver does not say (nodriver, a fake page)."""
     size = getattr(page, "viewport_size", None)
     if not isinstance(size, dict):
         return None
@@ -393,10 +359,7 @@ def clamp_to_viewport(
 def curve_points(
     start: tuple[float, float], end: tuple[float, float], steps: int
 ) -> list[tuple[float, float]]:
-    """Quadratic Bézier from ``start`` to ``end``, ending exactly on ``end``.
-
-    A hand's path bows; a straight trail at a constant speed is the tell.
-    """
+    """A hand's path bows; a straight trail at constant speed is the tell."""
     control = bowed_control(start, end)
     return [bezier_point(start, control, end, i / steps) for i in range(1, steps + 1)]
 
@@ -404,8 +367,6 @@ def curve_points(
 def bowed_control(
     start: tuple[float, float], end: tuple[float, float]
 ) -> tuple[float, float]:
-    """Midpoint pushed along the perpendicular, either way, by up to
-    ``MOUSE_BOW_RATIO`` of the distance."""
     (x0, y0), (x1, y1) = start, end
     bow = random.uniform(-MOUSE_BOW_RATIO, MOUSE_BOW_RATIO)
     return ((x0 + x1) / 2.0 - (y1 - y0) * bow, (y0 + y1) / 2.0 + (x1 - x0) * bow)
@@ -426,7 +387,6 @@ def bezier_point(
 
 
 def boundary_pause(ch: str, behavior: Behavior) -> Jitter | None:
-    """The gap a reader hears: every sentence mark, and some word breaks."""
     if ch in PUNCTUATION:
         return behavior.type_punct_pause
     if ch == " " and random.random() < behavior.type_word_pause_chance:

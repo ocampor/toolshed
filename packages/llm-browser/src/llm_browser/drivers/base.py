@@ -1,10 +1,3 @@
-"""The driver contract: one abstract base every browser backend implements.
-
-A Driver owns both lifecycle (launch/connect/close) and interactions
-(click/fill/type/navigate/read). Splitting these onto one class keeps
-plug-and-play simple: subclass Driver, implement every abstract method.
-"""
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
@@ -62,8 +55,6 @@ class Driver(ABC):
     # else it reaches `querySelectorAll` as a syntax error.
     supports_role_selector: ClassVar[bool] = False
 
-    # --- Lifecycle ---
-
     @abstractmethod
     def launch(
         self,
@@ -74,19 +65,13 @@ class Driver(ABC):
     ) -> DriverHandle: ...
 
     def attach(self, cdp_url: str) -> DriverHandle:
-        """Attach to an already-running Chromium over CDP.
-
-        Subclasses that support it (patchright) override this. Others raise.
-        """
+        """Subclasses that support it (patchright) override this; others raise."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support attach; use driver='patchright'"
         )
 
     def attach_to_tab(self, cdp_url: str, target_id: str) -> DriverHandle:
-        """Attach to one existing tab, addressed by its CDP target id.
-
-        Subclasses that support it (patchright) override this. Others raise.
-        """
+        """Subclasses that support it (patchright) override this; others raise."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support attach; use driver='patchright'"
         )
@@ -104,18 +89,11 @@ class Driver(ABC):
     def latest_tab(self, handle: DriverHandle) -> Any: ...
 
     def close_other_tabs(self, handle: DriverHandle, keep: Any) -> None:
-        """Close every tab in the current context except ``keep``.
-
-        Default no-op for drivers without a multi-page concept.
-        """
-
-    # --- Selector resolution ---
+        """Default no-op for drivers without a multi-page concept."""
 
     @abstractmethod
     def resolve(self, page: Any, selector: str) -> Any:
         """A locator for ``selector``; matching nothing yet is not an error."""
-
-    # --- Interactions ---
 
     @abstractmethod
     def click(self, locator: Any, *, dispatch: bool = False) -> None: ...
@@ -133,11 +111,7 @@ class Driver(ABC):
         behavior: Behavior,
         hit_test: HitTest | None = None,
     ) -> HitTarget | None:
-        """Humanized click — rule 2; the default fits a natively humanized click.
-
-        A driver that moves the pointer itself owns the hit test too: the
-        default never moves it, so there is no point to re-check.
-        """
+        """A driver that moves the pointer itself owns the hit test; the default never moves it."""
         self.click(locator)
         return None
 
@@ -148,12 +122,7 @@ class Driver(ABC):
         text: str,
         behavior: Behavior,
     ) -> None:
-        """Humanized type — rule 2; the default fits a natively humanized type.
-
-        Native humanization owns the *shape* of a keystroke, not its timing,
-        so the cadence the caller asked for is sent key by key here rather
-        than handed to the driver as one burst.
-        """
+        """Native humanization owns a keystroke's shape, not its timing, so the cadence is sent key by key."""
         type_chars(lambda ch: self.type(locator, ch), text, behavior)
 
     @abstractmethod
@@ -172,8 +141,6 @@ class Driver(ABC):
     def dispatch_event(self, locator: Any, event: str) -> None:
         """Fire a synthetic (``isTrusted=false``) DOM event — rule 2's escape hatch."""
 
-    # --- Navigation / waiting ---
-
     @abstractmethod
     def goto(self, page: Any, url: str, wait_until: str) -> None: ...
 
@@ -182,46 +149,23 @@ class Driver(ABC):
         """Block until the page reaches ``state`` — the only page-level wait."""
 
     def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
-        """Scroll by a mouse-wheel delta, over ``locator`` when one is given.
-
-        A wheel event goes to whatever is under the pointer, so a page whose
-        centre holds an inner scroller (a transcript, a virtualised table, a
-        map) scrolls *that* unless the caller says what it meant.
-        """
+        """The wheel goes to whatever is under the pointer, so pass ``locator`` to aim past an inner scroller."""
         raise NotImplementedError(f"{type(self).__name__} does not support scroll")
 
     def is_enabled(self, locator: Any) -> bool:
-        """Whether the first match would accept input right now.
-
-        One rule, both spellings a page uses to lock a control: the ``disabled``
-        attribute for native controls and ``aria-disabled="true"`` for the
-        div-and-role widgets that cannot carry it. Anything else — a class, a
-        pointer-events rule, a listener that returns early — is invisible here
-        and always was.
-        """
+        """``disabled`` for native controls, ``aria-disabled="true"`` for div-and-role widgets; nothing else is seen."""
         return (
             self.get_attribute(locator, "disabled") is None
             and self.get_attribute(locator, "aria-disabled") != "true"
         )
 
     def scroll_into_view(self, locator: Any) -> None:
-        """Bring the first match to the middle of the viewport.
-
-        Centring rather than the browser's minimal scroll: the caller is here
-        because a fixed header or footer swallowed a click, and only the middle
-        is clear of both.
-        """
+        """Centred, not minimally scrolled: only the middle is clear of a fixed header and footer."""
         self.evaluate(locator, "(el) => el.scrollIntoView({block: 'center'})")
 
     @abstractmethod
     def is_visible(self, locator: Any) -> bool:
-        """Whether the first match is rendered right now; ``False`` for a miss.
-
-        Abstract rather than defaulted: a driver that skipped it would raise
-        past the step's timeout-or-``ValueError`` contract and abort the flow.
-        """
-
-    # --- Read / capture ---
+        """Abstract: a driver that skipped it would raise past the step's timeout-or-``ValueError`` contract."""
 
     @abstractmethod
     def text_content(self, locator: Any) -> str | None:
@@ -257,14 +201,7 @@ class Driver(ABC):
         spec: dict[str, dict[str, str | None]],
         exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
-        """Read every field of ``spec`` off every element matched by ``locator``.
-
-        ``spec`` maps a field name to ``{"child_selector": ..., "attribute": ...}``.
-        ``exclude``'s matches are dropped from the text a field reads.
-        The default walks the matched elements from Python — one transport
-        round-trip per element and field. Drivers that can run a function over
-        all matches in one page evaluation should override.
-        """
+        """The default costs a round trip per element and field; drivers that can evaluate once should override."""
         return [
             {name: self.read_field(row, field, exclude) for name, field in spec.items()}
             for row in self.all(locator)
@@ -273,12 +210,7 @@ class Driver(ABC):
     def read_field(
         self, row: Any, field: dict[str, str | None], exclude: Sequence[str] = ()
     ) -> str | None:
-        """Read one ``spec`` field off one row element.
-
-        The same rule ``js/extract_rows.js`` applies, off the same allowlist:
-        a name in it is a DOM property, anything else an HTML attribute — and
-        an attribute carries no subtree, so ``exclude`` only touches the former.
-        """
+        """Same allowlist as ``js/extract_rows.js``: a listed name is a DOM property, anything else an attribute."""
         child_selector = field["child_selector"]
         target = self.child(row, child_selector) if child_selector else row
         name = field["attribute"]
@@ -290,20 +222,12 @@ class Driver(ABC):
     def read_property(
         self, target: Any, name: str, exclude: Sequence[str] = ()
     ) -> str | None:
-        """``el[name]`` as text; ``None`` when the element or the value is."""
         value = self.evaluate(target, property_js(name, exclude))
         return None if value is None else str(value)
 
     @abstractmethod
     def evaluate(self, target: Any, script: str, timeout_ms: int | None = None) -> Any:
-        """Run user-supplied JS against a page or element — the JS touchpoint
-        of rule 3, and the only one that is arbitrary.
-
-        ``timeout_ms`` bounds the call itself, for a script that waits in the
-        page: ``None`` leaves the backend's own default, which is what every
-        caller but the batch explore wants. A backend with no such knob says
-        so in the driver's own docstring rather than raising.
-        """
+        """The only arbitrary JS touchpoint (rule 3); a backend without a ``timeout_ms`` knob ignores it, never raises."""
 
     @abstractmethod
     def content(self, page: Any) -> str: ...
@@ -313,20 +237,10 @@ class Driver(ABC):
 
     @abstractmethod
     def screenshot_bytes(self, page: Any) -> bytes:
-        """The page as PNG bytes.
-
-        Nothing is left on disk: a backend whose capture API can only write a
-        file spools it to a temporary directory and removes it on the way
-        out.
-        """
+        """Nothing is left on disk: a file-only capture API is spooled and removed."""
 
     def screenshot_element_bytes(self, locator: Any) -> bytes:
-        """One element as PNG bytes, cropped to its box.
-
-        Same no-disk rule as :meth:`screenshot_bytes`. Optional: a backend
-        whose capture API is page-only raises, and the conformance suite
-        reports a skip.
-        """
+        """Optional: a page-only capture API raises, and conformance reports a skip."""
         raise NotImplementedError(
             f"{type(self).__name__} does not support element screenshots"
         )
@@ -335,18 +249,7 @@ class Driver(ABC):
     def download_bytes(
         self, page: Any, trigger: Callable[[], None], timeout_ms: int
     ) -> BytesResult:
-        """Run ``trigger``, wait up to ``timeout_ms`` for the download it
-        starts, and return its bytes.
-
-        Nothing is left on disk: a backend whose API can only download to a
-        file reads that file back and removes it before returning. A download
-        that never starts raises ``TimeoutError``; one that starts and then
-        fails raises ``ValueError`` — both are step results, per rule 5.
-
-        The payload is held whole in memory. There is no size ceiling here,
-        deliberately: a caller that fetches something large should expect to
-        hold it, and to hold ~4/3 of it again if it dumps the result to JSON.
-        """
+        """Leaves nothing on disk; no start raises ``TimeoutError``, a failed one ``ValueError`` (rule 5)."""
 
     @abstractmethod
     def enter_frame(self, locator: Any) -> Any: ...

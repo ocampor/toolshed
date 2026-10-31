@@ -16,11 +16,7 @@ class Section(NamedTuple):
 
 
 def sections_of(text: str) -> list[Section]:
-    """Split at every `#`–`###` heading, fenced code kept inside its section.
-
-    A heading inside a fence is sample markdown, not a heading of this
-    document, so the fence state decides.
-    """
+    """A heading inside a fence is sample markdown, so the fence state decides."""
     heading = ""
     lines: list[str] = []
     found: list[Section] = []

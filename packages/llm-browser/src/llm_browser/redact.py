@@ -1,5 +1,3 @@
-"""Replace injected secret values with a placeholder before they escape."""
-
 import logging
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager

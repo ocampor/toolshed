@@ -1,8 +1,4 @@
-"""Where a ``run-flow`` reference's YAML text comes from.
-
-The repository is the only piece of flow loading that differs between
-consumers: the CLI reads from disk, a service reads from its own store.
-"""
+"""The one piece of flow loading that differs between consumers."""
 
 import asyncio
 from collections.abc import Mapping

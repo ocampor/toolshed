@@ -1,11 +1,3 @@
-"""Flow-level conformance: what a caller gets back when a step fails.
-
-The library's promise is that a failed step is a value, not an exception, that
-the value carries enough to retry or hand to a human, and that it is all in
-memory — so these check the captures the caller gets back, the
-``human_needed`` verdict, and that nothing was written anywhere.
-"""
-
 import datetime
 import decimal
 import tempfile
@@ -38,8 +30,6 @@ def a_failing_wait_step_captures_screenshot_and_dom_in_memory(ctx: Context) -> N
 
 
 def the_capture_level_decides_what_the_dom_snapshot_keeps(ctx: Context) -> None:
-    """`high` is for reading and drops every href; `medium` keeps them, for
-    when where the page would have gone next is the thing you need."""
     ctx.visit("never.html")
     flow = ctx.flow("wait-never")
     default = ctx.session.capture_level
@@ -86,18 +76,11 @@ def a_failure_behind_a_custom_wall_phrase_asks_for_a_human(ctx: Context) -> None
 
 
 def a_screenshot_is_a_png(ctx: Context) -> None:
-    """Everything above the driver calls these bytes a PNG and hands them to a
-    reader that believes it, so the bytes have to match."""
     ctx.visit("form.html")
     assert ctx.session.screenshot_bytes()[:8] == PNG_MAGIC
 
 
 def a_parse_step_returns_typed_rows_and_ignores_its_path(ctx: Context) -> None:
-    """``Decimal`` and ``date`` are the point: the rows come back coerced, and
-    a caller that wants JSON gets it from a json-mode dump.
-
-    ``path:`` is an instruction to the CLI — the runner has to leave it alone.
-    """
     with tempfile.TemporaryDirectory() as directory:
         out = Path(directory) / "rows.json"
         outputs = expect_success(

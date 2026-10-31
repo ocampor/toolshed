@@ -1,13 +1,4 @@
-"""Run scenarios against drivers and report what happened.
-
-One scenario's failure never stops the run: the whole value of the table is
-seeing every driver's answer to every question at once, so each check is
-caught, recorded and followed by the next.
-
-``run_scenario`` is the single verdict. Both front ends call it — the CLI
-prints its ``Outcome``, the pytest wrapper translates the same one into a
-pytest report — so the two can never disagree about the same run.
-"""
+"""One scenario's failure never stops the run; ``run_scenario`` is the verdict both front ends use."""
 
 import json
 import time
@@ -47,21 +38,14 @@ class Result:
 
 
 def noted(detail: str, error: BaseException) -> str:
-    """``detail`` plus whatever ``error`` was given with ``add_note``.
-
-    A cleanup that failed after the real one attaches itself that way, and the
-    detail column is the only place it is ever read — which is as true of a
-    skip or a known gap as it is of a failure, so every branch of
-    ``run_scenario`` goes through here.
-    """
+    """A failed cleanup attaches via ``add_note``, and the detail column is the only place it is read."""
     for note in getattr(error, "__notes__", []):
         detail += f" ({note.strip().splitlines()[0][:160]})"
     return detail
 
 
 def one_line(error: BaseException) -> str:
-    """The message plus the line that raised it — a bare ``assert`` says
-    nothing on its own, and the table is all the reader gets."""
+    """A bare ``assert`` says nothing, and the table is all the reader gets."""
     text = str(error) or type(error).__name__
     summary = noted(text.strip().splitlines()[0][:160], error)
     frames = traceback.extract_tb(error.__traceback__)
@@ -121,12 +105,7 @@ def run_driver(
     delay_ms: int,
     headed: bool = False,
 ) -> list[Result]:
-    """Results are kept outside the ``try``.
-
-    A browser that will not start is a whole column of skips-turned-failures,
-    but a browser that will not *stop* has already answered every question:
-    a teardown error gets its own row and never rewrites finished results.
-    """
+    """A browser that will not stop has already answered: its teardown error gets its own row."""
     reason = unavailable(driver)
     if reason:
         return driver_rows(driver, scenarios, Outcome.SKIP, reason)
@@ -165,8 +144,7 @@ def run(
     delay_ms: int = DEFAULT_DELAY_MS,
     headed: bool = False,
 ) -> list[Result]:
-    """``plan`` names the scenarios per driver, because ``--failed`` reruns a
-    different set for each: the drivers disagree about what is broken."""
+    """Per driver: ``--failed`` reruns a different set for each."""
     with serve_site() as site_url:
         return [
             row
@@ -177,9 +155,6 @@ def run(
 
 def failed(results: list[Result]) -> bool:
     return any(r.outcome.is_failure for r in results)
-
-
-# --- Reporting ---
 
 
 def cell(row: Result | None) -> str:
@@ -217,11 +192,7 @@ def format_table(results: list[Result], drivers: list[str]) -> str:
 
 
 def notes(results: list[Result]) -> list[str]:
-    """Every non-passing row, spelled out — a table cell cannot carry a why.
-
-    Grouped by the reason: a browser that would not start says so once, with
-    the scenarios it took down, instead of once per row.
-    """
+    """Grouped by reason, so a browser that would not start says so once."""
     grouped: dict[tuple[str, Outcome, str], list[str]] = {}
     for r in results:
         if r.outcome is Outcome.PASS or not r.detail:

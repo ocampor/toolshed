@@ -1,5 +1,3 @@
-"""Tests for the 12 minimal declarative actions."""
-
 import ast
 import base64
 from collections.abc import Callable
@@ -56,18 +54,9 @@ def session(tmp_path: object) -> BrowserSession:
 
 @pytest.fixture
 def input_session(tmp_path: object) -> MagicMock:
-    """A session mock: input actions must not reach past it to a driver."""
     s = MagicMock(spec=BrowserSession)
     s.behavior = Behavior.off()
     return s
-
-
-# --- input actions ---
-#
-# These are one-liners onto the session, so they are checked against a session
-# mock: what an input step must do is call the right session method with the
-# step's own arguments. How that reaches the driver is
-# ``tests/test_session_input.py``.
 
 
 def test_click(input_session: MagicMock) -> None:
@@ -109,8 +98,6 @@ def test_type(input_session: MagicMock) -> None:
 def test_click_resolves_humanize_into_the_behavior_it_passes(
     input_session: MagicMock,
 ) -> None:
-    """The step's flag is spent here: the session method is handed the
-    behaviour it asked for, not the flag."""
     step = ClickStep(name="s", action="click", selector="#btn", humanize=True)
     execute_action(input_session, step)
     assert input_session.click.call_args.kwargs["behavior"].mouse_move is True
@@ -162,9 +149,6 @@ def test_uncheck(input_session: MagicMock) -> None:
     assert input_session.set_checked.call_args.args[1] is False
 
 
-# --- pick ---
-
-
 def test_pick(session: BrowserSession) -> None:
     locator = MagicMock()
     locator.count.return_value = 2
@@ -180,18 +164,12 @@ def test_pick(session: BrowserSession) -> None:
     item2.click.assert_called_once()
 
 
-# --- goto ---
-
-
 def test_goto(session: BrowserSession) -> None:
     step = GotoStep(name="s", action="goto", url="https://example.com")
     execute_action(session, step)
     session._page.goto.assert_called_once_with(  # type: ignore[union-attr]
         "https://example.com", wait_until="domcontentloaded"
     )
-
-
-# --- screenshot ---
 
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
@@ -210,7 +188,6 @@ def test_screenshot_returns_png_bytes(session: BrowserSession) -> None:
 def test_screenshot_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """``path:`` is an instruction to the CLI; the step itself writes nothing."""
     session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
     target = tmp_path / "nested" / "shot.png"
     step = ScreenshotStep(name="s", action="screenshot", path=str(target))
@@ -243,14 +220,10 @@ def test_screenshot_bytes_are_base64_in_json_mode(session: BrowserSession) -> No
 
 
 def _rows_locator(session: BrowserSession, rows: list[dict[str, object]]) -> MagicMock:
-    """Make the page's row locator return ``rows`` from its page evaluation."""
     locator = MagicMock()
     locator.evaluate_all.return_value = rows
     session._page.locator.return_value = locator  # type: ignore[union-attr]
     return locator
-
-
-# --- read ---
 
 
 def test_read(session: BrowserSession) -> None:
@@ -276,8 +249,6 @@ def test_read(session: BrowserSession) -> None:
 
 
 def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
-    """No `extract:` is the common `read body`: one `text` field per row,
-    not a row of `None`."""
     from llm_browser.results import ExtractedRow
 
     locator = _rows_locator(session, [{"text": "hello"}])
@@ -293,8 +264,6 @@ def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
 
 
 def test_read_exclude_reaches_the_page_read(session: BrowserSession) -> None:
-    """`exclude:` rides the page evaluation the step's fields are read with,
-    so the page drops those matches from the text."""
     locator = _rows_locator(session, [{"text": "keep"}])
 
     step = ReadStep(name="s", action="read", selector="body", exclude=["nav", ".ad"])
@@ -307,11 +276,7 @@ def test_read_exclude_reaches_the_page_read(session: BrowserSession) -> None:
     }
 
 
-# --- parse (typed schema action) ---
-
-
 def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> None:
-    """The parse action loads a YAML schema and emits coerced typed rows."""
     import yaml
 
     from llm_browser.results import ParsedResult
@@ -350,7 +315,6 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
 def test_read_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """``path:`` is an instruction to the CLI; the step returns the rows."""
     _rows_locator(session, [{"name": "Alice"}])
 
     target = tmp_path / "rows.json"
@@ -369,7 +333,6 @@ def test_read_path_is_ignored_by_the_runner(
 def test_parse_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """``path:`` is an instruction to the CLI; the step returns the rows."""
     import yaml
 
     from llm_browser.models import ParseStep
@@ -405,9 +368,6 @@ def test_parse_path_is_ignored_by_the_runner(
     assert not target.exists()
 
 
-# --- dom ---
-
-
 def test_dom(session: BrowserSession) -> None:
     locator = _single_locator()
     locator.first.evaluate.return_value = "<div><p>Hello</p></div>"
@@ -433,7 +393,6 @@ def test_dom_sanitizes_at_the_level_the_step_asked_for(
 
 
 def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> None:
-    """`<body>` outerHTML is the fragment lxml used to refuse."""
     locator = _single_locator()
     locator.first.evaluate.return_value = (
         "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
@@ -449,7 +408,6 @@ def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> Non
 def test_dom_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """``path:`` is an instruction to the CLI; the step returns the text."""
     locator = _single_locator()
     locator.first.evaluate.return_value = "<section><p>Captured</p></section>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
@@ -463,11 +421,7 @@ def test_dom_path_is_ignored_by_the_runner(
     assert not target.parent.exists()
 
 
-# --- download ---
-
-
 def _arm_download(session: BrowserSession, tmp_path: Path, payload: bytes) -> MagicMock:
-    """A Playwright ``Download`` whose spool file really exists on disk."""
     spooled = tmp_path / "spool" / "download.bin"
     spooled.parent.mkdir()
     spooled.write_bytes(payload)
@@ -512,16 +466,14 @@ def test_download_with_extract_returns_pages(
 def test_download_leaves_no_spool_file_behind(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """Playwright can only spool a download to a file of its own; the driver
-    deletes it before returning."""
+    # Playwright can only spool a download to its own file; the driver deletes it before returning.
     _arm_download(session, tmp_path, b"payload")
     execute_action(session, DownloadStep(name="s", action="download", selector="#a"))
     assert list((tmp_path / "spool").iterdir()) == []
 
 
 def test_download_honours_the_step_timeout(session: BrowserSession) -> None:
-    """Without this the step's budget bounds `find` only and Playwright's own
-    30s default takes over for the wait that matters."""
+    # Without this the step's budget bounds `find` only and Playwright's 30s default takes the wait.
     from llm_browser.results import ErrorResult
 
     step = DownloadStep(name="s", action="download", selector="#dl", timeout=200)
@@ -534,9 +486,7 @@ def test_download_honours_the_step_timeout(session: BrowserSession) -> None:
 def test_a_download_that_fails_is_a_step_failure(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """Playwright raises its own `Error` from `path()` and `delete()` on a
-    cancelled download; raw, it would unwind out of `run_flow` instead of
-    coming back as a failed step."""
+    # Raw, Playwright's `Error` from a cancelled download would unwind out of run_flow.
     from llm_browser.results import ErrorResult
 
     mock_download = _arm_download(session, tmp_path, b"payload")
@@ -564,9 +514,6 @@ def test_download_path_is_ignored_by_the_runner(
     assert not dest.parent.exists()
 
 
-# --- press ---
-
-
 def test_press_on_selector(input_session: MagicMock) -> None:
     step = PressStep(name="s", action="press", selector="#box", key="Enter")
     execute_action(input_session, step)
@@ -582,16 +529,8 @@ def test_press_focused(input_session: MagicMock) -> None:
 
 
 def test_press_requires_key() -> None:
-    """``key`` is required at construction; bad steps fail before any browser
-    work, surfaced via Pydantic ValidationError."""
     with pytest.raises(ValidationError):
         PressStep(name="s", action="press")
-
-
-# --- wait ---
-
-
-# --- no action ---
 
 
 def test_no_action_returns_void(session: BrowserSession) -> None:
@@ -599,9 +538,6 @@ def test_no_action_returns_void(session: BrowserSession) -> None:
 
     step = EvalStep(name="s")
     assert isinstance(execute_action(session, step), VoidResult)
-
-
-# --- optional flag ---
 
 
 def test_optional_swallows_timeout(session: BrowserSession) -> None:
@@ -640,7 +576,6 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
     assert result.step_name == "my_step"
     assert result.selector == "'#missing'"
     assert result.hint == "element hidden, missing, or slow to render"
-    # A hidden element is not an interception, so no retry and no hint.
     assert result.message == "element hidden"
 
 
@@ -652,9 +587,6 @@ def test_step_timeout_passed_to_find(session: BrowserSession) -> None:
     execute_action(session, step)
 
     wait.assert_called_once_with("#btn", state="visible", timeout=30_000)
-
-
-# --- scroll ---
 
 
 @pytest.mark.parametrize(
@@ -690,20 +622,13 @@ def test_scroll_pauses_between_ticks(
     )
     execute_action(session, step)
     pauses = [c for c in calls if c > 0]
-    # Only between ticks: execute_action already applies the post-action pause.
     assert len(pauses) == 2
     assert all(0.010 <= c <= 0.020 for c in pauses)
-
-
-# --- unknown action ---
 
 
 def test_unknown_action_raises() -> None:
     with pytest.raises(ValidationError):
         validate_step({"name": "s", "action": "nonexistent"})
-
-
-# --- layering ---
 
 
 # Every driver method that drives the page from a policy decision — humanized
@@ -736,17 +661,11 @@ def driver_attributes(module: object) -> list[ast.Attribute]:
 
 @pytest.mark.parametrize("module", [actions, steps, flows, flow_runner])
 def test_the_layers_above_the_session_never_touch_the_driver(module: object) -> None:
-    """steps -> actions -> session -> driver. An action that reaches for
-    ``session.driver`` skips the session's pacing and humanization, so the
-    layering is asserted on the source itself rather than left to review."""
     reads = driver_attributes(module)
     assert reads == [], [ast.unparse(node) for node in reads]
 
 
 def test_only_session_input_drives_the_page() -> None:
-    """``session.py`` may hold the driver — it owns the lifecycle — but the
-    input primitives are ``session_input``'s alone. A second call site is a
-    second humanized-vs-plain decision, and it drifts."""
     tree = ast.parse(Path(session_module.__file__).read_text())
     calls = [
         ast.unparse(node)
@@ -762,8 +681,6 @@ def test_only_session_input_drives_the_page() -> None:
 def test_parse_coerces_decimal_and_date_rows(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    """A schema may declare types ``json.dumps`` cannot represent; the rows
-    have to survive a JSON-mode dump for a caller to serialize them."""
     import yaml
 
     from llm_browser.models import ParseStep
@@ -796,8 +713,6 @@ def test_parse_coerces_decimal_and_date_rows(
 def test_a_type_error_inside_an_optional_step_still_reaches_the_developer(
     session: BrowserSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The regression the narrow catch exists for: a latent bug in an action
-    must not come back as `SkippedResult` and report the flow a success."""
 
     def boom(*args: object, **kwargs: object) -> None:
         raise TypeError("len() of unsized object")

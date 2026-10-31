@@ -1,8 +1,4 @@
-"""``llm-browser docs``: keep the generated reference in step with the source.
-
-A maintainer command on a user-facing CLI: the reference is a build artifact,
-so both flags need the source tree the wheel was built from.
-"""
+"""The reference is a build artifact, so both flags need the source tree the wheel was built from."""
 
 from pathlib import Path
 

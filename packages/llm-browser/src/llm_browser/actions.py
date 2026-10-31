@@ -1,9 +1,4 @@
-"""Action registry: minimal declarative actions for browser automation.
-
-One handler per action, each taking the behaviour the step resolved to.
-Importing this module is what registers them; :mod:`llm_browser.action_dispatch`
-holds the registry and runs them.
-"""
+"""Importing this module registers the handlers."""
 
 import logging
 import time
@@ -65,9 +60,6 @@ logger = logging.getLogger(__name__)
 parse_warned: ContextVar[bool] = ContextVar("parse_warned", default=False)
 
 _registry = get_registry()
-
-
-# --- Element actions ---
 
 
 @_registry.register("click")
@@ -146,9 +138,6 @@ def action_press(
     return VoidResult()
 
 
-# --- Page actions ---
-
-
 @_registry.register("goto")
 def action_goto(
     session: BrowserSession, step: GotoStep, behavior: Behavior
@@ -161,8 +150,7 @@ def action_goto(
 def action_wait_for(
     session: BrowserSession, step: WaitForStep, behavior: Behavior
 ) -> VoidResult:
-    """A timeout here rides ``execute_action``'s handler: the step fails with
-    the selector/state message, and ``optional: true`` turns it into a skip."""
+    """A timeout fails the step through ``execute_action``; ``optional: true`` makes it a skip."""
     if step.text is not None:
         session.wait_for_text(
             step.text,
@@ -189,16 +177,12 @@ def action_wait_for(
 def action_screenshot(
     session: BrowserSession, step: ScreenshotStep, behavior: Behavior
 ) -> BytesResult:
-    """``step.path`` is not consulted: the runner returns the PNG and the CLI
-    is what writes it."""
+    """``step.path`` is the CLI's to write."""
     return BytesResult(
         name=f"{step.name}.png",
         content=session.screenshot_bytes(step.selector),
         media_type="image/png",
     )
-
-
-# --- Data actions ---
 
 
 @_registry.register("read")
@@ -254,22 +238,15 @@ def action_dom(
     )
 
 
-# --- File actions ---
-
-
 @_registry.register("download")
 def action_download(
     session: BrowserSession, step: DownloadStep, behavior: Behavior
 ) -> BytesResult | DocumentResult:
-    """``step.path`` is not consulted: the runner returns the bytes and the
-    CLI is what writes them."""
+    """``step.path`` is the CLI's to write."""
     file = session.download_file(step.selector, behavior=behavior, timeout=step.timeout)
     if step.extract is None:
         return file
     return extract_file(file, step.extract)
-
-
-# --- Pacing actions ---
 
 
 @_registry.register("scroll")

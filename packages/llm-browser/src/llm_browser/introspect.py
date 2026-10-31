@@ -1,10 +1,4 @@
-"""The library read off itself: step arms, their own fields, session members.
-
-Everything that documents or checks the library — the generated reference in
-:mod:`llm_browser.docgen`, the conformance suite's required set — asks these
-three functions rather than keeping its own list, so a step type or a field
-added to the models shows up in both on the day it lands.
-"""
+"""The reference and the conformance suite both ask these, so a new step type shows up in both."""
 
 import functools
 import inspect
@@ -15,12 +9,7 @@ from llm_browser.session import BrowserSession
 
 
 def step_arms() -> list[tuple[str, type[BaseStep]]]:
-    """``(action tag, step class)`` for every arm of the ``Step`` union.
-
-    The union is ``Annotated[A | B | ..., Discriminator]`` and each arm is
-    ``Annotated[StepClass, Tag("action")]``, so the tag is the same string a
-    flow writes as ``action:`` — including ``eval``, which has none.
-    """
+    """The tag is the string a flow writes as ``action:``, including ``eval``."""
     union = typing.get_args(Step)[0]
     arms = []
     for arm in typing.get_args(union):
@@ -30,16 +19,8 @@ def step_arms() -> list[tuple[str, type[BaseStep]]]:
 
 
 def own_fields(step_class: type[BaseStep]) -> list[str]:
-    """Fields this step has below ``BaseStep``.
-
-    ``action`` is the discriminator, not an option, and the ``BaseStep``
-    fields are counted once as options rather than once per step type.
-    Everything under it is per-step, ``SelectorStep.selector`` included: what
-    a selector means is the step's own question, so every selector step keeps
-    the row.
-
-    The one thing this misses is a step that re-declares a ``BaseStep``
-    option to narrow it: the subtraction goes by name, not by semantics.
+    """``action`` is the discriminator and ``BaseStep`` fields count once as options.
+    Misses a step that re-declares a ``BaseStep`` option: the subtraction goes by name.
     """
     return [
         name
@@ -49,12 +30,7 @@ def own_fields(step_class: type[BaseStep]) -> list[str]:
 
 
 def session_methods() -> list[str]:
-    """Every public member of ``BrowserSession``, however it is declared.
-
-    Walking the MRO rather than ``inspect.getmembers``: a ``property`` or a
-    ``classmethod`` is not a function once the class body is done with it, so
-    a session attribute declared as one would otherwise never be required.
-    """
+    """Walks the MRO: a ``property`` or ``classmethod`` is not a function after the class body."""
     descriptors = (staticmethod, classmethod, property, functools.cached_property)
     names = set()
     for klass in BrowserSession.__mro__:

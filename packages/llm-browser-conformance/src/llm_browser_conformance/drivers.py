@@ -1,9 +1,4 @@
-"""Which drivers can run here, and how to get a headless session for one.
-
-A driver that is not installed, or that needs a browser binary this machine
-does not have, is a *skip* with a reason — never a silent omission and never a
-failure. The point of the suite is an honest table.
-"""
+"""A driver missing here is a skip with a reason, never an omission or a failure."""
 
 import shutil
 import tempfile
@@ -53,7 +48,6 @@ def chrome_binary() -> str | None:
 
 
 def unavailable(driver: str) -> str | None:
-    """Why ``driver`` cannot run here, or ``None`` if it can."""
     if driver not in get_registry():
         return f"extra not installed (uv sync --extra {driver})"
     if driver == "nodriver" and chrome_binary() is None:
@@ -62,14 +56,8 @@ def unavailable(driver: str) -> str | None:
 
 
 def configured(driver: str) -> Driver | str:
-    """The driver as the suite runs it.
-
-    camoufox is built with ``humanize=False``. Its humanized cursor
-    intermittently leaves a Playwright ``click`` waiting out the whole action
-    timeout on a target it has already declared visible, enabled and stable —
-    a Camoufox cursor problem, not an llm-browser contract question, and one
-    flaky scenario poisons every answer in the column. This is the one home
-    for that decision; the README links here.
+    """camoufox runs with ``humanize=False``: its cursor intermittently stalls a Playwright ``click``
+    to timeout. The README links here.
     """
     if driver != "camoufox":
         return driver
@@ -79,12 +67,8 @@ def configured(driver: str) -> Driver | str:
 
 
 def bound_action_timeout(session: BrowserSession, driver: str) -> None:
-    """Cap what Playwright will wait for one action.
-
-    Not a workaround: the step budget a flow declares never reaches
-    ``Driver.select_option`` (it bounds ``find`` only), so a Playwright driver
-    falls back to its own default. Capping it keeps the run short without
-    hiding the gap — 5s is still well past any budget the fixtures ask for.
+    """The step budget never reaches ``Driver.select_option``, so cap Playwright's own default;
+    5s still exceeds every fixture budget.
     """
     if driver == "nodriver":
         return
@@ -93,23 +77,8 @@ def bound_action_timeout(session: BrowserSession, driver: str) -> None:
 
 @contextmanager
 def launched_session(driver: str, headed: bool = False) -> Iterator[BrowserSession]:
-    """One browser — headless unless ``headed`` — on a throwaway profile,
-    closed on the way out.
-
-    ``ignore_cleanup_errors`` narrowly covers the profile directory, not the
-    session: ``close()`` releases the connection and returns, but Chromium is
-    still flushing its profile for a moment afterwards, so the ``rmdir`` races
-    it and raises ``Directory not empty``. That is the OS reclaiming a
-    throwaway directory, not a browser refusing to stop — and charging it to
-    the teardown row would report a driver failure that did not happen. A
-    ``close()`` that really does raise still reaches the ``finally`` below.
-
-    A worker killed or timed out mid-run never reaches that ``finally`` at
-    all, so the session also registers with ``interrupts`` for the
-    ``atexit``/SIGINT/SIGTERM sweep to close on its way out. A placeholder
-    holds that registration open across ``session.launch()`` itself, so a
-    signal arriving before the real session is registered does not find an
-    empty registry and restore the original handlers early.
+    """``ignore_cleanup_errors``: Chromium still flushes the profile after ``close()``, racing ``rmdir``.
+    Also registered with ``interrupts``: a killed worker never reaches the ``finally``.
     """
     install_interrupt_handlers()
     placeholder = register_launch_placeholder()
@@ -119,7 +88,6 @@ def launched_session(driver: str, headed: bool = False) -> Iterator[BrowserSessi
         session = BrowserSession(
             session_id=f"conformance-{driver}",
             state_dir=Path(state_dir),
-            # Both artifacts, so the flow checks can assert screenshot AND dom.
             capture="both",
             driver=configured(driver),
             executable_path=chrome_binary() if driver == "nodriver" else None,

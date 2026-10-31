@@ -53,8 +53,7 @@ def is_hidden(driver: Driver, locator: Any) -> bool:
 
 
 def is_enabled(driver: Driver, locator: Any) -> bool:
-    """Attached first: an element that is not there yet is neither enabled nor
-    disabled, and asking a driver about a missing node is what raises."""
+    """An element not there yet is neither enabled nor disabled, and asking a driver about it raises."""
     return is_attached(driver, locator) and driver.is_enabled(driver.first(locator))
 
 
@@ -73,12 +72,7 @@ STATE_PREDICATES: dict[WaitState, StatePredicate] = {
 
 
 class TextSettled:
-    """True once the element's text has held still for ``settle_ms``.
-
-    The one state with memory, so each wait gets its own instance. An element
-    that is not there yet reads as ``None`` and counts as a change: nothing
-    has settled while there is nothing to read.
-    """
+    """The one state with memory, so each wait gets its own instance; a missing element counts as a change."""
 
     def __init__(self, settle_ms: int) -> None:
         self.settle_s = settle_ms / 1000.0
@@ -114,18 +108,8 @@ def poll_for_state(
     interval_ms: int,
     settle_ms: int = DEFAULT_SETTLE_MS,
 ) -> None:
-    """Block until ``selector`` reaches ``state``, or raise ``TimeoutError``.
-
-    ``timeout_ms`` is a budget, not a floor: the sleep is clamped to what is
-    left of it, so the wait costs at most one more state check past the
-    deadline and ``timeout_ms=0`` is exactly one check.
-
-    The locator is re-resolved every tick: a driver locator can cache the
-    element it matched, and a node the page swapped out would then never be
-    seen to change state. With a ``FallbackSelector`` that re-resolution can
-    switch branches mid-wait, so ``detached`` is judged against whichever
-    branch matched this tick — it never fires while the fallback still
-    matches.
+    """``timeout_ms`` is a budget: the sleep is clamped, and ``0`` is exactly one check.
+    The locator is re-resolved each tick, since a driver locator can cache a node the page swapped out.
     """
     reached = state_predicate(state, settle_ms)
     poll_until(
@@ -142,10 +126,7 @@ def poll_until(
     timeout_ms: int,
     interval_ms: int,
 ) -> None:
-    """Tick ``reached`` until it says yes, or raise ``TimeoutError``.
-
-    ``description`` is the timeout message up to ``within <timeout>ms``.
-    """
+    """``description`` is the timeout message up to ``within <timeout>ms``."""
     pause = poll_jitter(interval_ms)
     deadline = time.monotonic() + timeout_ms / 1000.0
     while True:
@@ -165,15 +146,7 @@ def text_present(
     selector: Selector | None = None,
     exact: bool = False,
 ) -> bool:
-    """Whether the page renders ``text`` right now, as one read.
-
-    Whitespace-normalised ``innerText``, so the accents, ``&nbsp;`` and node
-    boundaries an XPath ``contains(text(), ...)`` trips over do not matter.
-    ``selector`` scopes the question to what it matches — every match, since a
-    scope like ``.toast`` names a kind of element, not one of them. A scope
-    that matches nothing has no text, so it answers ``False``: a scope that is
-    gone takes its text with it.
-    """
+    """Normalised ``innerText``; a scope means every match, and a scope matching nothing answers ``False``."""
     script = text_match_js(text, exact)
     if selector is None:
         return bool(driver.evaluate(page, script))
@@ -182,14 +155,7 @@ def text_present(
 
 
 def matches_now(driver: Driver, element: Any, script: str) -> bool:
-    """One bounded read, so a scope cannot turn a tick into a driver-side wait.
-
-    ``driver.all`` hands back a snapshot; a scope that detached since — the
-    toast a ``detached``/``hidden`` wait is watching for — cannot be answered
-    about: the locator re-resolves and times out inside the read's budget. It
-    has no text this tick, which is the answer the next tick re-asks. Anything
-    else is the script's own bug, and says so rather than polling out.
-    """
+    """Bounded so a scope cannot become a driver-side wait; a detached scope has no text this tick."""
     try:
         return bool(driver.evaluate(element, script, READ_TIMEOUT_MS))
     except Exception as exc:
@@ -210,7 +176,6 @@ def poll_for_text(
     timeout_ms: int,
     interval_ms: int,
 ) -> None:
-    """Block until ``text`` is present (or absent), or raise ``TimeoutError``."""
     wanted = check_text_state(state)
     scope = f" inside {describe_selector(selector)}" if selector is not None else ""
     poll_until(

@@ -1,5 +1,3 @@
-"""Tests for full-page DOM sanitization and capture-on-failure modes."""
-
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -118,7 +116,6 @@ def test_failure_capture_modes(
     wants_screenshot: bool,
     wants_dom: bool,
 ) -> None:
-    """Captures come back in memory: PNG bytes and sanitized HTML text."""
     session = _mock_failing_session(tmp_path, capture)
     result = run_flow_file(session, failing_flow, {})
     assert not result.data.ok  # type: ignore[union-attr]
@@ -159,8 +156,6 @@ def test_dom_snapshot_sanitizes_the_page(tmp_path: Path) -> None:
     assert not session.session_dir.exists()
 
 
-# --- the capture level is the caller's decision ---
-
 LINKED_PAGE = _wrap(
     '<div><a href="https://next.example/step2">next</a>'
     '<img src="data:image/png;base64,AAAABBBB">'
@@ -188,8 +183,6 @@ def _snapshot_at(tmp_path: Path, level: SanitizeLevel | None) -> str:
 def test_dom_snapshot_honours_the_level(
     tmp_path: Path, level: SanitizeLevel, keeps_href: bool, keeps_span: bool
 ) -> None:
-    """A page snapshot applies the same per-level passes a `dom` snippet
-    does — the level table is one implementation, not two."""
     out = _snapshot_at(tmp_path, level)
     assert ("next.example" in out) is keeps_href, out
     assert ("<span" in out) is keeps_span, out
@@ -213,7 +206,6 @@ def test_the_default_capture_level_is_high(tmp_path: Path) -> None:
 
 
 def test_medium_truncates_a_data_uri_in_a_page_snapshot(tmp_path: Path) -> None:
-    """The per-level extras apply to a document, not just a fragment."""
     out = _snapshot_at(tmp_path, SanitizeLevel.MEDIUM)
     assert "AAAABBBB" not in out
     assert "data:image/png" in out

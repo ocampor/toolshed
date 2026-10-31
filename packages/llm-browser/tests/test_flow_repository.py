@@ -1,5 +1,3 @@
-"""Tests for the repository behind every `run-flow` reference."""
-
 import asyncio
 import os
 from pathlib import Path
@@ -45,7 +43,6 @@ def test_missing_ref_raises_flow_not_found(tmp_path: Path) -> None:
 
 
 def test_file_repository_propagates_a_permission_error(tmp_path: Path) -> None:
-    """An unreadable file is a real failure, not an unknown reference."""
     if os.geteuid() == 0:
         pytest.skip("root reads regardless of mode")
     child = tmp_path / "child.yaml"
@@ -53,9 +50,6 @@ def test_file_repository_propagates_a_permission_error(tmp_path: Path) -> None:
     child.chmod(0o000)
     with pytest.raises(PermissionError):
         asyncio.run(FileFlowRepository(tmp_path).get("child.yaml"))
-
-
-# --- DictFlowRepository ---
 
 
 def test_dict_repository_returns_a_known_flow() -> None:
@@ -66,9 +60,6 @@ def test_dict_repository_returns_a_known_flow() -> None:
 def test_dict_repository_misses_an_unknown_flow() -> None:
     with pytest.raises(FlowNotFoundError, match="child"):
         asyncio.run(DictFlowRepository({}).get("child"))
-
-
-# --- LayeredFlowRepository ---
 
 
 def test_the_first_layer_with_the_reference_wins(tmp_path: Path) -> None:

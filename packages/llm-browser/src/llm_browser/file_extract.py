@@ -1,6 +1,4 @@
-"""Turn a downloaded file into the pages a ``download`` step's ``extract:``
-asks for. Only requested pages are read or rendered, so a huge PDF costs
-what the budget lets through."""
+"""Only requested pages are read or rendered, so a huge PDF costs what the budget lets through."""
 
 import codecs
 import hashlib
@@ -79,7 +77,6 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
 
 
 def detected_type(source: Source, label: str) -> str:
-    """The type the content shows; the download's label when it shows none."""
     from PIL import Image as PILImage
 
     match source:
@@ -91,7 +88,6 @@ def detected_type(source: Source, label: str) -> str:
 
 
 def read_pages(source: Source, spec: Extract) -> PageBatch:
-    """An empty batch when the file has nothing ``spec.mode`` reads."""
     match source, spec:
         case Pdf(pdf), TextExtract():
             return take_text(len(pdf), partial(pdf_text, pdf), spec)
@@ -138,9 +134,6 @@ def require_documents_extra() -> None:
         import pypdfium2  # noqa: F401
     except ImportError as exc:
         raise ValueError(MISSING_DOCUMENTS_EXTRA) from exc
-
-
-# --- budgets ---
 
 
 def selected_pages(spec: Extract, page_count: int) -> list[int]:
@@ -191,9 +184,6 @@ def take_images(
     return PageBatch(page_count, pages, rest=selected[spec.max_images :])
 
 
-# --- PDF ---
-
-
 @contextmanager
 def opened_pdf(content: bytes) -> Iterator["pypdfium2.PdfDocument"]:
     import pypdfium2
@@ -235,9 +225,6 @@ def pdf_frame(pdf: "pypdfium2.PdfDocument", spec: ImageExtract, page: int) -> Fr
         scale = (spec.max_long_side - 0.5) / max(width, height)
         image: Image = pdf_page.render(scale=scale).to_pil()
     return Frame(image, round(width), round(height))
-
-
-# --- plain text ---
 
 
 def decode_text(content: bytes) -> str | None:

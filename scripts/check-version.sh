@@ -17,7 +17,6 @@ index_url="${PYPI_INDEX_URL:-https://pypi.ocampor.com/simple}"
 
 cd "$repo_root/$package_dir"
 
-# Read a [project] field out of pyproject.toml (name, version, ...).
 project_field() {
   python3 -c "import tomllib,sys; print(tomllib.load(open('pyproject.toml','rb'))['project'][sys.argv[1]])" "$1"
 }

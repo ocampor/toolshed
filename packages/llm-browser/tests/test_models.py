@@ -1,5 +1,3 @@
-"""Tests for Pydantic model serialization round-trips."""
-
 import pytest
 from pydantic import ValidationError
 
@@ -37,8 +35,6 @@ def test_session_info_round_trip() -> None:
 
 
 def test_flow_error_round_trip() -> None:
-    """The capture survives a JSON round trip as the bytes that went in, not
-    as the base64 they were transported as."""
     shot = b"\x89PNG\r\n\x1a\n\x00binary\xff"
     result = FlowError(
         step="check", data='{"cp": "05330"}', screenshot=shot, dom="<p>hi</p>"
@@ -59,8 +55,6 @@ def test_flow_error_screenshot_is_base64_on_the_wire() -> None:
 
 
 def test_flow_error_rejects_a_screenshot_that_is_not_base64() -> None:
-    """The field used to hold a path; a caller still passing one is told so
-    rather than quietly storing the filename as the image."""
     with pytest.raises(ValidationError):
         FlowError(step="check", screenshot="/tmp/s.png")
 
@@ -118,7 +112,6 @@ def test_scroll_step_pause_parsed_as_jitter() -> None:
 
 
 def test_warm_site_flow_validates() -> None:
-    """The shipped warm-up flow must stay loadable as flows evolve."""
     from pathlib import Path
 
     from tests.flow_helpers import load_flow_file
@@ -255,9 +248,6 @@ def test_a_read_takes_the_compact_extract_form_docs_advertise(
 def test_a_read_without_an_extract_reads_the_row_text(
     step_kwargs: dict[str, object],
 ) -> None:
-    """A bare `read` used to carry an empty spec, so every row came back
-    `None`; an absent, empty, or `null` `extract:` all mean the row's own
-    text under `text` instead."""
     step = validate_step(step_kwargs)
     assert isinstance(step, ReadStep)
     assert list(step.extract) == ["text"]
@@ -267,8 +257,6 @@ def test_a_read_without_an_extract_reads_the_row_text(
 
 @pytest.mark.parametrize("extract", [["td.name"], 5])
 def test_an_extract_that_is_not_a_mapping_fails_validation(extract: object) -> None:
-    """Only an absent, empty, or `null` `extract` means the default field; a
-    list or a number is an author's typo."""
     with pytest.raises(ValidationError):
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "extract": extract}
@@ -279,7 +267,6 @@ def test_an_extract_that_is_not_a_mapping_fails_validation(extract: object) -> N
 def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
     spec: object,
 ) -> None:
-    """It used to escape as a `TypeError` traceback out of `llm-browser validate`."""
     with pytest.raises(ValidationError, match="invalid extract spec"):
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}
@@ -287,8 +274,7 @@ def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
 
 
 def test_an_empty_exclude_selector_fails_validation() -> None:
-    """`querySelectorAll("")` is a page-side SyntaxError naming neither the
-    step nor the field; the flow is rejected at load time instead."""
+    # `querySelectorAll("")` is a page-side SyntaxError naming neither step nor field.
     with pytest.raises(ValidationError):
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "exclude": ["nav", ""]}

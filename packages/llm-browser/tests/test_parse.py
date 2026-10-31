@@ -1,5 +1,3 @@
-"""Tests for the typed DOM-extraction API (ExtractField + ParseBase)."""
-
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -24,34 +22,21 @@ def session(tmp_path: object) -> BrowserSession:
 
 
 def _two_row_locator(rows: list[dict[str, str]]) -> MagicMock:
-    """Build a Playwright-locator mock that yields the given pre-extracted rows.
-
-    Extraction is a single in-page evaluation over the matched rows, so the
-    mock simply hands back the rows ``evaluate_all`` would have produced.
-    """
     locator = MagicMock()
     locator.evaluate_all.return_value = rows
     return locator
-
-
-# --- ExtractField as a default value ---
 
 
 def test_extract_field_works_as_default_value() -> None:
     class User(ParseBase):
         name: str = ExtractField(child_selector="td.name")
 
-    # The class is constructable: with valid data, no error.
     u = User(name="alice")
     assert u.name == "alice"
-    # Field info is preserved on the model.
     info = User.model_fields["name"]
     assert isinstance(info, ExtractField)
     assert info.child_selector == "td.name"
     assert info.attribute == "textContent"
-
-
-# --- extract_all happy path ---
 
 
 def test_extract_all_returns_typed_instances(
@@ -69,9 +54,6 @@ def test_extract_all_returns_typed_instances(
     assert [u.name for u in users] == ["Alice", "Bob"]
 
 
-# --- extract_all coerces types ---
-
-
 def test_extract_all_coerces_types(session: BrowserSession) -> None:
     class Item(ParseBase):
         name: str = ExtractField(child_selector="td.name")
@@ -86,21 +68,15 @@ def test_extract_all_coerces_types(session: BrowserSession) -> None:
     assert isinstance(items[0].price, int)
 
 
-# --- extract_all complains about plain fields ---
-
-
 def test_extract_all_raises_on_plain_field(session: BrowserSession) -> None:
     class Bad(ParseBase):
-        name: str = "default"  # no ExtractField
+        name: str = "default"
 
     locator = _two_row_locator([{"name": "Alice"}])
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
     with pytest.raises(TypeError, match="not an ExtractField"):
         Bad.extract_all(session, "tr.row")
-
-
-# --- extract_one ---
 
 
 def test_extract_one_returns_first(session: BrowserSession) -> None:
@@ -124,9 +100,6 @@ def test_extract_one_returns_none_for_zero_rows(session: BrowserSession) -> None
 
     user = User.extract_one(session, "tr.row")
     assert user is None
-
-
-# --- build_model (YAML schema route) ---
 
 
 def _write_yaml(tmp_path: Path, contents: dict) -> Path:
@@ -201,7 +174,7 @@ def test_build_model_required_field_no_default(tmp_path: Path) -> None:
     )
     User = build_model(path)
     with pytest.raises(ValidationError):
-        User()  # missing required `name`
+        User()
 
 
 def test_build_model_class_works_with_extract_all(
@@ -233,10 +206,6 @@ def test_build_model_class_works_with_extract_all(
 
 
 def test_parsed_result_serializes_dynamic_rows() -> None:
-    """ParsedResult.rows must serialize via the *runtime* row type, not the
-    declared BaseModel base — otherwise dynamically-built schemas (build_model)
-    dump as ``{}`` and the data is lost on the way out of the CLI.
-    """
     from llm_browser.results import ParsedResult
 
     Row = ParseBase.__class__(  # type: ignore[call-arg]
@@ -251,9 +220,6 @@ def test_parsed_result_serializes_dynamic_rows() -> None:
     result = ParsedResult(rows=[Row(name="hi", n=42), None])
     payload = result.model_dump(exclude_none=True)
     assert payload["rows"] == [{"name": "hi", "n": 42}, None]
-
-
-# --- ExtractField.parse ---
 
 
 @pytest.mark.parametrize(

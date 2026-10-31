@@ -1,5 +1,3 @@
-"""``--failed``: what the last run said, and what that makes worth rerunning."""
-
 import json
 from pathlib import Path
 
@@ -43,8 +41,6 @@ def test_no_file_is_no_history(tmp_path: Path) -> None:
     ],
 )
 def test_a_drifted_record_is_no_history(tmp_path: Path, content: str, why: str) -> None:
-    """The file carries no version, and every run reads it — so a record this
-    build cannot parse must never be why a run cannot happen."""
     path = tmp_path / "last.json"
     path.write_text(content)
     with pytest.warns(UserWarning, match="ignoring unreadable"):
@@ -96,7 +92,6 @@ def test_a_driver_with_nothing_to_rerun_is_left_out() -> None:
 
 
 def test_a_rerun_keeps_the_cells_it_did_not_visit() -> None:
-    """The record describes the whole suite, not the last handful of rows."""
     previous = [
         row("a", "nodriver", Outcome.FAIL),
         row("b", "nodriver", Outcome.PASS),
@@ -121,11 +116,7 @@ def test_a_scenario_no_longer_in_the_suite_is_not_rerun() -> None:
     )
 
 
-# --- the CLI end of it ---
-
-
 def invoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> "Result_":
-    """Run the CLI with a throwaway working directory and no browsers."""
     from click.testing import CliRunner
 
     from llm_browser_conformance import cli
@@ -158,8 +149,6 @@ def test_failed_with_a_clean_previous_run_says_so_and_succeeds(
 def test_a_filtered_run_merges_into_the_record_it_did_not_cover(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`--only` and `--driver` produce partial results too, so replacing the
-    record would drop the very failures `--failed` exists to find again."""
     from llm_browser_conformance import cli
 
     history.save(

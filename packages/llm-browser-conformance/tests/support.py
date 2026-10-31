@@ -1,10 +1,3 @@
-"""The pytest half of the two front ends.
-
-``run_scenario`` decides; this only translates its verdict into a pytest
-report. Keeping the translation in one importable place is what lets
-``test_front_ends.py`` prove the CLI and pytest agree about the same run.
-"""
-
 import pytest
 
 from llm_browser_conformance.runner import Result

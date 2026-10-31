@@ -53,11 +53,7 @@ def get_registry() -> Registry[type[Driver]]:
 
 
 def _register_optional_drivers(registry: Registry[type[Driver]]) -> None:
-    """Self-register optional drivers whose extras are installed.
-
-    Missing extras are silently skipped — string lookup then raises
-    DriverNotInstalledError only when the driver is actually requested.
-    """
+    """Missing extras are skipped; a string lookup raises DriverNotInstalledError only when that driver is requested."""
     try:
         from llm_browser.drivers.camoufox import CamoufoxDriver  # type: ignore[import-untyped,unused-ignore]
 
@@ -73,12 +69,7 @@ def _register_optional_drivers(registry: Registry[type[Driver]]) -> None:
 
 
 def resolve_driver(driver: Driver | str | None) -> Driver:
-    """Return a Driver instance.
-
-    - `None` → default driver (patchright)
-    - `str`  → registry lookup, default-constructed instance
-    - `Driver` instance → passthrough (no mutation, no registration needed)
-    """
+    """``None`` is patchright, a ``str`` a registry lookup, a ``Driver`` passes through."""
     if isinstance(driver, Driver):
         return driver
     name = driver if isinstance(driver, str) else DEFAULT_DRIVER_NAME

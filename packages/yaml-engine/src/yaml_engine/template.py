@@ -1,9 +1,3 @@
-"""Template variable substitution for YAML values.
-
-Supports {{ var }} and dotted {{ var.key.0 }} syntax in strings, resolving
-against a data dict.
-"""
-
 import re
 from collections.abc import Iterator
 
@@ -15,7 +9,6 @@ class TemplatePathError(ValueError):
 
 
 def resolve_path(path: str, data: dict[str, object]) -> object:
-    """The value a dotted path reaches: keys index mappings, ints index lists."""
     value: object = data
     for segment in path.split("."):
         try:
@@ -36,11 +29,7 @@ def path_member(value: object, segment: str) -> object:
 
 
 def resolve_template(value: str, data: dict[str, object]) -> str:
-    """Replace every placeholder in value with its value from data.
-
-    A plain {{ var }} missing from data is left as-is; a dotted path that
-    resolves to nothing raises :class:`TemplatePathError`.
-    """
+    """A plain ``{{ var }}`` missing from data is left as-is; a dotted path to nothing raises."""
 
     def replacer(match: re.Match[str]) -> str:
         path = match.group(1)
@@ -48,14 +37,13 @@ def resolve_template(value: str, data: dict[str, object]) -> str:
             return str(resolve_path(path, data))
         resolved = data.get(path)
         if resolved is None:
-            return match.group(0)  # leave placeholder as-is
+            return match.group(0)
         return str(resolved)
 
     return _TEMPLATE_RE.sub(replacer, value)
 
 
 def template_names(raw: object) -> set[str]:
-    """The data names every placeholder under ``raw`` starts from."""
     return {path.split(".", 1)[0] for path in template_paths(raw)}
 
 
@@ -71,7 +59,6 @@ def template_paths(raw: object) -> Iterator[str]:
 
 
 def resolve_templates_in_dict(raw: dict[str, object], data: dict[str, object]) -> dict[str, object]:
-    """Recursively resolve {{ var }} placeholders in all string values of a dict."""
     result: dict[str, object] = {}
     for key, value in raw.items():
         if isinstance(value, str):

@@ -1,5 +1,3 @@
-"""What one ``read`` extract field asks for, and how its raw text becomes a value."""
-
 import datetime
 import re
 from typing import Annotated, Any, ClassVar, Literal
@@ -206,7 +204,6 @@ def check_languages(languages: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def spec_type(value: Any) -> str:
-    """A spec without ``type`` is a string."""
     if isinstance(value, dict):
         return str(value.get("type", "str"))
     return str(getattr(value, "type", "str"))

@@ -1,5 +1,3 @@
-"""Shared constants for llm-browser."""
-
 import datetime
 import decimal
 import re
@@ -13,12 +11,10 @@ LOGGER_NAME = "llm_browser"
 
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
-# How long ``find`` and the input methods wait for their element.
 DEFAULT_FIND_TIMEOUT_MS = 10_000
 
 DEFAULT_POLL_INTERVAL_MS = 500
 
-# How long an element's text has to stay put for the ``stable`` wait state.
 DEFAULT_SETTLE_MS = 1_500
 
 # A Playwright read still needs a timeout — `timeout=0` there means *no*
@@ -41,7 +37,6 @@ DELAY_SHAPE = "delay must be a non-negative int, or [min_ms, max_ms] with min <=
 
 REDACTED = "***"
 
-# Why a step a ``when:`` predicate gated shows up in ``FlowSuccess.skipped``.
 WHEN_SKIP_REASON = "when condition not satisfied"
 
 # How many matches a count failure quotes back, so the message shows what the
@@ -69,7 +64,6 @@ FAILED_ROWS_HINT = (
 
 PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"
 
-# Every action whose result the flow runner keeps in ``outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 
 EXTRA_SAFE_ATTRS = frozenset({"href", "src", "title"})
@@ -91,7 +85,6 @@ DATA_URI_PATTERN = re.compile(r"^(data:[^;,]+)[;,].*$", re.S)
 # An outerHTML rooted at one of these is a whole document to lxml.
 DOCUMENT_ROOT_PATTERN = re.compile(r"\s*<(html|body)(?=[\s/>]|$)", re.I)
 
-# --- Page probe / human detection ---
 
 PROBE_TEXT_MAX_CHARS = 20_000
 WALL_GROUP = "wall"
@@ -127,8 +120,6 @@ SELECT_VALUE_PLACEHOLDER = "SELECT_VALUE_JSON"
 TEXT_MATCH_TEXT_PLACEHOLDER = "TEXT_MATCH_TEXT_JSON"
 TEXT_MATCH_EXACT_PLACEHOLDER = "TEXT_MATCH_EXACT_BOOL"
 
-
-# --- Extract specs (``"child selector@attribute"``) ---
 
 # Read as ``el[name]``; every other name is an HTML attribute.
 EXTRACT_PROPERTIES = (
@@ -170,7 +161,6 @@ EXPLORE_MAX_NESTED_CONTROLS = 5
 # How much of each sampled field the sample keeps. Reading the whole of every
 # row is what `read` is for.
 EXPLORE_SAMPLE_CHARS = 200
-# How far up from the first match a test id still names it.
 EXPLORE_ANCESTOR_LEVELS = 3
 TESTID_ATTRIBUTES = ("data-testid", "data-testing-id")
 
@@ -190,7 +180,6 @@ EXPLORE_MANY_MAX_TARGETS = 20
 # the round trip itself, plus the reads of every target's first match.
 EXPLORE_MANY_MARGIN_MS = 5000
 
-# --- Survey ---
 
 SURVEY_LIMITS_PLACEHOLDER = "SURVEY_LIMITS_JSON"
 SURVEY_COUNT_PLACEHOLDER = "COUNT_SELECTORS_JSON"
@@ -236,9 +225,7 @@ INTERACTIVE_ROLES = (
     "option",
 )
 
-# --- YAML schema types ---
 
-# The only names a schema `type:` string may use; see `schema_types.py`.
 SCHEMA_TYPE_NAMES = {
     "str": str,
     "int": int,
@@ -249,9 +236,7 @@ SCHEMA_TYPE_NAMES = {
     "datetime": datetime.datetime,
 }
 
-# --- Downloads ---
 
-# How often a download step looks for a file between event dispatches.
 DOWNLOAD_POLL_MS = 100
 # An attached browser's download is read in-page in base64 slices this big.
 DOWNLOAD_SLICE_BYTES = 4 << 20

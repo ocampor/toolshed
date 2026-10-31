@@ -1,9 +1,4 @@
-"""Whole-page hazards: overlays, sticky headers, shadow roots, frames,
-redirects, downloads, keyboard-only flows, new tabs and trickling XHR.
-
-Each one is a shape that has broken a real automation run, reduced to a
-self-contained page and the flow that has to survive it.
-"""
+"""Each hazard is a shape that broke a real automation run."""
 
 import tempfile
 import time
@@ -41,19 +36,14 @@ def an_overlay_is_waited_out_before_the_click(ctx: Context) -> None:
 
 
 def a_click_lands_under_a_sticky_header(ctx: Context) -> None:
-    """The button is 3000px down; a driver that scrolls it to the very top of
-    the viewport hands the click to the fixed header instead."""
+    """A driver that scrolls the button to the viewport top hands the click to the fixed header."""
     outputs = expect_success(ctx, "sticky-header.html", "sticky-header")
     landed = one_text(outputs, "result")
     assert landed == "clicked", f"the click reached {landed!r}"
 
 
 def a_click_between_two_sticky_banners(ctx: Context) -> str:
-    """Recorded, not forced: fixed banners leave only the middle of the
-    viewport clear, and whether a plain click lands there depends on how far
-    the driver scrolls. One that reports the interception gets a centred
-    retry; one that dispatches at the element's coordinates regardless clicks
-    the banner and says nothing, and that page still needs `dispatch: true`."""
+    """Recorded, not forced: whether a plain click clears fixed banners depends on how far the driver scrolls."""
     result = run(ctx, "sticky-bands.html", "sticky-bands")
     if not isinstance(result, FlowSuccess):
         return f"click failed between the banners: {error_message(result)}"
@@ -64,9 +54,7 @@ def a_click_between_two_sticky_banners(ctx: Context) -> str:
 
 
 def a_click_on_a_still_disabled_button(ctx: Context) -> str:
-    """Recorded, not forced: Playwright's click waits for the button to become
-    enabled, while a driver that dispatches straight away clicks the floor.
-    Both are defensible; the table says which one you have."""
+    """Recorded, not forced: Playwright waits for enabled; a dispatching driver clicks the floor."""
     result = run(ctx, "disabled-button.html", "disabled-button")
     if not isinstance(result, FlowSuccess):
         return f"click failed while disabled: {error_message(result)}"
@@ -77,8 +65,6 @@ def a_click_on_a_still_disabled_button(ctx: Context) -> str:
 
 
 def scrolling_moves_the_page(ctx: Context) -> None:
-    """A `scroll` step that quietly does nothing is worse than one that
-    fails: the flow keeps going against a page it never moved."""
     ctx.visit("sticky-header.html")
     assert ctx.js("window.scrollY") == 0
     try:
@@ -98,16 +84,13 @@ def scrolled_within(ctx: Context, seconds: float) -> bool:
 
 
 def an_open_shadow_root_is_reachable(ctx: Context) -> None:
-    """A driver whose selectors do not pierce is a known gap, not a skip: any
-    other failure here — the fill regressing, the click missing, the result
-    coming back empty — has to be able to turn this row red."""
+    """A known gap, not a skip, so any other failure here still turns the row red."""
     outputs = expect_success(ctx, "shadow-dom.html", "shadow-dom")
     assert one_text(outputs, "result") == "shadow value"
 
 
 def dom_returns_the_elements_own_markup(ctx: Context) -> None:
-    """``session.dom`` reads ``el => el.outerHTML``: a driver that runs that
-    string as anything but a function gets ``None`` and says nothing."""
+    """A driver that runs ``el => el.outerHTML`` as anything but a function gets ``None`` silently."""
     ctx.visit("form.html")
     markup = ctx.session.dom("#choice")
     assert 'id="choice"' in markup, markup
@@ -127,17 +110,12 @@ def a_redirect_is_followed_to_late_content(ctx: Context) -> None:
     # never.html is only a neutral starting page; the flow's goto is the test.
     outputs = expect_success(ctx, "never.html", "redirect", url=ctx.url("redirect"))
     assert one_text(outputs, "result") == "arrived"
-    # The session reports where the redirect left it, not where the goto aimed.
     landed = ctx.session.current_url()
     assert "redirect-target.html" in landed, landed
 
 
 def a_download_comes_back_as_bytes(ctx: Context) -> None:
-    """The browser spools a download to a file of its own; the driver has to
-    read it back and remove it, so the caller gets bytes and no debris.
-
-    ``path:`` is an instruction to the CLI — the runner has to leave it alone.
-    """
+    """The driver must read back and remove the browser's spool file."""
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "payload.txt"
         try:
@@ -176,8 +154,7 @@ def tab_moves_focus_to_the_next_field(ctx: Context) -> None:
 
 
 def a_chord_reaches_the_page_with_its_modifier(ctx: Context) -> None:
-    """A hotkey is a keydown carrying `ctrlKey`, so a driver that can only
-    send the bare character cannot drive one."""
+    """A hotkey is a keydown carrying `ctrlKey`; a bare character cannot drive one."""
     ctx.visit("keyboard.html")
     ctx.session.press("#first", "Control+a")
     assert ctx.text("#chord") == "ctrl+a"
@@ -189,9 +166,7 @@ def enter_submits_and_escape_closes(ctx: Context) -> None:
 
 
 def a_target_blank_link_leaves_the_session_where_it_was(ctx: Context) -> str:
-    """Recorded, not forced: the contract is only that the session keeps
-    driving the page it was on. Whether a second tab exists is the driver's
-    business, and ``latest_tab`` is how a caller would go and find it."""
+    """Recorded, not forced: the contract is only that the session stays on its page."""
     require_latest_tab(ctx)
     expect_success(ctx, "new-tab.html", "new-tab")
     opener = ctx.session.get_page()

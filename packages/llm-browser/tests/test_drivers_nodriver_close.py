@@ -1,9 +1,4 @@
-"""NodriverDriver.close() stops the browser directly.
-
-``nodriver`` is an optional extra and is NOT installed here — a ``FakeBrowser``
-stands in for the real one, which is enough since ``Browser.stop()`` is a
-synchronous method and ``close()`` must call it as one.
-"""
+# nodriver is not installed here; Browser.stop() is synchronous, so a FakeBrowser suffices.
 
 import asyncio
 import warnings
@@ -28,9 +23,7 @@ def driver() -> Iterator[NodriverDriver]:
 
 
 def test_close_calls_stop_directly_once(driver: NodriverDriver) -> None:
-    """A loop.run_until_complete(browser.stop()) would raise TypeError on the
-    non-coroutine result; asserting the loop is still open after close()
-    shows that path was never taken."""
+    # Awaiting browser.stop() would raise TypeError; an open loop after close() shows it was not.
     browser = FakeBrowser()
     driver.browser = browser
 
@@ -40,9 +33,6 @@ def test_close_calls_stop_directly_once(driver: NodriverDriver) -> None:
 
 
 def test_close_swallows_a_failing_stop(driver: NodriverDriver) -> None:
-    """Shutdown stays racy — the CDP websocket may already be disconnected —
-    so a genuine failure inside Browser.stop() must not stop close() from
-    resetting driver state."""
     driver.browser = FakeBrowser(stop_error=RuntimeError("already disconnected"))
 
     driver.close(HANDLE)
@@ -55,10 +45,7 @@ def test_close_swallows_a_failing_stop(driver: NodriverDriver) -> None:
 def test_close_drains_a_task_stop_left_pending_without_warning(
     driver: NodriverDriver,
 ) -> None:
-    """Browser.stop() schedules a disconnect task on the loop but never runs
-    it; closing the loop underneath that task is what prints "Task was
-    destroyed but it is pending!" and warns that its coroutine was never
-    awaited."""
+    # Closing the loop under stop()'s pending disconnect task prints "Task was destroyed".
     browser = FakeBrowser(loop=driver.loop)
     driver.browser = browser
 

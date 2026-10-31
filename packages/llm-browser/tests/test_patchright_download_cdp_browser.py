@@ -1,7 +1,3 @@
-"""Attached-mode downloads against a real Chromium whose download dir is
-unwritable, as on the deployed guest: the bytes must come back sha-exact
-from inside the page, and nothing may land on disk."""
-
 import hashlib
 import http.server
 import random
@@ -39,7 +35,6 @@ fetch('/blob.bin?mb={mb}').then(r => r.blob()).then(b => {{
   a.href = window.URL.createObjectURL(b); a.download = 'doc.pdf'; document.body.append(a);
   a.click(); {after}
 }});">Download</button>"""
-# The blob URL exists before the step; the button shows once it does.
 EARLY_BLOB = """<script>
 fetch('/blob.bin?mb={mb}').then(r => r.blob()).then(b => {{
   const url = URL.createObjectURL(b);
@@ -107,7 +102,6 @@ def handler(other: list[str]) -> type[http.server.BaseHTTPRequestHandler]:
 
 @pytest.fixture(scope="module")
 def site() -> Iterator[str]:
-    """The top site's url; its iframe page embeds the other site, out of process."""
     other: list[str] = []
     hosts = ("127.0.0.1", "localhost")
     servers = [http.server.ThreadingHTTPServer((h, 0), handler(other)) for h in hosts]
@@ -161,7 +155,6 @@ def chrome() -> Iterator[tuple[str, Path]]:
 def session(chrome: tuple[str, Path], tmp_path: Path) -> Iterator[BrowserSession]:
     session = BrowserSession(state_dir=tmp_path, driver="patchright")
     session.attach(chrome[0])
-    # Stand in for Playwright pointing the guest at a dir it cannot write.
     cdp = session.get_page().context.browser.new_browser_cdp_session()
     behavior = {"behavior": "allowAndName", "downloadPath": "/nonexistent/dl"}
     cdp.send("Browser.setDownloadBehavior", behavior)
@@ -247,8 +240,7 @@ def test_a_download_in_another_tab_is_not_ours(
 def test_an_idle_session_does_not_stall_other_clients(
     session: BrowserSession, site: str, chrome: tuple[str, Path]
 ) -> None:
-    """An init script would leave a context-wide route that only an active
-    sync call services, hanging every other client's navigation."""
+    # An init script leaves a context-wide route only an active sync call services.
     page = session.get_page()
     page.goto(f"{site}/top.html")
     button = page.locator('[aria-label="Download"]')
@@ -292,8 +284,6 @@ def test_a_hung_refetch_times_out_within_the_step(
 def test_the_keep_blob_script_wraps_a_document_once(
     session: BrowserSession, site: str
 ) -> None:
-    """Every download step evaluates the script again in the same document;
-    a revoke must still happen once, and only after the deferral."""
     page = session.get_page()
     page.goto(f"{site}/top.html")
     page.evaluate(FAKE_REVOKE_AND_TIMERS, isolated_context=False)

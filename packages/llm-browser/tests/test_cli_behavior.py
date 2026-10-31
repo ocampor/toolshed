@@ -1,5 +1,3 @@
-"""`llm-browser run --behavior`: one run's humanization, named in the result."""
-
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -74,7 +72,6 @@ def test_a_missing_path_is_a_usage_error(tmp_path: Path, session: MagicMock) -> 
 
 
 def test_a_malformed_yaml_is_a_usage_error(tmp_path: Path, session: MagicMock) -> None:
-    """A syntax error in the file is the user's typo, not a traceback."""
     config = tmp_path / "behavior.yaml"
     config.write_text("min_gap_ms: [unclosed\n")
 

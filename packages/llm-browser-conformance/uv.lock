@@ -481,7 +481,7 @@ wheels = [
 
 [[package]]
 name = "llm-browser"
-version = "0.27.0"
+version = "0.27.1"
 source = { editable = "../llm-browser" }
 dependencies = [
     { name = "click" },
@@ -538,7 +538,7 @@ dev = [
 
 [[package]]
 name = "llm-browser-conformance"
-version = "0.13.3"
+version = "0.13.4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1704,7 +1704,7 @@ wheels = [
 
 [[package]]
 name = "yaml-engine"
-version = "0.2.0"
+version = "0.2.1"
 source = { directory = "../yaml-engine" }
 dependencies = [
     { name = "pyyaml" },

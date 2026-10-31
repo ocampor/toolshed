@@ -1,11 +1,4 @@
-"""The humanized click against a real Chromium: does the hit test the click
-trusts — run in patchright's isolated world — see what the page itself sees?
-
-The fakes elsewhere can only prove the plumbing. Isolated-world
-``elementFromPoint`` reading a different element than the main world's would
-make every refusal and every reported hit a lie, and nothing but a browser
-can answer that.
-"""
+# Only a real browser shows whether the isolated world's elementFromPoint matches the main world's.
 
 import random
 from pathlib import Path
@@ -42,12 +35,6 @@ PAGE = """
 
 
 class Case(NamedTuple):
-    """A page and where it starts scrolled, plus whether the click must land.
-
-    ``must_click`` is off only for the original shape, where the path crosses
-    the nav on its way down and the menu legitimately takes the point.
-    """
-
     nav_edge: str
     nav_height: int
     link_top: int
@@ -62,11 +49,7 @@ class Case(NamedTuple):
 
 CASES = {
     "below the fold, nav on top": Case("top", 60, 2400, 0, must_click=False),
-    # Wheeling up: the minimal scroll stops with the box flush against the top
-    # edge, which is where the fixed nav is.
     "above the fold, nav on top": Case("top", 60, 800, 1200, must_click=True),
-    # Wheeling down: the minimal scroll stops with the box flush against the
-    # bottom edge, which is where this nav is.
     "below the fold, nav on the bottom": Case("bottom", 80, 2400, 0, must_click=True),
 }
 
@@ -87,11 +70,7 @@ def live_session(tmp_path: Path) -> Iterator[BrowserSession]:
 
 
 def main_world_at(cdp: Any, point: tuple[float, float]) -> str:
-    """``tag|class`` of whatever the *page's own* world finds at ``point``.
-
-    ``Runtime.evaluate`` with no context id is the main world; patchright's
-    ``evaluate`` deliberately is not, which is the whole question here.
-    """
+    # Runtime.evaluate with no context id is the main world; patchright's evaluate is not.
     read = cdp.send(
         "Runtime.evaluate",
         {
@@ -139,7 +118,6 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
     try:
         hit = live_session.click("#logout")
     except ValueError as refusal:
-        # The path crossed the nav and the menu it opened took the point.
         assert not case.must_click, str(refusal)
         assert "covered-after-move" in str(refusal)
         assert seen == ["li|menu-item"]
@@ -148,8 +126,6 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
         assert seen == [f"{hit.tag}|{hit.class_name}"]
         assert hit.tag in {"a", "span"}
 
-    # The wheel, not the programmatic jump, is what brought the link in, and
-    # it left the target clear of the nav rather than flush against its edge.
     assert page.evaluate("() => window.scrollY") != case.start_at
     assert jumped == []
     box = page.evaluate(

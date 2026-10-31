@@ -1,5 +1,3 @@
-"""Tests for the in-page JavaScript loaded from ``js/``."""
-
 import json
 import shutil
 import subprocess
@@ -40,8 +38,6 @@ def test_extract_rows_js_is_a_rows_spec_function() -> None:
 
 
 def test_extract_rows_js_reads_the_property_allowlist_from_python() -> None:
-    """One list, substituted in, so the page-side rule cannot drift from
-    ``Driver.read_field``."""
     assert json.dumps(list(EXTRACT_PROPERTIES)) in extract_rows_js()
 
 
@@ -84,8 +80,6 @@ console.log(JSON.stringify(EXTRACT([row], { spec, exclude: [] })));
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_extract_rows_js_semantics_in_node(tmp_path: Path) -> None:
-    """Run the real script over fake elements: property reads, attributes,
-    a missing child, and a null child_selector meaning the row itself."""
     script = tmp_path / "harness.mjs"
     script.write_text(
         f"const EXTRACT = {extract_rows_js()};\n{FAKE_DOM_HARNESS}",
@@ -179,8 +173,6 @@ console.log(JSON.stringify({ pruned, whole, left: row.textContent }));
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_read_exclude_drops_matches(tmp_path: Path) -> None:
-    """`exclude` drops those matches from the text, reads `value` off the live
-    element anyway, and leaves the page alone: the text read is on a copy."""
     script = tmp_path / "harness.mjs"
     script.write_text(
         f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_DOM}{EXCLUDE_HARNESS}"
@@ -220,9 +212,6 @@ console.log(JSON.stringify({ batch, fallback }));
 def test_both_paths_agree_on_a_field_inside_an_excluded_subtree(
     tmp_path: Path,
 ) -> None:
-    """`exclude` is about text, never about whether a field's element exists:
-    a `child_selector` resolves on the live row on both paths, so a field
-    living inside an excluded subtree reads the same either way."""
     script = tmp_path / "harness.mjs"
     script.write_text(
         f"const EXTRACT = {extract_rows_js()};\n"
@@ -238,7 +227,6 @@ def test_both_paths_agree_on_a_field_inside_an_excluded_subtree(
 
 
 def test_property_js_prunes_only_what_a_descendant_is_part_of() -> None:
-    """The fallback path applies the same rule without the batch script."""
     assert property_js("textContent") == "(el) => el.textContent"
     assert property_js("value", ["nav"]) == "(el) => el.value"
     assert property_js("tagName", ["nav"]) == "(el) => el.tagName"
@@ -328,23 +316,19 @@ def test_select_option_js_picks_or_says_why_not(
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_disabled_optgroup_is_its_own_answer(tmp_path: Path) -> None:
-    """`parentElement.disabled` blamed the option; an option inside a disabled
-    `<optgroup>` has no `disabled` of its own and used to be chosen."""
+    # An option in a disabled optgroup has no `disabled` of its own and used to be chosen.
     result = run_select_harness("g", tmp_path, group_disabled=True)
     assert result == {"outcome": "group-disabled", **UNTOUCHED}
 
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_disabled_select_is_its_own_answer(tmp_path: Path) -> None:
-    """Not "the option is disabled": the option is fine, the control is not."""
     result = run_select_harness("c", tmp_path, select_disabled=True)
     assert result == {"outcome": "select-disabled", **UNTOUCHED}
 
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
-    """The Playwright family resolves one before acting; rejecting it here
-    would make nodriver refuse a target the others accept."""
     label = '{ tagName: "LABEL", control: select }'
     assert run_select_harness("c", tmp_path, target=label) == CHOSE_C
 
@@ -366,15 +350,13 @@ def test_the_control_tag_script_resolves_a_label() -> None:
 
 
 def test_explore_first_js_is_an_async_element_function() -> None:
-    """It has to be async: `stable` is two rects a beat apart, in one call."""
+    # It has to be async: `stable` is two rects a beat apart, in one call.
     source = explore_first_js()
     assert source.startswith("async (el) =>")
     assert constants.EXPLORE_LIMITS_PLACEHOLDER not in source
 
 
 def test_explore_first_js_reads_every_limit_from_python() -> None:
-    """One source for the limits, so the page side and `FirstMatch` cannot
-    disagree about what counts as interactive or how long "still" is."""
     source = explore_first_js()
     assert f'"stable_delay_ms": {constants.EXPLORE_STABLE_DELAY_MS}' in source
     assert f'"text_max": {constants.EXPLORE_TEXT_MAX_CHARS}' in source
@@ -387,8 +369,6 @@ def test_explore_first_js_reads_every_limit_from_python() -> None:
 
 
 def test_the_element_read_is_shared_rather_than_copied() -> None:
-    """`explore` and `explore_many` answer the same questions about an
-    element, so one script answers them."""
     element = load_script("explore_element")
     assert element.lstrip().startswith("//")
     assert "async (el, limits) =>" in element
@@ -401,8 +381,6 @@ def test_the_element_read_is_shared_rather_than_copied() -> None:
 
 
 def test_explore_many_js_carries_the_batch_it_was_asked_for() -> None:
-    """The targets, the sample size and the wait are the page's to apply:
-    everything the batch needs goes over in the one call."""
     source = explore_many_js(
         [{"selector": ".row", "extract": {"title": {"child_selector": "a"}}}],
         2,
@@ -422,8 +400,7 @@ def test_explore_many_js_carries_the_batch_it_was_asked_for() -> None:
 
 @pytest.mark.parametrize("spec", ["@innerText", "@outerHTML"])
 def test_explore_reads_a_property_spec_off_the_element(spec: str) -> None:
-    """`@innerText` and `@outerHTML` are DOM properties, not attributes: the
-    batch carries the same allowlist the page-side read branches on."""
+    # `@innerText` and `@outerHTML` are DOM properties, not attributes.
     field = ExtractField.parse(spec)
     assert field.attribute in EXTRACT_PROPERTIES
 
@@ -442,13 +419,10 @@ def test_survey_js_reads_every_cap_from_python() -> None:
     assert f'"min_siblings": {constants.SURVEY_MIN_SIBLINGS}' in source
     assert json.dumps(list(constants.TESTID_ATTRIBUTES)) in source
     assert constants.SURVEY_LIMITS_PLACEHOLDER not in source
-    # A survey never acts on the page: it is the read an author starts with.
     assert "click(" not in source and "scrollIntoView" not in source
 
 
 def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
-    """The selectors are built in Python, so the page is asked about them
-    rather than re-deriving them — one `querySelectorAll` each."""
     source = count_selectors_js(["article.dense", '[aria-label="Next"]'])
 
     assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
@@ -547,8 +521,6 @@ console.log(JSON.stringify({
 
 
 def test_text_match_js_does_not_substitute_the_text_it_carries() -> None:
-    """The waited-for text is a value, not source: a page that says a
-    placeholder's name must not rewrite the script that looks for it."""
     from llm_browser.scripts import text_match_js
 
     source = text_match_js(constants.TEXT_MATCH_EXACT_PLACEHOLDER, exact=True)
@@ -633,13 +605,10 @@ def run_viewport_fit_harness(
 @pytest.mark.parametrize(
     ("rect", "expected_gap"),
     [
-        # Below the fold: gap is the box's centre minus the viewport's centre.
         pytest.param({"top": 900, "height": 100, "bottom": 1000}, 550, id="below_fold"),
-        # Above the fold: same formula, negative.
         pytest.param(
             {"top": -300, "height": 100, "bottom": -200}, -650, id="above_fold"
         ),
-        # Fully in view and clear of both 15% dead zones: left alone.
         pytest.param(
             {"top": 300, "height": 100, "bottom": 400}, 0, id="clear_of_dead_zones"
         ),
@@ -648,7 +617,6 @@ def run_viewport_fit_harness(
         pytest.param(
             {"top": 50, "height": 50, "bottom": 100}, -325, id="top_dead_zone"
         ),
-        # Taller than the viewport: brought to its top edge, not centred.
         pytest.param(
             {"top": 200, "height": 900, "bottom": 1100},
             200,
@@ -701,7 +669,6 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "elsewhere": False,
             },
         ),
-        # Exact: the toast's own text, which the page holds only as a subtree.
         (
             "Sesión finalizada",
             True,

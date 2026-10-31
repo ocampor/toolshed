@@ -1,10 +1,3 @@
-"""What ``survey`` reads off a page, and what it answers with.
-
-Two layers: the ``Survey*Read`` models are the page's raw material — every
-element that carries a name, every href, every run of siblings — and the rest
-is what :mod:`llm_browser.survey` makes of it.
-"""
-
 from pydantic import BaseModel, Field
 
 from llm_browser.explore_models import NestedControl

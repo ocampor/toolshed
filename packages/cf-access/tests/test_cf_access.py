@@ -1,10 +1,3 @@
-"""Tests for the self-contained Cloudflare Access verifier.
-
-No network: an RSA keypair is generated in-process, tokens are minted with the
-private key, and the JWKS client is replaced by a fake that hands back the
-matching public key.
-"""
-
 import datetime
 from typing import Any
 
@@ -23,8 +16,6 @@ AUD = "test-aud-tag"
 
 
 class FakeJWKSClient:
-    """A stand-in PyJWKClient that always resolves to the test public key."""
-
     def __init__(self, public_key: object) -> None:
         self._key = public_key
 

@@ -1,5 +1,3 @@
-"""Fixture flows the suite ships still validate the way the library promises."""
-
 import pytest
 from llm_browser.flows import load_flow_text
 from pydantic import ValidationError

@@ -1,5 +1,3 @@
-"""The `wait_for` flow step: model validation, failure capture, optional skip."""
-
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -30,9 +28,6 @@ def wait_for_step(**overrides: Any) -> dict[str, Any]:
     return {"name": "await_it", "action": "wait_for", "selector": "#late", **overrides}
 
 
-# --- Step model ---
-
-
 def test_defaults_come_from_constants() -> None:
     step = validate_step(wait_for_step())
     assert isinstance(step, WaitForStep)
@@ -57,8 +52,6 @@ def test_unknown_state_is_rejected(bad: Any) -> None:
 
 @pytest.mark.parametrize("interval", [0, -1, -500])
 def test_non_positive_interval_is_rejected(interval: int) -> None:
-    """A zero interval would hot-spin the driver; a negative one used to blow
-    up mid-poll as a ``Jitter`` ValueError that ``optional`` swallowed."""
     with pytest.raises(ValidationError):
         validate_step(wait_for_step(interval=interval))
 
@@ -73,7 +66,6 @@ def test_non_positive_settle_is_rejected(settle: int) -> None:
 def test_settle_must_fit_inside_the_timeout_when_stable(
     settle: int, timeout: int
 ) -> None:
-    """Otherwise the wait times out on text that never changed at all."""
     with pytest.raises(ValidationError, match="must be less than timeout"):
         validate_step(wait_for_step(state="stable", settle=settle, timeout=timeout))
 
@@ -126,15 +118,12 @@ def test_either_target_validates(overrides: dict[str, Any]) -> None:
 
 
 def test_a_text_wait_rejects_an_element_only_state() -> None:
-    """`stable` reads an element's text over time; a text wait has no element,
-    and the message may not send the author after a selector they gave."""
     with pytest.raises(ValidationError, match="asks about an element, not text"):
         validate_step(wait_for_step(text="done", state="stable"))
 
 
 def test_empty_text_is_rejected() -> None:
-    """Every string contains "", so the wait would return on the first tick
-    however empty the page is."""
+    # Every string contains "", so the wait would return on the first tick.
     with pytest.raises(ValidationError, match="text"):
         validate_step(wait_for_step(text=""))
 
@@ -142,8 +131,6 @@ def test_empty_text_is_rejected() -> None:
 def test_the_action_refuses_a_step_with_neither_target(
     mock_session: MagicMock,
 ) -> None:
-    """The model keeps both from being empty; the action says so itself rather
-    than passing the page silently by."""
     step = WaitForStep.model_construct(action="wait_for", name="x")
 
     with pytest.raises(ValueError, match="needs a selector or text"):
@@ -168,9 +155,6 @@ def test_the_action_waits_on_text_when_the_step_names_it(
     )
 
 
-# --- Action dispatch ---
-
-
 def test_action_forwards_every_knob(mock_session: MagicMock) -> None:
     step = validate_step(
         wait_for_step(state="stable", timeout=900, interval=120, settle=300)
@@ -190,9 +174,6 @@ def test_optional_step_skips_on_timeout(mock_session: MagicMock) -> None:
 
     assert isinstance(result, SkippedResult)
     assert TIMEOUT_MESSAGE in result.reason
-
-
-# --- Flow-level failure report ---
 
 
 def _run_missing_element_flow(session: MagicMock, **step_overrides: Any) -> Any:
@@ -264,7 +245,6 @@ def test_successful_wait_runs_the_next_step(mock_session: MagicMock) -> None:
 
 
 def test_step_survives_a_template_round_trip(mock_session: MagicMock) -> None:
-    """``resolve_step`` re-validates a dumped step; a lost field would show here."""
     flow = load_flow_text(
         yaml.dump(
             {
@@ -286,9 +266,6 @@ def test_step_survives_a_template_round_trip(mock_session: MagicMock) -> None:
         interval=50,
         settle=DEFAULT_SETTLE_MS,
     )
-
-
-# --- CLI ---
 
 
 def test_cli_reports_a_timeout_as_a_clean_error(

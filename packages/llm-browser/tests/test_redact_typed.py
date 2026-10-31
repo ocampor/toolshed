@@ -1,5 +1,3 @@
-"""Secrets a typed read or caller data turned into numbers and dates."""
-
 import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -70,7 +68,6 @@ def test_page_text_is_masked_before_a_typed_read(session: BrowserSession) -> Non
 
     assert isinstance(result, FlowSuccess), result
     assert result.outputs == {"grab": [None]}
-    # A number with no digits left is an unmatched pattern, not an error.
     errors = {(e.field, e.input) for e in result.extract_errors}
     assert errors == {("dob", "***"), ("born", "***"), ("at", "***")}
     dumped = result.model_dump_json()

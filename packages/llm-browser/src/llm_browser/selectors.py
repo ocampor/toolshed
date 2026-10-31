@@ -1,6 +1,3 @@
-"""Selector abstraction: Pydantic models for CSS, XPath, ID, and fallback
-selectors, plus the match-count rule a step's ``expect``/``pick`` states."""
-
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
@@ -75,10 +72,6 @@ FallbackSelector.model_rebuild()
 
 
 def parse_selector(raw: str | dict[str, Any]) -> Selector:
-    """Parse a raw string or dict into a typed Selector.
-
-    Used at the boundary where YAML/JSON data enters the system.
-    """
     if isinstance(raw, str):
         return raw
     if isinstance(raw, BaseModel):
@@ -116,12 +109,7 @@ def _selector_string(selector: Selector) -> str:
 
 
 def describe_selector(selector: Selector) -> str:
-    """The selector as a user would have written it, for error messages.
-
-    Total, unlike ``css_string`` and ``_selector_string``: an XPath renders as
-    ``xpath=...`` and a fallback chain as ``primary or fallback``, so no
-    caller has to fall back to a pydantic repr.
-    """
+    """Total, unlike ``css_string``, so no error message falls back to a pydantic repr."""
     if isinstance(selector, FallbackSelector):
         primary = describe_selector(selector.primary)
         return f"{primary} or {describe_selector(selector.fallback)}"
@@ -132,10 +120,7 @@ def describe_selector(selector: Selector) -> str:
 
 
 def css_string(selector: Selector) -> str:
-    """CSS text for an in-page ``querySelector`` call.
-
-    XPath and fallback selectors have no CSS form; they need a driver locator.
-    """
+    """XPath and fallback selectors have no CSS form; they need a driver locator."""
     match selector:
         case str() | CssSelector() | IdSelector():
             return _selector_string(selector)
@@ -143,7 +128,6 @@ def css_string(selector: Selector) -> str:
 
 
 def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
-    """Resolve a typed selector into a driver-native locator."""
     if isinstance(selector, FallbackSelector):
         return _resolve_with_fallback(driver, page, selector.primary, selector.fallback)
     if isinstance(selector, ScopedSelector):
@@ -152,9 +136,7 @@ def resolve_selector(driver: Driver, page: Any, selector: Selector) -> Any:
 
 
 def _resolve_scoped(driver: Driver, page: Any, selector: ScopedSelector) -> Any:
-    """Descendants of one match only. The count is checked first: a page that
-    dropped rows mid-loop fails the pass with what happened, not with whatever
-    a driver does when asked for an element that is no longer there."""
+    """The count is checked first, so a page that dropped rows fails the pass with what happened."""
     if isinstance(selector.inner, FallbackSelector):
         raise ValueError(
             "a fallback selector cannot be scoped to an element with `in:`; "

@@ -1,5 +1,3 @@
-"""HTML cleaning utilities for DOM snippet extraction and page snapshots."""
-
 import enum
 import re
 from typing import Any
@@ -120,7 +118,6 @@ def normalize_whitespace(tree: HtmlElement) -> None:
 
 
 def truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> None:
-    """Remove children beyond max_depth."""
     if current >= max_depth:
         for child in list(element):
             element.remove(child)
@@ -130,13 +127,7 @@ def truncate_tree(element: HtmlElement, max_depth: int, current: int = 0) -> Non
 
 
 def sanitize_tree(tree: HtmlElement, level: SanitizeLevel) -> None:
-    """Apply ``level`` to ``tree``, in place.
-
-    The one implementation of what a level *means*. Both entry points — a
-    fragment from `dom`, a whole document from a failure capture — go through
-    it, so a page snapshot at ``medium`` keeps exactly the attributes a
-    snippet at ``medium`` keeps.
-    """
+    """The one meaning of a level, shared by `dom` fragments and failure captures."""
     CLEANERS[level](tree)
     if level is not SanitizeLevel.LOW:
         truncate_data_uris(tree)
@@ -147,12 +138,7 @@ def sanitize_tree(tree: HtmlElement, level: SanitizeLevel) -> None:
 
 
 def parse_fragment(html: str) -> HtmlElement:
-    """The one element ``html`` describes, whatever its root tag is.
-
-    A ``<body>``/``<html>`` outerHTML is a fragment whose root the fragment
-    parser strips — it then sees several roots and refuses — so those two go
-    through the document parser instead.
-    """
+    """The fragment parser strips a ``<body>``/``<html>`` root and refuses the roots left, so those use the document parser."""
     match = DOCUMENT_ROOT_PATTERN.match(html)
     try:
         if match is None:
@@ -174,7 +160,6 @@ def sanitize_html_fragment(
     max_depth: int = 0,
     level: SanitizeLevel = SanitizeLevel.LOW,
 ) -> str:
-    """Sanitize an HTML fragment; optionally truncate past max_depth nesting."""
     tree = parse_fragment(html)
     sanitize_tree(tree, level)
     if max_depth > 0:
@@ -183,13 +168,7 @@ def sanitize_html_fragment(
 
 
 def sanitize_page_html(html: str, level: SanitizeLevel = SanitizeLevel.HIGH) -> str:
-    """Sanitize a whole page for a failure capture.
-
-    ``high`` by default — a capture is for reading, and every `src`/`href` in
-    a full page is noise — but the caller decides: ``medium`` keeps links when
-    the point is to see where the page would have gone next, ``xhigh``
-    collapses the wrappers when the point is to read the structure.
-    """
+    """``high`` by default: in a capture every `src`/`href` is noise."""
     tree: HtmlElement = document_fromstring(html, parser=_page_parser)
     sanitize_tree(tree, level)
     return serialize(tree)
