@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.4 — 2026-10-31
+
+### Changed
+
+- Deleted comments and docstrings that restate the code.
+
 ## 0.13.3 — 2026-10-19
 
 Tracks `llm-browser` 0.27.0.

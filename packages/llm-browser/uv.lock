@@ -351,7 +351,7 @@ wheels = [
 
 [[package]]
 name = "llm-browser"
-version = "0.27.0"
+version = "0.27.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -703,7 +703,7 @@ wheels = [
 
 [[package]]
 name = "ocampor-bench"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "../bench" }
 
 [package.optional-dependencies]
@@ -1523,7 +1523,7 @@ wheels = [
 
 [[package]]
 name = "yaml-engine"
-version = "0.2.0"
+version = "0.2.1"
 source = { directory = "../yaml-engine" }
 dependencies = [
     { name = "pyyaml" },

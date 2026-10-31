@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.1 — 2026-10-31
+
+### Changed
+
+- Deleted comments and docstrings that restate the code.
+
 ## 0.27.0 — 2026-10-19
 
 ### Added

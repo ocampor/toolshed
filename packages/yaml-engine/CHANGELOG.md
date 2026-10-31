@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-10-31
+
+### Changed
+
+- Deleted comments and docstrings that restate the code.
+
 ## 0.2.0 — 2026-09-19
 
 ### Breaking
