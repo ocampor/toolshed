@@ -21,7 +21,6 @@ from llm_browser.constants import (
 
 
 def pages_named(spec: str, last_page: int) -> list[int]:
-    """``"1-3,7"`` is ``[1, 2, 3, 7]``, without pages past ``last_page``."""
     # gotcha: recursion depth is bounded by EXTRACT_PAGES_MAX_LENGTH (at most 100 parts)
     head, comma, rest = spec.partition(",")
     first, last = bounds_of(head)

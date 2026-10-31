@@ -39,7 +39,6 @@ class FallbackDriver(Driver):
         return locator.children.get(selector)
 
     def evaluate(self, target: Any, script: str) -> Any:
-        # The base property read is `(el) => el.<name>`.
         name = script.rsplit(".", 1)[1]
         return None if target is None else target.properties.get(name)
 
@@ -129,7 +128,6 @@ def test_nodriver_reads_each_row_inside_that_row() -> None:
 
 
 def test_the_per_element_path_prunes_before_it_reads() -> None:
-    # nodriver reads a property through one script, so `exclude` has to reach that script.
     driver = FallbackDriver([])
     seen: list[str] = []
     driver.evaluate = lambda target, script: seen.append(script)  # type: ignore[method-assign]

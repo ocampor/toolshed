@@ -207,7 +207,6 @@ def test_untyped_spec_is_byte_identical(
 def test_each_parse_elements_call_replaces_the_errors(
     session: BrowserSession,
 ) -> None:
-    # Outside any step (a `find`) the list must not grow without bound.
     extract = {"n": ExtractField(type="int")}
     serve_rows(session, [{"n": "1,200"}, {"n": "4.5"}])
     first = session.parse_elements("tr", extract)

@@ -1,11 +1,4 @@
-"""What the last run said, so ``--failed`` can rerun just that.
-
-Written after every run, into the working directory and gitignored. That is
-what makes ``--failed`` need no arguments: the loop is ``llm-browser-check``,
-fix something, ``llm-browser-check --failed`` — and the rerun's rows are
-merged back, so the file always describes the suite as a whole rather than
-only the last handful of scenarios.
-"""
+"""Written after every run and merged, so it always describes the whole suite."""
 
 import json
 import warnings
@@ -31,14 +24,7 @@ def key(result: Result) -> Key:
 
 
 def load(path: Path = HISTORY_FILE) -> list[Result]:
-    """The last run's rows, or nothing at all.
-
-    The decoding is inside the guard, not just the parse: the file carries no
-    version, so a renamed `Section`, a new `Outcome` or a rollback to an older
-    install all leave rows this build cannot read. Every invocation of the CLI
-    calls this, `--failed` or not, so a record that has drifted has to mean
-    "start fresh" rather than a crash before any browser starts.
-    """
+    """Decoding is guarded too: the unversioned file may hold rows this build cannot read."""
     try:
         rows = json.loads(path.read_text())
         return [as_result(row) for row in rows]
@@ -80,11 +66,7 @@ def rerun_plan(
     drivers: Sequence[str],
     scenarios: Sequence[Scenario],
 ) -> dict[str, list[Scenario]]:
-    """Which scenarios each driver has to answer again.
-
-    Per driver, because the drivers disagree: a scenario that only camoufox
-    got wrong is not worth relaunching Chrome for.
-    """
+    """Per driver: a scenario only camoufox failed is not worth relaunching Chrome for."""
     wanted = {key(row) for row in previous if row.outcome in RERUN_OUTCOMES}
     plan = {
         driver: [s for s in scenarios if (s.name, driver) in wanted]

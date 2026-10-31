@@ -69,12 +69,7 @@ def _register_optional_drivers(registry: Registry[type[Driver]]) -> None:
 
 
 def resolve_driver(driver: Driver | str | None) -> Driver:
-    """Return a Driver instance.
-
-    - `None` → default driver (patchright)
-    - `str`  → registry lookup, default-constructed instance
-    - `Driver` instance → passthrough (no mutation, no registration needed)
-    """
+    """``None`` is patchright, a ``str`` a registry lookup, a ``Driver`` passes through."""
     if isinstance(driver, Driver):
         return driver
     name = driver if isinstance(driver, str) else DEFAULT_DRIVER_NAME

@@ -29,7 +29,6 @@ def test_sections_split_at_headings_and_keep_their_own_heading() -> None:
 
 
 def test_a_heading_inside_a_fence_is_not_a_section() -> None:
-    # A `#` comment in a YAML example would otherwise split the document.
     headings = [section.heading for section in docs.sections("guide/patterns")]
     assert not [h for h in headings if h.startswith("#")]
     assert "Flow Patterns" in headings

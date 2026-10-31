@@ -1,12 +1,4 @@
-"""The ``BrowserSession`` surface a YAML flow cannot reach.
-
-A flow step covers most of the library, but not all of it: ``probe``,
-``screenshot_bytes``, ``element_exists``, ``find_all``, ``latest_tab``,
-``wait_for_load_state``, the sanitize level ``dom`` takes, the humanized
-``Behavior`` and the whole attach lifecycle are only reachable by calling the
-session. These scenarios call it directly, and hand the session back exactly
-as they found it — one browser is shared by every row.
-"""
+"""These scenarios hand the session back as they found it: one browser is shared by every row."""
 
 import contextlib
 import shutil
@@ -104,8 +96,6 @@ def screenshot_bytes_returns_a_png_and_writes_nothing(ctx: Context) -> None:
 
 
 def element_exists_answers_false_inside_its_timeout(ctx: Context) -> None:
-    """The bool is the easy half; the point is that the absent case comes back
-    as a value within the budget rather than as a ``TimeoutError``."""
     ctx.visit("form.html")
     assert ctx.session.element_exists("#name") is True
     answers: list[bool] = []
@@ -128,9 +118,7 @@ def find_all_returns_what_find_refuses(ctx: Context) -> None:
 
 
 def a_match_rule_reaches_every_lookup_a_step_makes(ctx: Context) -> None:
-    """``matching`` is how a step's ``expect``/``pick`` rides the session: the
-    rule is set once and every lookup inside the block obeys it, including the
-    ones ``find`` and ``parse_elements`` make on their own."""
+    """The rule is set once and also binds the lookups ``find`` and ``parse_elements`` make themselves."""
     ctx.visit("match-rules.html")
     rule = MatchRule(expect=3, pick="last")
 
@@ -152,7 +140,6 @@ def a_match_rule_reaches_every_lookup_a_step_makes(ctx: Context) -> None:
 
 
 def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> None:
-    """What an author asks before writing the `read`: how many, and saying what."""
     ctx.visit("rows-attributes.html")
     found = ctx.session.explore(
         ".row",
@@ -175,8 +162,6 @@ def explore_counts_the_whole_list_and_reads_only_the_sample(ctx: Context) -> Non
 
 
 def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
-    """The question `count` cannot answer: the selector is right, and the
-    click still lands on the banner sitting over it."""
     ctx.visit("explore-actionability.html")
 
     buried = ctx.session.explore("#buried", intent=Intent.CLICK)
@@ -196,7 +181,6 @@ def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
     off = ctx.session.explore("#off", intent=Intent.CLICK)
     assert off.first is not None and off.first.why_not == ["disabled"], off
     assert off.verdict is Verdict.NOT_ACTIONABLE, off
-    # A disabled button is still a fine thing to wait for.
     assert ctx.session.explore("#off", intent=Intent.WAIT).verdict is Verdict.OK, off
 
     clear = ctx.session.explore("#clear", intent=Intent.CLICK)
@@ -209,8 +193,6 @@ def explore_says_which_button_a_click_would_miss(ctx: Context) -> None:
 
 
 def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
-    """Below the fold is not an obstacle, a label is not covered by its own
-    checkbox, and a card that swallows a dismiss button says so."""
     ctx.visit("explore-actionability.html")
 
     # `disabled` on the fieldset, nothing on the input: only `:disabled` sees it.
@@ -237,7 +219,6 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     # `main` is at the centre of the card -- an ancestor showing through a gap
     # in the anchor's own box, not something painted over it.
     assert card.first.covered_by is None, card
-    # The test id on the card outranks everything else it could be called.
     assert card.candidates[0] == '[data-testid="mission"]', card
     assert len(card.candidates) <= 3, card
     assert card.since_navigation_ms is not None, card
@@ -248,13 +229,10 @@ def explore_reads_what_a_loose_click_would_cost(ctx: Context) -> None:
     below = ctx.session.explore("#below", intent=Intent.CLICK)
     assert below.first is not None and below.first.why_not == ["offscreen"], below
     assert below.first.clickable and below.verdict is Verdict.OK, below
-    # Exploring scrolled it into view to hit-test it, and found nothing over it.
     assert below.first.hit_tested and below.first.covered_by is None, below
 
 
 def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
-    """A page's worth of selectors for the price of one wait: the counts, the
-    samples and the first-match reads all come back together."""
     ctx.visit("explore-actionability.html")
 
     started = time.monotonic()
@@ -289,7 +267,6 @@ def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
     assert gone.count == 0 and gone.verdict is Verdict.MISSING, gone
     assert gone.first is None and gone.candidates == [], gone
 
-    # A selector the page cannot parse costs its own answer, not the batch's.
     assert refused.error == "not css" and refused.count == 0, refused
     assert refused.verdict is Verdict.MISSING and refused.first is None, refused
     # One wait for the batch, not one per target: the missing selector never
@@ -299,8 +276,6 @@ def explore_many_answers_every_target_in_one_page_call(ctx: Context) -> None:
 
 
 def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
-    """The call before the first selector: what is named, what repeats, and
-    what the links point at — without touching the page."""
     ctx.visit("explore-actionability.html")
 
     found = ctx.session.survey()
@@ -308,8 +283,6 @@ def survey_reads_what_the_page_is_made_of(ctx: Context) -> None:
     named = {mark.selector for mark in found.landmarks}
     assert '[data-testing-id="deck"]' in named, found.landmarks
     assert '[data-testid="buy"]' in named, found.landmarks
-    # Test ids first: an author reading the top of the list reads the sturdiest
-    # selectors the page offers.
     assert found.landmarks[0].selector.startswith("[data-test"), found.landmarks
 
     # Every count is page-wide, whatever named it: two elements answer to the
@@ -339,13 +312,7 @@ NEW_TAB_TARGET = "new-tab-target.html"
 
 
 def latest_tab_url(ctx: Context, expected: str, timeout_s: float = 5.0) -> str:
-    """Poll the newest tab for its url, asking the page rather than the driver.
-
-    A new tab does not exist the instant the click returns, and on the
-    Playwright family the popup only lands in the context once a round trip
-    pumps the connection — ``page_url`` reads a cached attribute, so a loop
-    built on it would spin out its whole timeout against a stale tab list.
-    """
+    """On the Playwright family a popup lands only after a round trip; ``page_url`` reads a cached attribute."""
     deadline = time.monotonic() + timeout_s
     while True:
         url = str(ctx.session.evaluate(ctx.session.latest_tab(), "location.href"))
@@ -355,12 +322,7 @@ def latest_tab_url(ctx: Context, expected: str, timeout_s: float = 5.0) -> str:
 
 
 def require_latest_tab(ctx: Context) -> None:
-    """Skip before opening a tab this driver would give no way to close again.
-
-    Decided up front, never from the cleanup: a skip raised once the scenario
-    has already passed its assertions reports the wrong outcome, and one
-    raised from a ``finally`` swallows the failure it was cleaning up after.
-    """
+    """Decided up front: a skip from the cleanup misreports a passed scenario or swallows a failure."""
     try:
         ctx.session.latest_tab()
     except NotImplementedError as exc:
@@ -378,14 +340,7 @@ def target_already_closed(error: BaseException) -> bool:
 
 
 def ask_to_close(ctx: Context, tab: Any) -> BaseException | None:
-    """Ask ``tab`` to close, and say whether it had already gone.
-
-    A popup the browser turned into a download closes itself, sometimes
-    between reading the tab list and this call, and that is the outcome being
-    asked for rather than a failure. Every other reason ``evaluate`` can fail
-    is raised: losing it would leave the caller spinning out its deadline to
-    report ``never closed`` about an unrelated fault.
-    """
+    """A popup turned download closes itself, maybe mid-call; any other ``evaluate`` failure is raised."""
     try:
         ctx.session.evaluate(tab, "setTimeout(() => window.close(), 0)")
     except Exception as error:
@@ -396,12 +351,7 @@ def ask_to_close(ctx: Context, tab: Any) -> BaseException | None:
 
 
 def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
-    """Ask ``tab`` to close and wait for the driver's tab list to drop it.
-
-    The close is deferred onto a timer because a synchronous ``window.close()``
-    destroys the target before it answers the CDP call, and nodriver's sync
-    bridge then waits forever on a reply that will never come.
-    """
+    """Deferred to a timer: a sync ``window.close()`` kills the target before it answers, hanging nodriver's bridge."""
     already_gone = ask_to_close(ctx, tab)
     while ctx.session.latest_tab() is tab:
         assert time.monotonic() < deadline, (
@@ -415,17 +365,7 @@ def close_tab(ctx: Context, tab: Any, opener: Any, deadline: float) -> None:
 
 
 def close_opened_tabs(ctx: Context, opener: Any, opened: str | None) -> None:
-    """Put the browser back to the single tab ``opener``.
-
-    Test isolation: one browser drives every row of a driver's column, so a
-    tab left open is shared state each later scenario inherits — it holds the
-    foreground, and a failing step screenshots whatever is in front of it.
-
-    ``opened`` names the page the click opened, because a popup is not in the
-    driver's tab list the instant the click returns — the same lag
-    ``latest_tab_url`` polls out. ``None`` where there may be no tab to wait
-    for: a popup the browser turned into a download closes itself.
-    """
+    """One browser serves every row, so a tab left open is state each later scenario inherits."""
     if opened is not None:
         latest_tab_url(ctx, opened)
     deadline = time.monotonic() + TAB_CLOSE_TIMEOUT_S
@@ -441,14 +381,7 @@ def close_opened_tabs(ctx: Context, opener: Any, opened: str | None) -> None:
 def tabs_closed_after(
     ctx: Context, opener: Any, opened: str | None = None
 ) -> Iterator[None]:
-    """Run a scenario body, then put the browser back to the one tab ``opener``.
-
-    The cleanup has to run on the failing path — that is the path it exists
-    for — but a plain ``finally`` lets it *replace* what the body raised, and
-    the table only ever shows the newest exception. So a popup that will not
-    close would be reported where the scenario's own assertion belongs. The
-    body's exception wins; the cleanup's rides along as a note.
-    """
+    """A plain ``finally`` would replace the body's exception; the cleanup's rides along as a note."""
     body_failure: BaseException | None = None
     try:
         yield
@@ -465,9 +398,7 @@ def tabs_closed_after(
 
 
 def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
-    """The ``new tab`` scenario pins that the session stays on the opener; this
-    pins the way back — and then puts the browser back to one tab, since every
-    later row inherits whatever this one leaves open."""
+    """Puts the browser back to one tab: every later row inherits what this one leaves open."""
     require_latest_tab(ctx)
     ctx.visit("new-tab.html")
     opener = ctx.session.get_page()
@@ -478,8 +409,7 @@ def latest_tab_reaches_the_tab_the_page_opened(ctx: Context) -> None:
 
 
 def sanitize_levels_each_drop_something_more(ctx: Context) -> None:
-    """``session.dom`` is the only way a level other than LOW is reachable —
-    the YAML ``dom`` step is always LOW."""
+    """The YAML ``dom`` step is always LOW; only ``session.dom`` reaches the other levels."""
     ctx.visit("api-sanitize.html")
     low, medium, high, xhigh = (
         ctx.session.dom("#target", 0, level) for level in SanitizeLevel
@@ -491,8 +421,6 @@ def sanitize_levels_each_drop_something_more(ctx: Context) -> None:
         assert "<script" not in level_html
         assert "style=" not in level_html
 
-    # LOW keeps every surviving attribute and svg; MEDIUM keeps only lxml's
-    # safe list and kills svg, and truncates data: URIs to their media type.
     assert 'data-secret="keep-me-out"' in low
     assert "data-secret" not in medium
     assert "<svg" in low
@@ -500,14 +428,11 @@ def sanitize_levels_each_drop_something_more(ctx: Context) -> None:
     assert "base64" in low
     assert 'src="data:image/gif"' in medium
 
-    # HIGH additionally drops the URL attributes.
     assert 'href="https://example.com/detail"' in medium
     assert "href=" not in high
     assert "src=" in medium
     assert "src=" not in high
 
-    # XHIGH keeps only the small allowlist and unwraps div/span/section —
-    # except the root, which keeps its tag.
     assert 'class="card"' in high
     assert "class=" not in xhigh
     assert "<span" in high
@@ -523,8 +448,7 @@ def wait_for_load_state_returns_at_the_state_it_names(ctx: Context) -> None:
 
 
 def humanized_typing_costs_a_delay_per_key(ctx: Context) -> None:
-    """The suite's session runs ``Behavior.off()``; this is the only row that
-    swaps in ``Behavior.human()``, so it must put it back."""
+    """The suite runs ``Behavior.off()``; this row swaps in ``human()`` and must put it back."""
     ctx.visit("form.html")
     instant = ctx.elapsed(lambda: ctx.session.type("#name", TYPED_TEXT))
     assert ctx.value("#name") == TYPED_TEXT
@@ -548,8 +472,7 @@ def humanized_typing_costs_a_delay_per_key(ctx: Context) -> None:
 
 
 def attach_or_skip(ctx: Context) -> None:
-    """Settled before anything is spawned: a driver without ``attach`` must not
-    have to leave a detached Chromium behind to find that out."""
+    """Settled before spawning, so a driver without ``attach`` leaves no detached Chromium behind."""
     driver = resolve_driver(configured(ctx.driver))
     if type(driver).attach is not Driver.attach:
         return
@@ -569,13 +492,7 @@ def attach_session(ctx: Context, state_dir: Path, chrome: str) -> BrowserSession
 
 
 def one_thread(name: str) -> futures.ThreadPoolExecutor:
-    """A thread that owns exactly one browser session.
-
-    A Playwright sync instance belongs to the thread that started it, and that
-    thread may hold only one — the suite's own session is already holding the
-    main thread's. So each session here gets a thread, and every call on it is
-    submitted to that thread.
-    """
+    """A Playwright sync instance belongs to its starting thread, and a thread may hold only one."""
     return futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=name)
 
 
@@ -584,9 +501,7 @@ def on[T](pool: futures.Executor, work: Callable[[], T]) -> T:
 
 
 def kill_stray_chromium(profile: Path) -> None:
-    """``launch_detached`` spawns Chromium before it attaches, so a failure in
-    the attach half leaves a browser no ``SessionInfo`` points at and
-    ``stop_detached`` cannot reach. The profile path is unique to this run."""
+    """A failed attach leaves a Chromium no ``SessionInfo`` points at; the profile path is unique to this run."""
     pkill = shutil.which("pkill")
     if pkill is not None:
         subprocess.run([pkill, "-f", f"user-data-dir={profile}"], check=False)
@@ -650,8 +565,6 @@ def revealed(session: BrowserSession) -> Any:
 def reaches_the_hosts_tab_by_its_id(
     ctx: Context, root: Path, chrome: str, cdp_url: str, target_id: str
 ) -> None:
-    """``(cdp_url, target_id)`` is the whole address of a tab — enough to reach
-    the one the host opened from a session that launched nothing."""
     by_tab = attach_session(ctx, root / "by-tab", chrome)
     with one_thread("attach-by-tab") as pool:
         try:
@@ -665,8 +578,7 @@ def reaches_the_hosts_tab_by_its_id(
 def reconnects_from_the_persisted_endpoint(
     ctx: Context, root: Path, chrome: str
 ) -> None:
-    """A fresh session over the client's state dir holds no page at all, which
-    is what a second CLI invocation looks like."""
+    """A fresh session over the state dir holds no page, like a second CLI invocation."""
     reconnected = attach_session(ctx, root / "client", chrome)
     with one_thread("attach-reconnect") as pool:
         page = on(pool, reconnected.connect)
@@ -679,8 +591,7 @@ def reconnects_from_the_persisted_endpoint(
 def a_session_launches_and_closes_its_own_browser(
     ctx: Context, root: Path, chrome: str
 ) -> None:
-    """The harness launches the shared session before any scenario runs, so
-    ``launch``/``close`` have nowhere else to be claimed."""
+    """The harness launches the shared session first, so ``launch``/``close`` have nowhere else to be claimed."""
     session = attach_session(ctx, root / "launched", chrome)
     with one_thread("attach-launched") as pool:
         try:

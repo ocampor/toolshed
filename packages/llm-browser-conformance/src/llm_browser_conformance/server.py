@@ -1,14 +1,4 @@
-"""The fixture site, served from this process on a random loopback port.
-
-Everything the suite needs is in ``site/``; nothing reaches the public
-internet, so a run is reproducible on a laptop, in CI and inside a sandbox.
-The dynamic routes are the ones a static file cannot express: ``/redirect``,
-``/billtax/print.action`` and ``/billtax/attach.action``, because a 302 is not
-a file; ``/slow-resource``, because a file served instantly cannot hold a
-page's ``load`` event open; and ``/billtax/downloadFile.action`` and
-``/attach.pdf``, because what they pin is the ``Content-Disposition`` a
-browser reads off them.
-"""
+"""Loopback only, so runs are reproducible offline; dynamic routes are what a static file cannot express."""
 
 import base64
 import functools
@@ -91,12 +81,7 @@ class SiteHandler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
-        """``#blank_form`` posts to the PDF route.
-
-        The body is drained and discarded — a later POST fixture that carried
-        one would otherwise desync a kept-alive connection — and then answered
-        by the GET table, which makes every static file POST-able too.
-        """
+        """The body is drained, or a later POST fixture would desync a kept-alive connection."""
         self.rfile.read(int(self.headers.get("Content-Length") or 0))
         self.do_GET()
 
@@ -116,8 +101,7 @@ class SiteHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(PDF_BODY)
 
     def serve_slow_resource(self, query: str) -> None:
-        """Sleep first, then answer — a page embedding this cannot fire
-        ``load`` before ``?delay=`` has passed."""
+        """Sleeps first, so a page embedding this cannot fire ``load`` before ``?delay=``."""
         time.sleep(requested_delay_ms(query) / 1000)
         try:
             self.send_response(200)

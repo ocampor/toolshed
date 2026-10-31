@@ -22,13 +22,7 @@ DEFAULT_TYPE_CHAR_DELAY = Jitter(min_ms=30, max_ms=90)
 
 
 def align_locale_with_geoip(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Inject `geoip=True` when `locale` is set without any geo override.
-
-    Camoufox's `geoip=True` derives timezone + geolocation from the outgoing
-    public IP, keeping locale/tz/IP/Accept-Language triangulation consistent.
-    Callers who pin any of geoip/timezone/geolocation have signaled intent and
-    are left alone.
-    """
+    """Camoufox's ``geoip=True`` keeps locale, timezone and IP consistent; any explicit geo setting wins."""
     has_locale = "locale" in kwargs
     has_geo_override = any(k in kwargs for k in ("geoip", "timezone", "geolocation"))
     if has_locale and not has_geo_override:
@@ -41,12 +35,7 @@ class CamoufoxDriver(PlaywrightDriverBase):
     supports_reconnect: ClassVar[bool] = False
 
     def __init__(self, **camoufox_kwargs: Any) -> None:
-        """Accept Camoufox fingerprint config (locale, os, proxy, humanize, ...).
-
-        Passed straight to `camoufox.sync_api.Camoufox(...)` on launch, merged
-        over stealth defaults (humanize, block_webrtc). Caller kwargs win on
-        conflict. See `align_locale_with_geoip` for the locale→geoip rule.
-        """
+        """Passed to `Camoufox(...)` over stealth defaults (humanize, block_webrtc); caller kwargs win."""
         merged = {**DEFAULT_CAMOUFOX_KWARGS, **camoufox_kwargs}
         self._camoufox_kwargs = align_locale_with_geoip(merged)
         self._camoufox: Any = None
@@ -80,19 +69,13 @@ class CamoufoxDriver(PlaywrightDriverBase):
         return DriverHandle(driver=self.name, user_data_dir=str(user_data_dir))
 
     def fill(self, locator: Any, text: str) -> None:
-        """Clear via `.value=""` then type per-char so callers who bypass the
-        action layer still emit real keyboard events (keydown/keyup/input)
-        instead of a single `.value` write with no rhythm.
-        """
+        """Types per char so callers bypassing the action layer still emit real key events."""
         locator.fill("")
         if text:
             self.type(locator, text)
 
     def type(self, locator: Any, text: str, *, delay_ms: int = 0) -> None:
-        """When delay_ms is 0 (default), type per-char with jittered 30-90ms
-        pauses so direct callers get a human rhythm. Positive delay_ms is
-        honored as Playwright's uniform per-char pause (explicit intent).
-        """
+        """``delay_ms=0`` types with jittered 30-90ms pauses; a positive value is Playwright's uniform pause."""
         if delay_ms > 0:
             locator.type(text, delay=delay_ms)
             return
@@ -101,18 +84,8 @@ class CamoufoxDriver(PlaywrightDriverBase):
             jittered_sleep(DEFAULT_TYPE_CHAR_DELAY)
 
     def scroll(self, page: Any, dx: int, dy: int, locator: Any | None = None) -> None:
-        """Park the cursor over what is being scrolled, then turn the wheel.
-
-        Gecko delivers a wheel event to whatever is under the pointer, and
-        Playwright's pointer starts off the page — so the event landed
-        nowhere and the page never moved. Chromium scrolls either way, which
-        is why only this driver needs it.
-
-        Two consequences worth knowing. The wheel goes to whatever is under
-        the cursor, so a page whose centre holds an inner scroller scrolls
-        that and not the document — pass ``locator`` to say what you meant.
-        And the pointer stays where it was put, so hover-triggered UI (a
-        menu, a tooltip, a lazy load) can open as a side effect of a scroll.
+        """Gecko sends the wheel to whatever is under the pointer, which starts off the page.
+        The pointer stays put afterwards, so hover UI can open as a side effect.
         """
         page.mouse.move(*self.wheel_target(page, locator))
         page.mouse.wheel(dx, dy)

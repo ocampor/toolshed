@@ -1,5 +1,3 @@
-# No network: an in-process RSA keypair mints the tokens; a fake JWKS client serves the key.
-
 import datetime
 from typing import Any
 

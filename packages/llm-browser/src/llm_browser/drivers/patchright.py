@@ -129,9 +129,7 @@ class PatchrightDriver(PlaywrightDriverBase):
 
     @contextmanager
     def _playwright_session(self) -> Iterator[Playwright]:
-        """A Playwright we did not start belongs to an earlier call; a half-built
-        driver must not leave the event loop running.
-        """
+        """A Playwright we did not start belongs to an earlier call; a half-built driver must not leave the loop running."""
         started = self._playwright is None
         if self._playwright is None:
             self._playwright = start_playwright()
@@ -146,12 +144,7 @@ class PatchrightDriver(PlaywrightDriverBase):
             raise
 
     def _reattach_or_raise(self, handle: DriverHandle) -> None:
-        """Rebuild live state from ``handle`` when the process is fresh.
-
-        Only attach mode is recoverable: the CDP endpoint points at a
-        Chromium we didn't launch and didn't kill. Launched mode is gone
-        once Python exits — the persistent context died with it.
-        """
+        """Only attach mode survives a fresh process; a launched context died with the old one."""
         if not _is_attached(handle) or not handle.endpoint:
             raise RuntimeError(
                 "PatchrightDriver has no live page. Call launch() or attach() "
@@ -215,7 +208,6 @@ def _first_page_or_new(context: BrowserContext) -> Page:
 
 
 def _last_page_or_new(context: BrowserContext) -> Page:
-    """The tab a handle without a target id addresses: the most recent one."""
     return context.pages[-1] if context.pages else context.new_page()
 
 
@@ -229,11 +221,7 @@ def page_target_id(context: BrowserContext, page: Page) -> str:
 
 
 def find_page_by_target_id(context: BrowserContext, target_id: str) -> Page:
-    """Find the tab with ``target_id``, skipping tabs we cannot interrogate.
-
-    A sibling tab can be crashed or mid-close, in which case opening a CDP
-    session against it raises — that must not hide the tab we're after.
-    """
+    """A crashed or closing sibling raises on CDP session open and must not hide the target."""
     for page in context.pages:
         try:
             found = page_target_id(context, page) == target_id

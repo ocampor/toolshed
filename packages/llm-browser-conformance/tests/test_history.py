@@ -41,7 +41,6 @@ def test_no_file_is_no_history(tmp_path: Path) -> None:
     ],
 )
 def test_a_drifted_record_is_no_history(tmp_path: Path, content: str, why: str) -> None:
-    # The file carries no version: a record this build cannot parse must never block a run.
     path = tmp_path / "last.json"
     path.write_text(content)
     with pytest.warns(UserWarning, match="ignoring unreadable"):
@@ -150,7 +149,6 @@ def test_failed_with_a_clean_previous_run_says_so_and_succeeds(
 def test_a_filtered_run_merges_into_the_record_it_did_not_cover(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # `--only` and `--driver` are partial runs; replacing the record would drop failures `--failed` needs.
     from llm_browser_conformance import cli
 
     history.save(

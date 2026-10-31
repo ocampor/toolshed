@@ -1,10 +1,4 @@
-"""The known-gaps document, generated from the scenarios themselves.
-
-``docs/known-gaps.md`` is this function's output, and a test asserts the file
-still matches. Hand-maintaining the table was the failure mode: ``xpass``
-catches a gap that *closes*, but nothing catches a row whose wording drifted,
-a row deleted from the code, or a new gap nobody wrote down.
-"""
+"""``docs/known-gaps.md`` is generated: hand-kept rows drifted where ``xpass`` cannot see."""
 
 from llm_browser_conformance.drivers import CONFORMANCE_DRIVERS
 from llm_browser_conformance.scenarios import ALL_SCENARIOS

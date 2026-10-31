@@ -9,7 +9,6 @@ class TemplatePathError(ValueError):
 
 
 def resolve_path(path: str, data: dict[str, object]) -> object:
-    """The value a dotted path reaches: keys index mappings, ints index lists."""
     value: object = data
     for segment in path.split("."):
         try:
@@ -30,11 +29,7 @@ def path_member(value: object, segment: str) -> object:
 
 
 def resolve_template(value: str, data: dict[str, object]) -> str:
-    """Replace every placeholder in value with its value from data.
-
-    A plain {{ var }} missing from data is left as-is; a dotted path that
-    resolves to nothing raises :class:`TemplatePathError`.
-    """
+    """A plain ``{{ var }}`` missing from data is left as-is; a dotted path to nothing raises."""
 
     def replacer(match: re.Match[str]) -> str:
         path = match.group(1)
@@ -49,7 +44,6 @@ def resolve_template(value: str, data: dict[str, object]) -> str:
 
 
 def template_names(raw: object) -> set[str]:
-    """The data names every placeholder under ``raw`` starts from."""
     return {path.split(".", 1)[0] for path in template_paths(raw)}
 
 

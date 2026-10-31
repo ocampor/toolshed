@@ -38,8 +38,6 @@ def fake_driver(found: int) -> MagicMock:
     driver.count.side_effect = lambda locator: found
     driver.first.side_effect = lambda locator: ("first", locator)
     driver.nth.side_effect = lambda locator, index: ("nth", locator, index)
-    # A page with no match has nothing visible, which is what makes a wait for
-    # one time out.
     driver.is_visible.side_effect = lambda locator: found > 0
     driver.text_content.side_effect = lambda locator: PRICES[locator[2]]
     driver.extract_rows.side_effect = lambda locator, spec, exclude=(): [
@@ -140,7 +138,6 @@ def test_the_fields_survive_the_template_round_trip() -> None:
 def test_a_step_that_states_neither_survives_the_round_trip(
     step: dict[str, Any],
 ) -> None:
-    # The round trip re-validates a dump, so a default must not come back as a stated value.
     resolved = resolve_step_templates(
         validate_step({"name": "s", **step}), FlowData.model_validate({})
     )
@@ -251,7 +248,6 @@ def test_a_sample_that_cannot_be_read_never_masks_the_failure() -> None:
 
 
 def test_a_wait_is_only_pre_empted_by_an_ambiguity() -> None:
-    # Too few matches is what the wait that follows is for.
     assert match_elements(
         fake_driver(0), ("locator", "#a"), "#a", SINGLE, waiting=True
     ) == Match(("locator", "#a"))
@@ -287,7 +283,6 @@ def test_a_pick_takes_the_row_it_names(tmp_path: Path) -> None:
 def test_an_acting_step_still_fails_a_missing_element_on_the_wait(
     tmp_path: Path,
 ) -> None:
-    # An acting step states no count, so a missing element is the wait's timeout.
     step = validate_step(
         {"name": "go", "action": "click", "selector": "a.link", "timeout": 50}
     )
@@ -436,7 +431,6 @@ def test_a_run_names_every_step_whose_pick_took_a_mismatch(
     warned: list[str],
     skipped: list[str],
 ) -> None:
-    # A step reports the mismatch it ran on however it ended.
     session = page_session(tmp_path, 7)
     session.driver.click.side_effect = TimeoutError("element not clickable")
     result = run_steps(session, steps, data={"codes": ["a", "b"]})

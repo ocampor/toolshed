@@ -92,7 +92,6 @@ steps:
 
 
 def test_every_pass_of_a_repeated_step_gets_its_own_file(cli_run: Any) -> None:
-    # Without the pass index in the name every pass but the last would be lost.
     outputs: dict[str, object] = {
         "shot[0]": BytesResult(name="shot.png", content=PNG, media_type="image/png"),
         "shot[1]": BytesResult(
@@ -183,7 +182,6 @@ def test_captures_default_to_the_session_dir(cli_run: Any) -> None:
 
 
 def test_a_step_named_screenshot_keeps_its_own_path(cli_run: Any) -> None:
-    # Failure captures are keyed `screenshot`/`dom`; a step of that name must not inherit their paths.
     failure = _failure()
     failure.outputs["screenshot"] = BytesResult(name="step.png", content=PNG)
     outcome, cwd = cli_run(failure, "--capture-dir", "diagnostics")
@@ -219,7 +217,6 @@ def _escape_run(cli_run: Any, path: str) -> Any:
 def test_a_path_leaving_out_dir_is_refused(
     cli_run: Any, path: str, tmp_path: Path
 ) -> None:
-    # `path:` is templated from --data, so it is untrusted input.
     outcome, cwd = _escape_run(cli_run, path)
     assert outcome.exit_code != 0
     assert "refusing to write" in outcome.output, outcome.output
@@ -236,7 +233,6 @@ def test_a_nested_path_inside_out_dir_is_allowed(cli_run: Any) -> None:
 
 
 def test_nothing_is_written_when_one_path_escapes(cli_run: Any) -> None:
-    # The run is planned before anything lands, so a rejected path leaves no half-written output.
     flow = """
 steps:
   - name: good
@@ -257,7 +253,6 @@ steps:
 
 
 def test_a_hostile_download_filename_is_reduced_to_its_basename(cli_run: Any) -> None:
-    # `BytesResult.name` is the server's Content-Disposition filename.
     hostile = BytesResult(name="../../../etc/escape.bin", content=b"payload")
     outcome, cwd = cli_run(
         FlowSuccess(step="grab", outputs={"grab": hostile}),
@@ -268,7 +263,6 @@ def test_a_hostile_download_filename_is_reduced_to_its_basename(cli_run: Any) ->
 
 
 def test_a_templated_step_name_still_gets_its_file(cli_run: Any) -> None:
-    # run_loaded_flow keys outputs on the unresolved step name; the CLI must look paths up the same way.
     flow = """
 params:
   - id
@@ -305,7 +299,6 @@ steps:
 
 
 def test_a_run_flow_child_sees_a_param_only_the_parent_passed(cli_run: Any) -> None:
-    # declared_paths must resolve the child with the parent's param passthrough, or it crashes.
     outcome, cwd = cli_run(
         FlowSuccess(step="child/snap", outputs={"child/snap": "<p>hi</p>"}),
         "--data",
@@ -317,7 +310,6 @@ def test_a_run_flow_child_sees_a_param_only_the_parent_passed(cli_run: Any) -> N
 
 
 def test_typed_rows_are_written_as_json(cli_run: Any) -> None:
-    # `parse` rows carry real Decimal and date objects, which json.dumps cannot encode.
     import datetime
     import decimal
 
@@ -371,7 +363,6 @@ def test_an_unknown_capture_level_is_a_usage_error(cli_run: Any) -> None:
 
 
 def test_declared_paths_names_the_file_of_a_step_whose_selector_is_a_ref() -> None:
-    # A host calling write_run itself must not lose outputs to an unmapped `ref:`.
     flow = load_flow_document(
         {
             "steps": [
@@ -389,7 +380,6 @@ def test_declared_paths_names_the_file_of_a_step_whose_selector_is_a_ref() -> No
 
 
 def test_declared_paths_survives_a_template_only_a_pass_could_resolve() -> None:
-    # Paths are named after the run, when pass items and saved values are gone.
     page = {
         "name": "page",
         "action": "dom",
@@ -416,7 +406,6 @@ def test_declared_paths_survives_a_template_only_a_pass_could_resolve() -> None:
 
 
 def test_declared_paths_resolves_the_siblings_of_an_unresolvable_binding() -> None:
-    # One key only a pass could resolve must not cost its siblings their values.
     page = {
         "name": "page",
         "action": "dom",

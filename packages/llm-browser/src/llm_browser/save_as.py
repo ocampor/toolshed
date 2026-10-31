@@ -40,7 +40,7 @@ def row_matches(row: object, where: dict[str, object]) -> bool:
 
 
 def save_result(step: Step, result: ActionResult, data: FlowData) -> ActionResult:
-    """Bind ``result``'s rows into ``data``; a scalar no row yields fails the step."""
+    """A scalar no row yields fails the step."""
     if not isinstance(step, ReadStep) or step.save_as is None:
         return result
     if not isinstance(result, ParsedResult):
@@ -74,8 +74,7 @@ def names_bound(step: RunFlowStep) -> set[str]:
 
 
 def names_used(step: Step) -> set[str]:
-    """Flow-data names ``step`` reads from its own scope: a sub-flow's uses of
-    the names that sub-flow scope defines are the sub-flow's own concern."""
+    """A sub-flow's uses of names its own scope defines are the sub-flow's concern."""
     fields = step.model_dump(exclude_none=True)
     if isinstance(step, RunFlowStep):
         fields.pop("flow", None)
@@ -94,8 +93,7 @@ def names_used(step: Step) -> set[str]:
 
 
 def saved_names_in_paths(step: Step, saves: set[str]) -> set[str]:
-    """Saved names a ``path:`` under ``step`` reads — a sub-flow's own bindings
-    shadow the parent saves they rename, so those do not count."""
+    """A sub-flow's own bindings shadow the parent saves they rename."""
     found = template_names(getattr(step, "path", None) or "") & saves
     if isinstance(step, RunFlowStep) and isinstance(step.flow, SubFlow):
         inherited = saves - names_bound(step)

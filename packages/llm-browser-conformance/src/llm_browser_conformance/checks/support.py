@@ -1,10 +1,3 @@
-"""Running a fixture flow and reading what it produced.
-
-Step scenarios drive the library the way a caller does — a YAML flow on a
-launched session — so the assertions are about ``FlowSuccess.outputs`` and
-``FlowError.step``, not about driver primitives.
-"""
-
 import contextlib
 from collections.abc import Iterator
 from pathlib import Path
@@ -33,8 +26,7 @@ def expect_success(
 
 
 def expect_flow_success(ctx: Context, flow: Flow, **data: object) -> dict[str, object]:
-    """Run an already-loaded flow on the page the session is already on — for
-    a check that has to split a fixture flow into separately timed halves."""
+    """For a check that splits a fixture flow into separately timed halves."""
     result = run_flow(ctx.session, flow, data)
     assert isinstance(result, FlowSuccess), f"{result.step}: {result.data}"
     return result.outputs
@@ -63,14 +55,7 @@ def one_text(outputs: dict[str, object], step: str) -> str | None:
 
 
 def file_stats(directory: Path) -> list[tuple[str, int, int]]:
-    """Every top-level file in ``directory``, with the stats that would change
-    if something rewrote one.
-
-    Name alone is not enough: a flow's ``path:`` values are relative names, so
-    the likeliest regression is a runner *overwriting* a file that was already
-    there, which a set of names cannot see. A directory that does not exist
-    yet has no files, which is the same answer as an empty one.
-    """
+    """Stats, not names: the likeliest regression overwrites a file that already existed."""
     if not directory.exists():
         return []
     return sorted(
@@ -81,11 +66,7 @@ def file_stats(directory: Path) -> list[tuple[str, int, int]]:
 
 
 def artifact_snapshot(session: BrowserSession) -> list[tuple[str, int, int]]:
-    """The files the session has in its own dir.
-
-    Only the top level: ``user-data/`` is the live profile and the browser
-    writes into it constantly.
-    """
+    """Top level only: ``user-data/`` is the live profile the browser writes constantly."""
     return file_stats(session.session_dir)
 
 
@@ -95,8 +76,6 @@ def cwd_snapshot() -> list[tuple[str, int, int]]:
 
 @contextlib.contextmanager
 def wrote_nothing(ctx: Context) -> Iterator[None]:
-    """The library never writes output files, so neither the session dir nor
-    the working directory may gain or change one while the body runs."""
     before_session = artifact_snapshot(ctx.session)
     before_cwd = cwd_snapshot()
     yield

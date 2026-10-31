@@ -1,11 +1,4 @@
-"""``expect:`` and ``pick:`` — how many elements a step's selector may match,
-and which of them it acts on.
-
-Every check here runs against a page with three of everything, so a driver
-that ignored the rule and took the first match is caught rather than averaged
-away. The failure path is its own scenario: the count, the index and the text
-samples in the message are exactly what drivers report differently.
-"""
+"""Every page has three of everything, so a driver that took the first match is caught."""
 
 from llm_browser.results import BytesResult
 
@@ -36,7 +29,6 @@ def row_value(ctx: Context, index: int) -> str:
 
 
 def png_height(data: bytes) -> int:
-    """Height off a PNG's IHDR — enough to tell one row's crop from another's."""
     return int.from_bytes(data[20:24], "big")
 
 
@@ -57,16 +49,12 @@ def every_step_acts_on_the_match_its_pick_names(ctx: Context) -> None:
 
 
 def a_pick_step_clicks_the_match_its_index_names(ctx: Context) -> None:
-    """``pick`` clicks by text among several matches, so narrowing it to one
-    first is what ``pick: 2`` has to do — the flow names Beta and index 2, and
-    the index is meant to win."""
+    """``pick`` clicks by text, so ``pick: 2`` must narrow to one match first."""
     expect_success(ctx, PAGE, "match-pick-step")
     assert ctx.text("#picked") == "Gamma"
 
 
 def a_count_the_page_cannot_meet_fails_with_what_it_found(ctx: Context) -> None:
-    """The message carries the count and a sample of the text, so an author
-    who stated the wrong number can see which elements answered."""
     too_many = expect_failure(ctx, PAGE, "match-too-many").data
     assert getattr(too_many, "error", None) == "MatchCountError"
     assert getattr(too_many, "expected", None) == 1

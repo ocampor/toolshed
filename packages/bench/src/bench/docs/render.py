@@ -39,12 +39,7 @@ Members = Callable[[griffe.Module], list[str]]
 
 
 class Document(NamedTuple):
-    """A generated file: its heading, its opening line, and what it renders.
-
-    ``prose`` is for a module or class whose *docstring* is the documentation
-    and whose members are not. ``members`` is for the objects rendered whole,
-    named outright or found by a callable at render time.
-    """
+    """``prose`` renders only a module or class docstring; ``members`` renders objects whole."""
 
     title: str
     intro: str
@@ -69,12 +64,7 @@ FACTORY_VALUES = {"list": "[]", "dict": "{}"}
 
 
 def prune(module: griffe.Module, *, max_default_chars: int = DEFAULT_MAX_CHARS) -> None:
-    """Drop from every class what a flow author cannot write.
-
-    A pydantic model's ``ClassVar`` is configuration for the model, not a YAML
-    key; an enum's class attributes are its members, so the rule applies to a
-    model and nothing else.
-    """
+    """A pydantic ``ClassVar`` is model configuration, not a YAML key; an enum's class attributes are its members."""
     for klass in classes_of(module):
         model = "pydantic-model" in klass.labels
         for name in list(klass.members):
@@ -88,8 +78,7 @@ def prune(module: griffe.Module, *, max_default_chars: int = DEFAULT_MAX_CHARS) 
 
 
 def show_constant_default(module: griffe.Module, field: griffe.Attribute, max_chars: int) -> None:
-    """A default written as a constant renders as the name alone, so a reader
-    cannot see that a wait's budget is shorter than its step's."""
+    """A constant default renders as its name alone, hiding that a wait's budget is shorter than its step's."""
     if not isinstance(field.value, griffe.ExprName):
         return
     path = field.value.canonical_path.removeprefix(f"{module.path}.")
@@ -121,7 +110,7 @@ def classes_of(obj: griffe.Module | griffe.Class) -> list[griffe.Class]:
 
 
 def load_package(package: str, source: Path) -> griffe.Module:
-    """The package as griffe reads it — statically, without importing it."""
+    """Statically, without importing the package."""
     loaded = griffe.load(
         package,
         search_paths=[str(source)],
@@ -142,11 +131,7 @@ MEMBER_HEADING = re.compile(r"^### `([^`]+)`", re.MULTILINE)
 
 
 def render_member(module: griffe.Module, path: str, config: dict[str, Any]) -> str:
-    """One object, its member headings qualified by the owner.
-
-    A section is searched on its own, and eighteen sections all called
-    `action` answer nothing.
-    """
+    """Member headings are qualified: a section is searched alone, and eighteen called `action` answer nothing."""
     obj = module[path]
     rendered = griffe2md.render_object_docs(obj, config)
     return MEMBER_HEADING.sub(rf"### `{obj.name}.\1`", rendered)

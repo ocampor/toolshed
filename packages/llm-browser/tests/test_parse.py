@@ -70,7 +70,7 @@ def test_extract_all_coerces_types(session: BrowserSession) -> None:
 
 def test_extract_all_raises_on_plain_field(session: BrowserSession) -> None:
     class Bad(ParseBase):
-        name: str = "default"  # no ExtractField
+        name: str = "default"
 
     locator = _two_row_locator([{"name": "Alice"}])
     session._page.locator.return_value = locator  # type: ignore[union-attr]
@@ -174,7 +174,7 @@ def test_build_model_required_field_no_default(tmp_path: Path) -> None:
     )
     User = build_model(path)
     with pytest.raises(ValidationError):
-        User()  # missing required `name`
+        User()
 
 
 def test_build_model_class_works_with_extract_all(
@@ -206,7 +206,6 @@ def test_build_model_class_works_with_extract_all(
 
 
 def test_parsed_result_serializes_dynamic_rows() -> None:
-    # Rows must dump via the runtime row type, or build_model schemas serialize as {}.
     from llm_browser.results import ParsedResult
 
     Row = ParseBase.__class__(  # type: ignore[call-arg]

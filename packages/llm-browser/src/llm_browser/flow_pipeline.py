@@ -51,11 +51,7 @@ async def resolve_flow(ref: str, repo: FlowRepository) -> dict[str, Any]:
 
 
 async def resolve_flow_text(text: str, repo: FlowRepository) -> dict[str, Any]:
-    """Replace every ``flow: <ref>`` with the referenced flow's document.
-
-    Children are fetched concurrently, once per distinct reference, and are
-    leaf-only: a child that references a flow of its own is rejected here.
-    """
+    """Children are fetched concurrently, once per reference, and must be leaf-only."""
     document = flow_document(text)
     steps = unresolved_run_flow_steps(document)
     refs = list(dict.fromkeys(step["flow"] for step in steps))

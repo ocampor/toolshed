@@ -10,7 +10,6 @@ from llm_browser.session import BrowserSession
 
 @pytest.fixture
 def cli_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BrowserSession:
-    # A MagicMock session would never reach the scheme guard.
     session = BrowserSession(state_dir=tmp_path)
     session.driver = MagicMock()
     session._page = MagicMock()

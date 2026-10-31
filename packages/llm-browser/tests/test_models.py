@@ -35,7 +35,6 @@ def test_session_info_round_trip() -> None:
 
 
 def test_flow_error_round_trip() -> None:
-    # The capture round-trips as the original bytes, not the base64 it travelled as.
     shot = b"\x89PNG\r\n\x1a\n\x00binary\xff"
     result = FlowError(
         step="check", data='{"cp": "05330"}', screenshot=shot, dom="<p>hi</p>"
@@ -56,7 +55,6 @@ def test_flow_error_screenshot_is_base64_on_the_wire() -> None:
 
 
 def test_flow_error_rejects_a_screenshot_that_is_not_base64() -> None:
-    # The field used to hold a path; a caller passing one is told so.
     with pytest.raises(ValidationError):
         FlowError(step="check", screenshot="/tmp/s.png")
 
@@ -250,7 +248,6 @@ def test_a_read_takes_the_compact_extract_form_docs_advertise(
 def test_a_read_without_an_extract_reads_the_row_text(
     step_kwargs: dict[str, object],
 ) -> None:
-    # A bare `read` once returned None rows; absent, empty or null `extract:` means the row text.
     step = validate_step(step_kwargs)
     assert isinstance(step, ReadStep)
     assert list(step.extract) == ["text"]
@@ -270,7 +267,6 @@ def test_an_extract_that_is_not_a_mapping_fails_validation(extract: object) -> N
 def test_an_extract_spec_that_is_neither_string_nor_mapping_fails_validation(
     spec: object,
 ) -> None:
-    # It used to escape as a TypeError traceback out of `llm-browser validate`.
     with pytest.raises(ValidationError, match="invalid extract spec"):
         validate_step(
             {"name": "s", "action": "read", "selector": "tr", "extract": {"a": spec}}

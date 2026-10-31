@@ -1,10 +1,4 @@
-"""Every ``wait_for`` state against the page built for it, plus the three
-things a wait must refuse to do: return early, wait out an ambiguous
-selector, and poll a settle window that cannot fit its budget.
-
-The text waits live here too: a real browser is the only place ``innerText``'s
-rendered-vs-``textContent`` semantics can be proved.
-"""
+"""Only a real browser proves ``innerText``'s rendered-vs-``textContent`` semantics."""
 
 from collections.abc import Callable
 from typing import Any
@@ -49,8 +43,7 @@ def hidden_waits_for_the_element_to_stop_rendering(ctx: Context) -> None:
 
 
 def stable_waits_for_the_text_to_stop_moving(ctx: Context) -> None:
-    """``#total`` ticks for the whole delay, so the settle window can only
-    close once the ticking has stopped."""
+    """``#total`` ticks for the whole delay, so the settle window closes only after it stops."""
     timing = ctx.timed(
         lambda: ctx.visit("stable.html"),
         ctx.wait("#total", "stable", settle=SETTLE_MS),
@@ -69,9 +62,7 @@ def visibility_hidden_counts_as_hidden(ctx: Context) -> None:
 
 
 def opacity_zero_counts_as_visible(ctx: Context) -> None:
-    """Pinned because it is agreement, not an obvious answer: Playwright's
-    check (non-empty box, ``visibility != hidden``) and nodriver's
-    ``offsetParent`` check both call a fully transparent element visible."""
+    """Pinned agreement: Playwright's box check and nodriver's ``offsetParent`` both call it visible."""
     ctx.visit("visible.html")
     assert ctx.elapsed(ctx.wait("#transparent", "visible")) < IMMEDIATE_S
 
@@ -87,8 +78,7 @@ def enabled_waits_for_the_control_to_unlock(ctx: Context) -> None:
 
 
 def aria_disabled_reads_as_disabled(ctx: Context) -> None:
-    """A control that cannot carry `disabled` says so with `aria-disabled`, and
-    one rule has to cover both or half the widgets on a page are invisible."""
+    """Div-and-role widgets cannot carry `disabled`, so one rule covers `aria-disabled` too."""
     ctx.visit("unlock-input.html")
     assert ctx.elapsed(ctx.wait("#submit", "disabled")) < IMMEDIATE_S
     timing = ctx.timed(
@@ -104,7 +94,6 @@ def a_flow_waits_out_a_locked_field_before_filling_it(ctx: Context) -> None:
 
 
 def text_wait(ctx: Context, text: str, **options: Any) -> Callable[[], None]:
-    """``ctx.wait`` for the text wait, which names no element."""
     return lambda: ctx.session.wait_for_text(
         text, timeout=TIMEOUT_MS, interval=POLL_MS, **options
     )
@@ -126,11 +115,7 @@ def a_text_wait_waits_for_the_words_to_go(ctx: Context) -> None:
 
 
 def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
-    """The modal keeps its text and stops being rendered. ``innerText`` on a
-    non-rendered element answers with its ``textContent``, so a scope read that
-    trusted it would poll out the whole budget on text nobody can see — and the
-    `display:contents` wrapper it holds still computes "contents", so a read
-    that asked each node on its own would be fooled the same way."""
+    """``innerText`` on a non-rendered element returns ``textContent``, so a hidden modal's text must not count."""
     timing = ctx.timed(
         lambda: ctx.visit("text-wait.html"),
         text_wait(ctx, "Sesión iniciada", selector=".modal", state="hidden"),
@@ -143,11 +128,7 @@ def a_hidden_scope_reads_as_absent(ctx: Context) -> None:
 
 
 def a_display_contents_scope_reads_its_children(ctx: Context) -> None:
-    """The wrapper draws no box of its own, so it is not rendered — but what it
-    holds is laid out as usual, a text node of its own as much as a child
-    element. A scope read that stopped at the root, or that only ever
-    descended into elements, would call visible text absent and poll out the
-    whole budget."""
+    """A `display:contents` wrapper draws no box yet lays out its text nodes and children."""
     timing = ctx.timed(
         lambda: ctx.visit("text-wait.html"),
         text_wait(ctx, "Sesión finalizada", selector=".wrapper"),
@@ -158,8 +139,7 @@ def a_display_contents_scope_reads_its_children(ctx: Context) -> None:
 
 
 def text_present_answers_in_one_read(ctx: Context) -> None:
-    """The bool half: what the page renders now, never what a ``<script>``
-    merely holds as source, and it does not block on text that is not there."""
+    """What the page renders, never what a ``<script>`` holds as source."""
     ctx.visit("text-wait.html")
     assert ctx.session.text_present("Cargando")
     assert not ctx.session.text_present("Contraseña caducada", exact=True)

@@ -1,13 +1,4 @@
-"""The options every step carries, the ``when:`` gate, templating and params.
-
-These are the parts of a flow that are not an action: the fields on
-``BaseStep`` that every step type inherits, the conditions that decide whether
-a step runs at all, the ``{{ }}`` substitution that happens just before it
-does, and the params that feed it. A gated ``read`` is the instrument
-throughout — a step that was skipped leaves its name out of
-``FlowSuccess.outputs``, so "did it run" is one key lookup rather than a guess
-about the page.
-"""
+"""A skipped step leaves no key in ``FlowSuccess.outputs``, so "did it run" is one lookup."""
 
 import time
 
@@ -62,16 +53,13 @@ def is_truthy_reads_the_flow_data(ctx: Context) -> None:
 
 
 def eq_ignores_case_on_both_sides(ctx: Context) -> None:
-    """``compile_condition`` lowercases the declared value and ``eq``
-    lowercases the data's — so ``value: Live`` matches ``"LIVE"``."""
+    """``compile_condition`` lowercases the declared value and ``eq`` the data's."""
     assert ran(ctx, "when-eq", mode="LIVE")
     assert not ran(ctx, "when-eq", mode="staging")
 
 
 def not_null_cannot_tell_absent_from_null(ctx: Context) -> str:
-    """``to_template_dict`` drops ``None``, so the condition never sees one:
-    an explicit ``None`` and a param left out are the same missing key, and
-    ``not_null`` gets ``None`` from ``.get`` either way."""
+    """``to_template_dict`` drops ``None``, so an explicit ``None`` and an absent param are one missing key."""
     assert ran(ctx, "when-not-null", token="abc")
     assert not ran(ctx, "when-not-null")
     assert not ran(ctx, "when-not-null", token=None)
@@ -100,9 +88,7 @@ def wait_after_costs_the_flow_its_milliseconds(ctx: Context) -> None:
 
 
 def a_fields_or_read_block_changes_nothing(ctx: Context) -> None:
-    """``fields:`` and ``read:`` are carried for hosts and ignored by the
-    runner, so both blocks in the flow name a selector and an attribute that
-    would be wrong if anything read them."""
+    """``fields:`` and ``read:`` are ignored by the runner, so both name a selector that would be wrong if read."""
     plain = expect_success(ctx, PAGE, "option-plain")
     declared = expect_success(ctx, PAGE, "option-fields")
     assert declared == plain, f"{declared} != {plain}"
@@ -138,8 +124,7 @@ def repeat_runs_one_step_once_per_item(ctx: Context) -> None:
 
 
 def a_scoped_selector_resolves_inside_each_pass(ctx: Context) -> None:
-    """``.label`` matches three elements on the page and exactly one inside a
-    row, so a pass that resolved it globally would read Alpha every time."""
+    """``.label`` matches three on the page and one per row, so a global resolve reads Alpha every time."""
     outputs = expect_success(ctx, "match-rules.html", "scoped-read")
     assert [one_text(outputs, f"each/label[{n}]") for n in range(3)] == [
         "Alpha",
@@ -149,8 +134,6 @@ def a_scoped_selector_resolves_inside_each_pass(ctx: Context) -> None:
 
 
 def repeat_indexes_a_sub_flows_outputs_too(ctx: Context) -> None:
-    """The child keys stay qualified *and* indexed, so two passes of the same
-    sub-flow cannot overwrite each other."""
     outputs = expect_success(
         ctx, "repeat-list.html", "repeat-subflow", ids=["alpha", "gamma"]
     )
@@ -166,17 +149,14 @@ def a_selector_and_a_value_are_both_templated(ctx: Context) -> None:
 
 
 def an_unresolved_name_stays_a_literal_placeholder(ctx: Context) -> None:
-    """``resolve_template`` leaves a name it cannot find alone, so the step is
-    handed the placeholder itself: harmless in a value, fatal in a selector."""
+    """``resolve_template`` leaves an unknown name as the literal placeholder: harmless in a value, fatal in a selector."""
     failure = expect_failure(ctx, PAGE, "option-template-miss")
     assert ctx.value("#field") == "{{ nowhere }}"
     assert failure.step == "click-missing", failure.step
 
 
 def a_missing_required_param_raises(ctx: Context) -> None:
-    """``validate_data`` runs before the first step, outside the per-step
-    error handling — so this is an exception out of ``run_flow``, not a
-    ``FlowError`` the caller can inspect."""
+    """``validate_data`` runs outside per-step error handling, so this raises out of ``run_flow``."""
     ctx.visit(PAGE)
     flow = ctx.flow("option-params-required")
     error = raises(ValueError, lambda: run_flow(ctx.session, flow, {}))

@@ -119,7 +119,6 @@ class RepeatBlock(BaseModel):
 
 
 def check_scope(step: Any, repeat: Repeat | None) -> None:
-    """``in: <as>`` names the element binding of the repeat the step sits in."""
     scope = step.scope
     if scope is None:
         return

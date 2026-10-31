@@ -52,7 +52,6 @@ def test_unknown_state_is_rejected(bad: Any) -> None:
 
 @pytest.mark.parametrize("interval", [0, -1, -500])
 def test_non_positive_interval_is_rejected(interval: int) -> None:
-    # A negative interval once blew up mid-poll as a Jitter ValueError that `optional` swallowed.
     with pytest.raises(ValidationError):
         validate_step(wait_for_step(interval=interval))
 
@@ -67,7 +66,6 @@ def test_non_positive_settle_is_rejected(settle: int) -> None:
 def test_settle_must_fit_inside_the_timeout_when_stable(
     settle: int, timeout: int
 ) -> None:
-    # Otherwise the wait times out on text that never changed at all.
     with pytest.raises(ValidationError, match="must be less than timeout"):
         validate_step(wait_for_step(state="stable", settle=settle, timeout=timeout))
 
@@ -247,7 +245,6 @@ def test_successful_wait_runs_the_next_step(mock_session: MagicMock) -> None:
 
 
 def test_step_survives_a_template_round_trip(mock_session: MagicMock) -> None:
-    # resolve_step re-validates a dumped step; a lost field would show here.
     flow = load_flow_text(
         yaml.dump(
             {

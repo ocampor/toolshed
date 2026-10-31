@@ -15,22 +15,14 @@ def load_script(name: str) -> str:
 
 
 def substitute(source: str, values: dict[str, str]) -> str:
-    """Fill every placeholder in one pass.
-
-    Chained ``str.replace`` calls would re-scan what the previous one wrote, so
-    a waited-for text or a selector that happens to spell a later placeholder
-    would rewrite the script.
-    """
+    """One pass: chained ``replace`` would let a value spelling a later placeholder rewrite the script."""
     names = sorted(values, key=len, reverse=True)
     pattern = re.compile("|".join(re.escape(name) for name in names))
     return pattern.sub(lambda hit: values[hit.group()], source)
 
 
 def extract_rows_js() -> str:
-    """``(rows, {spec, exclude}) => list[dict]`` — every field off every row.
-
-    Both property allowlists are substituted in so the page-side rule and
-    ``Driver.read_field`` read the same names."""
+    """``(rows, {spec, exclude}) => list[dict]``; the allowlists are substituted so ``Driver.read_field`` agrees."""
     return substitute(
         load_script("extract_rows"),
         {
@@ -45,13 +37,7 @@ def extract_rows_js() -> str:
 
 
 def property_js(name: str, exclude: Sequence[str] = ()) -> str:
-    """``(el) => el.<name>``, read off a copy with ``exclude``'s matches gone.
-
-    A copy, not the page: the flow goes on driving the live element. On a
-    detached copy ``innerText`` has no layout, so it reads like ``textContent``.
-    Only a property a descendant is part of takes the copy — a clone loses an
-    ``<option>``'s selectedness, so ``value`` stays on the live element.
-    """
+    """Read off a copy so the live element is untouched; ``value`` stays live, as a clone loses selectedness."""
     if not exclude or name not in constants.EXCLUDABLE_PROPERTIES:
         return f"(el) => el.{name}"
     selector = json.dumps(",".join(exclude))
@@ -96,11 +82,7 @@ def explore_many_js(
     sample_chars: int,
     timeout_ms: int,
 ) -> str:
-    """``async (el) => list[ExploreManyRead]`` — every target in one page call.
-
-    ``targets`` carry the CSS selector and the already-resolved extract spec,
-    so the page side reads the same field names ``Driver.read_field`` would.
-    """
+    """``async (el) => list[ExploreManyRead]``; targets carry the resolved extract spec ``Driver.read_field`` uses."""
     batch = {
         "targets": targets,
         "sample": sample,
@@ -133,22 +115,14 @@ def survey_js() -> str:
 
 
 def count_selectors_js(selectors: list[str]) -> str:
-    """``(el) => {selector: count}`` — what each selector matches page-wide.
-
-    The selectors ``survey`` reports are built in Python, so the page is asked
-    about them in a second call; one it cannot parse counts as zero.
-    """
+    """``(el) => {selector: count}``; the selectors exist only after Python builds them, hence a second call."""
     return load_script("count_selectors").replace(
         constants.SURVEY_COUNT_PLACEHOLDER, json.dumps(selectors)
     )
 
 
 def hit_test_js(point: tuple[float, float]) -> str:
-    """``(el) => {target, hit}`` — what sits at ``point`` and whether it is ``el``.
-
-    ``hit`` describes the element the way ``explore`` describes a cover, with
-    the same text cap, and is null when the point is over nothing.
-    """
+    """``(el) => {target, hit}``; ``hit`` is null over nothing."""
     return (
         load_script("hit_test")
         .replace(constants.HIT_POINT_PLACEHOLDER, json.dumps(list(point)))
@@ -178,11 +152,7 @@ def select_control_tag_js() -> str:
 
 
 def text_match_js(text: str, exact: bool) -> str:
-    """``(el) => bool`` — is ``text`` in the element's rendered text?
-
-    Substituted rather than passed: drivers evaluate a bare script string with
-    no arguments.
-    """
+    """``(el) => bool``; substituted because drivers evaluate a bare script with no arguments."""
     return substitute(
         load_script("text_match"),
         {
@@ -195,11 +165,7 @@ def text_match_js(text: str, exact: bool) -> str:
 def page_probe_js(
     selector: str | None, max_chars: int, extra_selectors: Sequence[str] = ()
 ) -> str:
-    """``() => PageProbe`` — password/challenge visibility plus page text.
-
-    Drivers evaluate a bare script string with no arguments, so the selector,
-    the shared challenge-selector list and the text limit are substituted in.
-    """
+    """``() => PageProbe``; substituted because drivers evaluate a bare script with no arguments."""
     # `:is()` is a forgiving list: a bad extra matches nothing instead of throwing.
     extras = (f":is({css})" for css in extra_selectors)
     challenge = ", ".join((*probe_constants.CHALLENGE_SELECTORS, *extras))

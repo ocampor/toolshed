@@ -43,7 +43,6 @@ def break_goto(playwright: Any) -> None:
     context = playwright.chromium.launch_persistent_context.return_value
     context.pages = [MagicMock()]
     context.pages[0].goto.side_effect = BOOM
-    # A context whose connection died raises on close, like a real one.
     context.close.side_effect = RuntimeError("target closed")
 
 
@@ -102,7 +101,6 @@ def test_failed_attach_leaves_no_live_state(playwright: Any, entry_point: Any) -
 def test_failed_attach_keeps_a_playwright_it_did_not_start(
     playwright: Any, entry_point: Any
 ) -> None:
-    # A retry on a live driver must not stop the connection an earlier call owns.
     playwright.chromium.connect_over_cdp.side_effect = BOOM
     driver = PatchrightDriver()
     driver._playwright = playwright

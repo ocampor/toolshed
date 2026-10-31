@@ -1,5 +1,4 @@
-"""Pixels to the JPEG an ``ImagePage`` carries: shrunk early, flattened,
-and stripped of every byte of source metadata."""
+"""Shrunk early, flattened, and stripped of every byte of source metadata."""
 
 import io
 from dataclasses import dataclass
@@ -16,8 +15,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class Frame:
-    """A page as pixels, with the size it had before any shrinking."""
-
     image: "Image"
     original_width: int
     original_height: int
@@ -74,7 +71,6 @@ def image_frame(image: "Image", spec: ImageExtract, page: int) -> Frame:
 
 
 def flatten(image: "Image") -> "Image":
-    """RGB pixels on white and nothing else: no EXIF, comment, ICC or XMP."""
     from PIL import Image as PILImage
 
     if image.mode.startswith("I"):

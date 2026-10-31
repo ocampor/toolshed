@@ -1,5 +1,3 @@
-# xpass catches a closed gap; nothing else catches drifted wording, deleted or unwritten rows.
-
 from pathlib import Path
 
 from llm_browser_conformance.gaps import known_gaps_document

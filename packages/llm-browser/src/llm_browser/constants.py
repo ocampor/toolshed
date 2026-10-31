@@ -11,12 +11,10 @@ LOGGER_NAME = "llm_browser"
 
 DEFAULT_WAIT_TIMEOUT_MS = 3_000
 
-# How long ``find`` and the input methods wait for their element.
 DEFAULT_FIND_TIMEOUT_MS = 10_000
 
 DEFAULT_POLL_INTERVAL_MS = 500
 
-# How long an element's text has to stay put for the ``stable`` wait state.
 DEFAULT_SETTLE_MS = 1_500
 
 # A Playwright read still needs a timeout — `timeout=0` there means *no*
@@ -39,7 +37,6 @@ DELAY_SHAPE = "delay must be a non-negative int, or [min_ms, max_ms] with min <=
 
 REDACTED = "***"
 
-# Why a step a ``when:`` predicate gated shows up in ``FlowSuccess.skipped``.
 WHEN_SKIP_REASON = "when condition not satisfied"
 
 # How many matches a count failure quotes back, so the message shows what the
@@ -67,7 +64,6 @@ FAILED_ROWS_HINT = (
 
 PICK_RANGE_HINT = "lower pick, or check the selector matches what you expect"
 
-# Every action whose result the flow runner keeps in ``outputs``.
 OUTPUT_ACTIONS = frozenset({"read", "parse", "dom", "screenshot", "download"})
 
 EXTRA_SAFE_ATTRS = frozenset({"href", "src", "title"})
@@ -165,7 +161,6 @@ EXPLORE_MAX_NESTED_CONTROLS = 5
 # How much of each sampled field the sample keeps. Reading the whole of every
 # row is what `read` is for.
 EXPLORE_SAMPLE_CHARS = 200
-# How far up from the first match a test id still names it.
 EXPLORE_ANCESTOR_LEVELS = 3
 TESTID_ATTRIBUTES = ("data-testid", "data-testing-id")
 
@@ -231,7 +226,6 @@ INTERACTIVE_ROLES = (
 )
 
 
-# The only names a schema `type:` string may use; see `schema_types.py`.
 SCHEMA_TYPE_NAMES = {
     "str": str,
     "int": int,
@@ -243,7 +237,6 @@ SCHEMA_TYPE_NAMES = {
 }
 
 
-# How often a download step looks for a file between event dispatches.
 DOWNLOAD_POLL_MS = 100
 # An attached browser's download is read in-page in base64 slices this big.
 DOWNLOAD_SLICE_BYTES = 4 << 20

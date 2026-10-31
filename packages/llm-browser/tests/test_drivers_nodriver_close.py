@@ -33,7 +33,6 @@ def test_close_calls_stop_directly_once(driver: NodriverDriver) -> None:
 
 
 def test_close_swallows_a_failing_stop(driver: NodriverDriver) -> None:
-    # The CDP websocket may already be gone; a failing stop() must not skip resetting state.
     driver.browser = FakeBrowser(stop_error=RuntimeError("already disconnected"))
 
     driver.close(HANDLE)

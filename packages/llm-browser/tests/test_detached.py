@@ -78,7 +78,6 @@ def test_launch_detached_persists_pid_and_attaches(tmp_path: Path) -> None:
 
 
 def test_launch_detached_closes_other_tabs(tmp_path: Path) -> None:
-    # Trimming to one page keeps `_last_page_or_new` deterministic despite Chromium's default tab.
     driver = AttachStubDriver()
     session = BrowserSession(state_dir=tmp_path, driver=driver)
     with patch(
@@ -143,7 +142,6 @@ def test_launch_detached_kills_the_browser_when_attach_fails(tmp_path: Path) -> 
 
 
 def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> None:
-    # Even if the process dies before attach, the pid is on disk for stop_detached.
     seen: list[int | None] = []
 
     class RecordingDriver(AttachStubDriver):
@@ -163,7 +161,6 @@ def test_launch_detached_records_the_pid_before_attaching(tmp_path: Path) -> Non
 
 
 def test_a_failed_attach_leaves_an_earlier_session_stoppable(tmp_path: Path) -> None:
-    # Clearing the file would strand the already-recorded browser with no pid anywhere.
     live = BrowserSession(state_dir=tmp_path, driver=AttachStubDriver())
     with patch(
         "llm_browser.session.spawn_detached_chromium",

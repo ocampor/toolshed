@@ -103,6 +103,5 @@ def test_nodriver_element_capture_fails_the_step_when_nothing_matches() -> None:
 
 
 def test_a_driver_without_element_capture_reports_it_as_unsupported() -> None:
-    # `NotImplementedError` is the contract's opt-out: a conformance skip.
     with pytest.raises(NotImplementedError, match="element screenshots"):
         Driver.screenshot_element_bytes(MagicMock(spec=Driver), MagicMock())

@@ -90,8 +90,6 @@ def has_balanced_brackets(css: str) -> bool:
 
 
 class MissingSelectorsError(ValueError):
-    """Every ref the map does not carry, named once, sorted."""
-
     def __init__(self, missing: list[str], available: list[str]) -> None:
         self.missing = missing
         self.available = available
@@ -109,9 +107,7 @@ class RefSite(NamedTuple):
 
 
 def step_ref_sites(step: Step) -> Iterator[RefSite]:
-    """Every ref site one step owns — its own selector, its ``fields:`` /
-    ``read:`` entries' and its ``repeat: { over_selector: }`` — never an
-    embedded sub-flow's: a child step resolves its own refs when it runs."""
+    """Never an embedded sub-flow's: a child step resolves its own refs when it runs."""
     for owner in (step, *step.fields, *step.read.values()):
         selector = getattr(owner, "selector", None)
         if isinstance(selector, RefSelector):
@@ -128,10 +124,7 @@ def flow_ref_sites(flow: Flow) -> Iterator[RefSite]:
 
 
 def selector_refs(flow: Flow) -> list[str]:
-    """Every ref in a selector position — a step's own, its ``fields:`` and
-    ``read:`` entries', sub-flows included — sorted and unique, which is what
-    a host builds its map from. A ``ref:`` under a ``when:`` predicate is not
-    such a position and is not named here."""
+    """What a host builds its map from; a ``ref:`` under ``when:`` is not a selector position."""
     return sorted({site.ref for site in flow_ref_sites(flow)})
 
 
@@ -140,9 +133,7 @@ def missing_selectors(flow: Flow, selector_map: SelectorMap) -> list[str]:
 
 
 def resolve_step_refs(step: Step, selector_map: SelectorMap | None) -> None:
-    """Swap every ref in ``step`` for the map's selector, in place — the step
-    is ``resolve_step``'s own fresh copy. Raises
-    :class:`MissingSelectorsError` naming every ref the map lacks."""
+    """In place: the step is ``resolve_step``'s own fresh copy."""
     available = selector_map or {}
     sites = list(step_ref_sites(step))
     missing = sorted({site.ref for site in sites if site.ref not in available})

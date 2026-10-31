@@ -34,8 +34,6 @@ def session(tmp_path: Path) -> BrowserSession:
     s.driver.count.return_value = 1
     s.driver.is_visible.return_value = True
     s.driver.first.return_value = "element"
-    # In view, and the pointer on the target: what the two scripts a humanized
-    # click runs answer for a test that is about something else.
     s.driver.evaluate.return_value = {
         "gap": 0,
         "scrollY": 0,
@@ -120,7 +118,6 @@ def test_type_humanize_false_overrides_a_human_session(
 def test_a_jitter_delay_types_humanized_with_that_jitter(
     session: BrowserSession,
 ) -> None:
-    # The per-call jitter replaces the behaviour's key delay, even on an off session.
     delay = Jitter(min_ms=30, max_ms=90)
     session.type("#search", "query", delay_ms=delay)
     driver(session).type.assert_not_called()
@@ -206,7 +203,6 @@ def test_select_option(session: BrowserSession) -> None:
 
 
 def test_select_on_a_non_select_is_a_value_error(session: BrowserSession) -> None:
-    # ValueError becomes an ErrorResult; the driver's own exception would abort the flow.
     driver(session).evaluate.return_value = "DIV"
     with pytest.raises(
         ValueError, match=r"select needs a <select>; #dropdown is a <div>"
@@ -242,7 +238,6 @@ def test_input_pauses_after_the_action(
 def test_press_pauses_before_the_key_when_the_behavior_moves_the_mouse(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # A press has no humanized_click to hide its pause behind, so `press` owns it.
     session.behavior = PACED.model_copy(
         update={
             "mouse_move": True,
@@ -276,7 +271,6 @@ def test_a_failed_input_skips_the_post_pause(
 def test_an_action_paces_once_not_twice(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # execute_action opens the pacing scope; the session method must not pause a second time.
     session.behavior = PACED
     execute_action(session, ClickStep(name="s", action="click", selector="#btn"))
     assert sleeps == [PACE_MS / 1000.0]
@@ -308,7 +302,6 @@ RATE_LIMITED = Behavior(min_gap_ms=2_000, mouse_move=False, type_char_delay=Jitt
 def test_humanize_true_switches_the_knobs_and_keeps_the_rate_limit(
     session: BrowserSession,
 ) -> None:
-    # Dropping the session's `min_gap_ms` is the one loss that can get a run blocked.
     session.behavior = RATE_LIMITED
     forced = behavior_for(session.behavior, True)
     assert forced.mouse_move is True
@@ -375,7 +368,6 @@ def test_an_explicit_behavior_keeps_the_knobs_the_driver_does_not_own(
 def test_a_session_that_set_the_knob_itself_overrules_the_driver(
     session: BrowserSession,
 ) -> None:
-    # The opt-out is the driver's default, not a lock.
     session.behavior = CamoufoxBehaviorConfig(driver="camoufox", mouse_move=True)
     assert effective_behavior(session, behavior=Behavior.human()).mouse_move is True
     assert effective_behavior(session, behavior=Behavior.off()).mouse_move is False
@@ -384,7 +376,6 @@ def test_a_session_that_set_the_knob_itself_overrules_the_driver(
 def test_humanize_false_still_jitters_an_explicit_delay_pair(
     session: BrowserSession,
 ) -> None:
-    # A `[min, max]` the caller wrote is a cadence they asked for, so it stays.
     session.behavior = Behavior.human()
     delay = Jitter(min_ms=40, max_ms=80)
     session.type("#search", "query", delay_ms=delay, humanize=False)
@@ -395,7 +386,6 @@ def test_humanize_false_still_jitters_an_explicit_delay_pair(
 
 
 def test_humanize_true_leaves_a_tuned_knob_alone(session: BrowserSession) -> None:
-    # `humanize: true` turns humanization on; it does not restore defaults.
     tuned = Jitter(min_ms=200, max_ms=400)
     session.behavior = Behavior(
         type_char_delay=tuned, mouse_move=False, pre_click_pause=Jitter()
@@ -480,7 +470,6 @@ def test_a_click_intercepted_twice_reports_the_first_error_and_the_hatch(
 def test_a_failure_that_is_not_an_interception_is_not_retried(
     session: BrowserSession,
 ) -> None:
-    # Centring cannot unlock a disabled control, and the hint would suggest an untrusted click.
     driver(session).click.side_effect = TimeoutError("element is not enabled")
 
     with pytest.raises(TimeoutError) as failure:
@@ -494,7 +483,6 @@ def test_a_failure_that_is_not_an_interception_is_not_retried(
 def test_a_centring_failure_leaves_the_click_error_alone(
     session: BrowserSession,
 ) -> None:
-    # The centring evaluate can time out too; reporting that would bury why the click failed.
     clicks_that_fail(session, 1)
     driver(session).scroll_into_view.side_effect = TimeoutError(
         "locator.evaluate: Timeout 30000ms exceeded"
@@ -594,7 +582,6 @@ def test_humanized_click_aborts_when_covered_after_move(
 def test_covered_click_moves_the_pointer_away_before_refusing(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # A pointer parked on the menu its path opened keeps it open, so it walks off first.
     page = humanized_page(session, COVERED)
     moves_when_asked: list[int] = []
     fits = driver(session).evaluate.side_effect
@@ -621,7 +608,6 @@ def test_covered_click_moves_the_pointer_away_before_refusing(
 def test_a_retreat_that_fails_keeps_the_refusal_it_was_walking_away_from(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # A page closing during the retreat must not replace the refusal the caller matches on.
     page = humanized_page(session, COVERED)
     refused: list[int] = []
 
@@ -649,8 +635,6 @@ def test_a_retreat_that_fails_keeps_the_refusal_it_was_walking_away_from(
     ("answer", "expected"),
     [
         (ON_TARGET, HitTarget(tag="a", text="Salir", class_name="headerlogout")),
-        # The page owns the containment answer: the span inside the link is the
-        # target, so a hit whose tag differs is not a miss.
         (DESCENDANT, HitTarget(tag="span", text="Salir", class_name="label")),
     ],
 )
@@ -665,7 +649,6 @@ def test_humanized_click_reports_what_the_pointer_was_over(
     assert session.click("#logout") == expected
 
     page.mouse.down.assert_called_once()
-    # Asked about where the pointer actually stopped, not where `find` looked.
     landed = page.mouse.move.call_args_list[-1].args
     assert json.dumps(list(landed)) in driver(session).evaluate.call_args.args[1]
 
@@ -673,7 +656,6 @@ def test_humanized_click_reports_what_the_pointer_was_over(
 def test_offscreen_target_is_wheeled_into_view_before_the_move(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # A one-frame jump with no wheel events is a tell, so the pointer wheels the target in.
     page = humanized_page(session, ON_TARGET, gap=320)
 
     session.click("#logout")
@@ -683,7 +665,6 @@ def test_offscreen_target_is_wheeled_into_view_before_the_move(
     assert (scrolled_page, dx) == (page, 0)
     assert abs(dy - 320) <= round(320 * Behavior.human().scroll_delta_jitter)
     driver(session).scroll_into_view.assert_not_called()
-    # The path only starts once the box is in view.
     called = [name for name, *_ in driver(session).method_calls]
     assert called.index("scroll") < called.index("humanized_click")
 
@@ -691,7 +672,6 @@ def test_offscreen_target_is_wheeled_into_view_before_the_move(
 def test_a_last_tick_that_lands_the_box_does_not_fall_back(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # A wheel that lands the box on the last tick must not fire the jump it just avoided.
     page = humanized_page(session, ON_TARGET)
     remaining = [40] * WHEEL_INTO_VIEW_TICKS
     scrolled = [0]
@@ -745,7 +725,6 @@ def test_target_in_view_is_not_scrolled(
 def test_a_hit_test_that_cannot_run_fails_the_step(
     session: BrowserSession, sleeps: list[float]
 ) -> None:
-    # Pressing blind after a navigation destroyed the context is what the gate exists to stop.
     page = humanized_page(session, ON_TARGET)
 
     moves_when_asked: list[int] = []
@@ -770,5 +749,4 @@ def test_a_hit_test_that_cannot_run_fails_the_step(
         if "getBoundingClientRect" not in call.args[1]
     ]
     assert hit_tests[-1].kwargs["timeout_ms"] > 0
-    # It walks off whatever it landed on here too, not only when covered.
     assert page.mouse.move.call_count > moves_when_asked[0]

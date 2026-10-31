@@ -29,7 +29,7 @@ def mock_session(tmp_path: Path) -> MagicMock:
         name="download.bin", content=b"payload"
     )
     session.element_exists.return_value = True
-    session.click.return_value = None  # a double hit-tests nothing
+    session.click.return_value = None
     session.probe.return_value = PageProbe()
     locator = MagicMock()
     locator.count.return_value = 1
@@ -42,8 +42,6 @@ def mock_session(tmp_path: Path) -> MagicMock:
 
 ExploringSession = Callable[..., BrowserSession]
 
-# A first match nothing is wrong with; a test states only what it changes.
-# `clickable` is not here: the model computes it from `why_not`.
 CLICKABLE_FIRST: dict[str, object] = {
     "tag": "a",
     "text": "Alpha",
@@ -108,8 +106,6 @@ def exploring_session(tmp_path: Path) -> ExploringSession:
         driver.child.side_effect = lambda element, selector: (element[0], selector)
         driver.read_property.side_effect = read
         driver.get_attribute.side_effect = read
-        # The real default, so a canned page exercises the child/read split
-        # every driver inherits rather than a mock standing in for it.
         driver.read_field.side_effect = lambda row, field: Driver.read_field(
             driver, row, field
         )

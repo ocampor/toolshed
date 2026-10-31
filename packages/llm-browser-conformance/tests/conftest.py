@@ -1,5 +1,3 @@
-# Browsers are expensive, so the whole suite is skipped unless `--real` is passed.
-
 from collections.abc import Iterator
 
 import pytest

@@ -1,11 +1,3 @@
-"""What one conformance check is, and the handle it is given to run.
-
-A ``Scenario`` is data: a name, the fixture page it drives, the callable that
-exercises the library, and the drivers it is known to fail on today. Both
-front ends — ``llm-browser-check`` and the pytest wrapper — walk the same
-list, so a scenario is written once and reported twice.
-"""
-
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -61,23 +53,12 @@ class Section(StrEnum):
 
 
 class ScenarioSkipped(Exception):
-    """This driver has no API for what the scenario exercises.
-
-    Not a failure: a driver is allowed to not implement ``enter_frame``. It is
-    raised by the check itself, because only the check knows what it needed.
-    """
+    """Not a failure: a driver may omit ``enter_frame``, and only the check knows what it needed."""
 
 
 @dataclass(frozen=True)
 class Timing:
-    """Two honest clocks around one wait.
-
-    ``total`` starts before the trigger (a navigation or a click), so the
-    page's ``setTimeout`` cannot have started any earlier — it is the lower
-    bound. ``after_trigger`` starts once the trigger returned, by which point
-    the timer is already running — it is the upper bound, and charging it with
-    the trigger's own cost would only make the ceiling meaningless.
-    """
+    """``total`` starts before the trigger (lower bound); ``after_trigger`` after it (upper bound)."""
 
     total: float
     after_trigger: float
@@ -93,12 +74,6 @@ class Timing:
 
 @dataclass(frozen=True)
 class Context:
-    """Everything a check is allowed to touch: one live session and the site.
-
-    The helpers exist so a check reads as the story it is telling rather than
-    as timeout bookkeeping.
-    """
-
     session: BrowserSession
     site_url: str
     driver: str
@@ -127,7 +102,6 @@ class Context:
         self.session.wait_for_element(selector, **options)
 
     def wait(self, selector: str, state: str, **overrides: int) -> Callable[[], None]:
-        """The same wait, deferred, so ``timed`` can bracket it."""
         return lambda: self.wait_now(selector, state, **overrides)
 
     def timed(self, trigger: Callable[[], Any], wait: Callable[[], Any]) -> Timing:
@@ -144,13 +118,7 @@ class Context:
         return time.monotonic() - start
 
     def js(self, expression: str) -> Any:
-        """Read the page from the page's own side.
-
-        Both driver families take a plain JS *expression* here, which the
-        element-scoped ``evaluate`` cannot claim (Playwright wants an arrow
-        function, nodriver a function body), so page-level reads keep an
-        assertion driver-neutral.
-        """
+        """A page-level JS expression both driver families accept, unlike the element-scoped ``evaluate``."""
         return self.session.evaluate(self.session.get_page(), expression)
 
     def text(self, selector: str) -> str | None:
@@ -161,12 +129,7 @@ class Context:
         return str(self.js(f"document.querySelector({selector!r}).value"))
 
     def trusted(self, selector: str, attribute: str = "data-trusted") -> str | None:
-        """What the page's recorder saw for the last event on ``selector``.
-
-        ``data-trusted`` is the last click or keydown; ``data-trusted-input``
-        the last ``input`` event — drivers differ on which they emit, and the
-        difference is worth naming rather than averaging away.
-        """
+        """``data-trusted`` is the last click or keydown; ``data-trusted-input`` the last ``input`` event."""
         seen = self.js(
             f"document.querySelector({selector!r}).getAttribute({attribute!r})"
         )
@@ -181,21 +144,7 @@ Check = Callable[[Context], str | None]
 
 @dataclass(frozen=True)
 class Scenario:
-    """One conformance check, plus the drivers it is known to fail on today.
-
-    ``check`` may return a one-line note — used where drivers legitimately
-    differ and the point is to *record* which behaviour this one has rather
-    than to force a single answer.
-
-    ``covers`` names the public surface this scenario exercises — step types,
-    step fields, step options, session methods (see
-    :mod:`llm_browser_conformance.coverage` for the key grammar). It is what
-    the coverage table is built from, and what lets a test fail when the
-    library grows a step type or a field nothing checks.
-
-    There is deliberately no ``page`` field: the check navigates, so a second
-    copy of the page name here would be documentation nothing verifies.
-    """
+    """``check`` may return a note recording which behaviour a driver has; no ``page`` field, as the check navigates."""
 
     name: str
     section: Section

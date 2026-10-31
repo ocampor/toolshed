@@ -1,5 +1,3 @@
-# read_html and page_counts_of stand in for js/survey.js; the scripts run in conformance.
-
 from itertools import product
 from string import ascii_lowercase
 
@@ -143,7 +141,6 @@ def page_counts_of(tree: object, found: object) -> dict[str, int]:
 def test_landmarks_lead_with_what_survives_a_redeploy() -> None:
     found = survey_page()
 
-    # One name each: the header answers to its test id, not also to its id.
     assert [mark.selector for mark in found.landmarks] == [
         '[data-testing-id="top"]',
         '[aria-label="Search missions"]',
@@ -165,7 +162,6 @@ def test_links_are_grouped_by_the_section_they_point_at() -> None:
 
 
 def test_the_cards_are_one_repeat_however_the_build_numbered_them() -> None:
-    # The class stem is what the next deploy will still call the card.
     found = survey_page()
 
     assert [(run.selector, run.count) for run in found.repeats] == [
@@ -213,17 +209,12 @@ def test_a_class_stem_drops_the_build_numbering_only() -> None:
 
 
 def test_a_table_of_rows_is_its_story_rows_not_its_spacers() -> None:
-    # Grouping by tag alone reads a news table as ninety `tr`.
     rows = "".join(
         '<tr class="athing"><td>story</td></tr><tr class="spacer"></tr><tr></tr>'
         for _ in range(4)
     )
     found = survey_page(f"<table><tbody>{rows}</tbody></table>")
 
-    # The classless run reads last: it is the table's own rows, not the ones
-    # an author came for.
-    # `tbody > tr` is the whole table, twelve rows: the count is what the
-    # selector returns, not the size of the run it was spotted in.
     assert [(run.selector, run.count) for run in found.repeats] == [
         ("tr.athing", 4),
         ("tr.spacer", 4),
@@ -250,8 +241,6 @@ def test_one_utility_class_does_not_make_two_components_one_repeat() -> None:
         f"<body><section>{cards}</section><footer>{chrome}</footer></body>"
     )
 
-    # `p-4` and `gap-2` read as the build's numbering and drop out; what is
-    # left still tells the two runs apart, which is the whole point.
     assert sorted((run.selector, run.count) for run in found.repeats) == [
         ("div.flex.border", 4),
         ("div.flex.rounded", 3),
@@ -259,7 +248,6 @@ def test_one_utility_class_does_not_make_two_components_one_repeat() -> None:
 
 
 def test_a_landmark_counts_every_element_that_answers_to_it() -> None:
-    # A `1` that is really a `2` is the `ambiguous` a survey exists to catch.
     page = """
     <body>
       <a aria-label="Next" href="/2">next</a>
@@ -273,7 +261,6 @@ def test_a_landmark_counts_every_element_that_answers_to_it() -> None:
 
 
 def test_a_page_that_outgrew_the_caps_says_so() -> None:
-    # "You got the top N" and "whole sections are missing" are different answers.
     tree = lxml_html.fromstring(PAGE)
 
     assert not survey_of(read_html(tree), 60).truncated

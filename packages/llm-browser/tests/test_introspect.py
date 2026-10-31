@@ -15,7 +15,6 @@ def test_every_step_type_explains_itself() -> None:
 
 
 def test_every_session_member_explains_itself() -> None:
-    # `reference/session.md` is those docstrings; a missing one is a blank section.
     undocumented = [
         name
         for name in session_methods()
@@ -25,7 +24,6 @@ def test_every_session_member_explains_itself() -> None:
 
 
 def test_wait_states_are_bound_to_the_literal() -> None:
-    # A state added to only one of the two would go undocumented in silence.
     states = set(typing.get_args(WaitState))
     assert set(WAIT_STATES) == states
     assert set(TEXT_STATES) <= states

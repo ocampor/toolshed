@@ -99,7 +99,6 @@ def test_a_step_path_writes_nothing_and_keeps_the_output(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    # `path:` is a CLI instruction; run_flow leaves the filesystem alone.
     out = tmp_path / "rows.json"
     flow = load_flow_text(_flow_yaml([_read_step(path=str(out))]))
     result = run_flow(mock_session, flow, {})

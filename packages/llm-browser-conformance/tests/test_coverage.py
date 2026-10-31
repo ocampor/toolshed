@@ -1,5 +1,3 @@
-# Required rows are introspected from llm_browser, so anything new it grows fails here first.
-
 import pytest
 from llm_browser.introspect import own_fields, session_methods, step_arms
 from llm_browser.session import BrowserSession
@@ -30,7 +28,6 @@ def test_no_scenario_claims_a_key_nothing_requires() -> None:
 
 
 def test_the_required_set_is_read_off_the_library() -> None:
-    # A required_keys that silently returned nothing would make every assertion above vacuous.
     groups = required_keys()
     actions = {action for action, _ in step_arms()}
     assert {"click", "goto", "run-flow", "eval"} <= actions
@@ -42,7 +39,6 @@ def test_the_required_set_is_read_off_the_library() -> None:
 
 
 def test_the_discriminator_is_not_mistaken_for_an_option() -> None:
-    # `action` picks the step, it is not an option; BaseStep fields count once, not per step.
     for _, step_class in step_arms():
         assert "action" not in own_fields(step_class)
         assert "optional" not in own_fields(step_class)
@@ -64,7 +60,6 @@ def test_a_session_property_is_required_like_a_method(
 
 
 def test_the_hand_listed_keys_stay_sorted_and_unique() -> None:
-    # The only rows nothing introspects, so drift shows up here.
     for names in (REQUIRED_API, REQUIRED_CONDITIONS):
         assert list(names) == sorted(set(names))
 

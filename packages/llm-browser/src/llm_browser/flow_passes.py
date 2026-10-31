@@ -1,8 +1,4 @@
-"""One pass of a step: the data it runs against, the keys it writes under.
-
-A step without ``repeat`` is a single pass with no index, so the runner folds
-every outcome the same way and only these functions know an index exists.
-"""
+"""Only these functions know an index exists; a step without ``repeat`` is one unindexed pass."""
 
 import re
 from dataclasses import dataclass, field
@@ -46,9 +42,7 @@ class RunState:
 
 
 def step_output(step: Step, result: ActionResult) -> object | None:
-    """``None`` for steps that produce nothing worth keeping (a click, a
-    skipped step). Bytes come back as the :class:`BytesResult` itself, so the
-    caller holds the real payload and not a base64 string."""
+    """Bytes come back as the :class:`BytesResult` itself, not a base64 string."""
     if step.action not in OUTPUT_ACTIONS:
         return None
     match result:
@@ -65,17 +59,11 @@ def step_output(step: Step, result: ActionResult) -> object | None:
 
 
 def indexed(name: str, index: int | None) -> str:
-    """``name`` as one ``repeat`` pass keys it, so passes never collide."""
     return name if index is None else f"{name}[{index}]"
 
 
 def unindexed(name: str) -> tuple[str, int | None]:
-    """The inverse of :func:`indexed`: ``"shot[2]"`` is step ``shot``, pass 2.
-
-    Whatever holds a step's own declaration — the CLI's ``path:`` table — keys
-    it by the plain step name, so reading a pass's output back needs the name
-    the pass was keyed from.
-    """
+    """The CLI's ``path:`` table keys by the plain step name."""
     match = INDEXED_NAME.fullmatch(name)
     if match is None:
         return name, None
@@ -100,12 +88,7 @@ def repeat_passes(
     selector_map: SelectorMap | None = None,
     only: dict[str, list[int]] | None = None,
 ) -> list[Pass]:
-    """Every pass of ``step`` — one pass unless it repeats.
-
-    Each item is bound under ``repeat.bind``, with its position under
-    ``<bind>_index``, so a step can name either. ``only`` keeps just the passes
-    whose index it names for this step; the indices are the original ones.
-    """
+    """Items bind under ``repeat.bind`` and positions under ``<bind>_index``; ``only`` keeps original indices."""
     repeat = step.repeat
     if repeat is None:
         return [Pass(None, data)]
@@ -133,12 +116,7 @@ def repeat_source(
     data: FlowData,
     selector_map: SelectorMap | None,
 ) -> tuple[list[object], PlainSelector | None]:
-    """What this step repeats over, and the element root when it has one.
-
-    A list nobody passed is no items rather than an error: an optional list
-    param left out means the step has nothing to do. Anything else that is not
-    a list is a data error.
-    """
+    """An absent list param is no items, not an error; any other non-list is a data error."""
     repeat = step.repeat
     assert repeat is not None
     if repeat.over_selector is not None:
@@ -163,12 +141,7 @@ def repeat_source(
 
 
 def repeat_data_error(step: Step, exc: ValueError, state: RunState) -> FlowError:
-    """Flow data a step cannot run on — a ``repeat`` over a non-list, a dotted
-    template path to nothing — fails like any other step.
-
-    Raising instead would cost the caller the whole run: the steps before this
-    one already ran, and their outputs only reach anyone through the result.
-    """
+    """Fails like any step, not a raise: earlier steps' outputs only reach the caller through the result."""
     return FlowError(
         step=step.qualified_name,
         data=ErrorResult(
@@ -233,7 +206,5 @@ def stepped(warning: ExtractError, step: str) -> ExtractError:
 
 
 def child_data(parent: FlowData, bindings: dict[str, Any]) -> dict[str, object]:
-    """A parent param the step does not bind stays visible to the child; one it
-    binds is overridden, so ``data: { x: "{{ y }}" }`` reaches the child as the
-    bound value even when the parent has its own ``x``."""
+    """A parent param the step binds is overridden for the child; one it does not stays visible."""
     return {**parent.to_template_dict(), **bindings}

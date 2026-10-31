@@ -183,7 +183,6 @@ def _snapshot_at(tmp_path: Path, level: SanitizeLevel | None) -> str:
 def test_dom_snapshot_honours_the_level(
     tmp_path: Path, level: SanitizeLevel, keeps_href: bool, keeps_span: bool
 ) -> None:
-    # The level table is one implementation shared by page snapshots and `dom` snippets.
     out = _snapshot_at(tmp_path, level)
     assert ("next.example" in out) is keeps_href, out
     assert ("<span" in out) is keeps_span, out

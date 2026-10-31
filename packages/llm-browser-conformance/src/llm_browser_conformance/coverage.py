@@ -1,28 +1,5 @@
-"""What the suite covers, read off the library rather than off a list.
-
-``llm-browser-check --coverage`` prints this module's table. The point is the *required* set:
-the step types, step fields, step options and session methods are introspected
-from ``llm_browser`` itself, so a step type the library grows — or a field
-added to an existing one — turns into an uncovered row and fails
-``tests/test_coverage.py`` until a scenario claims it. The introspection
-itself lives in ``llm_browser.introspect``, shared with the library's own
-generated reference.
-
-A scenario claims a key through ``Scenario.covers``. Keys are strings with a
-kind prefix:
-
-| key | means |
-| --- | --- |
-| ``step:click`` | the ``click`` step type |
-| ``field:goto.wait_until`` | a field declared by one step type |
-| ``option:optional`` | a ``BaseStep`` field, i.e. an option every step has |
-| ``when:eq`` | a ``when:`` condition |
-| ``session:find_all`` | a public ``BrowserSession`` member |
-| ``api:redact`` | library surface that is not a model field or a method |
-
-Only ``api:`` keys are hand-listed, because there is nothing to introspect:
-they name behaviour (``redact=``, partial outputs, a sanitize level) rather
-than an attribute.
+"""Keys are kind-prefixed (``step:``, ``field:``, ``option:``, ``when:``, ``session:``, ``api:``);
+only ``api:`` keys are hand-listed, having nothing to introspect.
 """
 
 from collections.abc import Iterable

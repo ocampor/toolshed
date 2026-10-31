@@ -24,8 +24,6 @@ from llm_browser.session import BrowserSession
 def _locator_with_box(box: dict[str, float] | None = None) -> MagicMock:
     locator = MagicMock()
     locator.count.return_value = 1
-    # What the page answers the two scripts a humanized click runs: the box is
-    # in view, and the pointer ended on the target itself.
     locator.first.evaluate.return_value = {
         "gap": 0,
         "scrollY": 0,
@@ -105,12 +103,10 @@ def test_human_preset_all_on() -> None:
 
 
 def test_the_config_carries_no_seed() -> None:
-    # Deterministic jitter is the strongest tell, so no knob offers a seed.
     assert "seed" not in Behavior.model_fields
 
 
 def test_the_gap_is_paid_before_every_action(no_sleep: list[float]) -> None:
-    # Memoryless: no clock says how long the caller was idle, so a slow run pays one more gap.
     b = Behavior(min_gap_ms=50)
     enforce_gap(b)
     enforce_gap(b)
@@ -158,7 +154,6 @@ def test_humanized_click_walks_a_curve_and_presses_with_a_gap() -> None:
 
 
 def test_click_target_spreads_with_the_offset_ratio() -> None:
-    # The offset is a fraction of the half-extent: it scales with the box and stays inside it.
     b = Behavior(click_offset_ratio=0.3)
     targets = [jittered_target(_element_at(), b) for _ in range(2000)]
     xs = [x for x, _y in targets]
@@ -169,7 +164,6 @@ def test_click_target_spreads_with_the_offset_ratio() -> None:
 
 
 def test_a_curve_bows_off_the_straight_line() -> None:
-    # One draw can land near zero, so the claim is about paths rather than a path.
     curves = [curve_points((0.0, 0.0), (100.0, 0.0), 10) for _ in range(200)]
     assert all(points[-1] == (100.0, 0.0) for points in curves)
     bowed = [max(abs(y) for _x, y in points) > 1.0 for points in curves]
@@ -314,7 +308,6 @@ def _page_with_viewport(width: float, height: float) -> MagicMock:
 
 
 def test_a_mouse_path_stays_inside_the_viewport(no_sleep: list[float]) -> None:
-    # The bow scales with distance, so a long approach to an edge element can swing off-screen.
     corner = {"x": 0.0, "y": 0.0, "width": 40.0, "height": 20.0}
     b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
     for _ in range(20):
@@ -336,7 +329,6 @@ def test_the_pointer_approaches_from_its_target_s_neighbourhood() -> None:
 
 
 def test_every_click_approaches_from_a_fresh_point(no_sleep: list[float]) -> None:
-    # Nothing remembers the last click's point, so two clicks cannot share a correlatable trail.
     b = Behavior(pre_click_pause=Jitter(), mouse_move_steps=8)
     box = {"x": 600.0, "y": 400.0, "width": 40.0, "height": 20.0}
     firsts = []
@@ -348,7 +340,6 @@ def test_every_click_approaches_from_a_fresh_point(no_sleep: list[float]) -> Non
 
 
 def test_the_path_is_paced_point_by_point(no_sleep: list[float]) -> None:
-    # A trail with a shape but no speed still reads as synthetic.
     b = Behavior(
         pre_click_pause=Jitter(),
         hover_dwell=Jitter(),

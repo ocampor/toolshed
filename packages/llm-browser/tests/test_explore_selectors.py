@@ -15,7 +15,6 @@ def locators(**fields: object) -> Locators:
 
 
 def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
-    # Test id outlives a redesign, aria label a restyle, id both; a hashed class nothing.
     proposed = candidate_selectors(
         locators(
             testid_attribute="data-testid",
@@ -41,7 +40,6 @@ def test_candidates_are_ranked_by_what_survives_a_redeploy() -> None:
 
 
 def test_a_test_id_on_an_ancestor_scopes_down_to_the_match() -> None:
-    # `:is()` keeps the descended tail from adding specificity.
     proposed = candidate_selectors(
         locators(testid_attribute="data-testing-id", testid="row", testid_depth=2),
         role_selectors=True,
@@ -77,7 +75,6 @@ def test_an_attribute_value_is_escaped_as_a_css_string(
 
 
 def test_only_the_best_hashed_class_is_proposed() -> None:
-    # Each candidate costs a round trip, and no hashed class outlives the next redeploy.
     proposed = candidate_selectors(
         locators(classes=["css-1x2y3z", "css-9a8b7c", "w-[42px]"]),
         role_selectors=True,
@@ -87,7 +84,6 @@ def test_only_the_best_hashed_class_is_proposed() -> None:
 
 
 def test_a_class_is_escaped_before_it_becomes_a_selector() -> None:
-    # `.w-[42px]` unescaped is a syntax error, not a candidate.
     proposed = candidate_selectors(locators(classes=["w-[42px]"]), role_selectors=True)
 
     assert proposed == [r".w-\[42px\]"]
@@ -124,13 +120,10 @@ def test_which_ids_read_as_generated(value: str, generated: bool) -> None:
 @pytest.mark.parametrize(
     ("href", "expected"),
     [
-        # The page is the number; the section is what is left.
         ("/missions/senior-eng-4821", "/missions/"),
         ("/item?id=46150879", "/item"),
-        # Nothing to generalize: the prefix would be the link itself.
         ("/learn/thinking-in-react", None),
         ("https://iana.org/domains/example", None),
-        # The query is the page; the path is the section.
         ("login?goto=news", "login"),
         ("?p=2", None),
         ("/", None),
@@ -145,7 +138,6 @@ def test_the_href_prefix_is_the_section_not_the_page(
 
 
 def test_a_read_wants_a_candidate_that_matches_every_row() -> None:
-    # A selector finding one row is not a replacement for the list a `read` wants.
     assert accepted_counts(Intent.READ, 30) == {30}
     assert accepted_counts(Intent.READ, 1) == {1}
     assert accepted_counts(Intent.CLICK, 30) == {1}

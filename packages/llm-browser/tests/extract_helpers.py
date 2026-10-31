@@ -9,7 +9,6 @@ def serve_rows(session: BrowserSession, rows: list[dict[str, str | None]]) -> No
     session._page.locator.return_value = locator  # type: ignore[union-attr]
 
 
-# What a typed read returns for CARDS, and so what explore must preview.
 CARDS = [
     {".price": "MN 48,500", ".label": "Casa 3 rec"},
     {".price": "Consultar precio", ".label": "Casa"},

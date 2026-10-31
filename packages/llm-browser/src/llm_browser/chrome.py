@@ -49,14 +49,8 @@ def spawn_detached_chromium(
     executable_path: str | None = None,
     startup_timeout_s: float = 20.0,
 ) -> tuple[int, str]:
-    """Uses ``--remote-debugging-port=0`` + the ``DevToolsActivePort`` file Chromium
-    writes into ``user_data_dir`` on startup to discover the chosen port.
-    The child is placed in a new session (``setsid``) so it survives parent
-    exit and CLI re-invocations can reconnect over CDP.
-
-    Note: running this Chromium via ``connect_over_cdp`` does NOT activate
-    patchright's stealth patches. Value comes from reusing a *warmed* profile
-    across CLI calls — log in / pass Cloudflare once, reuse forever.
+    """Survives parent exit via ``setsid``; the port comes from ``DevToolsActivePort``.
+    Over ``connect_over_cdp`` patchright's stealth patches do not apply; the value is a warmed profile.
     """
     user_data_dir.mkdir(parents=True, exist_ok=True)
     port_file = user_data_dir / "DevToolsActivePort"

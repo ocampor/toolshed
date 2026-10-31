@@ -1,5 +1,3 @@
-"""Action registry scaffold — consumers register their own domain-specific actions."""
-
 from functools import lru_cache
 from typing import Callable
 

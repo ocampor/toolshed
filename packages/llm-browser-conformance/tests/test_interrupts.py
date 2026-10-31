@@ -28,7 +28,6 @@ class FakeSession:
 
 @pytest.fixture(autouse=True)
 def clean_module_state() -> Iterator[None]:
-    # A test that installs real handlers or leaves a session registered must not bleed into the next.
     LIVE_SESSIONS.clear()
     previous_handlers.clear()
     yield
@@ -79,7 +78,6 @@ def test_a_session_that_fails_to_close_does_not_block_the_rest() -> None:
 
 
 def test_a_reentrant_sweep_is_a_no_op_and_the_original_continues() -> None:
-    # A nested signal re-entering the sweep once cleared the registry the first call was still walking.
 
     class ReentersOnClose(FakeSession):
         def close(self) -> None:
@@ -118,7 +116,6 @@ def test_an_interrupt_raised_while_closing_one_session_waits_for_the_rest() -> N
 
 
 def test_the_first_interrupt_seen_wins_over_a_later_one() -> None:
-    # Last-write-wins would drop whichever interrupt type raised first.
 
     class RaisesKeyboardInterruptOnClose(FakeSession):
         def close(self) -> None:
@@ -190,17 +187,13 @@ def test_restoring_lets_a_later_sigint_reach_the_previous_handler_again() -> Non
 
 
 def test_a_sweep_during_launch_keeps_handlers_installed_for_the_real_session() -> None:
-    # The placeholder keeps the registry non-empty until the real session registers.
     signal.signal(signal.SIGINT, lambda signum, frame: None)
     install_interrupt_handlers()
 
     placeholder = register_launch_placeholder()
-    close_stranded_sessions()  # a signal arriving mid-launch
+    close_stranded_sessions()
     assert signal.getsignal(signal.SIGINT) is handle_interrupt
 
-    # The real session is registered before the placeholder is dropped —
-    # the same order launched_session uses — so the registry is never
-    # empty in between and no restore is triggered by either step.
     session = FakeSession()
     register_session(session)
     unregister_launch_placeholder(placeholder)

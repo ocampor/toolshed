@@ -116,9 +116,7 @@ class SaveAs(BaseModel, extra="forbid"):
 
 
 def selector_ref_shorthand(data: Any) -> Any:
-    """``ref: name`` is the compact way to name a selector by ref, and means
-    exactly ``selector: {ref: name}`` — at step level and inside ``fields:``
-    or ``read:`` alike."""
+    """``ref: name`` means exactly ``selector: {ref: name}``, in ``fields:`` and ``read:`` too."""
     if not isinstance(data, dict) or not isinstance(data.get("ref"), str):
         return data
     without_ref = {k: v for k, v in data.items() if k != "ref"}
@@ -280,8 +278,7 @@ class MatchFields(BaseModel):
 
 
 def reject_wait_for_match_fields(data: Any) -> Any:
-    """A step with no count to state: extra keys are ignored, so ``expect`` and
-    ``pick`` would otherwise load and do nothing."""
+    """Extra keys are ignored, so ``expect`` and ``pick`` would otherwise load and do nothing."""
     if not isinstance(data, dict):
         return data
     stated = [key for key in ("expect", "pick") if key in data]
@@ -311,11 +308,7 @@ class SelectorStep(MatchFields, BaseStep):
     )
 
 
-# Steps that target a DOM element inherit from ``SelectorStep`` (selector
-# required). Steps that don't (goto / wait / screenshot / think) inherit
-# ``BaseStep``. ``PressStep`` is special: it can target a selector or fall back
-# to the focused element via ``press_focused``, so it overrides the field with
-# an optional one.
+# PressStep may fall back to the focused element (`press_focused`), so its selector is optional.
 
 
 class ClickStep(SelectorStep):
@@ -598,12 +591,7 @@ class PressStep(MatchFields, BaseStep):
 
 
 def check_settle_budget(state: WaitState, settle: int, timeout: int) -> None:
-    """A ``stable`` wait needs room for the settle window inside its budget.
-
-    ``TextSettled`` cannot confirm "held still for ``settle``" before
-    ``settle`` has passed, so a smaller ``timeout`` times out even on text
-    that never changed — a misleading failure for what is a misconfiguration.
-    """
+    """``TextSettled`` cannot confirm "held still" before ``settle`` passes, so a smaller ``timeout`` always fails."""
     if state == "stable" and settle >= timeout:
         raise ValueError(
             f"settle ({settle}ms) must be less than timeout ({timeout}ms) "
@@ -996,6 +984,4 @@ class FlowError(BaseModel):
     iterations: dict[str, IterationReport] = {}
 
 
-# Public type alias: callers that don't care which arm they got can use
-# ``FlowResult`` as the return type and switch on ``isinstance``.
 FlowResult = FlowSuccess | FlowError

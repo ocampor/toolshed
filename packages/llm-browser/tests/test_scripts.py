@@ -38,7 +38,6 @@ def test_extract_rows_js_is_a_rows_spec_function() -> None:
 
 
 def test_extract_rows_js_reads_the_property_allowlist_from_python() -> None:
-    # One list substituted in, so the page-side rule cannot drift from Driver.read_field.
     assert json.dumps(list(EXTRACT_PROPERTIES)) in extract_rows_js()
 
 
@@ -174,7 +173,6 @@ console.log(JSON.stringify({ pruned, whole, left: row.textContent }));
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_read_exclude_drops_matches(tmp_path: Path) -> None:
-    # The text read is on a copy, so the page is left alone.
     script = tmp_path / "harness.mjs"
     script.write_text(
         f"const EXTRACT = {extract_rows_js()};\n{EXCLUDE_DOM}{EXCLUDE_HARNESS}"
@@ -214,7 +212,6 @@ console.log(JSON.stringify({ batch, fallback }));
 def test_both_paths_agree_on_a_field_inside_an_excluded_subtree(
     tmp_path: Path,
 ) -> None:
-    # `exclude` affects text only; a child_selector resolves on the live row on both paths.
     script = tmp_path / "harness.mjs"
     script.write_text(
         f"const EXTRACT = {extract_rows_js()};\n"
@@ -332,7 +329,6 @@ def test_a_disabled_select_is_its_own_answer(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not HAS_JS_RUNTIME, reason="no node binary available")
 def test_a_label_stands_in_for_the_control_it_labels(tmp_path: Path) -> None:
-    # The Playwright family resolves a label first; refusing it would make nodriver the odd one out.
     label = '{ tagName: "LABEL", control: select }'
     assert run_select_harness("c", tmp_path, target=label) == CHOSE_C
 
@@ -361,7 +357,6 @@ def test_explore_first_js_is_an_async_element_function() -> None:
 
 
 def test_explore_first_js_reads_every_limit_from_python() -> None:
-    # One source for the limits, so the page side and FirstMatch cannot disagree.
     source = explore_first_js()
     assert f'"stable_delay_ms": {constants.EXPLORE_STABLE_DELAY_MS}' in source
     assert f'"text_max": {constants.EXPLORE_TEXT_MAX_CHARS}' in source
@@ -424,12 +419,10 @@ def test_survey_js_reads_every_cap_from_python() -> None:
     assert f'"min_siblings": {constants.SURVEY_MIN_SIBLINGS}' in source
     assert json.dumps(list(constants.TESTID_ATTRIBUTES)) in source
     assert constants.SURVEY_LIMITS_PLACEHOLDER not in source
-    # A survey never acts on the page: it is the read an author starts with.
     assert "click(" not in source and "scrollIntoView" not in source
 
 
 def test_the_counting_script_asks_about_the_selectors_it_was_given() -> None:
-    # The selectors are built in Python, so the page is asked about them, not re-deriving them.
     source = count_selectors_js(["article.dense", '[aria-label="Next"]'])
 
     assert json.dumps(["article.dense", '[aria-label="Next"]']) in source
@@ -528,7 +521,6 @@ console.log(JSON.stringify({
 
 
 def test_text_match_js_does_not_substitute_the_text_it_carries() -> None:
-    # The waited-for text is a value, not source: a placeholder's name must not rewrite the script.
     from llm_browser.scripts import text_match_js
 
     source = text_match_js(constants.TEXT_MATCH_EXACT_PLACEHOLDER, exact=True)
@@ -613,13 +605,10 @@ def run_viewport_fit_harness(
 @pytest.mark.parametrize(
     ("rect", "expected_gap"),
     [
-        # Below the fold: gap is the box's centre minus the viewport's centre.
         pytest.param({"top": 900, "height": 100, "bottom": 1000}, 550, id="below_fold"),
-        # Above the fold: same formula, negative.
         pytest.param(
             {"top": -300, "height": 100, "bottom": -200}, -650, id="above_fold"
         ),
-        # Fully in view and clear of both 15% dead zones: left alone.
         pytest.param(
             {"top": 300, "height": 100, "bottom": 400}, 0, id="clear_of_dead_zones"
         ),
@@ -628,7 +617,6 @@ def run_viewport_fit_harness(
         pytest.param(
             {"top": 50, "height": 50, "bottom": 100}, -325, id="top_dead_zone"
         ),
-        # Taller than the viewport: brought to its top edge, not centred.
         pytest.param(
             {"top": 200, "height": 900, "bottom": 1100},
             200,
@@ -681,7 +669,6 @@ def test_viewport_fit_js_aims_the_box_at_the_middle(
                 "elsewhere": False,
             },
         ),
-        # Exact: the toast's own text, which the page holds only as a subtree.
         (
             "Sesión finalizada",
             True,

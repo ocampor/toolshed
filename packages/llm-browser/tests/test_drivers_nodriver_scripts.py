@@ -1,5 +1,3 @@
-# CDP neither invokes nor evaluates function literals by itself; both misses are a silent None.
-
 import asyncio
 import re
 from pathlib import Path
@@ -163,7 +161,6 @@ def stub_cdp(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_refused_select_is_a_value_error(
     outcome: str, message: str, stub_cdp: None
 ) -> None:
-    # ValueError becomes an ErrorResult; anything else would abort the flow.
     locator = NodriverLocator(tab=FocusingTab(), element=SelectElement(outcome))
     with pytest.raises(ValueError, match=re.escape(message)):
         driver_with_loop().select_option(locator, "z")
@@ -326,7 +323,6 @@ class EmptyScope:
 def test_a_write_to_a_missing_element_is_a_value_error(
     drive: Any, args: tuple[Any, ...], stub_cdp: None
 ) -> None:
-    # AttributeError on None would escape run_flow as a raw traceback.
     locator = NodriverLocator(tab=None, selector="td.gone", parent=EmptyScope())
     with pytest.raises(ValueError, match="no element matched 'td.gone'"):
         drive(driver_with_loop(), locator, *args)
@@ -340,7 +336,6 @@ def test_a_read_of_a_missing_element_is_still_a_miss() -> None:
 
 
 def test_a_script_behind_a_comment_is_still_a_function() -> None:
-    # Not detecting it costs a silent `undefined`, not an error.
     assert is_function_literal("// what this reads\nel => el.value")
     assert not is_function_literal("// a note\ndocument.readyState")
 

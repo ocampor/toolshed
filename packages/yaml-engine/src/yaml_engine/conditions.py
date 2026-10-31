@@ -62,7 +62,7 @@ def in_set(value: T, param: frozenset[str]) -> bool:
 
 @register_condition("all_present")
 def all_present(value: T, param: list[str]) -> bool:
-    """All substrings must be present in value (case-insensitive)."""
+    """Case-insensitive."""
     if value is None:
         return False
     upper = str(value).upper()
@@ -71,7 +71,7 @@ def all_present(value: T, param: list[str]) -> bool:
 
 @register_condition("has_fragment")
 def has_fragment(value: T, param: list[str]) -> bool:
-    """Any fragment in param must be present in value (case-insensitive)."""
+    """Case-insensitive."""
     if value is None:
         return False
     upper = str(value).upper()

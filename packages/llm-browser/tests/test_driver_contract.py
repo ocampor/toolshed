@@ -1,5 +1,3 @@
-# `waits` owns the deadline, so a driver read never retries or raises on a miss.
-
 import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
@@ -16,7 +14,6 @@ from tests.driver_fakes import FakeTab
 
 MISSING = "#missing"
 
-# Both halves of `read_field`'s split: a DOM property and an HTML attribute.
 MISSING_CHILD_FIELDS: list[dict[str, str | None]] = [
     {"child_selector": MISSING, "attribute": "textContent"},
     {"child_selector": MISSING, "attribute": "href"},
@@ -44,7 +41,6 @@ def playwright_case() -> Iterator[DriverCase]:
     locator.is_visible.return_value = False
     # A locator for nothing narrows to itself, as Playwright's `.first` does.
     locator.first = locator
-    # A child of a locator for nothing matches nothing either.
     locator.locator.return_value = locator
     page = MagicMock()
     page.locator.return_value = locator
@@ -102,7 +98,6 @@ def test_first_of_a_missing_selector_does_not_raise(case: DriverCase) -> None:
 def test_the_default_humanized_type_sends_one_key_per_char_on_the_cadence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A driver with native humanization still owes the per-key delay the caller asked for.
     sleeps: list[float] = []
     monkeypatch.setattr(behavior_module.time, "sleep", sleeps.append)
     driver = MagicMock()

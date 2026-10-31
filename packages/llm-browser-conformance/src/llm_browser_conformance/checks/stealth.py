@@ -1,10 +1,4 @@
-"""Stealth accounting for nodriver: how much Runtime traffic a wait costs.
-
-Driver rule 3 says JS runs in ``evaluate``, ``is_visible``, ``input_value``
-and ``extract_rows`` and nowhere else, so a detector fingerprinting CDP
-Runtime traffic sees nothing on the common path. That is only checkable on a
-driver that speaks CDP itself, which is nodriver.
-"""
+"""Only nodriver speaks CDP itself, so only it can show a wait costs no Runtime traffic."""
 
 import importlib
 from collections.abc import Iterator
@@ -18,12 +12,7 @@ NODRIVER = frozenset({"nodriver"})
 
 @contextmanager
 def recorded_cdp_methods() -> Iterator[list[str]]:
-    """Every CDP method this process sends while the block runs.
-
-    Hooked on ``Transaction``, which nodriver builds for each outgoing
-    command: it already parses the method name off the command generator, so a
-    websocket-level hook would only have to re-parse the JSON.
-    """
+    """Hooked on ``Transaction``, which already parses the method name a websocket hook would re-parse."""
     connection = importlib.import_module("nodriver.core.connection")
     sent: list[str] = []
     original_init = connection.Transaction.__init__
@@ -57,8 +46,7 @@ def attached_polls_without_touching_the_runtime_domain(ctx: Context) -> str:
 
 
 def visible_costs_at_most_one_runtime_call_per_poll(ctx: Context) -> str:
-    """``visible`` has no CDP predicate, so it pays one
-    ``Runtime.callFunctionOn`` — but only one, and only per poll."""
+    """``visible`` has no CDP predicate, so it pays one ``Runtime.callFunctionOn`` per poll."""
     ctx.visit("visible.html")
     ticks = 0
     driver = ctx.session.driver

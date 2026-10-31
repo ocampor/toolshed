@@ -1,12 +1,4 @@
-"""Stop every session an interrupted run left open.
-
-``launched_session`` closes its browser in a ``finally``, which a normal
-exit — pass, fail, or an exception mid-scenario — always reaches. A worker
-that is killed or times out mid-run bypasses that ``finally`` entirely: the
-process dies without Chromium ever getting a shutdown request of its own.
-Every session registers here while live, so ``atexit`` or a caught
-SIGINT/SIGTERM can close what a normal exit already would have.
-"""
+"""A killed or timed-out worker skips ``launched_session``'s ``finally``; this closes what it left."""
 
 import atexit
 import logging
@@ -26,14 +18,7 @@ class Closeable(Protocol):
 
 
 class LaunchPlaceholder:
-    """Occupies the registry while a session is mid-launch.
-
-    ``session.launch()`` runs between ``install_interrupt_handlers()`` and
-    ``register_session()`` — a signal landing in that window would otherwise
-    find an empty registry and restore the original handlers right then,
-    leaving nothing covering the session for the rest of its life. There is
-    nothing to close yet at this point, so ``close()`` is a no-op.
-    """
+    """Keeps the registry non-empty during ``launch()``, so a signal then does not restore the handlers."""
 
     def close(self) -> None:
         return None
@@ -67,18 +52,7 @@ def unregister_launch_placeholder(placeholder: Closeable) -> None:
 
 
 def close_stranded_sessions() -> None:
-    """Close every registered session, one at a time, popped as it closes.
-
-    A second signal during the sweep re-enters this function — the flag
-    below turns that into a no-op instead of a second pass that finds an
-    already-cleared registry and abandons whatever the first pass had not
-    reached yet. Each session's ``close()`` is best-effort: an ordinary
-    exception is swallowed so the next session still gets a turn, but a
-    ``KeyboardInterrupt``/``SystemExit`` raised while closing one (the
-    chained previous handler firing mid-sweep) is held — the first one seen,
-    deterministically — until every other session has had its turn, then
-    re-raised.
-    """
+    """A re-entering signal is a no-op; an interrupt raised by one close is held until the rest close."""
     global sweep_in_progress
     if sweep_in_progress:
         logger.warning("close_stranded_sessions re-entered; ignoring")
@@ -109,12 +83,7 @@ def close_stranded_sessions() -> None:
 
 
 def install_interrupt_handlers() -> None:
-    """Save and replace SIGINT/SIGTERM with a handler that sweeps first.
-
-    ``signal.signal`` only works from the main thread; called from anywhere
-    else this is a no-op; a background-thread caller has no way to receive
-    these signals anyway.
-    """
+    """``signal.signal`` works only on the main thread; elsewhere this is a no-op."""
     if threading.current_thread() is not threading.main_thread():
         return
     if previous_handlers:
@@ -125,15 +94,7 @@ def install_interrupt_handlers() -> None:
 
 
 def restore_interrupt_handlers_if_idle() -> None:
-    """Put SIGINT/SIGTERM back once nothing is left to protect.
-
-    Lets a pytest run keep its own Ctrl-C behaviour once the last
-    ``launched_session`` in it has closed, instead of staying rewired for
-    every unrelated test that follows. Only ``unregister_session`` calls this
-    — not the sweep itself — so a ``LaunchPlaceholder`` popped mid-sweep does
-    not restore anything until the launch it stands for actually finishes,
-    one way or the other.
-    """
+    """Only ``unregister_session`` calls this, so a placeholder popped mid-sweep restores nothing early."""
     if LIVE_SESSIONS or not previous_handlers:
         return
     if threading.current_thread() is not threading.main_thread():

@@ -46,7 +46,6 @@ def test_run_attached_closes_when_flow_raises(base: BrowserSession) -> None:
 
 
 def test_run_attached_is_stateless(base: BrowserSession) -> None:
-    # No state.json is read or written, so parallel runs never collide.
     seen: list[BrowserSession] = []
 
     def record(session: BrowserSession) -> object:

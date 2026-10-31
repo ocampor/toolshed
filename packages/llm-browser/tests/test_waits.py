@@ -1,5 +1,3 @@
-# Time is faked throughout; a real poll loop would make these tests sleep.
-
 import itertools
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,7 +43,6 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeClock]:
     # Swap the modules' ``time`` reference, not attributes on ``time`` itself,
     # so pytest's own timing is untouched.
     monkeypatch.setattr(waits, "time", shim)
-    # ``jittered_sleep`` lives in behavior and is what the poll loop calls.
     monkeypatch.setattr("llm_browser.behavior.time", shim)
     yield fake
 
@@ -133,7 +130,6 @@ def test_timeout_fires_at_the_deadline_not_a_tick_past_it(
 def test_the_last_sleep_is_clamped_to_what_is_left(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # An interval far wider than the budget must not stretch the wait.
     session = make_session(tmp_path, driver_with(counts=[0]))
 
     with pytest.raises(TimeoutError):
@@ -166,7 +162,6 @@ def test_zero_timeout_still_returns_when_already_in_state(
 def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # A later "make polling robust" edit must not swallow driver errors.
     driver = driver_with(counts=[0])
     driver.count.side_effect = RuntimeError("Could not find node with given id")
     session = make_session(tmp_path, driver)
@@ -178,7 +173,6 @@ def test_a_driver_error_escapes_instead_of_reading_as_not_yet(
 def test_a_navigation_during_a_detached_wait_reads_as_not_yet(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # The navigation that destroys the context is what `detached` waits for.
     driver = driver_with(counts=[1])
     driver.count.side_effect = [
         RuntimeError(
@@ -231,7 +225,6 @@ def test_a_visibility_error_escapes_too(tmp_path: Path, clock: FakeClock) -> Non
 def test_the_message_renders_the_selector_the_way_it_was_written(
     tmp_path: Path, clock: FakeClock, selector: Any, rendered: str
 ) -> None:
-    # A pydantic repr in a user-facing message would not match the docs.
     session = make_session(tmp_path, driver_with(counts=[0]))
 
     with pytest.raises(TimeoutError) as excinfo:
@@ -268,7 +261,6 @@ def test_every_state_polls_until_satisfied(
 def test_presence_states_never_read_visibility(
     tmp_path: Path, clock: FakeClock, state: Any
 ) -> None:
-    # No is_visible means no in-page script on the nodriver path.
     driver = driver_with(counts=[1, 0])
     session = make_session(tmp_path, driver)
 
@@ -343,7 +335,6 @@ def test_stable_returns_once_the_text_holds_still(
 
     session.wait_for_element("#reply", state="stable", settle=1000, timeout=10_000)
 
-    # First read starts the clock, and the text has to hold for a full settle.
     assert clock.now - 1000.0 >= 1.0
 
 
@@ -362,7 +353,6 @@ def test_stable_times_out_while_the_text_keeps_changing(
 def test_stable_never_settles_on_an_element_that_is_not_there(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # None is "nothing to read yet", not "settled on nothing".
     session = make_session(tmp_path, driver_with(texts=[None]))
 
     with pytest.raises(TimeoutError):
@@ -377,7 +367,6 @@ def test_stable_restarts_the_clock_on_every_change(
 
     session.wait_for_element("#reply", state="stable", settle=600, timeout=10_000)
 
-    # "a" then "b": settling could not have started before the second read.
     assert driver.text_content.call_count >= 3
 
 
@@ -453,7 +442,6 @@ def test_enabled_times_out_while_the_control_stays_locked(
 def test_an_element_that_is_not_there_is_neither_enabled_nor_disabled(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # Asking a driver about a node that is not there is what raises.
     driver = driver_with(counts=[0])
     driver.is_enabled.side_effect = AssertionError("read a missing element")
 
@@ -478,7 +466,6 @@ def test_wait_for_text_present(tmp_path: Path, clock: FakeClock) -> None:
     session.wait_for_text("Sesión finalizada")
 
     assert len(clock.sleeps) == 2
-    # Page-wide: the script is the whole predicate, evaluated against the page.
     assert '"Sesi\\u00f3n finalizada"' in driver.evaluate.call_args.args[1]
 
 
@@ -520,7 +507,6 @@ def driver_error(name: str, message: str) -> Exception:
 
 
 def test_a_scoped_text_read_is_bounded(tmp_path: Path, clock: FakeClock) -> None:
-    # A tick that let the driver wait for its scope would blow past the loop's deadline.
     driver = driver_with_text([True])
     session = make_session(tmp_path, driver)
 
@@ -548,7 +534,6 @@ def test_a_scope_that_detaches_mid_tick_has_no_text(
 def test_a_text_script_that_cannot_run_is_not_a_missing_scope(
     tmp_path: Path, clock: FakeClock
 ) -> None:
-    # A swallowed script error would poll out the whole budget and then blame the text.
     driver = driver_with_text([True])
     driver.evaluate.side_effect = driver_error(
         "ReferenceError", "renderedText is not defined"

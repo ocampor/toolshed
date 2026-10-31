@@ -1,10 +1,3 @@
-"""``llm-browser explore`` and ``llm-browser survey``: the two commands for
-writing a step rather than running one.
-
-Registered on the same group as the rest; they live here because they are the
-only commands that read a targets file and rank what a page is made of.
-"""
-
 from pathlib import Path
 
 import click
@@ -25,7 +18,6 @@ from llm_browser.session import BrowserSession
 
 
 def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
-    """``--extract name=child selector@attribute`` pairs; ``None`` when unused."""
     if not values:
         return None
     pairs: dict[str, str] = {}
@@ -40,12 +32,7 @@ def extract_pairs(values: tuple[str, ...]) -> dict[str, str] | None:
 
 
 def load_targets(path: str) -> list[ExploreTarget]:
-    """The `--targets` file: a YAML or JSON list of {selector, intent, extract}.
-
-    A list with nothing in it would explore nothing and exit 0, which reads as
-    "every selector is fine"; so would more targets than one page call takes.
-    Both are usage errors here rather than a clean-looking answer.
-    """
+    """An empty list, or more targets than one page call takes, is a usage error, not a clean answer."""
     import yaml as _yaml
 
     try:

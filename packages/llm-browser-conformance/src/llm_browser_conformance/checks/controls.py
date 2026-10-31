@@ -1,11 +1,3 @@
-"""Form controls that fight back: controlled inputs, masks, debounced
-autocompletes, fake dropdowns and real ones.
-
-These are the shapes that break naive automation — a value written in one
-shot, a click that never reaches the option, a list that is not there yet —
-so they are where drivers actually differ.
-"""
-
 from llm_browser_conformance.checks.support import (
     error_message,
     expect_failure,
@@ -29,8 +21,7 @@ PLAYWRIGHT_SELECT_TIMEOUT_GAP = (
 
 
 def a_controlled_input_keeps_what_fill_and_type_write(ctx: Context) -> None:
-    """The page reverts any value that arrived without an ``input`` event, so
-    a driver that writes ``.value`` directly loses it half a tick later."""
+    """The page reverts a value that arrived without an ``input`` event."""
     outputs = expect_success(ctx, "react-input.html", "react-input")
     assert one_text(outputs, "filled") == "alpha"
     assert one_text(outputs, "typed") == "beta"
@@ -60,9 +51,7 @@ def a_div_dropdown_is_driven_by_clicking(ctx: Context) -> None:
 
 
 def select_on_a_div_dropdown_fails_clearly(ctx: Context) -> str:
-    """The value of a wrong-element error is that it says so. Drivers word it
-    differently — Playwright names the ``<select>``, nodriver the missing
-    ``<option>`` — so the assertion is that one of those words is in there."""
+    """Drivers word a wrong-element error differently, so any of their words is accepted."""
     failure = expect_failure(ctx, "custom-select.html", "custom-select-select")
     assert failure.step == "select"
     message = error_message(failure)
@@ -76,12 +65,7 @@ def a_native_select_picks_an_option_behind_an_optgroup(ctx: Context) -> None:
 
 
 def a_disabled_option_cannot_be_selected(ctx: Context) -> None:
-    """The step has to fail, and it has to fail inside the budget it declared.
-
-    Both halves matter: a flow author who writes ``timeout: 2000`` on a
-    ``select`` step and gets a 30s stall has been told something untrue about
-    the step, which is exactly the kind of thing this suite exists to catch.
-    """
+    """A 30s stall on a step declaring ``timeout: 2000`` tells the author something untrue."""
     failures: list[object] = []
     took = ctx.elapsed(
         lambda: failures.append(

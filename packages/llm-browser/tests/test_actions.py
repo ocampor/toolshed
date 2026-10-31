@@ -59,10 +59,6 @@ def input_session(tmp_path: object) -> MagicMock:
     return s
 
 
-# Input steps are one-liners onto the session, so a session mock checks them;
-# how they reach the driver is tests/test_session_input.py.
-
-
 def test_click(input_session: MagicMock) -> None:
     step = ClickStep(name="s", action="click", selector="#btn", timeout=5_000)
     execute_action(input_session, step)
@@ -102,7 +98,6 @@ def test_type(input_session: MagicMock) -> None:
 def test_click_resolves_humanize_into_the_behavior_it_passes(
     input_session: MagicMock,
 ) -> None:
-    # The step's flag is spent here: the session gets the behaviour it asked for, not the flag.
     step = ClickStep(name="s", action="click", selector="#btn", humanize=True)
     execute_action(input_session, step)
     assert input_session.click.call_args.kwargs["behavior"].mouse_move is True
@@ -193,7 +188,6 @@ def test_screenshot_returns_png_bytes(session: BrowserSession) -> None:
 def test_screenshot_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    # `path:` is an instruction to the CLI; the step itself writes nothing.
     session._page.screenshot.return_value = PNG  # type: ignore[union-attr]
     target = tmp_path / "nested" / "shot.png"
     step = ScreenshotStep(name="s", action="screenshot", path=str(target))
@@ -255,7 +249,6 @@ def test_read(session: BrowserSession) -> None:
 
 
 def test_a_bare_read_yields_the_row_text(session: BrowserSession) -> None:
-    # No `extract:` is the common `read body`: one `text` field per row, not a row of None.
     from llm_browser.results import ExtractedRow
 
     locator = _rows_locator(session, [{"text": "hello"}])
@@ -322,7 +315,6 @@ def test_parse_returns_typed_rows(session: BrowserSession, tmp_path: Path) -> No
 def test_read_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    # `path:` is an instruction to the CLI; the step returns the rows.
     _rows_locator(session, [{"name": "Alice"}])
 
     target = tmp_path / "rows.json"
@@ -341,7 +333,6 @@ def test_read_path_is_ignored_by_the_runner(
 def test_parse_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    # `path:` is an instruction to the CLI; the step returns the rows.
     import yaml
 
     from llm_browser.models import ParseStep
@@ -402,7 +393,6 @@ def test_dom_sanitizes_at_the_level_the_step_asked_for(
 
 
 def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> None:
-    # `<body>` outerHTML is the fragment lxml used to refuse.
     locator = _single_locator()
     locator.first.evaluate.return_value = (
         "<body><noscript>n</noscript><div>Hi</div><script>x()</script></body>"
@@ -418,7 +408,6 @@ def test_dom_on_a_body_fragment_returns_the_body(session: BrowserSession) -> Non
 def test_dom_path_is_ignored_by_the_runner(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    # `path:` is an instruction to the CLI; the step returns the text.
     locator = _single_locator()
     locator.first.evaluate.return_value = "<section><p>Captured</p></section>"
     session._page.locator.return_value = locator  # type: ignore[union-attr]
@@ -587,7 +576,6 @@ def test_non_optional_returns_error(session: BrowserSession) -> None:
     assert result.step_name == "my_step"
     assert result.selector == "'#missing'"
     assert result.hint == "element hidden, missing, or slow to render"
-    # A hidden element is not an interception, so no retry and no hint.
     assert result.message == "element hidden"
 
 
@@ -634,7 +622,6 @@ def test_scroll_pauses_between_ticks(
     )
     execute_action(session, step)
     pauses = [c for c in calls if c > 0]
-    # Only between ticks: execute_action already applies the post-action pause.
     assert len(pauses) == 2
     assert all(0.010 <= c <= 0.020 for c in pauses)
 
@@ -674,13 +661,11 @@ def driver_attributes(module: object) -> list[ast.Attribute]:
 
 @pytest.mark.parametrize("module", [actions, steps, flows, flow_runner])
 def test_the_layers_above_the_session_never_touch_the_driver(module: object) -> None:
-    # An action reaching for session.driver skips pacing and humanization, so assert it on the source.
     reads = driver_attributes(module)
     assert reads == [], [ast.unparse(node) for node in reads]
 
 
 def test_only_session_input_drives_the_page() -> None:
-    # A second input call site is a second humanized-vs-plain decision, and it drifts.
     tree = ast.parse(Path(session_module.__file__).read_text())
     calls = [
         ast.unparse(node)
@@ -696,7 +681,6 @@ def test_only_session_input_drives_the_page() -> None:
 def test_parse_coerces_decimal_and_date_rows(
     session: BrowserSession, tmp_path: Path
 ) -> None:
-    # Schema types json.dumps cannot represent must survive a JSON-mode dump.
     import yaml
 
     from llm_browser.models import ParseStep
@@ -729,7 +713,6 @@ def test_parse_coerces_decimal_and_date_rows(
 def test_a_type_error_inside_an_optional_step_still_reaches_the_developer(
     session: BrowserSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A latent bug must not come back as SkippedResult and report the flow a success.
 
     def boom(*args: object, **kwargs: object) -> None:
         raise TypeError("len() of unsized object")

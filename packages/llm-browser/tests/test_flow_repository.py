@@ -43,7 +43,6 @@ def test_missing_ref_raises_flow_not_found(tmp_path: Path) -> None:
 
 
 def test_file_repository_propagates_a_permission_error(tmp_path: Path) -> None:
-    # An unreadable file is a real failure, not an unknown reference.
     if os.geteuid() == 0:
         pytest.skip("root reads regardless of mode")
     child = tmp_path / "child.yaml"

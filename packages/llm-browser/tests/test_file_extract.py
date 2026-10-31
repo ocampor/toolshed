@@ -324,7 +324,6 @@ def test_transparency_is_flattened_onto_white() -> None:
     ("pages", "expected"), [("2-10", ["b"]), ("1-100000000", ["a", "b"])]
 )
 def test_pages_past_the_end_are_clamped(pages: str, expected: list[str]) -> None:
-    # The huge range also proves clamping happens before expanding.
     result = run(pdf_bytes(["a", "b"]), TextExtract(mode="text", pages=pages))
     assert texts(result) == expected
     assert result.next_pages is None

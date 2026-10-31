@@ -1,10 +1,3 @@
-"""Input conformance: the values land, and the events are trusted.
-
-``form.html`` records ``event.isTrusted`` for the last click and the last
-keydown on every element, so driver rule 2 — real input, never synthetic
-events — is checked from the page's side rather than taken on faith.
-"""
-
 from llm_browser_conformance.scenario import (
     POLL_MS,
     Context,
@@ -83,17 +76,13 @@ def typing_fires_trusted_input_events(ctx: Context) -> None:
 
 
 def typing_fires_trusted_key_events(ctx: Context) -> None:
-    """Separate from the ``input`` event above because a driver can deliver a
-    trusted value without ever emitting a keydown, and a page that watches
-    keystrokes (masks, autocompletes, hotkeys) will not react to it."""
+    """A driver can deliver a trusted value without any keydown, which masks and hotkeys ignore."""
     ctx.visit("form.html")
     ctx.session.type("#name", "ab")
     assert ctx.trusted("#name") == "true"
 
 
 def a_dispatched_click_is_reported_untrusted(ctx: Context) -> None:
-    """``dispatch=True`` is rule 2's documented opt-out; the page must be able
-    to tell, or the escape hatch is indistinguishable from real input."""
     ctx.visit("form.html")
     ctx.session.click("#reveal", dispatch=True)
     assert ctx.trusted("#reveal") == "false"

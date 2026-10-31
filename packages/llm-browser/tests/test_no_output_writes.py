@@ -36,7 +36,6 @@ WRITE_HELPERS = {
 
 WRITE_MODES = set("wax+")
 
-# Every module allowed to put bytes on disk, and why it earns the exemption.
 ALLOWED = {
     "cli.py": "the CLI is what writes what a run returned",
     "state.py": "state.json is how a detached browser is found again",
@@ -135,7 +134,6 @@ def _expr(source: str) -> ast.Call:
 
 
 def test_the_check_sees_every_ordinary_way_to_write() -> None:
-    # Guard the guard: a detector that recognises nothing always passes.
     for source in (
         'p.write_bytes(b"x")',
         'p.write_text("x")',

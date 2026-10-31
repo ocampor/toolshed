@@ -1,15 +1,4 @@
-"""End-to-end: the CLI is the one thing that writes what a run returned.
-
-Every other scenario drives the library in-process, where the promise is that
-nothing reaches disk. These drive the installed `llm-browser` console script
-as a subprocess, because the other half of that promise — that `llm-browser
-run` puts the results where the flow and the flags asked — is only true of the
-command, and is exactly what an in-process test cannot see.
-
-One driver is enough: what the CLI writes is decided above the driver, and
-launching a second browser per column would triple the cost of the run to
-re-check the same code.
-"""
+"""Drives the console script as a subprocess: only the command proves `run` writes where asked."""
 
 import contextlib
 import json
@@ -77,7 +66,6 @@ def fail_on(step: str, done: subprocess.CompletedProcess[str]) -> None:
 
 
 def payload(done: subprocess.CompletedProcess[str]) -> dict[str, Any]:
-    """The JSON `run` printed, which is the only contract its callers have."""
     try:
         parsed: dict[str, Any] = json.loads(done.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError) as broken:
@@ -98,16 +86,7 @@ def files_under(directory: Path) -> list[str]:
 def cli_run(
     ctx: Context, page: str, flow: str, tmp: Path, *args: str, **data: str
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
-    """`daemon` a headless browser, `run` the flow against it, always `stop`.
-
-    `daemon` rather than `open` because these are two processes: a launched
-    patchright session belongs to the process that launched it, and only the
-    detached-over-CDP session survives to the next invocation. That is the
-    documented multi-call story, and it is the one a CLI user is on.
-
-    Returns the finished `run` and the working directory it ran in, which the
-    caller asserts stayed empty.
-    """
+    """`daemon`, not `open`: only a detached-over-CDP session survives to the next CLI process."""
     workdir = tmp / "cwd"
     workdir.mkdir(parents=True)
     fail_on(
@@ -133,8 +112,6 @@ def cli_run(
 
 
 def cli_run_writes_every_output_where_it_was_asked(ctx: Context) -> None:
-    """A `path:` lands under `--out-dir`; a payload with none lands there too,
-    under the name it came with. Neither is base64 on stdout."""
     only_on_the_cli_driver(ctx)
     with scratch() as tmp:
         out_dir = tmp / "artifacts"
@@ -191,12 +168,7 @@ def cli_run_writes_the_failure_captures(ctx: Context) -> None:
 
 
 def cli_run_writes_typed_rows_as_json(ctx: Context) -> None:
-    """A `parse` schema may declare `Decimal` and `date`; the rows reach the
-    CLI writer as those objects and `json.dumps` cannot encode either.
-
-    The library used to write this file itself, in JSON mode, and the crash
-    this pins is what moving the write to the CLI reintroduced once.
-    """
+    """`json.dumps` cannot encode `Decimal`/`date` rows; moving the write to the CLI once reintroduced that crash."""
     only_on_the_cli_driver(ctx)
     with scratch() as tmp:
         out_dir = tmp / "artifacts"

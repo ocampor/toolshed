@@ -200,19 +200,14 @@ class PlaywrightDriverBase(Driver):
         return _pw_loc(locator).is_visible()
 
     def is_enabled(self, locator: Any) -> bool:
-        """Playwright's own check, which reads the *inherited* disabled state —
-        a button inside a ``<fieldset disabled>`` carries no attribute of its
-        own and the base class's attribute rule calls it enabled. The
-        ``aria-disabled`` half of that rule is still ours."""
+        """Playwright's check sees the inherited ``<fieldset disabled>`` state; ``aria-disabled`` is still ours."""
         return (
             _pw_loc(locator).is_enabled()
             and self.get_attribute(locator, "aria-disabled") != "true"
         )
 
     def now_read(self, locator: Any, read: Callable[[PwLocator], Any]) -> Any:
-        """A now-read (rule 1). Playwright's own reads wait for the element —
-        and ``timeout=0`` there means *no* timeout — so a miss is answered by
-        the count, and the read gets a round-trip's worth of budget."""
+        """Playwright reads wait, and ``timeout=0`` means none, so a miss is answered by the count."""
         loc = _pw_loc(locator)
         if loc.count() == 0:
             return None
@@ -270,8 +265,6 @@ class PlaywrightDriverBase(Driver):
         spec: dict[str, dict[str, str | None]],
         exclude: Sequence[str] = (),
     ) -> list[dict[str, str | None]]:
-        """One page evaluation over every matched row, instead of a locator
-        call per row and field."""
         arg = {"spec": spec, "exclude": list(exclude)}
         rows = _pw_loc(locator).evaluate_all(extract_rows_js(), arg)
         return cast(list[dict[str, str | None]], rows)

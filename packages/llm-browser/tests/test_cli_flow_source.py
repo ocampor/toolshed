@@ -107,7 +107,6 @@ def test_run_command_runs_a_flow_file(
 def test_run_command_runs_a_flow_file_with_a_sibling_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The child resolves against the parent's directory, not the CWD.
     (tmp_path / "child.yaml").write_text(CHILD_YAML)
     parent = tmp_path / "parent.yaml"
     parent.write_text(PARENT_YAML)

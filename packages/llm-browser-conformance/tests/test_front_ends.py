@@ -1,5 +1,3 @@
-# CLI and pytest share run_scenario; the verdict-to-report translation is the only drift point.
-
 import subprocess
 import sys
 from collections import Counter

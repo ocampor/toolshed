@@ -180,7 +180,6 @@ def _resolved(step: dict[str, Any], selector_map: dict[str, Any]) -> Step:
 def test_a_map_value_lands_on_the_step_its_fields_and_its_read_entries(
     value: Any,
 ) -> None:
-    # A string value is the selector string; `text=Aside` must not be indexed like a mapping.
     step = _resolved(
         {
             "name": "s",

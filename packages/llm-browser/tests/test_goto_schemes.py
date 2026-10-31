@@ -59,7 +59,6 @@ def test_goto_honors_explicit_allowed_schemes(tmp_path: Path) -> None:
 
 
 def test_flow_goto_to_file_scheme_is_a_step_failure(tmp_path: Path) -> None:
-    # A MagicMock session would never reach the guard.
     session = _session(tmp_path)
     step = GotoStep(action="goto", name="open", url="file:///etc/passwd")
 

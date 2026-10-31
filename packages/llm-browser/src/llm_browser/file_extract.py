@@ -1,6 +1,4 @@
-"""Turn a downloaded file into the pages a ``download`` step's ``extract:``
-asks for. Only requested pages are read or rendered, so a huge PDF costs
-what the budget lets through."""
+"""Only requested pages are read or rendered, so a huge PDF costs what the budget lets through."""
 
 import codecs
 import hashlib
@@ -79,7 +77,6 @@ def extract_file(file: BytesResult, spec: Extract) -> DocumentResult:
 
 
 def detected_type(source: Source, label: str) -> str:
-    """The type the content shows; the download's label when it shows none."""
     from PIL import Image as PILImage
 
     match source:
@@ -91,7 +88,6 @@ def detected_type(source: Source, label: str) -> str:
 
 
 def read_pages(source: Source, spec: Extract) -> PageBatch:
-    """An empty batch when the file has nothing ``spec.mode`` reads."""
     match source, spec:
         case Pdf(pdf), TextExtract():
             return take_text(len(pdf), partial(pdf_text, pdf), spec)

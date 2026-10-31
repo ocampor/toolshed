@@ -1,5 +1,3 @@
-# Config classes inherit Behavior's human defaults; camoufox turns off the Playwright mouse fields.
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,7 +60,6 @@ def test_unknown_driver_rejected(tmp_path: Path) -> None:
 
 
 def test_malformed_yaml_rejected(tmp_path: Path) -> None:
-    # A YAML syntax error must reach both CLI entry points as a usage message, not a traceback.
     with pytest.raises(BehaviorConfigError):
         load_behavior(write(tmp_path, "min_gap_ms: [unclosed\n"))
 

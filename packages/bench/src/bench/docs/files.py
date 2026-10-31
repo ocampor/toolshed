@@ -20,7 +20,6 @@ def reference_dir(reference: Reference, source: Path) -> Path:
 
 
 def write_reference(reference: Reference, source: Path) -> list[str]:
-    """Write every document under ``source``; answer the names that changed."""
     target = reference_dir(reference, source)
     target.mkdir(parents=True, exist_ok=True)
     changed = []

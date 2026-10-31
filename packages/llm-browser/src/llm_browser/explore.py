@@ -33,11 +33,7 @@ READY: dict[Intent, Callable[[FirstMatch], bool]] = {
 
 
 def verdict_for(intent: Intent, count: int, first: FirstMatch | None) -> Verdict:
-    """Whether a step with this ``intent`` can be written against the selector.
-
-    A ``read`` is happy with any number of matches — that is what it is for —
-    so only the other three call two matches ambiguous.
-    """
+    """A ``read`` takes any number of matches; only the other intents call two ambiguous."""
     if count == 0 or first is None:
         return Verdict.MISSING
     if intent is Intent.READ:
@@ -48,17 +44,11 @@ def verdict_for(intent: Intent, count: int, first: FirstMatch | None) -> Verdict
 
 
 def accepted_counts(intent: Intent, count: int) -> set[int]:
-    """What a candidate has to match to be one.
-
-    Every intent but ``read`` is after one element. A ``read`` is after the
-    list: a candidate that finds one of thirty rows is not a selector to write
-    in its place, whatever else it is.
-    """
+    """A ``read`` wants the list: a candidate finding one of thirty rows is not its replacement."""
     return {count} if intent is Intent.READ else {1}
 
 
 def empty_everywhere(rows: list[Row], fields: Collection[str]) -> list[str]:
-    """Fields that no sampled row filled in — missing and blank both count."""
     if not rows:
         return []
     return [name for name in fields if all(row[name] in (None, "") for row in rows)]
@@ -82,19 +72,8 @@ def explore(
     intent: Intent = Intent.READ,
     sample_chars: int = constants.EXPLORE_SAMPLE_CHARS,
 ) -> ExploreResult:
-    """Count and sample what ``selector`` matches.
-
-    Never clicks; scrolls an offscreen match into view so the hit test has
-    an answer, which is what the click path does before it clicks.
-
-    For writing a step against a page you have not read yet: how many
-    elements the selector really finds, what the first ``sample`` of them
-    say under ``extract`` (the row's own text when it is omitted), which
-    fields stayed empty, and — in ``first`` — whether a click or a fill
-    would actually land. ``verdict`` reads all of that against ``intent``.
-    A selector that never arrives is a count of zero, not a
-    ``TimeoutError`` — "nothing here" is the answer. Each sampled field is
-    cut to ``sample_chars``: reading a row whole is what ``read`` is for.
+    """Never clicks, but scrolls an offscreen match into view so the hit test can answer.
+    A selector that never arrives is a count of zero, not a ``TimeoutError``.
     """
     stability = selector_stability(describe_selector(selector))
     started = time.monotonic()
@@ -175,27 +154,8 @@ def explore_many(
     sample_chars: int = constants.EXPLORE_SAMPLE_CHARS,
     timeout_ms: int = constants.DEFAULT_WAIT_TIMEOUT_MS,
 ) -> list[ExploreResult]:
-    """Explore every target in one page call, answers in the order asked.
-
-    What ``explore`` costs once, a page's worth of selectors costs together:
-    the count, the sample and the first-match read of every target come back
-    from a single evaluation, and the wait is the batch's — it ends when the
-    first target appears, so a selector that is simply not on the page is a
-    count of zero rather than another full timeout.
-
-    Candidates are still verified from Python, at most
-    ``EXPLORE_MAX_CANDIDATES`` counts per target: a proposal is only worth
-    offering once something has checked what it matches.
-
-    Selectors are CSS: the page is asked with ``querySelectorAll``. One it
-    cannot parse gets its own answer — a count of zero, ``verdict: missing``
-    and ``error: "not css"`` — rather than costing the batch its other
-    answers.
-
-    The targets are read one after another and each settles for
-    ``EXPLORE_STABLE_DELAY_MS``, so the page call costs ``timeout_ms`` plus
-    100 ms per target; the driver is given that long plus a margin, and at
-    most ``EXPLORE_MANY_MAX_TARGETS`` targets are accepted.
+    """One page call; the wait ends when the first target appears, so a missing one costs no extra timeout.
+    An unparseable selector gets its own answer; the call costs ``timeout_ms`` plus 100 ms per target.
     """
     if not targets:
         return []
@@ -239,23 +199,13 @@ def explore_many(
 
 
 def batch_evaluate_timeout_ms(timeout_ms: int, targets: int) -> int:
-    """How long the driver is given for the whole batch evaluate.
-
-    The wait the page does, the settle every target does after it, and a margin
-    for the round trip — or the driver's own default timeout ends the call
-    before the wait the caller asked for does.
-    """
+    """Or the driver's own default timeout ends the call before the caller's wait does."""
     settles = targets * constants.EXPLORE_STABLE_DELAY_MS
     return timeout_ms + settles + constants.EXPLORE_MANY_MARGIN_MS
 
 
 def refused_result(target: ExploreTarget) -> ExploreResult:
-    """The answer for a selector the page could not parse.
-
-    One target's typo is that target's answer — a count of zero, ``missing``
-    and the reason — never the batch's: the other targets were read in the same
-    page call and the author paid for them.
-    """
+    """One target's typo is its own answer; the batch already paid for the others."""
     return ExploreResult(
         count=0,
         sample=[],
@@ -277,15 +227,7 @@ def first_match(session: "BrowserSession", locator: Any) -> ExploreRead:
 def verified_candidates(
     session: "BrowserSession", proposals: list[str], accepted: Collection[int]
 ) -> list[str]:
-    """The proposals whose own count is one ``accepted`` here.
-
-    Only the best ``EXPLORE_MAX_CANDIDATES`` proposals are checked — one
-    count each, so ``explore`` costs a bounded number of round trips
-    however many things the element could be called.
-
-    A unique match *is* the first match: every proposal was built from
-    something read off it (or off the row carrying it).
-    """
+    """Only the best ``EXPLORE_MAX_CANDIDATES`` are counted, bounding round trips."""
     checked = proposals[: constants.EXPLORE_MAX_CANDIDATES]
     return [
         candidate for candidate in checked if session.count_of(candidate) in accepted

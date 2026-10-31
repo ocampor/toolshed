@@ -1,8 +1,4 @@
-"""Dispatch one step: resolve its behaviour, run its handler, shape the failure.
-
-The handlers themselves live in :mod:`llm_browser.actions`, which is also what
-registers them — import that module, not this one, to run a step.
-"""
+"""Handlers register in :mod:`llm_browser.actions`; import that module, not this one, to run a step."""
 
 from functools import lru_cache
 from typing import Callable
@@ -38,14 +34,7 @@ def get_registry() -> Registry[ActionHandler]:
 def step_behavior(
     session: BrowserSession, step: Step, run_behavior: Behavior | None
 ) -> Behavior:
-    """What this step runs under: the run's default when it has one, the
-    session's otherwise, with the step's own ``humanize`` switched into it and
-    the driver's opt-outs applied last.
-
-    Resolved once, here, so the pacing around the action and the input call
-    inside it are the same behaviour, and so a run-level default reaches a
-    step without anything on the session changing.
-    """
+    """Resolved once, so the pacing and the input call share one behaviour and the session is untouched."""
     base = run_behavior if run_behavior is not None else session.behavior
     stepped = behavior_for(base, getattr(step, "humanize", None))
     return with_driver_opt_outs(session.behavior, stepped)

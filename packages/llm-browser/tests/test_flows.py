@@ -200,7 +200,6 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     tmp_path: Path,
     mock_session: MagicMock,
 ) -> None:
-    # The hint names the parent's run-flow step so `--from` resolves against the parent flow.
     mock_session.click.side_effect = TimeoutError("element missing")
     _write_named_flow(
         tmp_path,
@@ -216,8 +215,6 @@ def test_run_emits_retry_hint_pointing_to_parent_for_subflow_failure(
     assert isinstance(result, FlowError)
     assert result.retry_hint is not None
     assert result.retry_hint.failed_step == "do-thing"
-    # The result itself carries the qualified path so diagnostics
-    # can show where in the tree the failure happened.
     assert result.step == "do-thing/inner-click"
 
 
@@ -487,7 +484,6 @@ def test_run_flow_resolves_relative_to_parent_dir(
 
 
 def test_load_flow_validates_subflows_eagerly(tmp_path: Path) -> None:
-    # A child containing its own run-flow is rejected before the browser launches.
     _write_named_flow(
         tmp_path,
         "grandchild.yaml",
@@ -660,7 +656,6 @@ def test_a_run_level_behavior_reaches_a_sub_flows_steps(
 def test_a_run_never_rewrites_the_sessions_own_behavior(
     mock_session: MagicMock,
 ) -> None:
-    # The run's default is carried to each step, not parked on the session.
     run_flow(mock_session, _click_flow(), {}, behavior=Behavior.human())
     assert mock_session.behavior == Behavior.off()
 
@@ -801,7 +796,6 @@ def test_a_failing_pass_names_its_iteration(
     assert isinstance(result, FlowError)
     assert result.step == "grab[1]"
     assert list(result.outputs) == ["grab[0]"]
-    # `--from` resumes the step, not one of its passes.
     assert result.retry_hint is not None
     assert result.retry_hint.failed_step == "grab"
 

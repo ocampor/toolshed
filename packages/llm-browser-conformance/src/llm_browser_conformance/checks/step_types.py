@@ -1,12 +1,3 @@
-"""One scenario per step type, and per field a step type declares.
-
-Where ``checks/steps.py`` asks whether a driver survives a hostile page, these
-ask the flatter question: does the step the YAML describes do what the field
-names say it does — the load state ``goto`` waits for, the depth ``dom``
-truncates at, the pause ``scroll`` keeps between ticks. Every one of them is
-driven as a flow, because that is the surface a caller writes.
-"""
-
 import asyncio
 import concurrent.futures
 import datetime
@@ -84,7 +75,6 @@ TYPE_DELAY_MIN_MS = 40
 
 
 def png_size(data: bytes) -> tuple[int, int]:
-    """Width and height off a PNG's IHDR — enough to tell a crop from a page."""
     return (
         int.from_bytes(data[16:20], "big"),
         int.from_bytes(data[20:24], "big"),
@@ -92,15 +82,13 @@ def png_size(data: bytes) -> tuple[int, int]:
 
 
 def resolved_document(text: str, repository: FlowRepository) -> dict[str, Any]:
-    """Resolution is async, and Playwright's sync API already owns a running
-    loop on this thread, so ``asyncio.run`` gets a thread of its own."""
+    """Playwright's sync API owns this thread's loop, so ``asyncio.run`` gets its own thread."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, resolve_flow_text(text, repository)).result()
 
 
 def goto_waits_for_the_load_state_it_was_asked_for(ctx: Context) -> None:
-    """The page's ``load`` handler only runs once a resource the server sits on
-    for ``?delay=`` has landed, so the marker is the load state made visible."""
+    """The ``load`` handler runs only after the ``?delay=`` resource lands, so the marker is the load state."""
     slow_page = ctx.url("slow-image.html")
     early = expect_success(
         ctx,
@@ -132,11 +120,6 @@ def goto_refuses_a_url_that_is_not_http(ctx: Context) -> None:
 
 
 def every_screenshot_step_returns_png_bytes(ctx: Context) -> None:
-    """With a ``path:`` or without one, a screenshot step returns the PNG, and
-    a ``selector:`` crops it to that element.
-
-    ``path:`` is an instruction to the CLI — the runner has to leave it alone.
-    """
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "shot.png"
         with wrote_nothing(ctx):
@@ -163,8 +146,6 @@ def every_screenshot_step_returns_png_bytes(ctx: Context) -> None:
 
 
 def read_pulls_a_different_attribute_per_field(ctx: Context) -> None:
-    """``path:`` is an instruction to the CLI — the runner has to leave it
-    alone and hand the rows back instead."""
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "rows.json"
         with wrote_nothing(ctx):
@@ -192,8 +173,6 @@ def parse_coerces_every_cell_to_its_declared_type(ctx: Context) -> None:
 
 
 def dom_truncates_at_max_depth(ctx: Context) -> None:
-    """``path:`` is an instruction to the CLI — the runner has to leave it
-    alone and hand the snippet back instead."""
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "tree.html"
         with wrote_nothing(ctx):
@@ -216,8 +195,7 @@ def think_sleeps_inside_the_window_it_declares(ctx: Context) -> None:
 
 
 def settled_scroll_y(ctx: Context) -> float:
-    """Chromium animates a wheel tick, so the last one is still in flight when
-    the step returns; the read waits for the number to hold still."""
+    """Chromium animates a wheel tick, so the read waits for the number to hold still."""
     previous = -1.0
     deadline = time.monotonic() + TIMEOUT_MS / 1000
     while time.monotonic() < deadline:
@@ -230,13 +208,7 @@ def settled_scroll_y(ctx: Context) -> float:
 
 
 def park_pointer_off_the_page(ctx: Context) -> None:
-    """Put the pointer where a freshly opened tab leaves it: outside the page.
-
-    The whole suite shares one session, and a click moves the pointer and
-    leaves it there — across navigations — so a scroll scenario that did not
-    say where the pointer is would answer a different question depending on
-    which scenarios ran before it.
-    """
+    """One session is shared and a click leaves the pointer where it was, so each scroll test parks it first."""
     mouse = getattr(ctx.session.get_page(), "mouse", None)
     if mouse is None:  # nodriver has no page-level mouse, and skips scroll anyway
         return
@@ -245,9 +217,6 @@ def park_pointer_off_the_page(ctx: Context) -> None:
 
 
 def scroll_moves_the_page_one_tick_at_a_time(ctx: Context) -> None:
-    """``scroll`` is asked to move a page nothing has pointed at yet, which is
-    what a caller who has just opened one has."""
-
     def run_it() -> None:
         try:
             expect_success(ctx, "tall.html", "scroll")
@@ -270,8 +239,7 @@ def an_eval_only_step_mutates_the_page(ctx: Context) -> None:
 
 
 def pick_clicks_the_item_whose_text_matches(ctx: Context) -> None:
-    """The list has three items on purpose: ``pick`` short-circuits a single
-    match without looking at ``value``, which would prove nothing."""
+    """Three items on purpose: ``pick`` short-circuits a single match without reading ``value``."""
     outputs = expect_success(ctx, "pick-list.html", "pick")
     assert one_text(outputs, "result") == "Beta"
 
@@ -281,12 +249,7 @@ def pick_clicks_the_item_whose_text_matches(ctx: Context) -> None:
 
 
 def timed_typing(ctx: Context, flow_name: str) -> tuple[float, dict[str, object]]:
-    """Run a typing fixture flow with the ``type`` step timed on its own.
-
-    Timing the whole flow would prove nothing: the navigation it opens with
-    costs more than any per-key floor these checks assert, so the assertion
-    would pass on a driver that typed the whole string in one burst.
-    """
+    """Times the ``type`` step alone: the opening navigation costs more than any per-key floor."""
     ctx.visit("keydown-count.html")
     flow = ctx.flow(flow_name)
     typing, reading = flow.steps[:1], flow.steps[1:]
@@ -312,17 +275,12 @@ def type_delay_sends_one_keydown_per_character(ctx: Context) -> None:
 
 
 def a_jittered_delay_still_sends_one_keydown_per_character(ctx: Context) -> None:
-    """`delay: [min, max]` is a cadence, not a licence to drop keys: the page
-    must still see one keydown per character, no faster than the floor."""
     took, outputs = timed_typing(ctx, "type-delay-jitter")
     assert_typed_at_least(took, outputs, TYPE_DELAY_MIN_MS)
 
 
 def a_humanized_step_drives_the_element_with_trusted_input(ctx: Context) -> None:
-    """`humanize: true` changes the pointer's path and the fill's keystrokes,
-    not their provenance — input that arrives untrusted buys nothing. A fill
-    it switched on types the value, so the field sees a keydown at all; a
-    plain fill writes the value with none."""
+    """`humanize: true` changes the path and keystrokes, not their provenance; a plain fill sends no keydown."""
     expect_success(ctx, "form.html", "humanize")
     assert ctx.trusted("#reveal") == "true"
     assert ctx.trusted("#name") == "true"
@@ -330,9 +288,6 @@ def a_humanized_step_drives_the_element_with_trusted_input(ctx: Context) -> None
 
 
 def a_run_level_behavior_humanizes_a_step_that_says_nothing(ctx: Context) -> None:
-    """`run_flow(behavior=)` is the run's default, so a plain `fill` types the
-    value key by key — the page counts one keydown per character — and the
-    result names the profile the run used."""
     ctx.visit("keydown-count.html")
     result = run_flow(
         ctx.session, ctx.flow("run-behavior"), {}, behavior=Behavior.human()
@@ -373,8 +328,7 @@ def a_sub_flow_reference_is_resolved_through_a_repository(ctx: Context) -> None:
 
 
 def dom_returns_the_body_as_one_element(ctx: Context) -> None:
-    """`<body>` outerHTML is several elements with a wrapper around them, and
-    the wrapper is what the caller asked for."""
+    """`<body>` outerHTML is several elements plus the wrapper the caller asked for."""
     outputs = expect_success(ctx, "body-fragment.html", "dom-body")
     whole = str(outputs["whole"])
     assert whole.startswith("<body"), whole[:80]
@@ -387,8 +341,7 @@ def dom_returns_the_body_as_one_element(ctx: Context) -> None:
 
 
 def dom_reads_the_first_match_in_document_order(ctx: Context) -> None:
-    """A comma list is not a priority list: `body` wraps `main`, so
-    `main, article, body` reads the body."""
+    """A comma list is document order, not priority: `body` wraps `main`."""
     outputs = expect_success(ctx, "body-fragment.html", "dom-body")
     first = str(outputs["first"])
     assert first.startswith("<body"), first[:80]
@@ -396,13 +349,7 @@ def dom_reads_the_first_match_in_document_order(ctx: Context) -> None:
 
 
 def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
-    """Four claims only a browser can settle: the excluded text is gone, the
-    read happens on a detached copy (where `innerText` has no layout and so
-    reads like `textContent`, hidden span and all), `value` — the element's
-    own — still answers off the live page even for an element the same
-    `exclude` drops, and a `child_selector` inside an excluded subtree still
-    resolves, because `exclude` is about text and not about which elements a
-    field can see."""
+    """Only a browser shows the read uses a detached copy, where `innerText` reads like `textContent`."""
     outputs = expect_success(ctx, "read-exclude.html", "read-exclude")
 
     whole = one_text(outputs, "whole") or ""
@@ -422,8 +369,7 @@ def read_exclude_drops_the_text_and_nothing_else(ctx: Context) -> None:
 
 
 def a_saved_read_feeds_the_next_steps_template(ctx: Context) -> None:
-    """``where`` picks the row and ``field`` the scalar: row 0 is Alpha, so a
-    save that ignored ``where`` would fill the wrong text."""
+    """Row 0 is Alpha, so a save that ignored ``where`` fills the wrong text."""
     expect_success(ctx, "match-rules.html", "save-as")
     assert ctx.value("#target") == "Beta"
 
@@ -431,7 +377,6 @@ def a_saved_read_feeds_the_next_steps_template(ctx: Context) -> None:
 def read_pulls_dom_properties_alongside_attributes(ctx: Context) -> None:
     outputs = expect_success(ctx, "rows-attributes.html", "read-properties")
     assert outputs["rows"] == PROPERTY_ROWS
-    # A `read` with no `extract:` used to hand back a row of `None` per match.
     assert outputs["bare"] == BARE_ROWS
 
 

@@ -10,7 +10,7 @@ def test_compile_condition_eq():
     cond = compile_condition({"field": "name", "op": "eq", "value": "Alice"})
     assert cond.field == "name"
     assert cond.op == "eq"
-    assert cond.param == "alice"  # lowered
+    assert cond.param == "alice"
     assert cond.source == "record"
 
 

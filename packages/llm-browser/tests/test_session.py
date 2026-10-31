@@ -123,7 +123,6 @@ def test_element_exists_is_false_when_nothing_ever_matches(tmp_path: Path) -> No
 
 
 def test_element_exists_propagates_a_driver_error(tmp_path: Path) -> None:
-    # A CDP failure is not "not yet": only a timeout reads as False.
     session = _session_with_mock_driver(tmp_path)
     session.driver.count.side_effect = RuntimeError("boom")
     with pytest.raises(RuntimeError, match="boom"):
@@ -266,7 +265,6 @@ def test_the_verdict_answers_the_intent(
     expected: Verdict,
     exploring_session: ExploringSession,
 ) -> None:
-    # Below the fold is not a reason to refuse: every driver scrolls before it clicks.
     session = exploring_session(rows, first=first)
 
     assert session.explore(".row", timeout_ms=0, intent=intent).verdict == expected
@@ -287,7 +285,6 @@ def test_explore_reads_the_first_match_once(
 def test_a_candidate_has_to_match_exactly_one_element(
     exploring_session: ExploringSession,
 ) -> None:
-    # Proposals come off the first match's attributes, so a candidate must match it alone.
     session = exploring_session(
         ONE_ROW,
         locators={"id": "alpha", "aria_label": "Go"},
@@ -335,7 +332,6 @@ ALL_THE_NAMES: dict[str, object] = {
 def test_only_the_best_three_candidates_are_verified(
     exploring_session: ExploringSession,
 ) -> None:
-    # `explore` promises a bounded number of round trips.
     session = exploring_session(ONE_ROW, locators=ALL_THE_NAMES)
 
     result = session.explore(".row")
@@ -346,7 +342,6 @@ def test_only_the_best_three_candidates_are_verified(
         'role=link[name="Buy"]',
     ]
     assert result.candidates == best_three
-    # `#buy-now` is proposed and never counted: three round trips, not four.
     counted = [call.args[0] for call in session.driver.count.call_args_list]
     assert [selector for selector in counted if selector != ".row"] == best_three
 
@@ -378,7 +373,6 @@ def test_a_selector_that_never_arrives_has_no_first_match_and_no_timing(
 def test_explore_times_the_match_against_the_page_and_against_the_call(
     exploring_session: ExploringSession,
 ) -> None:
-    # A call's own latency would oversize a `wait_for`; the page's clock is what the element took.
     result = exploring_session(ONE_ROW, since_navigation_ms=740).explore(".row")
 
     assert result.since_navigation_ms == 740
@@ -409,7 +403,6 @@ def test_stability_reads_the_selector_a_redeploy_would_break(
 def test_a_control_inside_the_first_match_is_named(
     exploring_session: ExploringSession,
 ) -> None:
-    # A card-sized anchor wrapping its dismiss button: the "open" click hides it.
     session = exploring_session(
         ONE_ROW,
         first={"nested_controls": [{"tag": "button", "text": "Not Interested"}]},

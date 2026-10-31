@@ -1,11 +1,4 @@
-"""Where a session records the browser it is driving.
-
-The one place in the library that writes a file, and the reason it is its own
-module: ``state.json`` is *state*, not output. It is how a later process finds
-a detached browser again, and the no-output-writes guard
-(``tests/test_no_output_writes.py``) exempts this file by name rather than
-exempting all 600 lines of ``session.py``.
-"""
+"""The library's one file write: ``state.json`` is state, not output, so the no-output-writes guard exempts it by name."""
 
 from pathlib import Path
 
@@ -15,12 +8,7 @@ STATE_FILENAME = "state.json"
 
 
 class SessionState:
-    """The recorded :class:`SessionInfo`, in memory and (unless stateless) on disk.
-
-    ``stateless`` is the ``--cdp-url`` case: the caller addresses the tab
-    itself, so nothing is read from or written to disk and parallel runs
-    against one browser never collide.
-    """
+    """``stateless`` (``--cdp-url``) reads and writes nothing, so parallel runs never collide."""
 
     def __init__(self, path: Path, stateless: bool = False) -> None:
         self.path = path
@@ -28,7 +16,6 @@ class SessionState:
         self.info: SessionInfo | None = None
 
     def save(self, info: SessionInfo) -> None:
-        """Record the live session; persist it too unless stateless."""
         self.info = info
         if self.stateless:
             return
@@ -48,11 +35,7 @@ class SessionState:
             self.path.unlink()
 
     def restore(self, recorded: SessionInfo | None) -> None:
-        """Put back what was on disk before a launch that did not complete.
-
-        Clearing the file instead would strand an *earlier* detached browser
-        with no pid anywhere for ``stop_detached`` to kill.
-        """
+        """Clearing the file instead would strand an earlier detached browser with no pid for ``stop_detached``."""
         if recorded is None:
             self.clear()
             return

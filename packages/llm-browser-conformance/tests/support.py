@@ -1,5 +1,3 @@
-# One importable translation is what lets test_front_ends.py prove CLI and pytest agree.
-
 import pytest
 
 from llm_browser_conformance.runner import Result

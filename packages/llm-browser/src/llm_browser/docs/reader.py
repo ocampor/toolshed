@@ -1,10 +1,4 @@
-"""Reading the docs the wheel ships, by name and by section.
-
-Two kinds live side by side: ``reference/*`` is rendered at build time by
-``bench.docs`` from :mod:`llm_browser.docgen`'s ``REFERENCE``, ``guide/*`` is
-hand-written prose. A host serving these to a model wants one section at a
-time, so the split lives here rather than in every caller.
-"""
+"""A host serving these to a model wants one section at a time, so the split lives here."""
 
 import re
 from importlib.resources import files
@@ -38,8 +32,7 @@ class DocEntry(BaseModel):
 
 
 def doc_names() -> list[str]:
-    """Every document present. ``reference/`` is absent in a source checkout
-    that has not been built yet, which is a state, not an error."""
+    """``reference/`` is absent in an unbuilt source checkout: a state, not an error."""
     return sorted(
         f"{kind}/{entry.name.removesuffix('.md')}"
         for kind in KINDS
@@ -64,11 +57,7 @@ def read(name: str) -> str:
 
 # Same body as bench.docs.sections.sections_of; the wheel runs without bench.
 def sections(name: str) -> list[Section]:
-    """Split at every `#`–`###` heading, fenced code kept inside its section.
-
-    A heading inside a fence is sample markdown, not a heading of this
-    document, so the fence state decides.
-    """
+    """A heading inside a fence is sample markdown, so the fence state decides."""
     heading = ""
     lines: list[str] = []
     found: list[Section] = []

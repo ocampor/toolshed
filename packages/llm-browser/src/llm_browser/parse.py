@@ -1,24 +1,7 @@
 # mypy: ignore-errors
 # (FieldInfo is @final upstream; subclassing works in practice. Disabling mypy
 # on this file rather than scattering type-ignore comments.)
-"""Typed DOM extraction.
-
-Define a Pydantic model whose fields use ``ExtractField`` as defaults, then
-call ``Model.extract_all(session, selector)`` to get back instances with
-values coerced by Pydantic::
-
-    class User(ParseBase):
-        name: str = ExtractField(child_selector="td.name")
-        age:  int = ExtractField(child_selector="td.age")
-
-    users = User.extract_all(session, "tr.row")     # list[User]
-    first = User.extract_one(session, "tr.row")     # User | None
-
-The YAML ``read`` action keeps using the same ``ExtractField`` underneath —
-``ReadStep.extract`` accepts either the compact ``"td.name@href"`` string or a
-raw ``{child_selector, attribute}`` mapping, both through
-``ExtractField.coerce``.
-"""
+"""The YAML ``read`` action uses the same ``ExtractField`` through ``ExtractField.coerce``."""
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -105,7 +88,6 @@ class ExtractField(FieldInfo):
 
 
 def row_spec(extract: dict[str, ExtractField]) -> dict[str, dict[str, str | None]]:
-    """The driver-facing form of an extract map, as ``extract_rows`` wants it."""
     return {
         name: {"child_selector": field.child_selector, "attribute": field.attribute}
         for name, field in extract.items()

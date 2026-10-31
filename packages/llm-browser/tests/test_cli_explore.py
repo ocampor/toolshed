@@ -81,7 +81,6 @@ def test_explore_exits_non_zero_when_the_selector_matched_nothing(
     payload = json.loads(result.output)
     assert payload["count"] == 0
     assert payload["verdict"] == "missing"
-    # `_output` drops nulls, so a missing selector has neither key at all.
     assert "first" not in payload and "appeared_after_ms" not in payload
 
 
@@ -101,7 +100,6 @@ def test_intent_click_on_one_clickable_match_exits_zero(
 def test_intent_click_on_a_covered_match_exits_one(
     cli_explore: ExploringSession,
 ) -> None:
-    # The read exits zero on the same element: only a click is refused.
     cli_explore(
         [{".label": "Alpha"}],
         first={
@@ -153,7 +151,6 @@ def test_explore_rejects_an_extract_without_a_name(
 def test_explore_rejects_the_same_extract_name_twice(
     cli_explore: ExploringSession,
 ) -> None:
-    # A typo'd duplicate would otherwise discard the first spec in silence.
     cli_explore([{".label": "Alpha"}])
 
     result = CliRunner().invoke(
@@ -240,7 +237,6 @@ def test_a_targets_file_explores_them_all_in_the_order_written(
 def test_one_bad_verdict_in_a_batch_is_a_non_zero_exit(
     cli_session: MagicMock, tmp_path: Path
 ) -> None:
-    # The shell's question is "can I write these steps", and one no is a no.
     cli_session.explore_many.return_value = [
         explored(1),
         explored(0, Verdict.MISSING),
@@ -273,7 +269,6 @@ def test_a_targets_file_that_is_not_a_list_is_a_usage_error(tmp_path: Path) -> N
 
 
 def test_an_empty_targets_file_is_a_usage_error(tmp_path: Path) -> None:
-    # Exploring nothing and exiting 0 reads as "every selector is fine".
     path = targets_file(tmp_path, "[]\n")
 
     result = CliRunner().invoke(main, ["explore", "--targets", path])

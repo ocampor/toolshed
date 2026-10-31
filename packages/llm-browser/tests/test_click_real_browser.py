@@ -35,8 +35,6 @@ PAGE = """
 
 
 class Case(NamedTuple):
-    # `must_click` is off only for the original shape, where the nav menu legitimately takes the point.
-
     nav_edge: str
     nav_height: int
     link_top: int
@@ -51,11 +49,7 @@ class Case(NamedTuple):
 
 CASES = {
     "below the fold, nav on top": Case("top", 60, 2400, 0, must_click=False),
-    # Wheeling up: the minimal scroll stops with the box flush against the top
-    # edge, which is where the fixed nav is.
     "above the fold, nav on top": Case("top", 60, 800, 1200, must_click=True),
-    # Wheeling down: the minimal scroll stops with the box flush against the
-    # bottom edge, which is where this nav is.
     "below the fold, nav on the bottom": Case("bottom", 80, 2400, 0, must_click=True),
 }
 
@@ -124,7 +118,6 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
     try:
         hit = live_session.click("#logout")
     except ValueError as refusal:
-        # The path crossed the nav and the menu it opened took the point.
         assert not case.must_click, str(refusal)
         assert "covered-after-move" in str(refusal)
         assert seen == ["li|menu-item"]
@@ -133,8 +126,6 @@ def test_hit_test_agrees_with_the_main_world_in_patchright(
         assert seen == [f"{hit.tag}|{hit.class_name}"]
         assert hit.tag in {"a", "span"}
 
-    # The wheel, not the programmatic jump, is what brought the link in, and
-    # it left the target clear of the nav rather than flush against its edge.
     assert page.evaluate("() => window.scrollY") != case.start_at
     assert jumped == []
     box = page.evaluate(
